@@ -19,6 +19,7 @@ export const M1_ELEMENTS = {
 
 const BUTTON_CSS = `
 :host { display: inline-flex; }
+:host([hidden]) { display: none; }
 button {
   all: unset; box-sizing: border-box; cursor: pointer;
   min-width: var(--otter-control-size, 44px); min-height: var(--otter-control-size, 44px);
@@ -130,7 +131,7 @@ export function defineOtterElements(options: DefineOptions = {}): Record<string,
     protected setup(): void {
       if (this.#text !== undefined) return;
       const root = this.attachShadow({ mode: 'open' });
-      root.innerHTML = `<style>:host{display:inline-flex;align-items:center;color:var(--otter-fg,#fff);font:var(--otter-font-mono,500 13px/1 ui-monospace,monospace);font-variant-numeric:tabular-nums}</style><span part="text"></span>`;
+      root.innerHTML = `<style>:host([hidden]){display:none}:host{display:inline-flex;align-items:center;color:var(--otter-fg,#fff);font:var(--otter-font-mono,500 13px/1 ui-monospace,monospace);font-variant-numeric:tabular-nums}</style><span part="text"></span>`;
       this.#text = root.querySelector('span') as HTMLElement;
     }
     protected render(s: Readonly<UiState>): void {
@@ -149,6 +150,7 @@ export function defineOtterElements(options: DefineOptions = {}): Record<string,
       const root = this.attachShadow({ mode: 'open' });
       root.innerHTML = `<style>
 :host { display: flex; align-items: center; flex: 1; min-width: 80px; }
+:host([hidden]) { display: none; }
 input { width: 100%; margin: 0; height: var(--otter-control-size, 44px); background: transparent; accent-color: var(--otter-accent, #1ee9e6); cursor: pointer; }
 input:focus-visible { outline: 3px solid var(--otter-accent, #1ee9e6); outline-offset: 2px; }
 </style><input part="range" type="range" min="0" max="0" step="0.1" value="0" aria-label="Seek">`;
@@ -185,6 +187,7 @@ input:focus-visible { outline: 3px solid var(--otter-accent, #1ee9e6); outline-o
       if (this.#list !== undefined) return;
       const root = this.attachShadow({ mode: 'open' });
       root.innerHTML = `<style>
+:host([hidden]) { display: none; }
 :host { display: block; color: var(--otter-fg, #fff); background: color-mix(in srgb, var(--otter-bg, #243447) 88%, transparent);
   font: var(--otter-font-mono, 12px/1.5 ui-monospace, monospace); padding: 8px 12px; border-radius: var(--otter-radius, 8px); max-width: 100%; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 0 12px; margin: 0; }

@@ -135,9 +135,10 @@ for (const scenario of SCENARIOS) {
         }
       }
 
-      // Stats panel renders the same data from the store.
-      await page.locator('#toggle-stats').check();
+      // Stats panel renders the same data from the store, and honours [hidden] until toggled.
       const stats = page.locator('otter-stats');
+      await expect(stats).toBeHidden();
+      await page.locator('#toggle-stats').check();
       await expect(stats).toBeVisible();
       await expect(stats.locator('[data-stat="Format / backend"]')).toContainText(`${scenario.format} / ${state.backend}`);
       await expect(stats.locator('[data-stat="TTFF"]')).not.toHaveText('–');
