@@ -1,0 +1,78 @@
+// QoE hook (SPEC §4, event set in SPEC §10). Telemetry is built in from day one; the `qoe`
+// package and the stats panel consume these events. Payloads are plain data so they can cross a
+// Worker boundary unchanged.
+
+import { createEventBus, type EventBus } from './events';
+import type { OtterError } from './errors';
+
+export interface RouteStep {
+  /** Backend (or decoder fallback step such as `wasm`) that was considered. */
+  readonly candidate: string;
+  readonly outcome: 'selected' | 'rejected' | 'failed';
+  readonly reason: string;
+}
+
+/** Output of `router.explain()` (SPEC §5.2), also carried by the `route` QoE event. */
+export interface RouteExplanation {
+  readonly format: string | null;
+  readonly backend: string | null;
+  readonly steps: readonly RouteStep[];
+}
+
+export interface QoeEventMap {
+  startup: {
+    /** Time to first frame, ms. */
+    readonly ttff: number;
+    readonly firstSegmentMs?: number;
+    readonly backend: string;
+    readonly format: string;
+    readonly codec?: string;
+  };
+  rebuffer: {
+    /** Media position, seconds. */
+    readonly position: number;
+    readonly startedAt: number;
+    readonly endedAt?: number;
+    readonly duration?: number;
+  };
+  'quality-switch': {
+    readonly from: string | null;
+    readonly to: string;
+    readonly reason: string;
+    readonly mode: 'auto' | 'manual';
+  };
+  error: {
+    readonly error: OtterError;
+    /** Remaining fallback path at the time of the error (empty when none is left). */
+    readonly fallback: readonly string[];
+  };
+  bandwidth: {
+    /** bits per second */
+    readonly estimate: number;
+    readonly fast: number;
+    readonly slow: number;
+  };
+  latency: {
+    /** seconds behind live edge */
+    readonly latency: number;
+    readonly target?: number;
+  };
+  'dropped-frames': {
+    readonly dropped: number;
+    readonly total: number;
+  };
+  exit: {
+    readonly position: number;
+    /** Accumulated watch time, seconds. */
+    readonly watched: number;
+  };
+  route: RouteExplanation;
+}
+
+export type QoeEventType = keyof QoeEventMap;
+
+export type QoeHook = EventBus<QoeEventMap>;
+
+export function createQoeHook(): QoeHook {
+  return createEventBus<QoeEventMap>();
+}

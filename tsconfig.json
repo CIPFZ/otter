@@ -1,0 +1,16 @@
+{
+  // Type-checks tests, e2e, scripts and tool configs. Package sources are built by tsconfig.build.json.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "isolatedDeclarations": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["packages/*/test", "scripts", "tooling", "e2e", "*.config.ts"]
+}
