@@ -2,10 +2,10 @@
 // dependency (topological) order. Every format, backend, ABR, DRM, decoder, renderer, text track
 // and UI feature is attached through this interface; core never imports an implementation.
 
-import { createError, type OtterError } from './errors';
-import type { EventBus } from './events';
-import type { QoeHook } from './qoe';
-import type { Store } from './store';
+import { createError, type OtterError } from './errors.js';
+import type { EventBus } from './events.js';
+import type { QoeHook } from './qoe.js';
+import type { Store } from './store.js';
 
 export interface CoreEventMap {
   error: OtterError;

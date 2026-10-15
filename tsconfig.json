@@ -2,6 +2,8 @@
   // Type-checks tests, e2e, scripts and tool configs. Package sources are built by tsconfig.build.json.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "noEmit": true,

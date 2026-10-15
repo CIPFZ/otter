@@ -1,11 +1,11 @@
 // Deterministic routing and fallback chain (SPEC §5.2).
 
 import { notImplemented, type RouteExplanation } from '@otter-player/core';
-import type { BackendKind } from './backend';
-import type { Capabilities } from './capabilities';
-import type { Decoder } from './decoder';
-import type { FormatPlugin } from './format';
-import type { Source } from './source';
+import type { BackendKind } from './backend.js';
+import type { Capabilities } from './capabilities.js';
+import type { Decoder } from './decoder.js';
+import type { FormatPlugin } from './format.js';
+import type { Source } from './source.js';
 
 export interface FallbackStep {
   readonly backend: BackendKind;

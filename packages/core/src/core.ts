@@ -1,10 +1,10 @@
 // Core assembly: the host passes slices (from `features`) and plugins, listens to events and
 // dispatches actions (SPEC §16 host contract).
 
-import { createEventBus, type EventBus } from './events';
-import { createPluginRegistry, type CoreEventMap, type Plugin, type PluginRegistry } from './plugin';
-import { createQoeHook, type QoeHook } from './qoe';
-import { createStore, type Store, type StoreSlice } from './store';
+import { createEventBus, type EventBus } from './events.js';
+import { createPluginRegistry, type CoreEventMap, type Plugin, type PluginRegistry } from './plugin.js';
+import { createQoeHook, type QoeHook } from './qoe.js';
+import { createStore, type Store, type StoreSlice } from './store.js';
 
 export interface CoreOptions<S extends object, A extends object> {
   readonly slices?: readonly StoreSlice[];

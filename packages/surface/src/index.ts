@@ -1,4 +1,4 @@
-export type { Insets, Overlay, OverlayHost } from './overlay';
+export type { Insets, Overlay, OverlayHost } from './overlay.js';
 export {
   createCanvasSurface,
   createGPUSurface,
@@ -12,4 +12,4 @@ export {
   type SurfaceFit,
   type SurfaceKind,
   type SurfaceTransform,
-} from './surface';
+} from './surface.js';

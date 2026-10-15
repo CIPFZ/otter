@@ -2,7 +2,7 @@
 // modules; this interface is all the rest of Otter sees of them.
 
 import type { OtterError } from '@otter-player/core';
-import type { Capabilities } from './capabilities';
+import type { Capabilities } from './capabilities.js';
 
 export interface EncodedChunk {
   readonly type: 'key' | 'delta';

@@ -1,8 +1,8 @@
 // MediaBackend (SPEC §5): the only surface core and UI see of native / MSE / WebCodecs playback.
 
 import type { OtterError, Unsubscribe } from '@otter-player/core';
-import type { LoadOptions, Source } from './source';
-import type { TrackList } from './tracks';
+import type { LoadOptions, Source } from './source.js';
+import type { TrackList } from './tracks.js';
 
 export type BackendKind = 'native' | 'mse' | 'webcodecs';
 

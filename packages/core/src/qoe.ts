@@ -2,8 +2,8 @@
 // package and the stats panel consume these events. Payloads are plain data so they can cross a
 // Worker boundary unchanged.
 
-import { createEventBus, type EventBus } from './events';
-import type { OtterError } from './errors';
+import { createEventBus, type EventBus } from './events.js';
+import type { OtterError } from './errors.js';
 
 export interface RouteStep {
   /** Backend (or decoder fallback step such as `wasm`) that was considered. */

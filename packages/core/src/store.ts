@@ -7,8 +7,8 @@
 // dispatch() is synchronous end to end, so an action raised inside a user-gesture callback reaches
 // its handler in the same call stack (fullscreen / PiP / orientation lock / unmuted autoplay).
 
-import { createError } from './errors';
-import type { Trigger, Unsubscribe } from './events';
+import { createError } from './errors.js';
+import type { Trigger, Unsubscribe } from './events.js';
 
 export interface StoreSlice<S extends object = object> {
   readonly id: string;

@@ -1,9 +1,9 @@
 // FormatPlugin (SPEC §5): scores a source and produces the pipeline assembly that drives a backend.
 
 import type { QoeHook } from '@otter-player/core';
-import type { BackendKind } from './backend';
-import type { Capabilities } from './capabilities';
-import type { LoadOptions, Source } from './source';
+import type { BackendKind } from './backend.js';
+import type { Capabilities } from './capabilities.js';
+import type { LoadOptions, Source } from './source.js';
 
 export interface EngineContext {
   readonly source: Source;
