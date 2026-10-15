@@ -106,14 +106,17 @@ for (const scenario of SCENARIOS) {
       expect(state.backend).not.toBeNull();
       expect(state.explain).toMatchObject({ format: scenario.format, backend: state.backend });
 
-      // Playback actually advances and frames are decoded.
-      const start = state.currentTime;
+      // Playback actually advances and frames are decoded. Measure from the first frame: live
+      // streams jump the playhead to the live position on loadedmetadata, before any frame.
+      await expect.poll(async () => (await snapshot(page)).qoe.ttff, { timeout: 30_000 }).not.toBeNull();
+      const start = (await snapshot(page)).currentTime;
       await expect.poll(async () => (await snapshot(page)).currentTime - start, { timeout: 20_000 }).toBeGreaterThan(1.5);
       state = await snapshot(page);
       expect(state.paused).toBe(false);
       expect(state.videoWidth).toBeGreaterThan(0);
-      expect(state.qoe.ttff).not.toBeNull();
       expect(state.qoe.route?.backend).toBe(state.backend);
+      // Native playback exposes no renditions in most browsers (videoTracks is flagged off).
+      if (state.videoTracks.length > 0) expect(state.activeQuality, 'the playing rendition is known').not.toBeNull();
 
       for (const check of scenario.checks ?? []) {
         if (check === 'subtitles') expect(state.textTracks).toBeGreaterThan(0);

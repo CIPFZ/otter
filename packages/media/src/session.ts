@@ -212,11 +212,16 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       });
     return [
       on('playback-change', onPlaybackChange),
-      on('tracks-change', (tracks) => set({ tracks })),
+      on('tracks-change', (tracks) => {
+        // Engines do not always announce the initial rendition; take it from the track list.
+        const initial = state().activeQuality === null ? tracks.video.find((v) => v.selected)?.id : undefined;
+        set(initial === undefined ? { tracks } : { tracks, activeQuality: initial });
+      }),
       on('quality-change', ({ id, auto, reason }) => {
         const from = state().activeQuality;
         set({ activeQuality: id });
-        if (from !== id) qoe?.emit('quality-switch', { from, to: id, reason, mode: auto ? 'auto' : 'manual' });
+        // The initial selection is not a switch.
+        if (from !== null && from !== id) qoe?.emit('quality-switch', { from, to: id, reason, mode: auto ? 'auto' : 'manual' });
       }),
       on('latency-change', ({ latency, target }) => {
         set({ latency });

@@ -180,6 +180,7 @@ describe('media plugin', () => {
     await flush();
     const b = created[0] as FakeBackend;
     b.emit('quality-change', { id: 'v1', auto: true, reason: 'abr' });
+    b.emit('quality-change', { id: 'v2', auto: true, reason: 'abr' });
     tick(250);
     b.emit('first-frame', { at: 1250 });
     b.emit('playback-change', { paused: false, readyState: 4, currentTime: 1 });
@@ -189,12 +190,23 @@ describe('media plugin', () => {
     b.emit('playback-change', { waiting: false });
     view.dispatch('unload', undefined);
     const byType = Object.fromEntries(qoe.map((e) => [e.type, e.payload]));
-    expect(byType['startup']).toEqual({ ttff: 250, backend: 'mse', format: 'hls', codec: 'avc1.42E01E' });
-    expect(byType['quality-switch']).toEqual({ from: null, to: 'v1', reason: 'abr', mode: 'auto' });
+    expect(byType['startup']).toEqual({ ttff: 250, backend: 'mse', format: 'hls' });
+    // Initial selection (null -> v1) is not a switch; v1 -> v2 is.
+    expect(qoe.filter((e) => e.type === 'quality-switch').map((e) => e.payload)).toEqual([{ from: 'v1', to: 'v2', reason: 'abr', mode: 'auto' }]);
     expect(byType['rebuffer']).toMatchObject({ position: 2, duration: 400 });
     expect(byType['exit']).toEqual({ position: 2, watched: 1 });
     expect(b.calls).toContain('destroy');
     expect(view.getState().status).toBe('idle');
+  });
+
+  it('takes the initial quality from the track list without counting a switch', async () => {
+    const { view, created, qoe } = await setup();
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    const b = created[0] as FakeBackend;
+    b.emit('tracks-change', { ...b.tracks });
+    expect(view.getState().activeQuality).toBe('v1');
+    expect(qoe.some((e) => e.type === 'quality-switch')).toBe(false);
   });
 
   it('ignores events from a superseded load', async () => {

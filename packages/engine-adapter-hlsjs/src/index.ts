@@ -199,8 +199,15 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
           bus.emit('first-segment', { at: performance.now() });
         }
       });
+      let mappedLevel = instance.currentLevel;
       instance.on(Events.FRAG_BUFFERED, (_e, { frag }) => {
         if (frag.type !== 'main') return;
+        // LEVEL_SWITCHED depends on the playing fragment changing level, which LL-HLS parts do
+        // not always trigger; keep the selected flag current from the buffered level instead.
+        if (instance.currentLevel !== mappedLevel) {
+          mappedLevel = instance.currentLevel;
+          refresh();
+        }
         const estimate = instance.bandwidthEstimate;
         if (Number.isFinite(estimate) && estimate > 0) bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
         const latency = instance.latency;
