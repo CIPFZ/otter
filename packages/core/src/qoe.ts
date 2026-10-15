@@ -21,8 +21,9 @@ export interface RouteExplanation {
 
 export interface QoeEventMap {
   startup: {
-    /** Time to first frame, ms. */
+    /** Time to first frame from the load action, ms. */
     readonly ttff: number;
+    /** Time to the first media segment from the load action, ms. */
     readonly firstSegmentMs?: number;
     readonly backend: string;
     readonly format: string;
@@ -31,8 +32,10 @@ export interface QoeEventMap {
   rebuffer: {
     /** Media position, seconds. */
     readonly position: number;
+    /** Monotonic clock (performance.now), ms. */
     readonly startedAt: number;
     readonly endedAt?: number;
+    /** ms */
     readonly duration?: number;
   };
   'quality-switch': {
