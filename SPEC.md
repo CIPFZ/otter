@@ -431,7 +431,7 @@ M0 接口落点（ADR-002）：
 | 里程碑 | 引擎侧 | 渲染侧 | 验收 |
 |---|---|---|---|
 | M0 | monorepo 骨架、接口定义、CI（license 门禁、strict TS、Vitest、Playwright 矩阵、axe） | 同左 | 所有接口有类型与空实现；`pnpm build` 产出各包；license 门禁跑通 |
-| M1 | `backend-native` + `backend-mse` + hls.js / Shaka / mpegts.js 适配器；选路与降级链；QoE 面板 | `VideoSurface` + 最小控件 | 全场景矩阵能播；iPhone MMS 条件自动处理；stats 面板有数据 |
+| M1 | `backend-native` + `backend-mse` + hls.js / Shaka / mpegts.js 适配器；选路与降级链；QoE 面板 | `VideoSurface` + 最小控件 | 全场景矩阵能播；iPhone MMS 条件自动处理；stats 面板有数据；`router.explain()` 可导出选路决策；真机矩阵至少在一台 iPhone 与一台 Android 上实际跑过（`emulated-*` 不算） |
 | M2 | ABR 规则叠加、CMCD、错误恢复 | `ui-core` 原语、默认皮肤、字幕（VTT/IMSC/608）、`InputController`、无障碍 | axe 零严重问题；键盘全覆盖；Vidstack CVAA 清单通过 |
 | M3 | 自研 FLV/TS/fMP4 管线、`LiveController`、`format-mp4-range` | `presentation` 全模式（重点 iPhone 伪全屏与 Document PiP）、MediaSession、WakeLock | 真机矩阵全模式通过；FLV 直播延迟 ≤ 2s |
 | M4 | `backend-webcodecs`、WASM 解码插件、`format-whep`、`format-file` | `GPUSurface`、多宫格、电子放大、滤镜 | 16 路 720p HEVC 可播；三级降级可观测 |
