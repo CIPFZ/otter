@@ -1,0 +1,13 @@
+/*
+ * @otter-player/ui-skin-default (SPEC §14.4): CSS only.
+ * Default theme tokens are the Otter brand palette (SPEC §22, Assets/icon/README.md).
+ * :where() keeps specificity at zero so hosts can override any token.
+ */
+:where(:root) {
+  --otter-bg: #243447;
+  --otter-bg-deep: #1e2d40;
+  --otter-accent: #1ee9e6;
+  /* Use on light backgrounds; #1EE9E6 does not reach contrast there. */
+  --otter-accent-deep: #12c9d4;
+  --otter-fg: #ffffff;
+}

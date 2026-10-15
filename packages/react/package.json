@@ -1,0 +1,22 @@
+{
+  "name": "@otter-player/react",
+  "version": "0.0.0",
+  "description": "React bindings (thin hooks and component wrappers over the Web Components).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@otter-player/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  }
+}

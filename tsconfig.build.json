@@ -14,6 +14,9 @@
       "path": "packages/core"
     },
     {
+      "path": "packages/danmaku"
+    },
+    {
       "path": "packages/decoder-wasm-ffmpeg"
     },
     {
@@ -53,13 +56,49 @@
       "path": "packages/format-whep"
     },
     {
+      "path": "packages/input"
+    },
+    {
       "path": "packages/media"
+    },
+    {
+      "path": "packages/overlay-ads"
+    },
+    {
+      "path": "packages/overlay-thumbnails"
+    },
+    {
+      "path": "packages/overlay-watermark"
     },
     {
       "path": "packages/pipeline"
     },
     {
+      "path": "packages/presentation"
+    },
+    {
       "path": "packages/qoe"
+    },
+    {
+      "path": "packages/react"
+    },
+    {
+      "path": "packages/surface"
+    },
+    {
+      "path": "packages/svelte"
+    },
+    {
+      "path": "packages/text"
+    },
+    {
+      "path": "packages/text-ass"
+    },
+    {
+      "path": "packages/ui-core"
+    },
+    {
+      "path": "packages/vue"
     }
   ]
 }

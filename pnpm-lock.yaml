@@ -208,6 +208,15 @@ importers:
 
   packages/core: {}
 
+  packages/danmaku:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
+
   packages/decoder-wasm-ffmpeg:
     dependencies:
       '@otter-player/core':
@@ -325,11 +334,44 @@ importers:
         specifier: workspace:*
         version: link:../media
 
+  packages/input:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/media:
     dependencies:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/overlay-ads:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
+
+  packages/overlay-thumbnails:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
+
+  packages/overlay-watermark:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
 
   packages/pipeline:
     dependencies:
@@ -337,11 +379,70 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/presentation:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
+
   packages/qoe:
     dependencies:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/react: {}
+
+  packages/surface:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/svelte: {}
+
+  packages/text:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
+
+  packages/text-ass:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
+
+  packages/ui-core:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/input':
+        specifier: workspace:*
+        version: link:../input
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
+
+  packages/ui-skin-audio: {}
+
+  packages/ui-skin-default: {}
+
+  packages/ui-skin-minimal: {}
+
+  packages/ui-skin-tv: {}
+
+  packages/vue: {}
 
 packages:
 

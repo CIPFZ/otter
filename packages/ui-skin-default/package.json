@@ -1,0 +1,20 @@
+{
+  "name": "@otter-player/ui-skin-default",
+  "version": "0.0.0",
+  "description": "Default skin (CSS only), Otter brand palette.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "style": "./dist/index.css",
+      "default": "./dist/index.css"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node ../../tooling/copy-css.ts"
+  }
+}

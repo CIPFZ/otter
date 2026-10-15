@@ -1,0 +1,40 @@
+// UI primitives and features (SPEC §14, §17). Primitives are Web Components with the `otter-`
+// prefix; each binds one piece of state to one piece of DOM, styled through --otter-* custom
+// properties, ::part() and slots. Elements are defined explicitly by the host, never on import.
+
+import type { StoreSlice } from '@otter-player/core';
+import type { GestureMap, HotkeyMap } from '@otter-player/input';
+import type { Overlay } from '@otter-player/surface';
+
+export interface UIFeature {
+  readonly id: string;
+  readonly slices?: StoreSlice[];
+  readonly components?: CustomElementConstructor[];
+  readonly hotkeys?: HotkeyMap;
+  readonly gestures?: GestureMap;
+  readonly overlays?: Overlay[];
+}
+
+/** Identity helper that keeps the literal type of a feature definition. */
+export function defineUIFeature<const F extends UIFeature>(feature: F): F {
+  return feature;
+}
+
+/** Tag names of the SPEC §14.1 primitives. Implementations arrive in M1 / M2. */
+export const OTTER_ELEMENTS = {
+  PlayButton: 'otter-play-button',
+  MuteButton: 'otter-mute-button',
+  VolumeSlider: 'otter-volume-slider',
+  TimeSlider: 'otter-time-slider',
+  TimeDisplay: 'otter-time-display',
+  LiveIndicator: 'otter-live-indicator',
+  Menu: 'otter-menu',
+  MenuItem: 'otter-menu-item',
+  Tooltip: 'otter-tooltip',
+  Gesture: 'otter-gesture',
+  Poster: 'otter-poster',
+  Spinner: 'otter-spinner',
+  Announcer: 'otter-announcer',
+} as const;
+
+export type OtterElementName = (typeof OTTER_ELEMENTS)[keyof typeof OTTER_ELEMENTS];

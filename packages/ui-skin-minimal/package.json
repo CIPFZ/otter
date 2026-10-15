@@ -1,0 +1,20 @@
+{
+  "name": "@otter-player/ui-skin-minimal",
+  "version": "0.0.0",
+  "description": "Minimal skin (CSS only).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "style": "./dist/index.css",
+      "default": "./dist/index.css"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node ../../tooling/copy-css.ts"
+  }
+}
