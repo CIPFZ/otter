@@ -117,7 +117,7 @@ describe('hls.js adapter', () => {
     expect(events.filter(([e]) => e === 'first-segment')).toHaveLength(1);
     expect(events).toContainEqual(['bandwidth', { estimate: 3_000_000, fast: 3_000_000, slow: 3_000_000 }]);
     engine.selectQuality('level-1');
-    expect(hls.nextLevel).toBe(1);
+    expect(hls.currentLevel).toBe(1);
     engine.selectQuality('auto');
     expect(hls.nextLevel).toBe(-1);
   });

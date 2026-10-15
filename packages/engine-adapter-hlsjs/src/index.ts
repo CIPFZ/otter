@@ -220,11 +220,14 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
     selectQuality(id) {
       if (hls === undefined) return;
       if (id === 'auto') {
+        // Back to ABR from the next fragment, without flushing.
         hls.nextLevel = -1;
         return;
       }
       const index = Number(id.replace(/^level-/, ''));
-      if (Number.isInteger(index) && index >= 0 && index < hls.levels.length) hls.nextLevel = index;
+      // A manual choice applies now (flushes the buffer), like Shaka's selectVariantTrack(t, true):
+      // nextLevel would wait for the next fragment, which never comes once the buffer is full.
+      if (Number.isInteger(index) && index >= 0 && index < hls.levels.length) hls.currentLevel = index;
     },
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
