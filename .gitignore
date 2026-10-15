@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+!Assets/icon/dist/
+coverage/
+*.tsbuildinfo
+
+# env / editor / os
+.env
+.env.*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# test artifacts
+playwright-report/
+test-results/
+
+# python (icon build script)
+__pycache__/
+*.pyc

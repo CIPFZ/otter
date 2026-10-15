@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!--
+    Otter app icon, small-size variant (16 to 48px).
+    Thicker ring, larger triangle, single wave, no gradient, no knock-out detail.
+  -->
+  <rect width="1024" height="1024" rx="228" ry="228" fill="#243447"/>
+  <circle cx="512" cy="440" r="250" fill="none" stroke="#1EE9E6" stroke-width="140"/>
+  <path d="M120 790 C 250 720, 380 720, 512 790 S 774 860, 904 790" fill="none" stroke="#243447" stroke-width="150" stroke-linecap="round"/>
+  <path d="M120 790 C 250 720, 380 720, 512 790 S 774 860, 904 790" fill="none" stroke="#1EE9E6" stroke-width="80" stroke-linecap="round"/>
+  <path d="M440 330 L 650 440 L 440 550 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="50" stroke-linejoin="round"/>
+</svg>

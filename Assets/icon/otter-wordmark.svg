@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 480" width="1800" height="480">
+  <!--
+    Otter wordmark: the symbol doubles as the letter O, followed by "tter".
+    Text uses a geometric sans stack; convert to outlines before shipping in binaries.
+  -->
+  <defs>
+    <mask id="cut">
+      <rect width="1800" height="480" fill="#fff"/>
+      <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round" transform="translate(40 40) scale(0.390625)">
+        <path d="M150 736 C 260 690, 360 690, 470 736 S 680 782, 790 736 S 900 690, 1010 736" stroke-width="96"/>
+      </g>
+    </mask>
+  </defs>
+  <g transform="translate(40 40) scale(0.390625)" fill="#1EE9E6" stroke="#1EE9E6">
+    <circle cx="512" cy="468" r="246" fill="none" stroke-width="108" mask="url(#cut)"/>
+    <path d="M150 736 C 260 690, 360 690, 470 736 S 680 782, 790 736 S 900 690, 1010 736" fill="none" stroke-width="46" stroke-linecap="round"/>
+    <path d="M458 380 L 640 468 L 458 556 Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="40" stroke-linejoin="round"/>
+  </g>
+  <text x="470" y="318" font-family="Inter, 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif" font-size="300" font-weight="700" letter-spacing="-8" fill="#243447">tter</text>
+</svg>
