@@ -248,6 +248,8 @@ interface Overlay {
 
 Overlay 拿到的是画面实际矩形而非容器矩形（黑边时字幕仍贴画面底部）。
 
+`Overlay` / `OverlayHost` / `Insets` 定义在 `surface` 包（ADR-002）。`OverlayHost` 提供 `root`（overlay 渲染用的图层元素）、`contentRect`、`safeArea`、`store`（只读视图）和 `onContentRectChange`；host 从统一的 rAF 中调用 `overlay.tick`。
+
 ### 13.1 字幕（text）
 - 两条路径并存：原生 `TextTrack`（遵守系统偏好，样式不可控，Safari 全屏抢渲染）与自定义 `CueRenderer`。
 - 自定义路径：WebVTT 实现 region / line / position / align / 自动避让；IMSC1/TTML 用 imscJS；ASS/SSA 基础样式 JS 渲染，特效用 libass WASM 可选插件；CEA-608/708 来自引擎 inband cue。
@@ -386,6 +388,20 @@ interface UIFeature {
 
 划分原则：能单独删掉而不影响其他。
 
+M0 接口落点（ADR-002）：
+
+| 接口 | 包 |
+|---|---|
+| store / 事件总线 / `Plugin` / 错误模型 / QoE 事件集（§4、§10） | `core` |
+| `MediaBackend`、`FormatPlugin`、`Decoder`、`Source`、`TrackList`、`Capabilities`、`Router` / `FALLBACK_CHAIN`（§5） | `media` |
+| `Engine` / `EngineContext`（`FormatPlugin.createEngine` 的产物，M1 随适配器定稿） | `media` |
+| `Surface`（§12）、`Overlay` / `OverlayHost`（§13） | `surface` |
+| `PresentationController`（§15） | `presentation` |
+| `InputAction`、`HotkeyMap`、`GestureMap`、`InputController`（§14.3） | `input` |
+| `UIFeature`（§17） | `ui-core` |
+
+依赖方向由 `scripts/check-boundaries.ts` 强制：`core` 无依赖；`media` 只依赖 `core`；渲染层包不得依赖 `backend-*` / `format-*` / `engine-adapter-*` / `decoder-*` / `pipeline`，反之亦然。
+
 ## 19. 场景覆盖矩阵
 
 | 场景 | backend | 格式包 | 必带模块 | 产物体积目标 (gzip) |
@@ -440,3 +456,4 @@ interface UIFeature {
 - Q4：P2P-CDN 插件是否纳入 v1 范围。
 - Q5：WebTransport / MoQ 是否等标准稳定再做。
 - Q6：是否提供 Electron 专用包。
+- Q7：CSS-only 皮肤包遵守 `sideEffects: false`，但这样一来 JS 里的 `import '@otter-player/ui-skin-*'` 会被打包器摇掉。是否允许 `"sideEffects": ["*.css"]` 这一例外，还是规定只能用 `<link>` / CSS `@import` 引入（ADR-002）。

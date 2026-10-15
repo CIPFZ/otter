@@ -6,7 +6,7 @@
 
 - Otter（工作代号）：100% TypeScript 的通用 Web 播放器，引擎可插拔、可组合、取百家之长。
 - 文档：`RESEARCH.md`（生态调研与事实依据）、`SPEC.md`（架构与里程碑）、`REUSE.md`（复用来源、等级、许可证）、`docs/decisions/`（ADR）。
-- 当前阶段：规格定稿，尚未开工。下一步是 M0 骨架。
+- 当前阶段：M0 骨架已完成（SPEC §18 全部包的接口 + 空实现、CI 门禁），工程基线见 ADR-002。下一步 M1。
 
 ## 2. 不可违背的约束
 
@@ -39,6 +39,9 @@
 - 错误：统一错误模型（`SPEC.md` §4），禁止吞错；每个 fatal 错误必须附降级路径。
 - 事件：类型安全总线，禁止字符串拼接事件名。
 - 命名：包名 `@otter-player/<name>`，Web Components 前缀 `otter-`，CSS 变量前缀 `--otter-`，事件前缀无（用类型约束）。
+- 新包一律用 `node scripts/new-package.ts` 生成；包内相对导入带 `.js` 扩展名（NodeNext）。
+- 未实现的能力统一抛出 / reject `notImplemented`（非 fatal），不得静默 no-op（ADR-002）。
+- 提交前跑 `pnpm check`：license 门禁、边界、strict TS、Vitest、无顶层副作用、体积预算，任何一项失败都阻断。
 
 ## 5. 工作流程
 

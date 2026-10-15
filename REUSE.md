@@ -24,6 +24,12 @@
 | GPLv3 | Jessibuca 开源版、EasyPlayer 部分组件 | 仅 L4，禁止看完照抄，相似结构也不行 |
 | 闭源 | B 站 nano、腾讯 TCPlayer、阿里 Aliplayer、THEO、Bitmovin、JW、IVS | 只观察行为与 API 形状，不反编译 |
 
+CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`，两处同步修改）的判定：
+
+- 运行时依赖只允许 Apache-2.0、MIT、BSD-2-Clause、BSD-3-Clause，以及与 MIT 等价的 ISC、0BSD。
+- 仅限开发工具链（devDependencies 依赖树，不随产物发布）：MPL-2.0、CC0-1.0、CC-BY-3.0/4.0、BlueOak-1.0.0、Python-2.0、Unlicense、MIT-0、Zlib。
+- LGPL 只允许出现在 `decoder-*` 与 `text-ass` 的运行时依赖中；GPL / AGPL / SSPL 等在任何位置都失败；缺失或不符合 SPDX 的许可证必须在策略表中显式 override 并写明理由。
+
 ## 3. 引擎层来源清单
 
 | 模块 | 来源 | 等级 | 要改什么 |
