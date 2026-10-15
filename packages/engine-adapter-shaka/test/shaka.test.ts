@@ -66,6 +66,7 @@ class FakePlayer {
   selectVariantTrack = (t: { id: number }) => this.calls.push(`select:${t.id}`);
   getStats = () => ({ estimatedBandwidth: 5_000_000, liveLatency: Number.NaN, droppedFrames: 0, decodedFrames: 10, streamBandwidth: 0 });
   isLive = () => false;
+  seekRange = () => ({ start: 0, end: 10 });
   getNetworkingEngine = () => null;
   destroy = async (): Promise<void> => {
     this.calls.push('destroy');
@@ -138,6 +139,17 @@ describe('Shaka adapter', () => {
     expect(mapShakaError({ severity: 1, category: 1, code: 1001 })).toMatchObject({ type: 'network', fatal: false, recoverable: true });
     FakePlayer.nextLoadError = { severity: 2, category: 4, code: 4000 };
     await expect(createShakaEngine(ctx()).load()).rejects.toMatchObject({ type: 'network', details: 'shaka4000', fatal: true });
+  });
+
+  it('prefers the wall-clock live latency', async () => {
+    const engine = createShakaEngine(ctx());
+    await engine.load();
+    const p = FakePlayer.instances.at(-1) as FakePlayer & { getLiveLatency?: () => number | null };
+    p.isLive = () => true;
+    p.getLiveLatency = () => 3200;
+    expect(engine.latency).toBe(3.2);
+    p.getLiveLatency = () => null;
+    expect(engine.latency).toBeUndefined();
   });
 
   it('reports unsupported browsers', async () => {

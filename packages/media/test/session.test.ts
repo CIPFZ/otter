@@ -208,6 +208,22 @@ describe('media plugin', () => {
     expect(view.getState().source?.src).toBe('https://e.test/b.m3u8');
   });
 
+  it('ignores AbortError from interrupted play() and never masks a fatal error', async () => {
+    const { view, created } = await setup({ native: { failLoad: true } });
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    const b = created[0] as FakeBackend;
+    b.play = vi.fn(() => Promise.reject(Object.assign(new Error('interrupted'), { name: 'AbortError' })));
+    view.dispatch('play', undefined);
+    await flush();
+    expect(view.getState().error).toBeNull();
+    b.play = vi.fn(() => Promise.reject(Object.assign(new Error('blocked'), { name: 'NotAllowedError' })));
+    view.dispatch('play', undefined);
+    b.emit('error', createError({ type: 'media', details: 'mediaDecodeError', fatal: true, recoverable: false }));
+    await flush();
+    expect(view.getState()).toMatchObject({ status: 'error', error: { details: 'mediaSrcNotSupported' } });
+  });
+
   it('surfaces autoplay rejections as non-fatal errors', async () => {
     const { view, created } = await setup();
     view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });

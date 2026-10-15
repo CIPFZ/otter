@@ -374,8 +374,12 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   const play = (): void => {
     const backend = active?.backend;
     if (backend === undefined) return;
+    const playToken = token;
     backend.play().catch((err: unknown) => {
       const name = (err as { name?: unknown } | null)?.name;
+      // AbortError: a later pause / load / teardown interrupted play(); that event is the story.
+      if (name === 'AbortError' || playToken !== token || active?.backend !== backend) return;
+      if (state().error?.fatal === true) return;
       const error = createError({
         type: 'media',
         details: name === 'NotAllowedError' ? 'playNotAllowed' : 'playFailed',

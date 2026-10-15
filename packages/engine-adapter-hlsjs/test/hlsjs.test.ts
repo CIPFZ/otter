@@ -32,6 +32,7 @@ class FakeHls {
   subtitleTrack = -1;
   bandwidthEstimate = 3_000_000;
   latency = 0;
+  latestLevelDetails: { live: boolean } | null = { live: false };
   targetLatency: number | null = null;
   nextLevel = -1;
   config: Record<string, unknown>;
@@ -141,6 +142,25 @@ describe('hls.js adapter', () => {
     await expect(createHlsJsEngine(ctx()).load()).rejects.toMatchObject({ details: 'engineUnsupported' });
     FakeHls.supported = true;
     await expect(createHlsJsEngine(ctx({ source: { src: new Blob() } })).load()).rejects.toMatchObject({ details: 'unsupportedSource' });
+  });
+
+  it('rejects load on manifestIncompatibleCodecsError instead of trying media recovery', async () => {
+    const engine = createHlsJsEngine(ctx());
+    const before = FakeHls.instances.length;
+    const loading = engine.load();
+    await vi.waitFor(() => expect(FakeHls.instances.length).toBeGreaterThan(before));
+    const hls = FakeHls.instances.at(-1) as FakeHls;
+    hls.fire(FakeHls.Events.ERROR, { type: 'mediaError', details: 'manifestIncompatibleCodecsError', fatal: true, error: new Error('hevc') });
+    await expect(loading).rejects.toMatchObject({ details: 'manifestIncompatibleCodecsError', fatal: true });
+    expect(hls.calls).not.toContain('recoverMediaError');
+  });
+
+  it('reports latency only for live playlists', async () => {
+    const { engine, hls } = await loaded();
+    hls.latency = 8;
+    expect(engine.latency).toBeUndefined();
+    hls.latestLevelDetails = { live: true };
+    expect(engine.latency).toBe(8);
   });
 
   it('maps hls.js error types to the unified model', () => {

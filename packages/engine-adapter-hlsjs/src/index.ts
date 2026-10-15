@@ -34,6 +34,12 @@ const ERROR_TYPES: Readonly<Record<string, OtterErrorType>> = {
 /** A fatal media error is retried once through recoverMediaError within this window. */
 const MEDIA_RECOVERY_WINDOW_MS = 3000;
 
+/**
+ * Media errors that recoverMediaError cannot fix: retrying would keep load() pending forever.
+ * manifestIncompatibleCodecsError is typed mediaError by hls.js (e.g. HEVC without decoder).
+ */
+const UNRECOVERABLE_MEDIA_ERRORS: ReadonlySet<string> = new Set(['manifestIncompatibleCodecsError']);
+
 export function mapHlsError(data: Pick<ErrorData, 'type' | 'details' | 'fatal' | 'error'>, fatal: boolean = data.fatal): OtterError {
   const type = ERROR_TYPES[data.type] ?? 'other';
   return createError({
@@ -112,7 +118,8 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
       return tracks;
     },
     get latency() {
-      return hls !== undefined && hls.levels.length > 0 && hls.latency > 0 ? hls.latency : undefined;
+      // hls.js also reports a "latency" for VOD; only live playlists have a live edge.
+      return hls?.latestLevelDetails?.live === true && hls.latency > 0 ? hls.latency : undefined;
     },
     get mms() {
       return hls !== undefined && usesMms(ctx.mms);
@@ -154,7 +161,13 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
           }
         });
         instance.on(Events.ERROR, (_e, data) => {
-          if (data.fatal && data.type === 'mediaError' && performance.now() - lastMediaRecovery > MEDIA_RECOVERY_WINDOW_MS) {
+          const recoverable =
+            settled &&
+            data.fatal &&
+            data.type === 'mediaError' &&
+            !UNRECOVERABLE_MEDIA_ERRORS.has(data.details) &&
+            performance.now() - lastMediaRecovery > MEDIA_RECOVERY_WINDOW_MS;
+          if (recoverable) {
             // hls.js' documented recovery path: one recoverMediaError() before giving up.
             lastMediaRecovery = performance.now();
             instance.recoverMediaError();
@@ -191,7 +204,7 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
         const estimate = instance.bandwidthEstimate;
         if (Number.isFinite(estimate) && estimate > 0) bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
         const latency = instance.latency;
-        if (latency > 0) {
+        if (instance.latestLevelDetails?.live === true && latency > 0) {
           const target = instance.targetLatency;
           bus.emit('latency-change', target === null ? { latency } : { latency, target });
         }

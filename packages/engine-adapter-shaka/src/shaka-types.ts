@@ -59,6 +59,9 @@ export interface ShakaPlayer {
   selectVariantTrack(track: ShakaTrack, clearBuffer?: boolean): void;
   getStats(): ShakaStats;
   isLive(): boolean;
+  seekRange(): { readonly start: number; readonly end: number };
+  /** Wall-clock distance from the live edge in ms (Shaka 5); null when unknown. */
+  getLiveLatency?(): number | null;
   getNetworkingEngine(): ShakaNetworkingEngine | null;
   addEventListener(type: string, listener: (event: { detail?: unknown }) => void): void;
   destroy(): Promise<unknown>;

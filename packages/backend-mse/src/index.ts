@@ -20,6 +20,10 @@ import { removeSourceChildren } from './vendor/hls.js/mediasource.js';
 
 export { airPlayAlternate, finishRemotePlayback, prepareRemotePlayback, useManagedMediaSource } from './mms.js';
 
+const LATENCY_SAMPLE_MS = 1000;
+/** Anything above an hour is a bogus playhead / clock combination, not a latency. */
+const MAX_PLAUSIBLE_LATENCY_S = 3600;
+
 export interface MseBackendOptions {
   /** Use ManagedMediaSource when both MMS and MSE exist (SPEC §6.2). Default true, like hls.js. */
   readonly preferManagedMediaSource?: boolean;
@@ -58,6 +62,19 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
       }
       media = target;
       observer = observeMediaElement(target, emit);
+      // Engines report latency at different cadences (or once); sample it uniformly, at most 1/s,
+      // and only once a frame is presented so the playhead is meaningful.
+      let lastSample = Number.NEGATIVE_INFINITY;
+      const sample = (): void => {
+        const now = performance.now();
+        if (engine === undefined || target.readyState < 2 || now - lastSample < LATENCY_SAMPLE_MS) return;
+        const latency = engine.latency;
+        if (latency === undefined || !Number.isFinite(latency) || latency < 0 || latency > MAX_PLAUSIBLE_LATENCY_S) return;
+        lastSample = now;
+        emit('latency-change', { latency });
+      };
+      target.addEventListener('timeupdate', sample);
+      offs.push(() => target.removeEventListener('timeupdate', sample));
     },
     async load(source, opts) {
       const m = element();
@@ -79,7 +96,7 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
       offs.push(
         e.on('tracks-change', (t) => emit('tracks-change', t)),
         e.on('quality-change', (q) => emit('quality-change', q)),
-        e.on('latency-change', (l) => emit('latency-change', l)),
+        // Latency is sampled from engine.latency on timeupdate (see attach), not forwarded.
         e.on('first-segment', (f) => emit('first-segment', f)),
         e.on('bandwidth', (b) => emit('bandwidth', b)),
         e.on('error', (err) => emit('error', err)),

@@ -129,6 +129,19 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
     bus.emit('tracks-change', tracks);
   };
   const activeQualityId = (): string | undefined => tracks.video.find((v) => v.selected)?.id;
+  /**
+   * Live latency in seconds: Shaka's wall-clock getLiveLatency() (needs a presentation start
+   * time), else stats.liveLatency, else the distance to the seek range end.
+   */
+  const liveLatency = (): number | undefined => {
+    if (player?.isLive() !== true) return undefined;
+    const wallClock = player.getLiveLatency?.();
+    if (wallClock !== undefined && wallClock !== null && Number.isFinite(wallClock) && wallClock >= 0) return wallClock / 1000;
+    const reported = player.getStats().liveLatency;
+    if (Number.isFinite(reported) && reported > 0) return reported;
+    const edge = player.seekRange().end - ctx.media.currentTime;
+    return Number.isFinite(edge) && edge >= 0 ? edge : undefined;
+  };
   const reportStats = (): void => {
     if (player === undefined) return;
     const stats = player.getStats();
@@ -136,9 +149,8 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       const estimate = stats.estimatedBandwidth;
       bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
     }
-    if (player.isLive() && Number.isFinite(stats.liveLatency) && stats.liveLatency > 0) {
-      bus.emit('latency-change', { latency: stats.liveLatency });
-    }
+    const latency = liveLatency();
+    if (latency !== undefined) bus.emit('latency-change', { latency });
   };
 
   return {
@@ -147,8 +159,7 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       return tracks;
     },
     get latency() {
-      const stats = player?.isLive() === true ? player.getStats() : undefined;
-      return stats !== undefined && Number.isFinite(stats.liveLatency) ? stats.liveLatency : undefined;
+      return liveLatency();
     },
     get mms() {
       // Shaka's MediaSourceEngine uses ManagedMediaSource whenever the browser has it.
@@ -196,8 +207,8 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       });
 
       const drm = ctx.source.drm;
+      // Shaka 5 defaults streaming.lowLatencyMode to true and applies it only to low-latency manifests.
       p.configure({
-        streaming: { autoLowLatencyMode: true },
         abr: { enabled: true },
         ...(drm === undefined ? {} : { drm: { servers: { ...drm.servers }, clearKeys: { ...drm.clearKeys } } }),
       });
