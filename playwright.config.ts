@@ -71,9 +71,11 @@ export default defineConfig<object, OtterWorkerOptions>({
   ...(env('OTTER_E2E_BASE_URL') === undefined
     ? {
         webServer: {
-          command: 'pnpm exec vite --config e2e/vite.config.ts',
+          // Built site + preview: no dev-time dependency optimisation reloads mid-test.
+          command: 'pnpm exec vite build --config e2e/vite.config.ts && pnpm exec vite preview --config e2e/vite.config.ts',
           url: baseURL,
           reuseExistingServer: process.env['CI'] === undefined,
+          timeout: 180_000,
         },
       }
     : {}),

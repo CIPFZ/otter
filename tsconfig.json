@@ -16,5 +16,7 @@
     // Mirrors the vitest alias: tests resolve workspace packages to their sources.
     "paths": { "@otter-player/*": ["./packages/*/src/index.ts"] }
   },
-  "include": ["packages/*/test", "packages/*/src/**/*.d.ts", "tests", "scripts", "tooling", "e2e", "*.config.ts"]
+  "include": ["packages/*/test", "packages/*/src/**/*.d.ts", "tests", "scripts", "tooling", "e2e", "*.config.ts"],
+  // Test media: MPEG-TS segments use the .ts extension.
+  "exclude": ["e2e/media", "e2e/.site-dist"]
 }

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Otter player fixture</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/@otter-skin/index.css" />
+    <style>
+      body { margin: 0; padding: 16px; background: #10161e; color: #fff; font: 14px system-ui, sans-serif; }
+      main { max-width: 960px; margin: 0 auto; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Otter player fixture</h1>
+      <div id="player" data-otter-player role="region" aria-label="Video player">
+        <video playsinline crossorigin="anonymous"></video>
+        <otter-stats hidden></otter-stats>
+        <div data-otter-controls>
+          <otter-play-button></otter-play-button>
+          <otter-mute-button></otter-mute-button>
+          <otter-time-slider></otter-time-slider>
+          <otter-time-display></otter-time-display>
+        </div>
+      </div>
+      <p><label><input id="toggle-stats" type="checkbox" /> Stats for nerds</label></p>
+    </main>
+    <script type="module" src="./player.ts"></script>
+  </body>
+</html>
