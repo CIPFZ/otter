@@ -34,6 +34,7 @@
 - 包管理 pnpm，构建 Vite，单测 Vitest，E2E Playwright，无障碍 axe。
 - `tsconfig`：`strict`、`exactOptionalPropertyTypes`、`noUncheckedIndexedAccess`、`verbatimModuleSyntax`。
 - 全 ESM，每个包 `sideEffects: false`，禁止顶层副作用。唯一例外是纯 CSS 皮肤包 `ui-skin-*`：声明 `"sideEffects": ["*.css"]`，包内禁止任何 `.js` / `.ts` 入口、源文件与 tsconfig，`exports` 只能指向 `.css`（ADR-002 第 10 条，由 `check-boundaries` 与 `check-side-effects` 强制）。
+- 工具链新主版本在里程碑中阻塞超过一天即退回上一 LTS 主版本，回退单独提交并记入 ADR-002（第 11 条）。
 - 公开 API 用 `interface`；内部可用 class。
 - 二进制：`ArrayBuffer` 走 Transferable；热路径用对象池；禁止在 demux/remux 中创建闭包。
 - 错误：统一错误模型（`SPEC.md` §4），禁止吞错；每个 fatal 错误必须附降级路径。

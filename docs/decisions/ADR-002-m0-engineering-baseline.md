@@ -23,10 +23,15 @@ M0 要求 pnpm monorepo 骨架、SPEC §5 / §12 / §13 / §15 / §17 接口的�
 8. **size-limit 使用 esbuild 插件**（`@size-limit/esbuild` + `@size-limit/file`，gzip）。没用默认的 `preset-small-lib`，因为它的 rolldown 已不支持打包 CSS，无法度量「皮肤 + ui-core + presentation + text」这一预算。另外，多个文件同时 `import: '*'` 会生成重复的标识符（size-limit 14 的 bug），所以组合预算改用 `tooling/size/default-ui.js` 作为入口。
 9. **Playwright 矩阵分三层**：`desktop-*`、`emulated-*`（不计入真机矩阵）、`real-*`（通过环境变量接入：Playwright `wsEndpoint` 或 TV 的 CDP）。细节见 `e2e/README.md`。
 10. **CSS-only 皮肤包的 `sideEffects` 例外（原 SPEC §23 Q7，2026-10-15 结案）**：`ui-skin-*` 四个包声明 `"sideEffects": ["*.css"]`，这样在 JS 里 `import '@otter-player/ui-skin-*'` 时 CSS 不会被打包器摇掉；`<link>` 与 CSS `@import` 同样可用。代价是皮肤包必须保持纯 CSS：禁止任何 `.js` / `.ts` 源文件、入口或导出，不得有 tsconfig，`exports` 只能指向 `.css`。`check-boundaries` 强制这些约束（例外只对 `ui-skin-*` 生效，其他包仍必须是 `sideEffects: false`），`check-side-effects` 对皮肤包只检查 JS 产物为空。
+11. **工具链回退策略**：任一新主版本（目前是 TypeScript 7、Vite 8、Vitest 5、pnpm 12、Playwright 1.64、size-limit 14）在 M1 中阻塞进度超过一天，就退回上一个 LTS 主版本；没有 LTS 概念的工具退回上一个主版本（TypeScript 6、Vite 7、Vitest 4、pnpm 11、size-limit 13），Node 退回上一个 LTS 主版本。回退不等问题彻底查清，先恢复进度：回退本身作为独立提交，提交信息写明阻塞现象与持续时间，并在本 ADR 追加一条记录（日期、工具、原版本 → 回退版本、原因、重新升级的条件）。源码只用各工具上一主版本也支持的特性，保证回退不必改源码。
+
+### 回退记录
+
+（暂无）
 
 ## 代价与风险
 
-- TypeScript 7 与 Vite 8 都是新主版本，周边工具的兼容性要持续观察；出问题时可以回退到 TS 6 / Vite 7，不涉及源码改动。
+- TypeScript 7 与 Vite 8 都是新主版本，周边工具的兼容性要持续观察；回退规则见第 11 条。
 - esbuild 的 postinstall 已在 `pnpm-workspace.yaml` 的 `allowBuilds` 中拒绝（二进制通过 optionalDependencies 安装）。Playwright 1.64.1 发布时间太短，被 pnpm 自动加入 `minimumReleaseAgeExclude`，升级时需要复核。
 - 真机路径只用本机替身验证过（本地 Chromium 的 CDP、`playwright run-server`），能否真正覆盖 iOS Safari 取决于设备云供应商。
 - 皮肤包的 `["*.css"]` 例外意味着打包器会无条件保留被引入的皮肤 CSS，未使用的选择器不会被摇掉；按需加载由「引不引入哪个皮肤包」来控制。
