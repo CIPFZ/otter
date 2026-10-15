@@ -34,6 +34,15 @@ const projects: Project<PlaywrightTestOptions, PlaywrightWorkerOptions & OtterWo
   { name: 'emulated-android', use: { ...devices['Pixel 7'] }, metadata: { matrix: 'emulated' } },
 ];
 
+// Real Windows desktop with the installed Edge (headed, so the GPU video pipeline is the real one).
+if (env('OTTER_REAL_WINDOWS_EDGE') === '1') {
+  projects.push({
+    name: 'real-windows-edge',
+    use: { ...devices['Desktop Edge'], channel: 'msedge', headless: false },
+    metadata: { matrix: 'real' },
+  });
+}
+
 if (iosEndpoint !== undefined) {
   projects.push({
     name: 'real-iphone-safari',
