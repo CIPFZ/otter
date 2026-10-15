@@ -3,6 +3,10 @@
 // annotations. A module without top-level side effects tree-shakes to an empty bundle; any
 // remaining code (customElements.define, DOM access, registrations, calls) is reported.
 //
+// Third-party packages are external: only Otter's own modules are judged. A static top-level
+// import of a third-party value therefore fails the gate too, which keeps engine libraries
+// (hls.js, Shaka, mpegts.js) behind dynamic import().
+//
 // CSS-only skins declare `"sideEffects": ["*.css"]` (ADR-002, Q7). For them the gate checks that
 // the JS output is empty: dist/ must contain no JavaScript at all.
 //
@@ -50,6 +54,16 @@ for (const { dir, entry } of entries) {
     ignoreAnnotations: true,
     legalComments: 'none',
     logLevel: 'silent',
+    plugins: [
+      {
+        name: 'externalize-third-party',
+        setup(b) {
+          b.onResolve({ filter: /^[^./]/ }, (args) =>
+            args.path.startsWith('@otter-player/') ? undefined : { path: args.path, external: true },
+          );
+        },
+      },
+    ],
   });
   const code = (result.outputFiles[0]?.text ?? '')
     .replace(/^\s*\/\/.*$/gm, '')

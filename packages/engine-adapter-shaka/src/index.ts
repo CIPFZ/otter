@@ -1,12 +1,246 @@
-// Shaka Player engine adapter (REUSE §3, L1): DASH / HLS, DRM via drm.servers, offline storage. M0 empty implementation: the upstream engine is not a dependency yet (added in M1).
+// Shaka Player engine adapter (REUSE §3, L1; ADR-003 §3): DASH, and HLS with DRM (DRM only goes
+// through Shaka, AGENT §6). Shaka owns the MediaSource; the adapter maps tracks, adaptation,
+// stats and errors onto the Engine contract. Loaded with a dynamic import inside load().
 
-import { notImplemented } from '@otter-player/core';
-import type { Engine, EngineContext } from '@otter-player/media';
+import { createError, createEventBus, type OtterError, type OtterErrorType } from '@otter-player/core';
+import {
+  EMPTY_TRACKS,
+  type AudioTrack,
+  type Engine,
+  type EngineContext,
+  type EngineEvents,
+  type TextTrackInfo,
+  type TrackList,
+  type VideoTrack,
+} from '@otter-player/media';
+import {
+  resolveShakaNamespace,
+  type ShakaError,
+  type ShakaPlayer,
+  type ShakaTextTrack,
+  type ShakaTrack,
+} from './shaka-types.js';
 
-export function createShakaEngine(_ctx: EngineContext): Engine {
+export type { ShakaError, ShakaTrack } from './shaka-types.js';
+
+export interface ShakaEngineOptions {
+  /** Format id reported by the engine (`dash` by default, `hls` when format-hls routes DRM here). */
+  readonly formatId?: string;
+  /** Extra Shaka configuration passed to `player.configure()` after the adapter defaults. */
+  readonly config?: Record<string, unknown>;
+}
+
+/** shaka.util.Error.Category -> unified error type. */
+const CATEGORIES: Readonly<Record<number, OtterErrorType>> = {
+  1: 'network', // NETWORK
+  2: 'other', // TEXT
+  3: 'media', // MEDIA
+  4: 'network', // MANIFEST
+  5: 'media', // STREAMING
+  6: 'drm', // DRM
+  7: 'other', // PLAYER
+};
+const CRITICAL = 2; // shaka.util.Error.Severity.CRITICAL
+const LICENSE_REQUEST = 2; // shaka.net.NetworkingEngine.RequestType.LICENSE
+
+export function mapShakaError(error: ShakaError): OtterError {
+  const type = CATEGORIES[error.category] ?? 'other';
+  return createError({
+    type,
+    details: `shaka${error.code}`,
+    fatal: error.severity === CRITICAL,
+    recoverable: error.severity !== CRITICAL,
+    message: error.message ?? `Shaka error ${error.code} (category ${error.category})`,
+  });
+}
+
+const DYNAMIC_RANGE: Readonly<Record<string, NonNullable<VideoTrack['dynamicRange']>>> = { PQ: 'hdr10', HLG: 'hlg', SDR: 'sdr' };
+
+export function mapShakaTracks(variants: readonly ShakaTrack[], textTracks: readonly ShakaTextTrack[], abr: boolean): TrackList {
+  const active = variants.find((v) => v.active);
+  // Qualities are the variants that share the active audio; one entry per video stream.
+  const sameAudio = variants.filter((v) => active === undefined || v.audioId === active.audioId);
+  const seenVideo = new Set<number | null>();
+  const video: VideoTrack[] = [];
+  for (const v of [...sameAudio].sort((a, b) => a.bandwidth - b.bandwidth)) {
+    if (v.videoId === null || seenVideo.has(v.videoId)) continue;
+    seenVideo.add(v.videoId);
+    const range = v.hdr === null ? undefined : DYNAMIC_RANGE[v.hdr];
+    video.push({
+      kind: 'video',
+      id: `variant-${v.id}`,
+      selected: v.active,
+      bitrate: v.bandwidth,
+      ...(v.width === null ? {} : { width: v.width }),
+      ...(v.height === null ? {} : { height: v.height }),
+      ...(v.frameRate === null ? {} : { frameRate: v.frameRate }),
+      ...(v.videoCodec === null ? {} : { codec: v.videoCodec }),
+      ...(range === undefined ? {} : { dynamicRange: range }),
+    });
+  }
+  const seenAudio = new Set<string>();
+  const audio: AudioTrack[] = [];
+  for (const v of variants) {
+    if (v.audioId === null) continue;
+    const id = `audio-${v.audioId}`;
+    if (seenAudio.has(id)) continue;
+    seenAudio.add(id);
+    audio.push({
+      kind: 'audio',
+      id,
+      selected: active?.audioId === v.audioId,
+      ...(v.language === '' ? {} : { language: v.language }),
+      ...(v.label === null ? {} : { label: v.label }),
+      ...(v.audioCodec === null ? {} : { codec: v.audioCodec }),
+      ...(v.channelsCount === null ? {} : { channels: v.channelsCount }),
+      ...(v.audioBandwidth === null ? {} : { bitrate: v.audioBandwidth }),
+    });
+  }
+  const text: TextTrackInfo[] = textTracks.map((t) => ({
+    kind: 'text',
+    id: `text-${t.id}`,
+    role: t.kind === 'caption' ? 'captions' : 'subtitles',
+    selected: t.active,
+    ...(t.language === '' ? {} : { language: t.language }),
+    ...(t.label === null ? {} : { label: t.label }),
+    ...(t.mimeType?.includes('ttml') === true ? { format: 'ttml' as const } : t.mimeType?.includes('vtt') === true ? { format: 'vtt' as const } : {}),
+  }));
+  const selected = video.find((v) => v.selected);
   return {
-    formatId: 'dash',
-    load: () => Promise.reject(notImplemented('@otter-player/engine-adapter-shaka load')),
-    destroy: () => undefined,
+    video,
+    audio,
+    text,
+    quality: video.length > 1 ? 'selectable' : 'opaque',
+    requestedQuality: abr || selected === undefined ? 'auto' : selected.id,
+  };
+}
+
+export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOptions = {}): Engine {
+  const bus = createEventBus<EngineEvents>();
+  let player: ShakaPlayer | undefined;
+  let tracks: TrackList = EMPTY_TRACKS;
+  let abr = true;
+  let destroyed = false;
+  let firstSegment = false;
+
+  const refresh = (): void => {
+    if (player === undefined) return;
+    tracks = mapShakaTracks(player.getVariantTracks(), player.getTextTracks(), abr);
+    bus.emit('tracks-change', tracks);
+  };
+  const activeQualityId = (): string | undefined => tracks.video.find((v) => v.selected)?.id;
+  const reportStats = (): void => {
+    if (player === undefined) return;
+    const stats = player.getStats();
+    if (Number.isFinite(stats.estimatedBandwidth) && stats.estimatedBandwidth > 0) {
+      const estimate = stats.estimatedBandwidth;
+      bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
+    }
+    if (player.isLive() && Number.isFinite(stats.liveLatency) && stats.liveLatency > 0) {
+      bus.emit('latency-change', { latency: stats.liveLatency });
+    }
+  };
+
+  return {
+    formatId: options.formatId ?? 'dash',
+    get tracks() {
+      return tracks;
+    },
+    get latency() {
+      const stats = player?.isLive() === true ? player.getStats() : undefined;
+      return stats !== undefined && Number.isFinite(stats.liveLatency) ? stats.liveLatency : undefined;
+    },
+    get mms() {
+      // Shaka's MediaSourceEngine uses ManagedMediaSource whenever the browser has it.
+      return player !== undefined && (globalThis as { ManagedMediaSource?: unknown }).ManagedMediaSource !== undefined;
+    },
+    async load() {
+      const src = ctx.source.src;
+      if (typeof src !== 'string') {
+        throw createError({ type: 'other', details: 'unsupportedSource', fatal: true, recoverable: false, message: 'Shaka needs a URL' });
+      }
+      const shaka = resolveShakaNamespace(await import('shaka-player'));
+      if (destroyed) return;
+      if (shaka === undefined) {
+        throw createError({ type: 'other', details: 'engineLoadFailed', fatal: true, recoverable: false, message: 'shaka-player did not expose a Player' });
+      }
+      shaka.polyfill.installAll();
+      if (!shaka.Player.isBrowserSupported()) {
+        throw createError({ type: 'media', details: 'engineUnsupported', fatal: true, recoverable: false, message: 'Shaka Player is not supported here' });
+      }
+      const p = new shaka.Player();
+      player = p;
+      let loading = true;
+      p.addEventListener('error', (event) => {
+        const error = mapShakaError(event.detail as ShakaError);
+        // While load() is pending, its rejection carries the error; do not report it twice.
+        if (!(loading && error.fatal)) bus.emit('error', error);
+      });
+      p.addEventListener('trackschanged', refresh);
+      p.addEventListener('adaptation', () => {
+        refresh();
+        const id = activeQualityId();
+        if (id !== undefined) bus.emit('quality-change', { id, auto: true, reason: 'abr' });
+      });
+      p.addEventListener('variantchanged', () => {
+        refresh();
+        const id = activeQualityId();
+        if (id !== undefined) bus.emit('quality-change', { id, auto: abr, reason: abr ? 'abr' : 'manual' });
+      });
+      p.addEventListener('segmentappended', () => {
+        if (!firstSegment) {
+          firstSegment = true;
+          bus.emit('first-segment', { at: performance.now() });
+        }
+        reportStats();
+      });
+
+      const drm = ctx.source.drm;
+      p.configure({
+        streaming: { autoLowLatencyMode: true },
+        abr: { enabled: true },
+        ...(drm === undefined ? {} : { drm: { servers: { ...drm.servers }, clearKeys: { ...drm.clearKeys } } }),
+      });
+      if (options.config !== undefined) p.configure(options.config);
+      const headers = ctx.source.headers;
+      const licenseHeaders = drm?.headers;
+      if (headers !== undefined || licenseHeaders !== undefined) {
+        p.getNetworkingEngine()?.registerRequestFilter((type, request) => {
+          Object.assign(request.headers, headers, type === LICENSE_REQUEST ? licenseHeaders : undefined);
+        });
+      }
+
+      await p.attach(ctx.media);
+      try {
+        await p.load(src, ctx.options.startTime ?? null, ctx.source.type ?? null);
+      } catch (err) {
+        throw typeof err === 'object' && err !== null && 'category' in err ? mapShakaError(err as ShakaError) : err;
+      } finally {
+        loading = false;
+      }
+      refresh();
+      reportStats();
+    },
+    selectQuality(id) {
+      if (player === undefined) return;
+      if (id === 'auto') {
+        abr = true;
+        player.configure({ abr: { enabled: true } });
+        refresh();
+        return;
+      }
+      const variant = player.getVariantTracks().find((v) => `variant-${v.id}` === id);
+      if (variant === undefined) return;
+      abr = false;
+      player.configure({ abr: { enabled: false } });
+      player.selectVariantTrack(variant, true);
+    },
+    on: (e, h) => bus.on(e, (p) => h(p)),
+    destroy() {
+      destroyed = true;
+      bus.clear();
+      void player?.destroy();
+      player = undefined;
+    },
   };
 }

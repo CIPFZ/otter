@@ -1,14 +1,29 @@
-// MPEG-TS (SPEC §8): self-built pipeline in M3, demuxer from hls.js (REUSE §3). M0 empty implementation: probe() scores every source 0, so the router never selects it.
+// MPEG-TS format plugin (SPEC §8): mpegts.js adapter in M1, own pipeline with the hls.js TS
+// demuxer (L2) in M3. Live sources must set `live: true`.
 
-import { notImplemented } from '@otter-player/core';
-import type { FormatPlugin } from '@otter-player/media';
+import type { Capabilities, FormatPlugin, Source } from '@otter-player/media';
+import { createMpegtsEngine } from '@otter-player/engine-adapter-mpegts';
 
-export function createTsFormat(): FormatPlugin {
+export interface TsFormatOptions {
+  /** Extra mpegts.js config. */
+  readonly config?: Record<string, unknown>;
+}
+
+const TS_TYPE = /mp2t/i;
+const TS_EXT = /\.(ts|m2ts|mts)(\?|#|$)/i;
+
+export function probeTs(source: Source): number {
+  if (typeof source.src !== 'string') return 0;
+  if (source.type !== undefined) return TS_TYPE.test(source.type) ? 1 : 0;
+  return TS_EXT.test(source.src) ? 0.8 : 0;
+}
+
+export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
   return {
     id: 'ts',
-    probe: () => 0,
-    createEngine() {
-      throw notImplemented('@otter-player/format-ts createEngine');
-    },
+    probe: probeTs,
+    backends: (_source: Source, caps: Capabilities) => (caps.mediaSource || caps.managedMediaSource ? ['mse'] : []),
+    createEngine: (ctx) =>
+      createMpegtsEngine(ctx, { type: 'mpegts', ...(options.config === undefined ? {} : { config: options.config }) }),
   };
 }
