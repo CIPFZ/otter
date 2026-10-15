@@ -20,7 +20,9 @@
     "license:gate": "node scripts/license-gate.ts",
     "check:boundaries": "node scripts/check-boundaries.ts",
     "check:side-effects": "node scripts/check-side-effects.ts",
-    "check": "pnpm license:gate && pnpm check:boundaries && pnpm typecheck && pnpm build && pnpm test && pnpm check:side-effects && pnpm size"
+    "check": "pnpm license:gate && pnpm check:vendor && pnpm check:boundaries && pnpm typecheck && pnpm build && pnpm test && pnpm check:side-effects && pnpm size",
+    "check:vendor": "node scripts/check-vendor.ts",
+    "vendor:sync": "node scripts/vendor-sync.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
@@ -29,6 +31,7 @@
     "@size-limit/file": "14.2.0",
     "@types/node": "^22.20.5",
     "esbuild": "0.28.2",
+    "happy-dom": "21.0.1",
     "size-limit": "14.2.0",
     "typescript": "7.0.2",
     "vite": "8.3.4",

@@ -1,0 +1,13 @@
+{
+  "project": "shaka-player",
+  "repo": "https://github.com/shaka-project/shaka-player",
+  "commit": "2ac882d23750d50c07a483b2786b1cb466398e8e",
+  "tag": "v5.2.13",
+  "license": "Apache-2.0",
+  "level": "L3",
+  "files": [{ "upstream": "demo/common/assets.js", "local": "assets.ts" }],
+  "localChanges": [
+    "Kept three assets (Angel One DASH, Angel One ClearKey server, Low Latency DASH Live); dropped icons, feature flags, source enums and the ShakaDemoAssetInfo builder.",
+    "Builder calls turned into a typed ESM const with explicit live / licenseServers fields."
+  ]
+}

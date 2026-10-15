@@ -1,0 +1,13 @@
+{
+  "project": "hls.js",
+  "repo": "https://github.com/video-dev/hls.js",
+  "commit": "e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de",
+  "tag": "v1.7.3",
+  "license": "Apache-2.0",
+  "level": "L3",
+  "files": [{ "upstream": "tests/test-streams.js", "local": "test-streams.ts" }],
+  "localChanges": [
+    "Kept four entries (bbb, closedCaptions, fmp4, MuxLowLatencyHls); dropped the createTestStream helper, config, skip_ua and skipFunctionalTests fields.",
+    "CommonJS module.exports turned into a typed ESM const; live / abr made explicit on every entry."
+  ]
+}

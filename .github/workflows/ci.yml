@@ -43,6 +43,8 @@ jobs:
 
       - name: License gate
         run: pnpm license:gate --json license-report.json
+      - name: Vendoring and notices
+        run: pnpm check:vendor
       - name: Package boundaries
         run: pnpm check:boundaries
       - name: Strict TypeScript
@@ -102,6 +104,19 @@ jobs:
           name: playwright-report-${{ matrix.os }}
           path: playwright-report
           if-no-files-found: ignore
+
+  vendor-drift:
+    name: vendored code drift report
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Compare pinned commits with upstream (never blocks)
+        run: node scripts/vendor-sync.ts | tee -a "$GITHUB_STEP_SUMMARY"
 
   real-devices:
     name: e2e (real devices)
