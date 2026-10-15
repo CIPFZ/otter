@@ -13,7 +13,7 @@ import { createAdsOverlay } from '@otter-player/overlay-ads';
 import { createThumbnailsOverlay } from '@otter-player/overlay-thumbnails';
 import { createWatermarkOverlay } from '@otter-player/overlay-watermark';
 import { createPresentationController } from '@otter-player/presentation';
-import { createCanvasSurface, createGPUSurface, createVideoSurface, ZERO_RECT } from '@otter-player/surface';
+import { createCanvasSurface, createGPUSurface, ZERO_RECT } from '@otter-player/surface';
 import { createTextOverlay } from '@otter-player/text';
 import { createAssOverlay } from '@otter-player/text-ass';
 import { defineUIFeature, OTTER_ELEMENTS } from '@otter-player/ui-core';
@@ -24,7 +24,6 @@ const fakeElement = <T>(): T => ({}) as T;
 
 describe('surface', () => {
   it.each([
-    ['video', () => createVideoSurface(fakeElement<HTMLVideoElement>())],
     ['canvas2d', () => createCanvasSurface(fakeElement<HTMLCanvasElement>())],
     ['gpu', () => createGPUSurface(fakeElement<HTMLCanvasElement>())],
   ] as const)('%s surface', async (kind, create) => {
@@ -72,7 +71,7 @@ describe('presentation', () => {
     const core = createCore();
     const controller = createPresentationController({
       container: fakeElement<HTMLElement>(),
-      surface: createVideoSurface(fakeElement<HTMLVideoElement>()),
+      surface: createCanvasSurface(fakeElement<HTMLCanvasElement>()),
       store: core.store.view(),
     });
     expect(controller.mode).toBe('inline');

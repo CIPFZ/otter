@@ -1,6 +1,7 @@
-// Surface (SPEC §12): the pixel layer. VideoSurface for native / MSE, CanvasSurface (2D) as the
-// WebCodecs fallback and snapshot path, GPUSurface (WebGL2 / WebGPU) for the WebCodecs main path,
-// multi-view grids and HDR. Sizing is ResizeObserver + CSS aspect-ratio only, never window.resize.
+// Surface (SPEC §12): the pixel layer. VideoSurface for native / MSE (./video-surface.ts),
+// CanvasSurface (2D) as the WebCodecs fallback and snapshot path, GPUSurface (WebGL2 / WebGPU) for
+// the WebCodecs main path, multi-view grids and HDR; the latter two are empty implementations
+// until M4. Sizing is ResizeObserver + CSS aspect-ratio only, never window.resize.
 
 import { notImplemented, type Unsubscribe } from '@otter-player/core';
 
@@ -44,6 +45,8 @@ export interface Surface {
   snapshot(opts?: SnapshotOptions): Promise<Blob>;
   readonly colorInfo: SurfaceColorInfo;
   onContentRectChange(h: (r: DOMRectReadOnly) => void): Unsubscribe;
+  /** Disconnects observers and listeners; the element itself is left in place. */
+  destroy(): void;
 }
 
 export interface GPUSurfaceOptions {
@@ -89,11 +92,8 @@ function createStubSurface(
     },
     snapshot: () => Promise.reject(fail('snapshot')),
     onContentRectChange: () => noop,
+    destroy: () => undefined,
   };
-}
-
-export function createVideoSurface(element: HTMLVideoElement): Surface {
-  return createStubSurface('video', element, 'createVideoSurface');
 }
 
 export function createCanvasSurface(element: HTMLCanvasElement): Surface {

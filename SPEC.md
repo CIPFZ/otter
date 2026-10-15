@@ -252,6 +252,7 @@ interface Surface {
   snapshot(opts?: { type?: 'png'|'jpeg'; quality?: number }): Promise<Blob>;
   readonly colorInfo: { range: 'sdr' | 'hdr10' | 'hlg' | 'dv'; gamut: 'srgb' | 'p3' | 'rec2020' };
   onContentRectChange(h: (r: DOMRectReadOnly) => void): () => void;
+  destroy(): void;                               // 断开 ResizeObserver 与监听（M1 补充）
 }
 ```
 
