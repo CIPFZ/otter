@@ -11,3 +11,38 @@
   --otter-accent-deep: #12c9d4;
   --otter-fg: #ffffff;
 }
+
+/* M1 minimal layout. The host marks its player root and control bar with these attributes. */
+:where([data-otter-player]) {
+  position: relative;
+  display: block;
+  background: #000;
+  color: var(--otter-fg);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+:where([data-otter-player]) > video {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+:where([data-otter-controls]) {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: linear-gradient(to top, color-mix(in srgb, var(--otter-bg-deep) 90%, transparent), transparent);
+}
+:where([data-otter-player]) otter-stats {
+  position: absolute;
+  inset: 8px auto auto 8px;
+  max-width: min(420px, calc(100% - 16px));
+}
+@media (pointer: coarse) {
+  :where([data-otter-player]) { --otter-control-size: 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :where([data-otter-player]) * { transition: none !important; animation: none !important; }
+}

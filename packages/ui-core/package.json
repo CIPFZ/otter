@@ -21,7 +21,9 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*",
-    "@otter-player/surface": "workspace:*",
-    "@otter-player/input": "workspace:*"
+    "@otter-player/input": "workspace:*",
+    "@otter-player/media": "workspace:*",
+    "@otter-player/qoe": "workspace:*",
+    "@otter-player/surface": "workspace:*"
   }
 }

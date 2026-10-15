@@ -17,10 +17,16 @@
       "path": "../core"
     },
     {
-      "path": "../surface"
+      "path": "../input"
     },
     {
-      "path": "../input"
+      "path": "../media"
+    },
+    {
+      "path": "../qoe"
+    },
+    {
+      "path": "../surface"
     }
   ]
 }

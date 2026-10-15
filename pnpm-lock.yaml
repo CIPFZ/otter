@@ -511,6 +511,12 @@ importers:
       '@otter-player/input':
         specifier: workspace:*
         version: link:../input
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+      '@otter-player/qoe':
+        specifier: workspace:*
+        version: link:../qoe
       '@otter-player/surface':
         specifier: workspace:*
         version: link:../surface
