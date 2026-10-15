@@ -34,9 +34,9 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 
 | 模块 | 来源 | 等级 | 要改什么 |
 |---|---|---|---|
-| HLS 完整引擎 | hls.js | L1 适配器 | 包成 `EngineAdapter`，只暴露 `MediaBackend` 事件 |
-| DASH 引擎 + DRM + 离线 | Shaka Player | L1 适配器 | 同上；DRM 配置映射 Shaka `drm.servers` |
-| FLV / TS 直播引擎 | mpegts.js | L1 起步，后期 L2 `demux/flv-demuxer`、`demux/ts-demuxer`、`remux/mp4-remuxer` | 自研管线时拷 demuxer 改成 `Demuxer` 接口 |
+| HLS 完整引擎 | hls.js | L1 适配器 | 包成 `EngineAdapter`，只暴露 `MediaBackend` 事件。M1 接入：`engine-adapter-hlsjs` 依赖 `hls.js@1.7.3`，`load()` 内动态 `import()` |
+| DASH 引擎 + DRM + 离线 | Shaka Player | L1 适配器 | 同上；DRM 配置映射 Shaka `drm.servers`。M1 接入：`engine-adapter-shaka` 依赖 `shaka-player@5.2.13`（DASH，以及带 DRM 的 HLS） |
+| FLV / TS 直播引擎 | mpegts.js | L1 起步，后期 L2 `demux/flv-demuxer`、`demux/ts-demuxer`、`remux/mp4-remuxer` | 自研管线时拷 demuxer 改成 `Demuxer` 接口。M1 接入：`engine-adapter-mpegts` 依赖 `mpegts.js@1.8.2` |
 | TS → fMP4 转封装 | hls.js `src/demux/tsdemuxer.ts` + `src/remux/mp4-remuxer.ts` + `mp4-generator.ts` | L2 | 去掉事件总线耦合，改纯函数 |
 | MP4 分段加载（Range + moov） | xgplayer `xgplayer-mp4` + mp4box.js | L2 / L1 | 分段策略 + box 解析拼成 `format-mp4-range` |
 | 通用 demux（MP4/WebM/MKV）给 WebCodecs | mediabunny（MIT，TS，无依赖） | L1 | 直接出 `EncodedVideoChunk` |
@@ -44,7 +44,7 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | ABR 规则 | dash.js `BolaRule`、`ThroughputRule`、`InsufficientBufferRule` | L3 | 改成规则叠加接口 |
 | Codec 字符串解析与 MediaCapabilities | hls.js `src/utils/codecs.ts` + `mediacapabilities-helper.ts` | L3 | 直接拿 |
 | MSE 操作队列与配额驱逐 | hls.js `buffer-operation-queue.ts` + `buffer-controller.ts` flush 逻辑 | L3 | 拆出纯操作队列 |
-| MMS 适配（AirPlay 条件、start/endstreaming） | hls.js `buffer-controller.ts` | L3 | 直接拿 |
+| MMS 适配（AirPlay 条件、start/endstreaming） | hls.js `buffer-controller.ts`、`utils/mediasource-helper.ts` | L3 | 直接拿。M1 已复制到 `packages/backend-mse/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3） |
 | 直播追帧 / 动态倍速 / 看门狗 | mpegts.js `mse-controller.ts` + `player/mse-player.ts` stall 检测 | L3 | 抽成 `LiveController` |
 | CMCD | `@svta/common-media-library`（SVTA 官方，Apache） | L1 | 直接用 |
 | Content Steering | hls.js `content-steering-controller.ts` | L3 | 后期 |
@@ -54,7 +54,7 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | WebCodecs 播放循环 | webcodecsfundamentals.org 示例（MIT）+ libmedia 架构 | L3 / L4 | 示例可拷，libmedia 只看设计 |
 | HEVC WASM 软解 | libde265.js 构建产物 / ffmpeg.wasm 定制（LGPL） | L1 独立加载 | 可选 Decoder 插件，不进核心 |
 | EME 流程 | Shaka `drm_engine` | L4 | 仍建议 L1 用 Shaka |
-| 测试流清单 | hls.js `tests/test-streams.js`、Shaka `demo/common/assets.js`、DASH-IF 参考流 | L3 | 省下搭测试源 |
+| 测试流清单 | hls.js `tests/test-streams.js`、Shaka `demo/common/assets.js`、DASH-IF 参考流 | L3 | 省下搭测试源。M1 已复制子集到 `e2e/vendor/hls.js/`、`e2e/vendor/shaka-player/` |
 
 ## 4. 渲染层来源清单
 
@@ -86,10 +86,11 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 
 ## 5. 工程流程
 
-- `vendor/<project>/` 按来源分目录，每目录一个 `UPSTREAM.json`：`{ repo, commit, files[], localChanges }`。
+- L2（整个子包）放 `vendor/<project>/`；L3（文件级）放使用它的包内 `packages/<pkg>/src/vendor/<project>/`，测试资产放 `e2e/vendor/<project>/`（ADR-003 第 7 条）。每个目录一个 `UPSTREAM.json`：`{ project, repo, commit, license, level, files: [{ upstream, local }], localChanges }`。
+- `scripts/check-vendor.ts`（CI 阻断）检查：头部与 `UPSTREAM.json` 一致；目录中没有未登记的文件；只有 Apache-2.0 / MIT / BSD 允许 L2 / L3；来源已列在本文件与 `THIRD_PARTY_NOTICES.md` 中；每个 L1 运行时依赖都已列在两处。
 - 每个 vendored 文件头部：`// Derived from <project>@<commit> <path>, <license>`。
 - 根目录维护 `THIRD_PARTY_NOTICES.md`。
-- `scripts/vendor-sync.ts`：拉取上游指定 commit，输出 diff 报告，上游修 MSE / iOS bug 后一周内跟上。
+- `scripts/vendor-sync.ts`：联网对比 `UPSTREAM.json` 固定的 commit 与上游默认分支，输出漂移报告（CI 定时任务中运行，不阻断）；上游修了 MSE / iOS bug 要在一周内跟上。
 - CI 门禁：`license-checker` 或自写脚本，禁止 GPL 进入依赖树，LGPL 仅允许在 `decoders/*` 与 `text-ass` 以独立产物形式出现。
 - 所有 L2/L3 代码过 strict TS 与项目 ESLint 再入库。
 - 顺序：先 L1 把 hls.js、Shaka、mpegts.js 接上跑通全场景，QoE 面板有数据后，再按"哪个场景体积或行为不满意"决定降到 L2/L3 替换。先有可用的全场景产品，再做替换。
