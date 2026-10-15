@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Nightly real-device matrix (runs only when device endpoints are configured).
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: 12.11.2
+  NODE_VERSION: 22
+
+jobs:
+  verify:
+    name: typecheck · build · test · license · boundaries · size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g pnpm@${{ env.PNPM_VERSION }}
+      - id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+
+      - name: License gate
+        run: pnpm license:gate --json license-report.json
+      - name: Package boundaries
+        run: pnpm check:boundaries
+      - name: Strict TypeScript
+        run: pnpm typecheck
+      - name: Build
+        run: pnpm build
+      - name: Unit tests
+        run: pnpm test
+      - name: Top-level side effects
+        run: pnpm check:side-effects
+      - name: Size budgets
+        run: |
+          status=0
+          pnpm exec size-limit --json > size-report.json || status=$?
+          node scripts/size-report.ts size-report.json >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports
+          path: |
+            license-report.json
+            size-report.json
+          if-no-files-found: ignore
+
+  e2e:
+    name: e2e (${{ matrix.name }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: chromium + firefox
+            os: ubuntu-latest
+            browsers: chromium firefox
+            projects: --project=desktop-chrome --project=desktop-firefox --project=emulated-android
+          - name: webkit
+            os: macos-latest
+            browsers: webkit
+            projects: --project=desktop-safari --project=emulated-iphone
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g pnpm@${{ env.PNPM_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps ${{ matrix.browsers }}
+      - run: pnpm e2e ${{ matrix.projects }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.os }}
+          path: playwright-report
+          if-no-files-found: ignore
+
+  real-devices:
+    name: e2e (real devices)
+    needs: verify
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      OTTER_REAL_IOS_WS_ENDPOINT: ${{ secrets.OTTER_REAL_IOS_WS_ENDPOINT }}
+      OTTER_REAL_ANDROID_WS_ENDPOINT: ${{ secrets.OTTER_REAL_ANDROID_WS_ENDPOINT }}
+      OTTER_REAL_TV_CDP_URL: ${{ secrets.OTTER_REAL_TV_CDP_URL }}
+      OTTER_REAL_TV_PLATFORM: ${{ vars.OTTER_REAL_TV_PLATFORM }}
+      OTTER_E2E_BASE_URL: ${{ secrets.OTTER_E2E_BASE_URL }}
+    steps:
+      - name: Check device endpoints
+        id: endpoints
+        run: |
+          if [ -z "$OTTER_REAL_IOS_WS_ENDPOINT$OTTER_REAL_ANDROID_WS_ENDPOINT$OTTER_REAL_TV_CDP_URL" ]; then
+            echo "::warning::No real-device endpoints configured; the real-device matrix did not run (AGENT §2.6)."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.endpoints.outputs.configured == 'true'
+      - uses: actions/setup-node@v5
+        if: steps.endpoints.outputs.configured == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - if: steps.endpoints.outputs.configured == 'true'
+        run: npm install -g pnpm@${{ env.PNPM_VERSION }} && pnpm install --frozen-lockfile
+      - if: steps.endpoints.outputs.configured == 'true'
+        run: pnpm e2e --project='real-*'
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.endpoints.outputs.configured == 'true'
+        with:
+          name: playwright-report-real-devices
+          path: playwright-report
+          if-no-files-found: ignore
