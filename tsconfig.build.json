@@ -74,7 +74,25 @@
       "path": "packages/pipeline"
     },
     {
+      "path": "packages/plugin-analytics"
+    },
+    {
+      "path": "packages/plugin-cast"
+    },
+    {
+      "path": "packages/plugin-p2p"
+    },
+    {
+      "path": "packages/plugin-record"
+    },
+    {
+      "path": "packages/plugin-screenshot"
+    },
+    {
       "path": "packages/presentation"
+    },
+    {
+      "path": "packages/presets"
     },
     {
       "path": "packages/qoe"

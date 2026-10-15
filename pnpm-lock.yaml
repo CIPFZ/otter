@@ -379,6 +379,36 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/plugin-analytics:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/plugin-cast:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/plugin-p2p:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/plugin-record:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/plugin-screenshot:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/presentation:
     dependencies:
       '@otter-player/core':
@@ -387,6 +417,12 @@ importers:
       '@otter-player/surface':
         specifier: workspace:*
         version: link:../surface
+
+  packages/presets:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/qoe:
     dependencies:
