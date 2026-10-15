@@ -17,7 +17,7 @@
 
 - 覆盖场景：短视频 / 长视频点播、直播与低延迟直播、国内 FLV/TS 直播、OTT 付费 DRM 与离线、监控多路 HEVC、B 站式弹幕站、剪辑/标注逐帧、背景视频、沉浸竖屏信息流、电视遥控器。
 - 双路径架构：非 Apple 走 MSE，Apple 走原生 HLS 或 ManagedMediaSource，运行时确定性选路且可观测、可覆盖。
-- 核心零 DOM 依赖，管线可跑在 Worker；全 ESM、`sideEffects: false`、tree-shaking 友好。
+- 核心零 DOM 依赖，管线可跑在 Worker；全 ESM、`sideEffects: false`（唯一例外：纯 CSS 皮肤包为 `["*.css"]`，见 §14.4）、tree-shaking 友好。
 - 首屏核心 ≤ 15KB gzip；默认皮肤 + ui-core + presentation + text ≤ 30KB；弹幕另加 ≤ 10KB。
 - 无障碍 WCAG 2.2 AA，Vidstack 的 CVAA 清单作为验收标准。
 - QoE 遥测从第一天内建：首帧、卡顿率、切档、错误、退出点、带宽估计、backend 类型。
@@ -298,7 +298,7 @@ Overlay 拿到的是画面实际矩形而非容器矩形（黑边时字幕仍贴
 | Tab / Shift+Tab / Esc | 焦点循环 / 关闭菜单退出全屏 | 焦点困在播放器内 |
 
 ### 14.4 皮肤
-`ui-skin-default`、`ui-skin-minimal`、`ui-skin-tv`（大焦点、只用方向键）、`ui-skin-audio`。皮肤层只有 CSS。
+`ui-skin-default`、`ui-skin-minimal`、`ui-skin-tv`（大焦点、只用方向键）、`ui-skin-audio`。皮肤层只有 CSS：包内禁止任何 JS 入口，`"sideEffects": ["*.css"]`，可以用 JS `import`、`<link>` 或 CSS `@import` 引入（ADR-002 第 10 条）。
 
 ### 14.5 无障碍
 WCAG 2.2 AA；全部控件键盘可达且有可见焦点；`prefers-reduced-motion` 关动画；`prefers-contrast` 换高对比皮肤；状态变化 `aria-live` 播报；Vidstack CVAA 清单为验收。
@@ -456,4 +456,3 @@ M0 接口落点（ADR-002）：
 - Q4：P2P-CDN 插件是否纳入 v1 范围。
 - Q5：WebTransport / MoQ 是否等标准稳定再做。
 - Q6：是否提供 Electron 专用包。
-- Q7：CSS-only 皮肤包遵守 `sideEffects: false`，但这样一来 JS 里的 `import '@otter-player/ui-skin-*'` 会被打包器摇掉。是否允许 `"sideEffects": ["*.css"]` 这一例外，还是规定只能用 `<link>` / CSS `@import` 引入（ADR-002）。

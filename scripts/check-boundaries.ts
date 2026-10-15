@@ -16,7 +16,7 @@ const readJsonc = (file: string): unknown =>
 
 const walk = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx|js|mjs)$/.test(e.name) ? [join(dir, e.name)] : [],
+    e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(e.name) ? [join(dir, e.name)] : [],
   );
 
 const packages: PackageInfo[] = readdirSync(packagesDir, { withFileTypes: true })

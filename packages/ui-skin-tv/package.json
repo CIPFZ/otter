@@ -4,7 +4,9 @@
   "description": "TV skin (CSS only): large focus rings, arrow-key navigation.",
   "license": "Apache-2.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "*.css"
+  ],
   "exports": {
     ".": {
       "style": "./dist/index.css",

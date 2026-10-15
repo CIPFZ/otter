@@ -42,6 +42,29 @@ describe('checkBoundaries', () => {
     ]);
   });
 
+  it('skins are CSS only with sideEffects ["*.css"] (Q7)', () => {
+    const skin = (overrides: Partial<PackageInfo> = {}, manifest: Partial<PackageInfo['manifest']> = {}): PackageInfo =>
+      pkg('ui-skin-tv', { lib: undefined, ...overrides }, { sideEffects: ['*.css'], exports: { '.': { style: './dist/index.css' } }, ...manifest });
+    expect(checkBoundaries([skin()])).toEqual([]);
+    expect(
+      checkBoundaries([
+        skin(
+          { lib: ['ES2022', 'DOM'], imports: { 'src/index.ts': [] } },
+          { sideEffects: false, exports: { '.': { style: './dist/index.css', default: './dist/index.js' } } },
+        ),
+      ]),
+    ).toEqual([
+      'packages/ui-skin-tv: skin packages must declare "sideEffects": ["*.css"]',
+      'packages/ui-skin-tv: skin packages are CSS only and must not have a tsconfig',
+      'packages/ui-skin-tv: skin packages must not contain JS/TS (src/index.ts)',
+      'packages/ui-skin-tv: skin packages may only export .css files, not ./dist/index.js',
+    ]);
+    // The exception is for skins only.
+    expect(checkBoundaries([pkg('text', {}, { sideEffects: ['*.css'] })])).toEqual([
+      'packages/text: "sideEffects" must be false',
+    ]);
+  });
+
   it('forbids render -> engine implementation and engine -> render edges', () => {
     const problems = checkBoundaries([
       pkg('ui-core', { references: ['backend-mse'] }, { dependencies: { '@otter-player/backend-mse': 'workspace:*' } }),

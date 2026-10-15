@@ -4,7 +4,9 @@
   "description": "Default skin (CSS only), Otter brand palette.",
   "license": "Apache-2.0",
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "*.css"
+  ],
   "exports": {
     ".": {
       "style": "./dist/index.css",

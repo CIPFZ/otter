@@ -1,10 +1,11 @@
-// Scaffolds a workspace package with the repo conventions (ESM, sideEffects: false, source export
-// condition, project references) and registers it in tsconfig.build.json.
+// Scaffolds a workspace package with the repo conventions (ESM, sideEffects: false — or ["*.css"]
+// for CSS-only skins, ADR-002 — source export condition, project references) and registers it in
+// tsconfig.build.json.
 //
 //   node scripts/new-package.ts <name> --description "..." [--deps core,media] [--no-dom] [--css]
 //
 // --no-dom  compile against lib ES2022 only (must stay Worker/DOM-free, like core)
-// --css     CSS-only package (skins): src/index.css is copied to dist, no TypeScript
+// --css     CSS-only package (skins): src/index.css is copied to dist, no TypeScript or JS at all
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -53,6 +54,8 @@ const pkg: Record<string, unknown> = {
 
 if (values.css) {
   Object.assign(pkg, {
+    // Importing a skin from JS must keep its CSS; skins have no JS that could be tree-shaken.
+    sideEffects: ['*.css'],
     exports: { '.': { style: './dist/index.css', default: './dist/index.css' } },
     files: ['dist'],
     scripts: { build: 'node ../../tooling/copy-css.ts' },

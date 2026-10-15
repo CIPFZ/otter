@@ -29,6 +29,14 @@ export const DOM_FREE = ['core', 'pipeline'] as const;
 
 const ENGINE_IMPL = /^(backend-|format-|engine-adapter-|decoder-|pipeline$)/;
 const RENDER = /^(surface|presentation|input|ui-core|ui-skin-.*|text|text-ass|danmaku|overlay-.*|react|vue|svelte)$/;
+const SKIN = /^ui-skin-/;
+
+/** Every string leaf of an `exports` map (file targets). */
+const exportTargets = (exports: unknown): string[] => {
+  if (typeof exports === 'string') return [exports];
+  if (typeof exports !== 'object' || exports === null) return [];
+  return Object.values(exports).flatMap(exportTargets);
+};
 
 const isBuiltin = (spec: string): boolean => spec.startsWith('node:');
 const packageOf = (spec: string): string => {
@@ -46,7 +54,18 @@ export function checkBoundaries(packages: readonly PackageInfo[]): string[] {
     const { dir, manifest } = pkg;
     if (manifest.name !== `${SCOPE}${dir}`) report(dir, `name must be "${SCOPE}${dir}"`);
     if (manifest.type !== 'module') report(dir, 'must be ESM ("type": "module")');
-    if (manifest.sideEffects !== false) report(dir, '"sideEffects" must be false');
+    if (SKIN.test(dir)) {
+      // Skins are CSS only (SPEC §14.4). `["*.css"]` keeps `import '@otter-player/ui-skin-*'` from
+      // being tree-shaken away; the price is that a skin must never ship JS (ADR-002, Q7).
+      if (JSON.stringify(manifest.sideEffects) !== '["*.css"]') report(dir, 'skin packages must declare "sideEffects": ["*.css"]');
+      if (pkg.lib !== undefined) report(dir, 'skin packages are CSS only and must not have a tsconfig');
+      for (const file of Object.keys(pkg.imports)) report(dir, `skin packages must not contain JS/TS (${file})`);
+      for (const target of exportTargets(manifest.exports)) {
+        if (!target.endsWith('.css')) report(dir, `skin packages may only export .css files, not ${target}`);
+      }
+    } else if (manifest.sideEffects !== false) {
+      report(dir, '"sideEffects" must be false');
+    }
     if (manifest.license !== 'Apache-2.0') report(dir, 'license must be Apache-2.0');
     if (manifest.exports === undefined) report(dir, '"exports" is required');
     if (manifest.main !== undefined) report(dir, '"main" is not allowed; use "exports"');

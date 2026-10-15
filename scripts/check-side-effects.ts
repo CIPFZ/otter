@@ -1,24 +1,40 @@
 // Top-level side-effect gate (AGENT §4: "sideEffects: false, no top-level side effects").
-// Bundles each built package with esbuild while ignoring `sideEffects` and /* @__PURE__ */
+// Bundles each built JS package with esbuild while ignoring `sideEffects` and /* @__PURE__ */
 // annotations. A module without top-level side effects tree-shakes to an empty bundle; any
 // remaining code (customElements.define, DOM access, registrations, calls) is reported.
+//
+// CSS-only skins declare `"sideEffects": ["*.css"]` (ADR-002, Q7). For them the gate checks that
+// the JS output is empty: dist/ must contain no JavaScript at all.
 //
 //   node scripts/check-side-effects.ts        (run after `pnpm build`)
 
 import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { build } from 'esbuild';
 
 const root = join(import.meta.dirname, '..');
 const packagesDir = join(root, 'packages');
 
-const entries = readdirSync(packagesDir)
-  .map((dir) => ({ dir, entry: join(packagesDir, dir, 'dist', 'index.js') }))
-  .filter(({ dir }) => existsSync(join(packagesDir, dir, 'tsconfig.json')));
+const isSkin = (dir: string): boolean => dir.startsWith('ui-skin-');
+const walk = (dir: string): string[] =>
+  existsSync(dir)
+    ? readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+      )
+    : [];
 
-const missing = entries.filter(({ entry }) => !existsSync(entry));
+const dirs = readdirSync(packagesDir).sort();
+const skins = dirs.filter(isSkin);
+const entries = dirs
+  .filter((dir) => !isSkin(dir) && existsSync(join(packagesDir, dir, 'tsconfig.json')))
+  .map((dir) => ({ dir, entry: join(packagesDir, dir, 'dist', 'index.js') }));
+
+const missing = [
+  ...entries.filter(({ entry }) => !existsSync(entry)).map((m) => m.dir),
+  ...skins.filter((dir) => !existsSync(join(packagesDir, dir, 'dist', 'index.css'))),
+];
 if (missing.length > 0) {
-  console.error(`✗ not built: ${missing.map((m) => m.dir).join(', ')}. Run \`pnpm build\` first.`);
+  console.error(`✗ not built: ${missing.join(', ')}. Run \`pnpm build\` first.`);
   process.exit(1);
 }
 
@@ -41,6 +57,13 @@ for (const { dir, entry } of entries) {
   if (code !== '') offenders.push({ dir, code });
 }
 
+for (const dir of skins) {
+  const js = walk(join(packagesDir, dir, 'dist')).filter((f) => /\.(js|mjs|cjs)$/.test(f));
+  if (js.length > 0) {
+    offenders.push({ dir, code: `skin dist must contain no JavaScript: ${js.map((f) => relative(root, f)).join(', ')}` });
+  }
+}
+
 if (offenders.length > 0) {
   console.error(`✗ ${offenders.length} package(s) have top-level side effects:`);
   for (const { dir, code } of offenders) {
@@ -49,4 +72,6 @@ if (offenders.length > 0) {
   }
   process.exit(1);
 }
-console.log(`✓ side effects: ${entries.length} packages tree-shake to nothing when unused`);
+console.log(
+  `✓ side effects: ${entries.length} JS packages tree-shake to nothing when unused; ${skins.length} skins ship no JS`,
+);
