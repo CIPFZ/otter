@@ -1,4 +1,65 @@
 {
   "files": [],
-  "references": [{ "path": "packages/core" }]
+  "references": [
+    {
+      "path": "packages/backend-mse"
+    },
+    {
+      "path": "packages/backend-native"
+    },
+    {
+      "path": "packages/backend-webcodecs"
+    },
+    {
+      "path": "packages/core"
+    },
+    {
+      "path": "packages/decoder-wasm-ffmpeg"
+    },
+    {
+      "path": "packages/decoder-wasm-hevc"
+    },
+    {
+      "path": "packages/decoder-webcodecs"
+    },
+    {
+      "path": "packages/engine-adapter-hlsjs"
+    },
+    {
+      "path": "packages/engine-adapter-mpegts"
+    },
+    {
+      "path": "packages/engine-adapter-shaka"
+    },
+    {
+      "path": "packages/format-dash"
+    },
+    {
+      "path": "packages/format-file"
+    },
+    {
+      "path": "packages/format-flv"
+    },
+    {
+      "path": "packages/format-hls"
+    },
+    {
+      "path": "packages/format-mp4-range"
+    },
+    {
+      "path": "packages/format-ts"
+    },
+    {
+      "path": "packages/format-whep"
+    },
+    {
+      "path": "packages/media"
+    },
+    {
+      "path": "packages/pipeline"
+    },
+    {
+      "path": "packages/qoe"
+    }
+  ]
 }

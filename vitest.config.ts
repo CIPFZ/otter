@@ -9,7 +9,7 @@ export default defineConfig({
     alias: [{ find: /^@otter-player\/([a-z0-9-]+)$/, replacement: `${packagesDir}$1/src/index.ts` }],
   },
   test: {
-    include: ['packages/*/test/**/*.test.ts', 'scripts/test/**/*.test.ts'],
+    include: ['packages/*/test/**/*.test.ts', 'tests/**/*.test.ts', 'scripts/test/**/*.test.ts'],
     environment: 'node',
   },
 });

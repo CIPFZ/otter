@@ -1,0 +1,26 @@
+{
+  "name": "@otter-player/backend-mse",
+  "version": "0.0.0",
+  "description": "MSE + ManagedMediaSource backend: dual SourceBuffer, serialized buffer operations, quota eviction.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@otter-player/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  },
+  "dependencies": {
+    "@otter-player/core": "workspace:*",
+    "@otter-player/media": "workspace:*"
+  }
+}

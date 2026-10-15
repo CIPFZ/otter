@@ -10,7 +10,9 @@
     "declarationMap": false,
     "emitDeclarationOnly": false,
     "isolatedDeclarations": false,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // Mirrors the vitest alias: tests resolve workspace packages to their sources.
+    "paths": { "@otter-player/*": ["./packages/*/src/index.ts"] }
   },
-  "include": ["packages/*/test", "scripts", "tooling", "e2e", "*.config.ts"]
+  "include": ["packages/*/test", "tests", "scripts", "tooling", "e2e", "*.config.ts"]
 }

@@ -179,7 +179,169 @@ importers:
         specifier: 5.0.4
         version: 5.0.4(@types/node@22.20.5)(vite@8.3.4(@types/node@22.20.5))
 
+  packages/backend-mse:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/backend-native:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/backend-webcodecs:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
   packages/core: {}
+
+  packages/decoder-wasm-ffmpeg:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/decoder-wasm-hevc:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/decoder-webcodecs:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/engine-adapter-hlsjs:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/engine-adapter-mpegts:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/engine-adapter-shaka:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/format-dash:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/format-file:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/format-flv:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/format-hls:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/format-mp4-range:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/format-ts:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/format-whep:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
+  packages/media:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/pipeline:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/qoe:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

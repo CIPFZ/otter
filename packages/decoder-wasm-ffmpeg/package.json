@@ -1,0 +1,26 @@
+{
+  "name": "@otter-player/decoder-wasm-ffmpeg",
+  "version": "0.0.0",
+  "description": "Optional software decoder (third-party ffmpeg.wasm build, LGPL, loaded as a separate module).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@otter-player/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  },
+  "dependencies": {
+    "@otter-player/core": "workspace:*",
+    "@otter-player/media": "workspace:*"
+  }
+}
