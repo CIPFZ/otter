@@ -35,6 +35,10 @@ class FakeHls {
   latestLevelDetails: { live: boolean } | null = { live: false };
   targetLatency: number | null = null;
   nextLevel = -1;
+  loadLevel = 0;
+  minAutoLevel = 0;
+  maxAutoLevel = 1;
+  lowLatencyMode = false;
   config: Record<string, unknown>;
   constructor(config: Record<string, unknown>) {
     this.config = config;
@@ -60,7 +64,27 @@ class FakeHls {
   }
 }
 
-vi.mock('hls.js', () => ({ default: FakeHls }));
+// Stand-in for hls.js' AbrController: the engine choice is fixed, forcedAutoLevel settable.
+class FakeAbrController {
+  hls: unknown;
+  forcedAutoLevel = -1;
+  engineChoice = 0;
+  #next = -1;
+  constructor(hls: unknown) {
+    this.hls = hls;
+  }
+  get nextAutoLevel(): number {
+    return this.engineChoice;
+  }
+  set nextAutoLevel(v: number) {
+    this.#next = v;
+  }
+  get lastSet(): number {
+    return this.#next;
+  }
+}
+
+vi.mock('hls.js', () => ({ default: FakeHls, AbrController: FakeAbrController }));
 
 const { createHlsJsEngine, mapHlsError } = await import('@otter-player/engine-adapter-hlsjs');
 
@@ -70,7 +94,10 @@ const ctx = (overrides: Partial<EngineContext> = {}): EngineContext => ({
   caps: NO_CAPABILITIES,
   backend: 'mse',
   qoe: createQoeHook(),
-  media: {} as HTMLMediaElement,
+  media: Object.assign(new EventTarget(), {
+    buffered: { length: 1, start: () => 0, end: () => 20 },
+    currentTime: 2,
+  }) as unknown as HTMLMediaElement,
   mms: true,
   allowCodecSwitch: false,
   ...overrides,
@@ -88,7 +115,9 @@ async function loaded() {
   const hls = FakeHls.instances.at(-1) as FakeHls;
   hls.fire(FakeHls.Events.MANIFEST_PARSED);
   await loading;
-  return { engine, hls, events };
+  const Abr = hls.config['abrController'] as (new (h: unknown) => FakeAbrController) | undefined;
+  const abr = Abr === undefined ? undefined : new Abr(hls);
+  return { engine, hls, events, abr };
 }
 
 describe('hls.js adapter', () => {
@@ -113,7 +142,8 @@ describe('hls.js adapter', () => {
     hls.fire(FakeHls.Events.FRAG_LOADED, { frag: { type: 'main' } });
     hls.fire(FakeHls.Events.FRAG_LOADED, { frag: { type: 'main' } });
     hls.fire(FakeHls.Events.FRAG_BUFFERED, { frag: { type: 'main' } });
-    expect(events).toContainEqual(['quality-change', { id: 'level-1', auto: true, reason: 'abr' }]);
+    // No bandwidth sample yet: the switch came from hls.js' startup logic, and the reason says so.
+    expect(events).toContainEqual(['quality-change', { id: 'level-1', auto: true, reason: 'abr (hls.js startup / emergency)' }]);
     expect(events.filter(([e]) => e === 'first-segment')).toHaveLength(1);
     expect(events).toContainEqual(['bandwidth', { estimate: 3_000_000, fast: 3_000_000, slow: 3_000_000 }]);
     engine.selectQuality('level-1');
@@ -161,6 +191,42 @@ describe('hls.js adapter', () => {
     expect(engine.latency).toBeUndefined();
     hls.latestLevelDetails = { live: true };
     expect(engine.latency).toBe(8);
+  });
+
+  it('Otter ABR: engine choice before the first sample, rule stack after, caps and forced levels kept', async () => {
+    const { hls, abr, events } = await loaded();
+    expect(abr).toBeDefined();
+    const a = abr as FakeAbrController;
+    a.engineChoice = 0;
+    expect(a.nextAutoLevel).toBe(0); // no bandwidth sample yet: hls.js startup logic
+    // 4 MB in 1 s = 32 Mbps: rules want the top level (index 1).
+    for (let i = 0; i < 4; i++) {
+      hls.fire(FakeHls.Events.FRAG_LOADED, { frag: { type: 'main', stats: { aborted: false, loaded: 4_000_000, loading: { start: 0, first: 50, end: 1050 } } } });
+      hls.fire(FakeHls.Events.FRAG_BUFFERED, { frag: { type: 'main' } });
+    }
+    expect(a.nextAutoLevel).toBe(1);
+    hls.maxAutoLevel = 0; // e.g. capLevelToPlayerSize
+    expect(a.nextAutoLevel).toBe(0);
+    hls.maxAutoLevel = 1;
+    a.forcedAutoLevel = 0; // hls.js emergency abandonment
+    expect(a.nextAutoLevel).toBe(0);
+    a.forcedAutoLevel = -1;
+    a.nextAutoLevel = 1; // setter still reaches hls.js
+    expect(a.lastSet).toBe(1);
+    expect(events).toContainEqual(['bandwidth', expect.objectContaining({ fast: expect.any(Number), slow: expect.any(Number) })]);
+    hls.fire(FakeHls.Events.LEVEL_SWITCHED, { level: 1 });
+    expect(events.filter(([e]) => e === 'quality-change').at(-1)?.[1]).toMatchObject({ id: 'level-1', reason: expect.stringMatching(/^abr: /) });
+  });
+
+  it("abr: 'engine' leaves hls.js' own ABR in place", async () => {
+    const engine = createHlsJsEngine(ctx(), { abr: 'engine' });
+    const before = FakeHls.instances.length;
+    const loading = engine.load();
+    await vi.waitFor(() => expect(FakeHls.instances.length).toBeGreaterThan(before));
+    const hls = FakeHls.instances.at(-1) as FakeHls;
+    expect(hls.config['abrController']).toBeUndefined();
+    hls.fire(FakeHls.Events.MANIFEST_PARSED);
+    await loading;
   });
 
   it('maps hls.js error types to the unified model', () => {

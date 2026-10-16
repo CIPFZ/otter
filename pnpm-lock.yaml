@@ -273,6 +273,9 @@ importers:
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
+      '@otter-player/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
       hls.js:
         specifier: 1.7.3
         version: 1.7.3
@@ -297,6 +300,9 @@ importers:
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
+      '@otter-player/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
       shaka-player:
         specifier: 5.2.13
         version: 5.2.13

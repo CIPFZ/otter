@@ -22,6 +22,7 @@
   "dependencies": {
     "@otter-player/core": "workspace:*",
     "@otter-player/media": "workspace:*",
+    "@otter-player/pipeline": "workspace:*",
     "shaka-player": "5.2.13"
   }
 }

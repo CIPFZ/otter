@@ -13,14 +13,20 @@ import {
   type TrackList,
   type VideoTrack,
 } from '@otter-player/media';
+import { createAbrDriver, type AbrDriver } from '@otter-player/pipeline';
 import type Hls from 'hls.js';
 import type { ErrorData, HlsConfig, Level, MediaPlaylist } from 'hls.js';
+import { createOtterAbrController, levelsOf } from './abr.js';
+
+export { bufferAhead } from './abr.js';
 
 export interface HlsJsEngineOptions {
   /** Extra hls.js configuration, applied over the adapter defaults. */
   readonly config?: Partial<HlsConfig>;
   /** Use the `hls.js/light` build (no subtitles, alt audio or EME). */
   readonly light?: boolean;
+  /** `otter` (default): the pipeline ABR rule stack decides; `engine`: hls.js' own ABR (ADR-005 §1). */
+  readonly abr?: 'otter' | 'engine';
 }
 
 const ERROR_TYPES: Readonly<Record<string, OtterErrorType>> = {
@@ -105,6 +111,8 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
   let destroyed = false;
   let firstSegment = false;
   let lastMediaRecovery = Number.NEGATIVE_INFINITY;
+  const driver: AbrDriver | undefined = options.abr === 'engine' ? undefined : createAbrDriver();
+  const onSeeking = (): void => driver?.reset();
 
   const refresh = (): void => {
     if (hls === undefined) return;
@@ -136,7 +144,11 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
         throw createError({ type: 'media', details: 'engineUnsupported', fatal: true, recoverable: false, message: 'hls.js is not supported here' });
       }
       const headers = ctx.source.headers;
+      // Builds without an exported AbrController fall back to hls.js' own ABR.
+      const Base = (mod as { AbrController?: Parameters<typeof createOtterAbrController>[0] }).AbrController;
+      const abrController = driver === undefined || Base === undefined ? undefined : createOtterAbrController(Base, driver, ctx.media);
       const instance = new HlsCtor({
+        ...(abrController === undefined ? {} : { abrController }),
         preferManagedMediaSource: ctx.mms,
         startPosition: ctx.options.startTime ?? -1,
         ...(headers === undefined
@@ -188,12 +200,26 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
 
       instance.on(Events.LEVEL_SWITCHED, (_e, { level }) => {
         refresh();
+        driver?.applied(level, levelsOf(instance));
         const auto = instance.autoLevelEnabled;
-        bus.emit('quality-change', { id: levelId(level), auto, reason: auto ? 'abr' : 'manual' });
+        const decided = driver?.lastDecision;
+        const reason = !auto
+          ? 'manual'
+          : driver === undefined
+            ? 'abr (hls.js)'
+            : decided !== undefined && decided.engineLevel === level
+              ? `abr: ${decided.reason}`
+              : 'abr (hls.js startup / emergency)';
+        bus.emit('quality-change', { id: levelId(level), auto, reason });
       });
+      ctx.media.addEventListener('seeking', onSeeking);
       instance.on(Events.AUDIO_TRACKS_UPDATED, refresh);
       instance.on(Events.SUBTITLE_TRACKS_UPDATED, refresh);
-      instance.on(Events.FRAG_LOADED, (_e, { frag }) => {
+      instance.on(Events.FRAG_LOADED, (_e, { frag, part }) => {
+        const stats = (part ?? frag).stats as typeof frag.stats | undefined;
+        if (driver !== undefined && frag.type === 'main' && stats !== undefined && !stats.aborted && stats.loaded > 0) {
+          driver.sampleDownload(stats.loading.end - stats.loading.first, stats.loaded, stats.loading.first - stats.loading.start);
+        }
         if (!firstSegment && frag.type === 'main') {
           firstSegment = true;
           bus.emit('first-segment', { at: performance.now() });
@@ -208,8 +234,13 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
           mappedLevel = instance.currentLevel;
           refresh();
         }
-        const estimate = instance.bandwidthEstimate;
-        if (Number.isFinite(estimate) && estimate > 0) bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
+        driver?.segmentAppended();
+        if (driver !== undefined && driver.canEstimate) {
+          bus.emit('bandwidth', driver.bandwidth);
+        } else {
+          const estimate = instance.bandwidthEstimate;
+          if (Number.isFinite(estimate) && estimate > 0) bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
+        }
         const latency = instance.latency;
         if (instance.latestLevelDetails?.live === true && latency > 0) {
           const target = instance.targetLatency;
@@ -233,6 +264,7 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
     destroy() {
       destroyed = true;
       bus.clear();
+      ctx.media.removeEventListener('seeking', onSeeking);
       hls?.destroy();
       hls = undefined;
     },

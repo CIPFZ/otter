@@ -24,3 +24,10 @@ export {
   type ThroughputRuleOptions,
 } from './vendor/dash.js/rules.js';
 export { Ewma, EwmaBandwidthEstimator, type BandwidthEstimate } from './vendor/hls.js/ewma.js';
+export {
+  createAbrDriver,
+  type AbrDriver,
+  type AbrDriverOptions,
+  type AbrEngineDecision,
+  type AbrSnapshot,
+} from './abr/driver.js';

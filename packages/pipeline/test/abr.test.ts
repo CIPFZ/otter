@@ -13,6 +13,7 @@ import {
   type AbrLevel,
   type AbrRule,
 } from '@otter-player/pipeline';
+import * as drivers from '@otter-player/pipeline';
 
 const levels: AbrLevel[] = [
   { id: 'l0', bitrate: 300_000 },
@@ -199,5 +200,32 @@ describe('AbrController', () => {
     expect(Math.max(...steady)).toBeLessThanOrEqual(1);
     // After the collapse it reaches the lowest level within a few segments.
     expect(picks.slice(20, 25)).toContain(0);
+  });
+});
+
+describe('AbrDriver', () => {
+  it('maps engine order to bitrate order and back, and reports the bandwidth', () => {
+    // Engine lists the ladder top-down; the driver must not care.
+    const engineLevels = [levels[3], levels[1], levels[0], levels[2]] as AbrLevel[];
+    let t = 0;
+    const { createAbrDriver } = drivers;
+    const d = createAbrDriver({ now: () => (t += 4000) });
+    for (let i = 0; i < 6; i++) {
+      d.sampleDownload(1000, 2_000_000 / 8); // 2 Mbps
+      d.segmentAppended();
+    }
+    const decision = d.decide({ levels: engineLevels, current: 2, bufferLevel: 12, segmentDuration: 4, live: false, lowLatency: false, bufferTarget: 18 });
+    // 0.9 × 2 Mbps fits 1.6 Mbps (l2), which is engine index 3.
+    expect(decision.level).toBe(2);
+    expect(decision.engineLevel).toBe(3);
+    expect(decision.bandwidth.estimate).toBeCloseTo(2_000_000, -4);
+    expect(d.lastDecision).toBe(decision);
+  });
+
+  it('uses no throughput before the first sample', () => {
+    const d = drivers.createAbrDriver();
+    expect(d.canEstimate).toBe(false);
+    const decision = d.decide({ levels, current: -1, bufferLevel: 0, segmentDuration: 4, live: false, lowLatency: false, bufferTarget: 18 });
+    expect(decision.level).toBe(0);
   });
 });
