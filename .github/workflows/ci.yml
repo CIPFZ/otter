@@ -55,6 +55,8 @@ jobs:
         run: pnpm test
       - name: Top-level side effects
         run: pnpm check:side-effects
+      - name: Engine libraries stay out of the first screen (ADR-004)
+        run: pnpm check:engine-chunks
       - name: Size budgets
         run: |
           status=0
@@ -97,13 +99,51 @@ jobs:
       - run: npm install -g pnpm@${{ env.PNPM_VERSION }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps ${{ matrix.browsers }}
-      # Public streams (@network) are not deterministic; they run in the nightly job.
-      - run: pnpm e2e ${{ matrix.projects }} ${{ github.event_name == 'schedule' && ' ' || '--grep-invert @network' }}
+      # Public streams (@network) are not deterministic; they run in network-nightly.
+      - run: pnpm e2e ${{ matrix.projects }} --grep-invert @network
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report-${{ matrix.os }}
           path: playwright-report
+          if-no-files-found: ignore
+
+  network-nightly:
+    name: e2e @network (nightly)
+    needs: verify
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - run: npm install -g pnpm@${{ env.PNPM_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium firefox
+      - id: run
+        name: Public stream scenarios
+        run: |
+          set +e
+          PLAYWRIGHT_JSON_OUTPUT_NAME=network-results.json pnpm e2e --project=desktop-chrome --project=desktop-firefox --grep @network --reporter=line,json
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+      - name: Open or update the tracking issue (ADR-004 §3)
+        if: steps.run.outputs.status != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/network-issue.ts network-results.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright-report-network
+          path: |
+            playwright-report
+            network-results.json
           if-no-files-found: ignore
 
   vendor-drift:
