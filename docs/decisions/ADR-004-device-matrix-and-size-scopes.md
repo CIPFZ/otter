@@ -30,6 +30,7 @@
   - `check-side-effects` 已经把第三方模块当作 external，任何对引擎库的顶层静态 import 都会被判失败；
   - 新增 `check-engine-chunks`：构建场景入口，断言引擎库不在首屏 chunk 里。
 - 自有代码列的门禁以 size-limit 的场景条目实现（`tooling/size/scenario-*.js`，用 `ignore` 排除引擎库），每个场景条目都设上限。
+- 例外：「背景视频 / Hero < 5 KB」（无 UI、只播原生 mp4）指的是一个专用的极简 preset，按 SPEC §21 在 M6 随 presets 发布。在此之前，用通用组合（播放会话 + 选路，当前 8.6 KB）只记录、不门禁，M6 起门禁。其余 §19 场景在 M1 的组合下自有代码均已在目标以内（14.8–17.1 KB），即刻门禁。
 
 ### 3. 夜间 `@network` 失败自动建 Issue
 

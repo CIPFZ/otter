@@ -20,9 +20,10 @@
     "license:gate": "node scripts/license-gate.ts",
     "check:boundaries": "node scripts/check-boundaries.ts",
     "check:side-effects": "node scripts/check-side-effects.ts",
-    "check": "pnpm license:gate && pnpm check:vendor && pnpm check:boundaries && pnpm typecheck && pnpm build && pnpm test && pnpm check:side-effects && pnpm size",
+    "check": "pnpm license:gate && pnpm check:vendor && pnpm check:boundaries && pnpm typecheck && pnpm build && pnpm test && pnpm check:side-effects && pnpm check:engine-chunks && pnpm size",
     "check:vendor": "node scripts/check-vendor.ts",
-    "vendor:sync": "node scripts/vendor-sync.ts"
+    "vendor:sync": "node scripts/vendor-sync.ts",
+    "check:engine-chunks": "node scripts/check-engine-chunks.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
