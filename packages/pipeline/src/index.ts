@@ -1,4 +1,26 @@
-// Self-built pipeline (SPEC §7): Loader / Demuxer / Remuxer / Buffer / ABR / LiveController.
-// DOM-free so it can run in a Worker. Interfaces land with the first implementation (M2 ABR,
-// M3 FLV / TS / fMP4); until then HLS / DASH / FLV go through the engine adapters (SPEC §20).
-export {};
+// Self-built pipeline (SPEC §7). DOM-free so it can run in a Worker. M2 ships the ABR rule stack
+// (ADR-005 §1), which already drives hls.js and Shaka; Loader / Demuxer / Remuxer / Buffer /
+// LiveController arrive with the own FLV / TS / fMP4 pipeline in M3.
+
+export {
+  createAbrController,
+  levelForBitrate,
+  PRIORITY,
+  type AbrContext,
+  type AbrController,
+  type AbrDecision,
+  type AbrLevel,
+  type AbrRule,
+  type AbrVote,
+  type BufferState,
+  type Priority,
+} from './abr/abr.js';
+export { createDefaultAbrController, createServerHintRule, type DefaultAbrOptions } from './abr/defaults.js';
+export { createBolaRule, type BolaRuleOptions } from './vendor/dash.js/bola.js';
+export {
+  createInsufficientBufferRule,
+  createThroughputRule,
+  type InsufficientBufferRuleOptions,
+  type ThroughputRuleOptions,
+} from './vendor/dash.js/rules.js';
+export { Ewma, EwmaBandwidthEstimator, type BandwidthEstimate } from './vendor/hls.js/ewma.js';
