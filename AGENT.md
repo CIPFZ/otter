@@ -6,7 +6,7 @@
 
 - Otter（工作代号）：100% TypeScript 的通用 Web 播放器，引擎可插拔、可组合、取百家之长。
 - 文档：`RESEARCH.md`（生态调研与事实依据）、`SPEC.md`（架构与里程碑）、`REUSE.md`（复用来源、等级、许可证）、`docs/decisions/`（ADR）。
-- 当前阶段：M0 骨架已完成（SPEC §18 全部包的接口 + 空实现、CI 门禁），工程基线见 ADR-002。下一步 M1。
+- 当前阶段：M0、M1 已完成（M1 报告见 `docs/reports/M1.md`）；进行中：M2。工程基线见 ADR-002，引擎契约见 ADR-003，真机与体积口径见 ADR-004。
 
 ## 2. 不可违背的约束
 
@@ -14,8 +14,9 @@
 2. 引擎可插拔：任何格式、backend、ABR、DRM、Decoder、Renderer、UI 功能都必须以 `SPEC.md` 定义的接口接入。不得让 `core` 依赖任何具体实现。
 3. 分层纪律：UI / Overlay / Presentation 只读 store、只派发 action，禁止直接操作引擎或 `<video>`。
 4. 用户手势：全屏、PiP、横屏锁、带声自动播放必须在同一事件回调内同步调用。
-5. 体积预算是验收项（见 `SPEC.md` §1.1、§19），超预算的 PR 不合并。
-6. 真机矩阵：iPhone Safari、Android Chrome、桌面 Chrome/Firefox/Safari、至少一台 Tizen 或 webOS。只在桌面 Chrome 测过的播放器功能视为未完成。
+5. 体积预算是验收项（见 `SPEC.md` §1.1、§19），超预算的提交不算完成。
+6. 真机矩阵：iPhone Safari、Android Chrome、桌面 Chrome/Firefox/Safari、至少一台 Tizen 或 webOS。只在桌面 Chrome 测过的播放器功能视为未完成。M1–M5 阶段以桌面三大浏览器真机 + CI 上的 WebKit 与模拟移动端为准，手机与 TV 真机在 M5.5「移动端真机回归」一次性补跑（ADR-004）。
+7. 引擎库（hls.js / Shaka / mpegts.js / WASM 解码器）只能按需以 chunk 加载，不得进入首屏；SPEC §19 的「自有代码」体积是 M1–M5 门禁（ADR-004）。
 
 ## 3. 复用与许可证规则
 
@@ -48,7 +49,7 @@
 
 1. 任何新能力先问三件事：属于哪个包；接口是否已在 `SPEC.md`；来源与等级是否已在 `REUSE.md`。缺一项先补文档再写代码。
 2. 先适配后替换：HLS/DASH/DRM 先走 hls.js / Shaka / mpegts.js 适配器，QoE 有数据后再决定替换。
-3. 每个 PR 附：体积报告（size-limit）、真机矩阵结果、axe 结果、license 门禁结果。
+3. 直接在 `main` 上小步提交并推送，保持 CI 绿；每个里程碑在 `docs/reports/Mx.md` 附：体积报告（size-limit）、真机矩阵结果、axe 结果、license 门禁结果。
 4. 遇到浏览器差异先查 `RESEARCH.md` §1 与 `SPEC.md` §15 的坑表；新发现的坑追加到表里。
 5. 决策变更写 ADR（`docs/decisions/ADR-xxx.md`），格式参照 ADR-001。
 

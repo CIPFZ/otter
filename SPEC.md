@@ -434,19 +434,21 @@ M0 接口落点（ADR-002）：
 
 ## 19. 场景覆盖矩阵
 
-| 场景 | backend | 格式包 | 必带模块 | 产物体积目标 (gzip) |
-|---|---|---|---|---|
-| 短视频 / 简单点播 | native 或 mse | mp4-range 或 hls | core + ui 最小皮肤 | < 30KB |
-| 长视频点播 + 多清晰度 + 字幕 | mse | hls / dash | abr + text + thumbnails | < 80KB |
-| 直播 + LL-HLS / LL-DASH | mse | hls / dash | live-controller + 追帧 | < 90KB |
-| 国内直播 / 电商 | mse | flv / ts / whep | live-controller + 看门狗 | < 70KB |
-| OTT 付费 + DRM + 离线 | mse | hls + dash（Shaka 适配） | drm + storage + ads | 适配器体积为主 |
-| 监控多路 + HEVC | webcodecs | flv / ts / ps | wasm-hevc 兜底 + GPUSurface 多画面 | WASM 另计 |
-| B 站式弹幕站 | mse | dash 音视频分离 | danmaku + 多编码探测 + 偏好持久化 | < 120KB |
-| 剪辑 / 标注 / 逐帧 | webcodecs | mp4 / webm 本地文件 | 帧精确 seek + 缩略图 | 按需 |
-| 背景视频 / Hero | native | mp4 | 无 UI | < 5KB |
-| 沉浸竖屏信息流 | mse | hls / mp4-range | preset shorts | < 60KB |
-| 电视遥控器 | mse | hls / dash | ui-skin-tv | < 90KB |
+| 场景 | backend | 格式包 | 必带模块 | 体积目标：自有代码 (gzip，M1–M5 门禁) | 含第三方引擎 (gzip，M6 前只记录) |
+|---|---|---|---|---|---|
+| 短视频 / 简单点播 | native 或 mse | mp4-range 或 hls | core + ui 最小皮肤 | < 30KB | 记录 |
+| 长视频点播 + 多清晰度 + 字幕 | mse | hls / dash | abr + text + thumbnails | < 80KB | 记录 |
+| 直播 + LL-HLS / LL-DASH | mse | hls / dash | live-controller + 追帧 | < 90KB | 记录 |
+| 国内直播 / 电商 | mse | flv / ts / whep | live-controller + 看门狗 | < 70KB | 记录 |
+| OTT 付费 + DRM + 离线 | mse | hls + dash（Shaka 适配） | drm + storage + ads | 适配器体积为主 | 记录 |
+| 监控多路 + HEVC | webcodecs | flv / ts / ps | wasm-hevc 兜底 + GPUSurface 多画面 | WASM 另计 | 记录 |
+| B 站式弹幕站 | mse | dash 音视频分离 | danmaku + 多编码探测 + 偏好持久化 | < 120KB | 记录 |
+| 剪辑 / 标注 / 逐帧 | webcodecs | mp4 / webm 本地文件 | 帧精确 seek + 缩略图 | 按需 | 记录 |
+| 背景视频 / Hero | native | mp4 | 无 UI | < 5KB | 记录 |
+| 沉浸竖屏信息流 | mse | hls / mp4-range | preset shorts | < 60KB | 记录 |
+| 电视遥控器 | mse | hls / dash | ui-skin-tv | < 90KB | 记录 |
+
+体积口径（ADR-004）：「自有代码」指 Otter 各包及其非引擎 L1 依赖，不含 hls.js / Shaka / mpegts.js / WASM 解码器；「含第三方引擎」在此基础上加上该场景首次播放必须加载的引擎块。M6 的「简单点播 < 30KB」按含引擎口径。引擎库只能在 `Engine.load()` / `Decoder.create()` 中以 `import()` 按需加载，不得进入首屏 chunk。
 
 ## 20. 自研与复用的边界
 
@@ -461,14 +463,15 @@ M0 接口落点（ADR-002）：
 | 里程碑 | 引擎侧 | 渲染侧 | 验收 |
 |---|---|---|---|
 | M0 | monorepo 骨架、接口定义、CI（license 门禁、strict TS、Vitest、Playwright 矩阵、axe） | 同左 | 所有接口有类型与空实现；`pnpm build` 产出各包；license 门禁跑通 |
-| M1 | `backend-native` + `backend-mse` + hls.js / Shaka / mpegts.js 适配器；选路与降级链；QoE 面板 | `VideoSurface` + 最小控件 | 全场景矩阵能播；iPhone MMS 条件自动处理；stats 面板有数据；`router.explain()` 可导出选路决策；真机矩阵至少在一台 iPhone 与一台 Android 上实际跑过（`emulated-*` 不算） |
+| M1 | `backend-native` + `backend-mse` + hls.js / Shaka / mpegts.js 适配器；选路与降级链；QoE 面板 | `VideoSurface` + 最小控件 | 全场景矩阵能播；iPhone MMS 条件自动处理；stats 面板有数据；`router.explain()` 可导出选路决策（真 iPhone / Android 延后到 M5.5，ADR-004） |
 | M2 | ABR 规则叠加、CMCD、错误恢复 | `ui-core` 原语、默认皮肤、字幕（VTT/IMSC/608）、`InputController`、无障碍 | axe 零严重问题；键盘全覆盖；Vidstack CVAA 清单通过 |
-| M3 | 自研 FLV/TS/fMP4 管线、`LiveController`、`format-mp4-range` | `presentation` 全模式（重点 iPhone 伪全屏与 Document PiP）、MediaSession、WakeLock | 真机矩阵全模式通过；FLV 直播延迟 ≤ 2s |
+| M3 | 自研 FLV/TS/fMP4 管线、`LiveController`、`format-mp4-range` | `presentation` 全模式（重点 iPhone 伪全屏与 Document PiP）、MediaSession、WakeLock | 桌面真机 + CI WebKit / 模拟移动端全模式通过；FLV 直播延迟 ≤ 2s |
 | M4 | `backend-webcodecs`、WASM 解码插件、`format-whep`、`format-file` | `GPUSurface`、多宫格、电子放大、滤镜 | 16 路 720p HEVC 可播；三级降级可观测 |
 | M5 | 音视频分离 DASH 优化、多编码探测与偏好持久化 | `danmaku`（Canvas + WebGL + 蒙版）、水印 | 5000 条/分钟弹幕 60fps；蒙版弹幕对齐 |
+| M5.5 | 移动端真机回归：M1–M5 全部场景与模式 | 同左 | 真 iPhone Safari、真 Android Chrome、至少一台 Tizen 或 webOS 全部场景通过并有报告；问题在本里程碑内修完 |
 | M6 | 自研轻量 CMAF-HLS 引擎替换简单场景；presets 发布 | `ui-skin-tv`、shorts preset、React/Vue/Svelte 绑定、SSR | 简单点播产物 < 30KB；体积预算全部达标；文档站上线 |
 
-每个里程碑结束都跑同一份 Playwright 真机矩阵和 axe 扫描。
+每个里程碑结束都跑同一份 Playwright 矩阵和 axe 扫描。M1–M5 的真机要求为桌面 Chrome / Firefox / Safari 真机加 CI 上的 WebKit 与模拟移动端（`emulated-*` 不计为真机）；真 iPhone / Android / TV 在 M5.5 一次性补跑（ADR-004）。
 
 ## 22. 品牌与图标资产
 
