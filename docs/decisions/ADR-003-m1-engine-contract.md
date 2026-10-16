@@ -104,3 +104,16 @@ UI / Overlay / Presentation ──dispatch──▶ store ──action handler�
 
 - `MediaBackend` 与 `FormatPlugin` 接口扩充，影响 M0 的空实现与契约测试（同步更新）。
 - 由 backend 统一处理 MMS / AirPlay，与引擎各自的逻辑存在重叠；hls.js 在 attach 时的强制行为要求我们在 attach 之后再修正。这一行为必须在真机 iPhone 上验证，M1 验收已包含真机要求。
+
+## 实现中补充（2026-10-16）
+
+在真实浏览器矩阵中发现、实现时补进契约的部分：
+
+- `Engine.mms`：引擎实际是否在用 ManagedMediaSource（Shaka 只要存在 MMS 就会用，hls.js 看 `preferManagedMediaSource`）。backend-mse 以它为准完成 AirPlay / `disableRemotePlayback` 处理。
+- `BackendEvents['remote-playback']`：`{ mms, remotePlayback, reason }`；会话把它写进 store 的 `mms` / `remotePlayback`，并作为一条 `RouteStep` 追加到 `router.explain()`（`Router.annotate`）。
+- 直播延迟：不再转发各引擎各自节奏的延迟事件，由 backend-mse 在 `timeupdate` 时按 1 次/秒读取 `engine.latency`（`readyState >= 2`，丢弃 > 1 小时的值），三个引擎行为一致。
+- 初始档位：会话从 `tracks-change` 中 `selected` 的视频轨取得 `activeQuality`；初始选定不计为 `quality-switch`。
+- 手动切档立即生效（hls.js 用 `currentLevel`，Shaka 用 `selectVariantTrack(t, true)`），`auto` 回到 ABR 且不清空缓冲。
+- `DrmConfig.servers` 为 `Partial`；新增 `DrmConfig.clearKeys`（映射 Shaka `drm.clearKeys`），只有 clearKeys 时也会探测 `org.w3.clearkey`。
+- `Surface.destroy()`（SPEC §12 已同步）。
+- Shaka / mpegts.js 的 CommonJS 命名空间声明在 NodeNext 下无法正确解析，adapter 以结构化类型描述用到的 API 子集，并兼容 `mod` / `mod.default` / `mod.default.default` 三种互操作形态。

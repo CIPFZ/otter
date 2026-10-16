@@ -29,6 +29,17 @@ MSE 工程要点（生产事故高频区）：
 - Safari 的 SourceBuffer 不接受 TS，必须转封装成 fMP4。
 - Chrome 108+ 支持 MSE-in-Worker（`MediaSourceHandle`），Firefox/Safari 尚无。
 
+M1 实测发现的坑（2026-10，Otter 真实浏览器矩阵与 Windows Edge 真机）：
+- hls.js 1.7 在 ManagedMediaSource 下 attach 时会清掉 `<video>` 的全部 `<source>` 并强制 `disableRemotePlayback = true`；AirPlay 备用源必须在 attach 之后再补（Otter 在 backend-mse 里统一处理，见 ADR-003 §5）。
+- hls.js 把 `manifestIncompatibleCodecsError`（例如没有 HEVC 解码能力）归为 `mediaError`；如果对它调用 `recoverMediaError()`，加载永远不会结束。媒体恢复只适用于清单加载之后、而且可恢复的错误。
+- hls.js `nextLevel` 要等下一个分片加载才生效，缓冲已满时手动切档不会发生；需要立即切换用 `currentLevel`（会清空缓冲）。`LEVEL_SWITCHED` 只在正在播放的分片换档时触发，LL-HLS 的 part 不一定触发；初始档位要从 `levels` 里读。hls.js 对点播也会返回一个 `latency` 值，只有 `latestLevelDetails.live` 为真时才有意义。
+- Shaka 5 移除了 `streaming.autoLowLatencyMode`（传入只会报 "unrecognized key"），`lowLatencyMode` 默认为 true，且只在清单声明低延迟时生效。直播延迟用 `getLiveLatency()`（墙钟，毫秒）；`stats.liveLatency` 在没有 producer reference time 时为 NaN。
+- 直播在 `loadedmetadata` 时把播放头跳到直播位置，这时还没有首帧；"播放在前进"必须从首帧开始计时。
+- 拿 Chrome / Edge 调 `play()` 后紧接着 teardown 或 `pause()`，会以 `AbortError` reject；这不是错误，不能覆盖真正的 fatal 错误。
+- ffmpeg 7 的 fragmented CENC（`encryption_scheme=cenc-aes-ctr`）输出的 `senc` 不合法（自己也解不了："Incorrect number of samples in encryption info"）；加密测试样本用 Shaka Packager 生成。
+- Chrome 默认不开放 `HTMLMediaElement.videoTracks`；native 路径上拿不到档位是常态，不是缺陷。
+- Web Component 的 shadow 样式写了 `:host { display: ... }` 就会覆盖 UA 对 `[hidden]` 的规则，必须同时写 `:host([hidden]) { display: none }`。
+
 ## 2. 格式 / 协议 / 编码全景
 
 ### 2.1 传输与封装
