@@ -97,7 +97,8 @@ jobs:
       - run: npm install -g pnpm@${{ env.PNPM_VERSION }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps ${{ matrix.browsers }}
-      - run: pnpm e2e ${{ matrix.projects }}
+      # Public streams (@network) are not deterministic; they run in the nightly job.
+      - run: pnpm e2e ${{ matrix.projects }} ${{ github.event_name == 'schedule' && ' ' || '--grep-invert @network' }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
