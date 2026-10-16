@@ -40,13 +40,13 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | TS → fMP4 转封装 | hls.js `src/demux/tsdemuxer.ts` + `src/remux/mp4-remuxer.ts` + `mp4-generator.ts` | L2 | 去掉事件总线耦合，改纯函数 |
 | MP4 分段加载（Range + moov） | xgplayer `xgplayer-mp4` + mp4box.js | L2 / L1 | 分段策略 + box 解析拼成 `format-mp4-range` |
 | 通用 demux（MP4/WebM/MKV）给 WebCodecs | mediabunny（MIT，TS，无依赖） | L1 | 直接出 `EncodedVideoChunk` |
-| ABR 带宽估计 | hls.js `src/utils/ewma-bandwidth-estimator.ts` | L3 | 几十行直接拿 |
-| ABR 规则 | dash.js `BolaRule`、`ThroughputRule`、`InsufficientBufferRule` | L3 | 改成规则叠加接口 |
+| ABR 带宽估计 | hls.js `src/utils/ewma-bandwidth-estimator.ts` + `src/utils/ewma.ts` | L3 | 几十行直接拿。M2 复制到 `packages/pipeline/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3） |
+| ABR 规则 | dash.js `BolaRule`、`ThroughputRule`、`InsufficientBufferRule` | L3 | 改成规则叠加接口。M2 复制到 `packages/pipeline/src/vendor/dash.js/`（dash.js@a9a8542 = v5.2.1，BSD-3，保留许可证全文） |
 | Codec 字符串解析与 MediaCapabilities | hls.js `src/utils/codecs.ts` + `mediacapabilities-helper.ts` | L3 | 直接拿 |
 | MSE 操作队列与配额驱逐 | hls.js `buffer-operation-queue.ts` + `buffer-controller.ts` flush 逻辑 | L3 | 拆出纯操作队列 |
 | MMS 适配（AirPlay 条件、start/endstreaming） | hls.js `buffer-controller.ts`、`utils/mediasource-helper.ts` | L3 | 直接拿。M1 已复制到 `packages/backend-mse/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3） |
 | 直播追帧 / 动态倍速 / 看门狗 | mpegts.js `mse-controller.ts` + `player/mse-player.ts` stall 检测 | L3 | 抽成 `LiveController` |
-| CMCD | `@svta/common-media-library`（SVTA 官方，Apache） | L1 | 直接用 |
+| CMCD | `@svta/cml-cmcd`（SVTA common-media-library monorepo 的拆分包，Apache-2.0） | L1 | 直接用。伞包 `@svta/common-media-library` 停在 0.18.1（2025-10），改用拆分包 2.8.2（ADR-005 §2）；对等依赖 `@svta/cml-structured-field-values`、`@svta/cml-utils` |
 | Content Steering | hls.js `content-steering-controller.ts` | L3 | 后期 |
 | HLS 清单解析（自研轻引擎用） | hls.js `m3u8-parser.ts` 或 `m3u8-parser`（video.js 系） | L3 | 均 Apache |
 | DASH MPD 解析 | `mpd-parser`（video.js 系） | L1 | 独立 npm 包 |
@@ -62,15 +62,15 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 |---|---|---|---|
 | State store 与 features 组合 | video.js v10 `@videojs/core`（zustand 风格 slices） | L2 或 L4 | GA 后 L2；RC 期间 L4 自写同形状（见 SPEC Q2） |
 | 无样式 UI 原语 | video.js v10 原语 / Media Chrome `media-*` 元素 | L2 | Media Chrome 已稳定可直接 vendoring，其 `MediaController` 状态桥接是 Chrome 层参考实现 |
-| 默认皮肤与布局 | Vidstack default layout CSS | L2 | 换 CSS 变量命名 |
-| 无障碍清单与键盘模型 | Vidstack a11y 文档与 `MediaKeyboardController` | L3 | 快捷键映射表直接拿 |
+| 默认皮肤与布局 | Vidstack default layout CSS | L4 | 只借布局与交互设计，按 `otter-*` 原语与 `--otter-*` 变量重写（原计划 L2，因其 CSS 与 Vidstack 元素 / data 属性强耦合而改为 L4，ADR-005 §6） |
+| 无障碍清单与键盘模型 | Vidstack a11y 文档与 `MediaKeyboardController` | L3 | 快捷键映射表直接拿。CVAA 清单逐条进 `docs/reports/M2.md` |
 | 手势识别 | xgplayer `mobile` 插件、ArtPlayer `gesture` | L3 | MIT |
 | 进度条缩略图（VTT sprite） | Vidstack `thumbnails` / `videojs-vtt-thumbnails` | L3 | |
 | 章节与 I-frame 预览 | Shaka `getThumbnails` | L3 | |
-| WebVTT 解析与渲染 | `vtt.js`（Mozilla，Apache）或 Vidstack `media-captions`（MIT，VTT/SRT/SSA 基础） | L1 | `media-captions` 更现代 |
-| IMSC1 / TTML | imscJS（BSD-2） | L1 | 标准参考实现 |
+| WebVTT 解析与渲染 | `vtt.js`（Mozilla，Apache）或 Vidstack `media-captions`（MIT，VTT/SRT/SSA 基础） | L1 | M2 选 `media-captions` 1.0.4 只做解析；渲染（region / line / position / 避让 / 安全区）自写（ADR-005 §4） |
+| IMSC1 / TTML | imscJS（BSD-2，npm `imsc`） | L1 | 标准参考实现。M2 用 1.1.5（传递依赖 `sax` 为 ISC），动态加载 |
 | ASS 特效字幕 | `jassub` / `libass-wasm`（LGPL/MIT 包装） | L1 独立加载 | 可选插件 |
-| CEA-608/708 | hls.js `cea-608-parser.ts` + `output-filter.ts` | L3 | 引擎侧解析 |
+| CEA-608/708 | hls.js `cea-608-parser.ts` + `output-filter.ts` | L3 | 引擎侧解析。M2 复制到 `packages/text/src/vendor/hls.js/`（hls.js@e5ff358），只做 608 |
 | 弹幕引擎 | CommentCoreLibrary（MIT，B 站格式与高级弹幕参考实现）、DPlayer `danmaku.js`、`danmaku`（weizhenye，MIT，DOM/Canvas 双渲染） | L2 / L3 | Canvas 轨道算法拿 `danmaku`，高级弹幕脚本解析拿 CCL，WebGL 批渲染自写 |
 | 蒙版弹幕 | B 站公开的 `mask-image` 做法 | L4 | 只借思路 |
 | 伪全屏 / iPhone 特判 | xgplayer `cssfullscreen`、Vidstack `fullscreen` 控制器 | L3 | |
