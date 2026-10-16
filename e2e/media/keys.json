@@ -1,0 +1,1 @@
+{ "dash-clearkey": { "kid": "0123456789abcdef0123456789abcdef", "key": "fedcba9876543210fedcba9876543210", "scheme": "cenc-aes-ctr", "note": "public test key, never use for real content" } }

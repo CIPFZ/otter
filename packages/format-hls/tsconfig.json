@@ -17,6 +17,12 @@
       "path": "../core"
     },
     {
+      "path": "../engine-adapter-hlsjs"
+    },
+    {
+      "path": "../engine-adapter-shaka"
+    },
+    {
       "path": "../media"
     }
   ]

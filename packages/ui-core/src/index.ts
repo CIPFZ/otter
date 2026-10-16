@@ -38,3 +38,7 @@ export const OTTER_ELEMENTS = {
 } as const;
 
 export type OtterElementName = (typeof OTTER_ELEMENTS)[keyof typeof OTTER_ELEMENTS];
+
+export { findStore, provideStore, type StoreConsumer, type UiActions, type UiState, type UiStore } from './context.js';
+export { defineOtterElements, M1_ELEMENTS, type DefineOptions } from './elements.js';
+export { formatBitrate, formatMs, formatSeconds, formatTime, speakTime } from './format.js';

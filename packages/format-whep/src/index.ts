@@ -7,6 +7,7 @@ export function createWhepFormat(): FormatPlugin {
   return {
     id: 'whep',
     probe: () => 0,
+    backends: () => [],
     createEngine() {
       throw notImplemented('@otter-player/format-whep createEngine');
     },

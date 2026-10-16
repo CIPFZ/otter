@@ -104,17 +104,35 @@ interface MediaBackend {
   attach(target: HTMLMediaElement | HTMLCanvasElement): void;
   load(source: Source, opts: LoadOptions): Promise<void>;
   play(): Promise<void>; pause(): void; seek(t: number): void;
+  setVolume(v: number): void; setMuted(m: boolean): void; setPlaybackRate(r: number): void;
   readonly tracks: TrackList;            // video / audio / text 统一模型
   selectQuality(id: string | 'auto'): void;
   readonly buffered: TimeRanges; readonly latency?: number;
   on<E extends keyof BackendEvents>(e: E, h: (p: BackendEvents[E]) => void): () => void;
   destroy(): void;
 }
+// BackendEvents：playback-change / tracks-change / quality-change / buffered-change / latency-change /
+// first-frame / first-segment / bandwidth / dropped-frames / waiting / stalled / ended / error
+
+interface BackendFactory {
+  readonly kind: BackendKind;
+  create(ctx: BackendContext): MediaBackend;   // ctx：选中的 format、FallbackStep、caps、qoe
+}
 
 interface FormatPlugin {
   readonly id: string;
-  probe(source: Source, caps: Capabilities): number;   // 0..1 置信度
-  createEngine(ctx: EngineContext): Engine;             // 产出 pipeline 装配
+  probe(source: Source, caps: Capabilities): number;              // 0..1 置信度
+  backends(source: Source, caps: Capabilities): readonly BackendKind[]; // 本格式能喂的 backend
+  createEngine(ctx: EngineContext): Engine;                       // 产出 pipeline 装配
+}
+
+interface Engine {                       // EngineContext 含 source / options / caps / backend / qoe / media / mms
+  readonly formatId: string;
+  readonly tracks: TrackList; readonly latency?: number;
+  load(): Promise<void>;                 // 引擎库在此 import()
+  selectQuality(id: string | 'auto'): void;
+  on<E extends keyof EngineEvents>(e: E, h: (p: EngineEvents[E]) => void): () => void;
+  destroy(): void;
 }
 
 interface Decoder {
@@ -123,6 +141,8 @@ interface Decoder {
   create(config: DecoderConfig): DecoderInstance;
 }
 ```
+
+M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`、`Engine` 定稿）见 ADR-003。
 
 ### 5.1 能力探测（Capabilities）
 
@@ -139,6 +159,15 @@ interface Decoder {
    - 其他 → `mse`。
 4. 失败按降级链重试并上报 QoE：`webcodecs → wasm → mse → native`，每一步记录 reason。
 5. 决策结果可通过 `router.explain()` 导出，并允许宿主以 `preferBackend` / `forbidBackend` 覆盖。
+
+### 5.3 播放会话（media plugin）
+
+`createMediaPlugin({ target, formats, backends, decoders?, policy? })` 是一个 core `Plugin`，也是 store 与 backend 之间唯一的桥：
+
+- 处理 `load` / `play` / `pause` / `seek` / `set-volume` / `set-muted` / `set-playback-rate` / `select-quality` / `unload`，以及 `InputActionMap` 中的媒体类 action（`toggle-paused`、`seek-by`、`seek-to-percent`、`toggle-muted`、`volume-by`、`hold-rate`）。
+- `load` 流程：探测能力 → 选路 → 创建 backend → 加载；遇到 fatal 错误按 `remaining` 降级重试，每一步都发出 `route` / `error` QoE 事件。
+- 把 `BackendEvents` 写回 store（state 键见 ADR-003 第 6 条），并发出 §10 的 QoE 事件（startup、rebuffer、quality-switch、error、bandwidth、latency、dropped-frames、exit、route）。
+- 同步调用 backend：action 在用户手势回调中派发时，`play()` 仍在同一调用栈内执行。
 
 ## 6. backends
 
@@ -223,6 +252,7 @@ interface Surface {
   snapshot(opts?: { type?: 'png'|'jpeg'; quality?: number }): Promise<Blob>;
   readonly colorInfo: { range: 'sdr' | 'hdr10' | 'hlg' | 'dv'; gamut: 'srgb' | 'p3' | 'rec2020' };
   onContentRectChange(h: (r: DOMRectReadOnly) => void): () => void;
+  destroy(): void;                               // 断开 ResizeObserver 与监听（M1 补充）
 }
 ```
 

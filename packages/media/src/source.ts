@@ -10,8 +10,10 @@ export type KeySystem =
 
 export interface DrmConfig {
   /** License server URL per key system; maps 1:1 to Shaka `drm.servers` (DRM goes through Shaka only). */
-  readonly servers: Readonly<Record<KeySystem, string>>;
+  readonly servers: Readonly<Partial<Record<KeySystem, string>>>;
   readonly headers?: Readonly<Record<string, string>>;
+  /** ClearKey key ids to keys (hex), for tests and debugging; maps to Shaka `drm.clearKeys`. */
+  readonly clearKeys?: Readonly<Record<string, string>>;
   /** FairPlay server certificate URL. */
   readonly serverCertificateUrl?: string;
 }
@@ -20,6 +22,8 @@ export interface Source {
   readonly src: string | Blob;
   /** MIME hint: `application/vnd.apple.mpegurl`, `application/dash+xml`, `video/x-flv`, `video/mp4`, ... */
   readonly type?: string;
+  /** RFC 6381 codecs hint (`avc1.640028,mp4a.40.2`); lets the router detect HEVC without loading. */
+  readonly codecs?: string;
   readonly drm?: DrmConfig;
   readonly live?: boolean;
   /**

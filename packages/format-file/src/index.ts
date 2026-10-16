@@ -7,6 +7,7 @@ export function createFileFormat(): FormatPlugin {
   return {
     id: 'file',
     probe: () => 0,
+    backends: () => [],
     createEngine() {
       throw notImplemented('@otter-player/format-file createEngine');
     },

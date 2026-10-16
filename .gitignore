@@ -24,3 +24,4 @@ test-results/
 # python (icon build script)
 __pycache__/
 *.pyc
+e2e/.site-dist/

@@ -34,6 +34,15 @@ const projects: Project<PlaywrightTestOptions, PlaywrightWorkerOptions & OtterWo
   { name: 'emulated-android', use: { ...devices['Pixel 7'] }, metadata: { matrix: 'emulated' } },
 ];
 
+// Real Windows desktop with the installed Edge (headed, so the GPU video pipeline is the real one).
+if (env('OTTER_REAL_WINDOWS_EDGE') === '1') {
+  projects.push({
+    name: 'real-windows-edge',
+    use: { ...devices['Desktop Edge'], channel: 'msedge', headless: false },
+    metadata: { matrix: 'real' },
+  });
+}
+
 if (iosEndpoint !== undefined) {
   projects.push({
     name: 'real-iphone-safari',
@@ -71,9 +80,11 @@ export default defineConfig<object, OtterWorkerOptions>({
   ...(env('OTTER_E2E_BASE_URL') === undefined
     ? {
         webServer: {
-          command: 'pnpm exec vite --config e2e/vite.config.ts',
+          // Built site + preview: no dev-time dependency optimisation reloads mid-test.
+          command: 'pnpm exec vite build --config e2e/vite.config.ts && pnpm exec vite preview --config e2e/vite.config.ts',
           url: baseURL,
           reuseExistingServer: process.env['CI'] === undefined,
+          timeout: 180_000,
         },
       }
     : {}),

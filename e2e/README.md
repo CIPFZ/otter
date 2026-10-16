@@ -13,6 +13,7 @@
 | `emulated-iphone` / `emulated-android` | 设备模拟 | 默认。只能发现视口与触控回归，**不计入真机矩阵** |
 | `real-iphone-safari` | 真机 | 设置 `OTTER_REAL_IOS_WS_ENDPOINT` |
 | `real-android-chrome` | 真机 | 设置 `OTTER_REAL_ANDROID_WS_ENDPOINT` |
+| `real-windows-edge` | 真机 Windows 桌面 | 设置 `OTTER_REAL_WINDOWS_EDGE=1`，在 Windows 本机运行，使用已安装的 Edge（有界面） |
 | `real-tv-<platform>` | 真机 TV | 设置 `OTTER_REAL_TV_CDP_URL`，可选 `OTTER_REAL_TV_PLATFORM`（`tizen` / `webos`，默认 `tizen`） |
 
 AGENT §2.6：只在桌面 Chrome 上测过的播放功能视为未完成；`emulated-*` 不能替代 `real-*`。

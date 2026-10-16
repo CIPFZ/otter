@@ -1,0 +1,5 @@
+# Test media (e2e/media): binary, never diffed or normalised. MPEG-TS segments use .ts.
+e2e/media/**/*.ts binary
+e2e/media/**/*.m4s binary
+e2e/media/**/*.mp4 binary
+e2e/media/**/*.flv binary

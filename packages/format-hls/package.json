@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*",
+    "@otter-player/engine-adapter-hlsjs": "workspace:*",
+    "@otter-player/engine-adapter-shaka": "workspace:*",
     "@otter-player/media": "workspace:*"
   }
 }
