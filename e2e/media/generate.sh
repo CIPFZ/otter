@@ -117,4 +117,27 @@ JSON
 # Video-only TS (cameras): mpegts.js never reports complete media info without an audio track.
 "${FF[@]}" -f lavfi -i "$SRC_V" -t $DUR "${V360[@]}" -an -f mpegts ts/clip-video-only.ts
 
+# Quiet demo picture for the UI review screenshots (docs/reports/M2.5.md): slow dark gradients,
+# 720p / 360p fMP4 HLS ladder with one subtitle. Not used by the scenario matrix.
+rm -rf demo && mkdir -p demo
+DEMO_SRC='gradients=s=1280x720:c0=0x0b1a2b:c1=0x1f4f63:c2=0x2c3e50:c3=0x16222e:speed=0.004:n=4,format=yuv420p'
+"${FF[@]}" -f lavfi -i "$DEMO_SRC" -t 12 -c:v "$VC" -b:v 1200k -g 25 demo/src720.mp4
+"${FF[@]}" -i demo/src720.mp4 -vf scale=640:360 -c:v "$VC" -b:v 400k -g 25 demo/src360.mp4
+for r in 720 360; do
+  "${FF[@]}" -i demo/src$r.mp4 -c copy -f hls -hls_time 4 -hls_playlist_type vod -hls_segment_type fmp4 \
+    -hls_fmp4_init_filename "init$r.mp4" -hls_segment_filename "demo/v${r}_%03d.m4s" demo/v$r.m3u8
+done
+rm demo/src720.mp4 demo/src360.mp4
+cat > demo/master.m3u8 <<'M3U8'
+#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",LANGUAGE="en",DEFAULT=NO,AUTOSELECT=YES,URI="subs.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=1300000,RESOLUTION=1280x720,CODECS="avc1.42c01f",SUBTITLES="subs"
+v720.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=450000,RESOLUTION=640x360,CODECS="avc1.42c01e",SUBTITLES="subs"
+v360.m3u8
+M3U8
+printf 'WEBVTT\nX-TIMESTAMP-MAP=MPEGTS:126000,LOCAL:00:00:00.000\n\n00:00:00.500 --> 00:00:12.000\nThe tide comes in slowly tonight\n' > demo/subs.vtt
+printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:12\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:12.0,\nsubs.vtt\n#EXT-X-ENDLIST\n' > demo/subs.m3u8
+
 du -sh . && find . -type f | sort | sed 's/^/  /' | head -80

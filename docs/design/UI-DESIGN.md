@@ -4,7 +4,7 @@
 - 状态：已采纳，作为 `ui-skin-default` 的设计基线
 - 适用：`ui-core`、`ui-skin-default`、`text`、stats 面板
 - 效果参照：`Assets/design/mockup-desktop-controls.png`、`Assets/design/mockup-settings-menu.png`
-- 关联：SPEC §14、§22；ADR-006（待写）
+- 关联：SPEC §14、§22；ADR-006（图标集与材质降级）
 
 ## 1. 现状问题（基于 M2 截图）
 

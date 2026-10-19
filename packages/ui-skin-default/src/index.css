@@ -211,7 +211,9 @@
 /* ---- Mobile and small players (§6.5) ---------------------------------------------------- */
 :where([data-otter-center]) {
   position: absolute;
-  inset: 0;
+  /* Centred in the picture above the bar, clear of the caption zone just above it. */
+  inset: 0 0 auto 0;
+  height: calc(100% - var(--otter-bar-height) - 48px);
   display: none;
   align-items: center;
   justify-content: center;
@@ -249,6 +251,15 @@
 @container (max-width: 640px) {
   :where([data-otter-controls]) :is(otter-quality-menu, otter-speed-menu) {
     display: none;
+  }
+}
+@container (max-width: 480px) {
+  :where([data-otter-center]) {
+    gap: 28px;
+  }
+  :where([data-otter-center]) > * {
+    --otter-control-size: 44px;
+    --otter-icon-size: 24px;
   }
 }
 @container (max-width: 420px) {
