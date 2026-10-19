@@ -220,7 +220,9 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       }
       lastTime = patch.currentTime;
     }
-    if (patch.waiting === true && !s.waiting && !s.seeking && s.readyState > 0 && rebufferStart === undefined) {
+    // Before the first frame a wait is startup time (TTFF), not a rebuffer; engines that resolve
+    // load() after the first append (readyState 1) would otherwise count one on every start.
+    if (patch.waiting === true && !s.waiting && !s.seeking && s.readyState > 0 && firstFrameSeen && rebufferStart === undefined) {
       rebufferStart = { at: now(), position: s.currentTime };
       starvedSinceRequest = true;
     }

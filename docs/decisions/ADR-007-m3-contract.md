@@ -26,7 +26,7 @@ M3 是第一次做 L2 vendoring（REUSE §5），也是第一次用自研代码�
 - 本轮的 L2 来源：
   - hls.js（Apache-2.0，固定在 `e5ff358` = v1.7.3）：`src/demux/tsdemuxer.ts` 及其依赖的 audio / video 解析器、`exp-golomb`；`src/remux/mp4-remuxer.ts`、`mp4-generator.ts`、`aac-helper.ts`；
   - mpegts.js（Apache-2.0，固定版本对应 1.8.2）：`src/demux/flv-demuxer.js`、`amf-parser.js`、`sps-parser.js`、`exp-golomb.js`。这些是 JS 源码，拷贝时转成 strict TS，转换的每一处改动都写进 `localChanges`；
-  - xgplayer（MIT）`xgplayer-mp4` 的分段加载策略：只拿策略，box 解析交给 mp4box.js（L1，BSD-3）。
+  - xgplayer（MIT）`xgplayer-mp4` 的分段加载策略：只拿策略，box 解析交给 mp4box.js（L1，BSD-3）。实现时没有拷贝任何 xgplayer 代码，所以在 REUSE 里登记为 L3 参考，不建 `vendor/xgplayer`。
 - mpegts.js 的 `live-latency-chaser`、`live-latency-synchronizer`、`startup-stall-jumper` 按 L3 拷到 `packages/pipeline/src/vendor/mpegts.js/`（REUSE §3 已登记 LiveController 的来源）。
 
 ### 2. 自研管线（`pipeline`）
@@ -72,6 +72,11 @@ M3 是第一次做 L2 vendoring（REUSE §5），也是第一次用自研代码�
   - 不清空已缓冲的当前档位。
   
   这就是「无缝」的定义：播放不中断，`waiting` 不触发，画面在边界处切换。ABR 用 M2 的规则栈。
+- 实现细节（M3 落地时补充）：
+  - 切换点按轨道分别取：视频取视频 SourceBuffer 缓冲末尾处的关键帧，音频取音频缓冲末尾之后的第一帧。元素的 `buffered` 是音视频交集，按它切会落在 GOP 中间，或者留下音频空洞导致卡住；
+  - 每次 Range 请求读取约 4 s 的数据（64 KB–1 MB），缓冲目标默认 30 s（`maxBufferAheadS`）。切档只作用于还没缓冲的部分；
+  - 单个文件仍然走原生 `<video src>`（`mse: 'always'` 可以强制走 MSE），多档位才走 MSE，MSE 失败时回退到原生；
+  - 会话的卡顿统计不再把首帧之前的 `waiting` 记为卡顿：那是起播时间。
 - 验收：mp4-range 场景手动和自动切档时都不出现 `waiting`，切换后分辨率改变，e2e 断言。
 
 ### 5. presentation 全模式状态机（替换 M2 过渡插件）

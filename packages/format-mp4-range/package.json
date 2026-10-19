@@ -21,6 +21,9 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*",
-    "@otter-player/media": "workspace:*"
+    "@otter-player/media": "workspace:*",
+    "mp4box": "2.4.1",
+    "@otter-player/engine-pipeline": "workspace:*",
+    "@otter-player/pipeline": "workspace:*"
   }
 }

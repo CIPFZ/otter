@@ -143,4 +143,7 @@ printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:12\n#EXT-X-PLAYLIST-TYP
 # Seek-preview thumbnails (VTT sprite, I-frame playlist) next to hls-fmp4.
 ./generate-thumbnails.sh
 
+# MP4 renditions for Range loading with quality switching.
+./generate-mp4-range.sh
+
 du -sh . && find . -type f | sort | sed 's/^/  /' | head -80

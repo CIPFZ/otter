@@ -378,9 +378,18 @@ importers:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+      '@otter-player/engine-pipeline':
+        specifier: workspace:*
+        version: link:../engine-pipeline
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
+      '@otter-player/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
+      mp4box:
+        specifier: 2.4.1
+        version: 2.4.1
 
   packages/format-ts:
     dependencies:
@@ -1217,6 +1226,10 @@ packages:
     resolution: {integrity: sha512-cyDNmuZvvO4H27rcBq2Eudxo9IZRDCOX/I7VEyqbxsEiD2Ei7UYUhG/Sc5fvMZjmathgz3fEK7iAKqvpY+Ux1w==}
     engines: {node: '>=16'}
 
+  mp4box@2.4.1:
+    resolution: {integrity: sha512-0HGX7nXoDIX6FKLVl4a3wtYjBlwqsN3xuQC3GXzNtKp98FXUOhDSq623azsz8DG5ptd9ZXcXodDkgbdMZOjWvw==}
+    engines: {node: '>=20.8.1'}
+
   mpegts.js@1.8.2:
     resolution: {integrity: sha512-cZYMa5muASH55wrS6JK5IGkUqnCA96c0f+WdnW91jIK9s/N6NzjmTQDJNYg9A5u/G2Q5nj2b3w1Zwzze/9guxA==}
     engines: {node: '>=20.9.0'}
@@ -1804,6 +1817,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   media-captions@1.0.4: {}
+
+  mp4box@2.4.1: {}
 
   mpegts.js@1.8.2:
     dependencies:

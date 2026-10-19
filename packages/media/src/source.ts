@@ -31,6 +31,14 @@ export interface SidecarTextTrack {
   readonly default?: boolean;
 }
 
+export interface Mp4Rendition {
+  readonly src: string;
+  readonly width?: number;
+  readonly height?: number;
+  /** bits per second; measured from the file when absent. */
+  readonly bitrate?: number;
+}
+
 export interface Source {
   readonly src: string | Blob;
   /** MIME hint: `application/vnd.apple.mpegurl`, `application/dash+xml`, `video/x-flv`, `video/mp4`, ... */
@@ -46,6 +54,11 @@ export interface Source {
   readonly airplaySrc?: string;
   readonly headers?: Readonly<Record<string, string>>;
   readonly textTracks?: readonly SidecarTextTrack[];
+  /**
+   * Progressive files of one programme at several qualities (format-mp4-range, ADR-007 §4).
+   * Keyframes must sit on the same timestamps in every file; `src` is where playback starts.
+   */
+  readonly renditions?: readonly Mp4Rendition[];
   /** Seek-preview thumbnails: a WebVTT track of `image#xywh=x,y,w,h` cues (ADR-007 §7). */
   readonly thumbnails?: { readonly src: string };
 }

@@ -32,6 +32,8 @@ export interface MseSink {
   clear(): Promise<void>;
   endOfStream(): void;
   readonly types: readonly string[];
+  /** Buffered ranges of one SourceBuffer (the element's are the intersection of all). */
+  buffered(type: 'audio' | 'video'): [number, number][];
   destroy(): void;
 }
 
@@ -121,6 +123,10 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
     url,
     get types() {
       return [...queues.keys()];
+    },
+    buffered: (type) => {
+      const q = queues.get(type);
+      return q === undefined ? [] : ranges(q.sb);
     },
     async init(segments) {
       await ready;

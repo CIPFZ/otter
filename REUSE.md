@@ -18,8 +18,8 @@
 | 许可证 | 代表项目 | 允许等级 |
 |---|---|---|
 | Apache-2.0 | hls.js、Shaka、video.js、flv.js、mpegts.js、Vidstack、RxPlayer、imscJS、media-chrome、vtt.js、`@svta/common-media-library` | L1–L4，保留 NOTICE 与头部声明 |
-| MIT | xgplayer、ArtPlayer、DPlayer、Plyr、mp4box.js、mediabunny、CommentCoreLibrary、`danmaku`（weizhenye）、`media-captions`、yuv-canvas、webcodecsfundamentals 示例 | L1–L4 |
-| BSD-3 / BSD-2 | dash.js、imscJS | L1–L4，保留声明 |
+| MIT | xgplayer、ArtPlayer、DPlayer、Plyr、mediabunny、CommentCoreLibrary、`danmaku`（weizhenye）、`media-captions`、yuv-canvas、webcodecsfundamentals 示例 | L1–L4 |
+| BSD-3 / BSD-2 | dash.js、imscJS、mp4box.js | L1–L4，保留声明 |
 | ISC | Lucide（图标，含源自 Feather 的 MIT 部分）、sax | L1–L4，保留声明 |
 | LGPL | libmedia、FFmpeg 构建、libass、libde265 | 仅 L1，且以独立 WASM / 动态模块加载，源码不进核心 |
 | GPLv3 | Jessibuca 开源版、EasyPlayer 部分组件 | 仅 L4，禁止看完照抄，相似结构也不行 |
@@ -39,7 +39,7 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | DASH 引擎 + DRM + 离线 | Shaka Player | L1 适配器 | 同上；DRM 配置映射 Shaka `drm.servers`。M1 接入：`engine-adapter-shaka` 依赖 `shaka-player@5.2.13`（DASH，以及带 DRM 的 HLS） |
 | FLV / TS 直播引擎 | mpegts.js | L1 起步，后期 L2 `demux/flv-demuxer`、`demux/ts-demuxer`、`remux/mp4-remuxer` | 自研管线时拷 demuxer 改成 `Demuxer` 接口。M1 接入：`engine-adapter-mpegts` 依赖 `mpegts.js@1.8.2`。M3：FLV demuxer 以 L2 拷入 `vendor/mpegts.js/`（mpegts.js@791bac8，JS 移植为严格 TS；只保留 FLV 容器、AMF、H.264 / H.265、AAC；修正了上游 AAC config 比较的 bug，ADR-007 §1）。TS demux 与 remux 用 hls.js 的拷贝 |
 | TS → fMP4 转封装 | hls.js `src/demux/tsdemuxer.ts` + `src/remux/mp4-remuxer.ts` + `mp4-generator.ts` | L2 | 去掉事件总线耦合，改纯函数。M3 已复制到 `vendor/hls.js/`（私有 workspace 包 `@otter-vendor/hls.js`，hls.js@e5ff358，ADR-007 §1）；事件总线、config、logger 换成 `src/otter/shims.ts`；SAMPLE-AES 与 AC-3 未复制；严格 TS 由 `scripts/vendor-strictify.ts` 机械处理加人工收尾 |
-| MP4 分段加载（Range + moov） | xgplayer `xgplayer-mp4` + mp4box.js | L2 / L1 | 分段策略 + box 解析拼成 `format-mp4-range` |
+| MP4 分段加载（Range + moov） | xgplayer `xgplayer-mp4` + mp4box.js | L3 / L1 | M3：mp4box.js 2.4.1（BSD-3）解析 moov、切关键帧对齐的 fMP4；分段与 Range 读取策略参照 xgplayer-mp4 自写（只读不拷，因此是 L3 参考而非 L2）。mp4box 2.x 的坑：所有轨道必须用同一个 `nbSamples`，否则静默跳过该轨；`appendBuffer(…, last=true)` 会把剩余样本逐个切成单帧分段，文件末尾只用 `flush()` |
 | 通用 demux（MP4/WebM/MKV）给 WebCodecs | mediabunny（MIT，TS，无依赖） | L1 | 直接出 `EncodedVideoChunk` |
 | ABR 带宽估计 | hls.js `src/utils/ewma-bandwidth-estimator.ts` + `src/utils/ewma.ts` | L3 | 几十行直接拿。M2 复制到 `packages/pipeline/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3） |
 | ABR 规则 | dash.js `BolaRule`、`ThroughputRule`、`InsufficientBufferRule` | L3 | 改成规则叠加接口。M2 复制到 `packages/pipeline/src/vendor/dash.js/`（dash.js@a9a8542 = v5.2.1，BSD-3，保留许可证全文） |

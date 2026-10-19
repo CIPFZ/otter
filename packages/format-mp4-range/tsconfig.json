@@ -18,6 +18,12 @@
     },
     {
       "path": "../media"
+    },
+    {
+      "path": "../engine-pipeline"
+    },
+    {
+      "path": "../pipeline"
     }
   ]
 }
