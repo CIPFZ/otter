@@ -24,7 +24,9 @@ const CSS = `
   line-height: var(--otter-cue-line-height, 1.35);
   transition: height var(--otter-t-show, 150ms) var(--otter-ease-out, cubic-bezier(0.2, 0, 0, 1)); }
 .otter-cue { position: absolute; box-sizing: border-box; padding: 0 0.5em;
-  white-space: pre-line; overflow-wrap: break-word; }
+  white-space: pre-line; overflow-wrap: break-word;
+  /* CVAA caption window: behind all lines of the cue (the per-line background is on the text). */
+  background: var(--otter-cue-user-window, var(--otter-cue-window, transparent)); border-radius: 4px; }
 /* WebVTT region scroll-up animates; other cues ride on the layer's animated bottom edge. */
 .otter-cue[data-region] { transition: bottom 0.433s; }
 .otter-cue-text { color: var(--otter-cue-user-color, var(--otter-cue-color, #fff));
@@ -195,6 +197,7 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
         '--otter-cue-user-background',
         style.background === undefined && style.backgroundOpacity === undefined ? undefined : withAlpha(style.background ?? '#000000', style.backgroundOpacity ?? 0.8),
       );
+      set('--otter-cue-user-window', style.window === undefined && style.windowOpacity === undefined ? undefined : withAlpha(style.window ?? '#000000', style.windowOpacity ?? 1));
       set('--otter-cue-user-shadow', style.edge === undefined ? undefined : EDGES[style.edge]);
       set('--otter-cue-user-font', style.font === undefined || style.font === 'default' ? undefined : FONTS[style.font]);
     },

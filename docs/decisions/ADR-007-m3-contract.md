@@ -123,6 +123,7 @@ M3 是第一次做 L2 vendoring（REUSE §5），也是第一次用自研代码�
   
   回到其他模式时，原生轨道置为 `hidden`，恢复自定义渲染。
 - 原生路径不带 CVAA 样式，交给系统字幕偏好；这一点会写进报告。
+- 字幕窗口（M2 遗留的评估项）：加上。47 CFR §79.103(c) 把「字幕窗口颜色与不透明度」单列为一项设置，所以 CVAA 合规需要它。实现上，窗口是一条 cue 所有行外面的那个框（`.otter-cue`），逐行背景仍然在文字上：`CaptionStyle.window` / `windowOpacity` 映射到 `--otter-cue-user-window`，默认透明。设置菜单和「字幕背景」一样只提供不透明度档位（半透明 / 不透明，颜色默认黑色），颜色可以通过 `set-caption-style` 设置。
 - CEA-608（M3 落地时补充）：解码移到引擎侧。hls.js 的 608 解析器（L3）从 `text` 移到 `pipeline`；自研管线从 H.264 / HEVC SEI 中取出 A/53 cc_data（TS 走 hls.js demuxer 的 userdata 轨道，FLV 在映射样本时解析 SEI NAL），解出的 cue 以 in-band `text-cues` 交付。每个有内容的字幕通道对应一条 `captions` 轨（`cc1` …），和 hls.js / Shaka 路径一致，渲染层不再带 608 代码。
 
 ### 7. 缩略图（`overlay-thumbnails`）

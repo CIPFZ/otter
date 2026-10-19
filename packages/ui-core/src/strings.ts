@@ -35,6 +35,7 @@ export interface UiStrings {
   readonly captionSize: string;
   readonly captionColor: string;
   readonly captionBackground: string;
+  readonly captionWindow: string;
   readonly captionEdge: string;
   readonly captionFont: string;
   readonly styleDefault: string;
@@ -123,6 +124,7 @@ export const STRINGS_EN: UiStrings = {
   captionSize: 'Caption size',
   captionColor: 'Caption color',
   captionBackground: 'Caption background',
+  captionWindow: 'Caption window',
   captionEdge: 'Caption edge',
   captionFont: 'Caption font',
   styleDefault: 'Default',
@@ -203,6 +205,7 @@ export const STRINGS_ZH: UiStrings = {
   captionSize: '字幕大小',
   captionColor: '字幕颜色',
   captionBackground: '字幕背景',
+  captionWindow: '字幕窗口',
   captionEdge: '字幕描边',
   captionFont: '字幕字体',
   styleDefault: '默认',

@@ -268,7 +268,7 @@ describe('announcer', () => {
 describe('settings menu (APG menu button, two levels)', () => {
   it('groups quality (Auto shows the playing rendition), speed, captions and caption style', () => {
     const groups = settingsGroups({ ...(MEDIA_SLICE.initialState as UiState), ...READY } as UiState, STRINGS_EN);
-    expect(groups.map((g) => g.id)).toEqual(['quality', 'speed', 'captions', 'caption-size', 'caption-color', 'caption-background', 'caption-edge', 'caption-font']);
+    expect(groups.map((g) => g.id)).toEqual(['quality', 'speed', 'captions', 'caption-size', 'caption-color', 'caption-background', 'caption-window', 'caption-edge', 'caption-font']);
     expect(groups[0]?.options.map((o) => `${o.label}${o.checked ? '*' : ''}`)).toEqual(['Auto (720P)*', '720P', '360P']);
     expect(groups[0]?.options[1]?.detail).toBe('2.5 Mbps');
     expect(groups[1]?.options.find((o) => o.checked)?.label).toBe('Normal');

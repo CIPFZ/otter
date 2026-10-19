@@ -205,7 +205,9 @@ describe('text plugin', () => {
     first.core.store.dispatch('select-text-track', { id: 'sidecar:1' });
     first.core.store.dispatch('set-caption-style', { scale: 2, color: '#ffff00', edge: 'outline' });
     first.core.store.dispatch('set-caption-style', { color: null });
-    expect(first.core.store.getState().captionStyle).toEqual({ scale: 2, edge: 'outline' });
+    // Caption window (CVAA): behind all lines of the cue, default colour black.
+    first.core.store.dispatch('set-caption-style', { windowOpacity: 0.5 });
+    expect(first.core.store.getState().captionStyle).toEqual({ scale: 2, edge: 'outline', windowOpacity: 0.5 });
 
     const root = document.createElement('div');
     document.body.appendChild(root);
@@ -214,10 +216,11 @@ describe('text plugin', () => {
     expect(layer?.style.getPropertyValue('--otter-cue-user-scale')).toBe('2');
     expect(layer?.style.getPropertyValue('--otter-cue-user-shadow')).toContain('#000');
     expect(layer?.style.getPropertyValue('--otter-cue-user-color')).toBe('');
+    expect(layer?.style.getPropertyValue('--otter-cue-user-window')).toMatch(/^rgb\(0 0 0 \/ 0\.5\)$|^#00000080$|^rgba\(0, 0, 0, 0\.5\)$/);
 
     // Next visit: same style, and French chosen again although the host marks English default.
     const second = await make();
-    expect(second.core.store.getState().captionStyle).toEqual({ scale: 2, edge: 'outline' });
+    expect(second.core.store.getState().captionStyle).toEqual({ scale: 2, edge: 'outline', windowOpacity: 0.5 });
     second.core.store.setState({ source: { src: '/b.mp4', textTracks: [{ src: '/en.vtt', language: 'en', default: true }, { src: '/fr.vtt', language: 'fr' }] } });
     expect(second.core.store.getState().textTrack).toBe('sidecar:1');
     // Turning captions off is remembered too.

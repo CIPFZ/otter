@@ -33,6 +33,9 @@ export interface CaptionStyle {
   readonly background?: string;
   /** Background opacity, 0..1. */
   readonly backgroundOpacity?: number;
+  /** Caption window (the box around all lines of a cue): colour and opacity, 0..1. */
+  readonly window?: string;
+  readonly windowOpacity?: number;
   readonly edge?: 'none' | 'shadow' | 'outline' | 'raised' | 'depressed';
   readonly font?: 'default' | 'serif' | 'monospace' | 'casual';
 }
