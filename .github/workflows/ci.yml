@@ -63,6 +63,23 @@ jobs:
           pnpm exec size-limit --json > size-report.json || status=$?
           node scripts/size-report.ts size-report.json >> "$GITHUB_STEP_SUMMARY"
           exit $status
+      # Size sentinel (ADR-004): report-only entries (Hero until M6) warn when they grow > 0.5 KB
+      # since the previous main run. The baseline travels through the Actions cache.
+      - name: Restore size baseline
+        uses: actions/cache/restore@v6
+        with:
+          path: .size-baseline.json
+          key: size-baseline-${{ github.sha }}
+          restore-keys: size-baseline-
+      - name: Size sentinel
+        if: always()
+        run: node scripts/size-sentinel.ts size-report.json .size-baseline.json
+      - name: Save size baseline
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: .size-baseline.json
+          key: size-baseline-${{ github.sha }}
 
       - uses: actions/upload-artifact@v7
         if: always()
