@@ -36,7 +36,8 @@ input:focus-visible { outline: 3px solid var(--otter-accent, #1ee9e6); outline-o
 input:disabled { cursor: default; }
 `;
 
-export const svg = (path: string): string => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${path}</svg>`;
+// evenodd: icons with holes (captions bars, PiP frame) are drawn as one path.
+export const svg = (path: string): string => `<svg viewBox="0 0 24 24" fill-rule="evenodd" aria-hidden="true" focusable="false">${path}</svg>`;
 
 export const ICON = {
   play: '<path d="M8 5v14l11-7z"/>',
@@ -48,7 +49,7 @@ export const ICON = {
   settings: '<path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9.4 5.4-1.7-.3a7.6 7.6 0 0 0-.8-2l1-1.4-2.6-2.6-1.4 1a7.6 7.6 0 0 0-2-.8L13.6 5h-3.2l-.3 1.9a7.6 7.6 0 0 0-2 .8L6.7 6.7 4.1 9.3l1 1.4a7.6 7.6 0 0 0-.8 2l-1.9.3v3.2l1.9.3a7.6 7.6 0 0 0 .8 2l-1 1.4 2.6 2.6 1.4-1a7.6 7.6 0 0 0 2 .8l.3 1.9h3.2l.3-1.9a7.6 7.6 0 0 0 2-.8l1.4 1 2.6-2.6-1-1.4a7.6 7.6 0 0 0 .8-2l1.9-.3z"/>',
   fullscreen: '<path d="M5 5h5V3H3v7h2zm9-2v2h5v5h2V3zM5 14H3v7h7v-2H5zm14 5h-5v2h7v-7h-2z"/>',
   exitFullscreen: '<path d="M8 3v5H3v2h7V3zM16 3v7h5V8h-5V3zM3 14v2h5v5h2v-7zm16 0h-5v7h2v-5h3z"/>',
-  pip: '<path d="M3 5h18v14H3zm13 7h4v5h-4z"/>',
+  pip: '<path d="M3 5h18v14H3zM5 7v10h14V7z"/><path d="M12 11h6v5h-6z"/>',
   live: '<path d="M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0-4a6 6 0 0 1 6 6 6 6 0 0 1-6 6 6 6 0 0 1-6-6 6 6 0 0 1 6-6z"/>',
 } as const;
 
