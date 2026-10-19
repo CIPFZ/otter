@@ -97,6 +97,17 @@ SOFTWARE.
     (CEA-608 closed captions). The parser is hls.js' port of dash.js' cea608-parser and keeps the
     DASH Industry Forum BSD-3-Clause notice (see dash.js below).
 
+### mpegts.js (Apache-2.0)
+
+- Repository: https://github.com/xqq/mpegts.js
+- Commit: 791bac89e2ea8cbebe7f7ba247c3b342c09418cc (v1.8.2)
+- Copyright (C) 2016 Bilibili. All Rights Reserved.
+- Copies (L2):
+  - `vendor/mpegts.js` (ADR-007): `src/demux/flv-demuxer.js`, `amf-parser.js`, `sps-parser.js`,
+    `h265-parser.js`, `exp-golomb.js`, `demux-errors.js`, `src/core/media-info.js`,
+    `src/utils/utf8-conv.js`, `src/utils/typedarray-equality.ts`, ported to TypeScript (list and
+    local changes in `vendor/mpegts.js/UPSTREAM.json`). Pre-bundled into `@otter-player/pipeline`.
+
 ### shaka-player (Apache-2.0)
 
 - Repository: https://github.com/shaka-project/shaka-player
