@@ -55,10 +55,16 @@ test.describe('mp4-range', () => {
   test('manual switch down and up: resolution changes at a keyframe, no waiting, playhead keeps moving', async ({ page }) => {
     await open(page, '/mp4-range/360.mp4');
     expect(await width(page)).toBe(640);
+    const quality = async () => (await state(page)).activeQuality;
+    // Each switch applies to what is not buffered yet, so ask for the next one as soon as the
+    // previous one is applied (the 12 s clip must still have unbuffered media left).
     await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('select-quality', { id: 'rendition-1' }));
+    await expect.poll(quality, { timeout: 10_000 }).toBe('rendition-1');
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('select-quality', { id: 'rendition-0' }));
+    await expect.poll(quality, { timeout: 10_000 }).toBe('rendition-0');
+    // The picture follows at the keyframe boundaries: 180p first, then 360p again.
     await expect.poll(() => width(page), { timeout: 15_000 }).toBe(320);
     const mid = (await state(page)).currentTime;
-    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('select-quality', { id: 'rendition-0' }));
     await expect.poll(() => width(page), { timeout: 15_000 }).toBe(640);
     const s = await state(page);
     expect(s.currentTime).toBeGreaterThan(mid);
