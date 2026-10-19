@@ -2,10 +2,12 @@
 // fMP4) -> MSE sink, with the LiveController keeping live streams near the edge. Implements the
 // same Engine contract as the hls.js / Shaka / mpegts.js adapters (ADR-003), so the session,
 // backend-mse and QoE need no changes. The transmuxer and the LiveController load on demand.
+// CEA-608 in the video's SEI is decoded here and delivered as in-band `text-cues` (one text
+// track per caption channel that carries text), like hls.js and Shaka do for HLS / DASH.
 
 import { createError, createEventBus, type OtterError, type Unsubscribe } from '@otter-player/core';
-import { EMPTY_TRACKS, type AudioTrack, type Engine, type EngineContext, type EngineEvents, type TrackList, type VideoTrack } from '@otter-player/media';
-import type { LiveController, LiveSample } from '@otter-player/pipeline';
+import { EMPTY_TRACKS, type AudioTrack, type Engine, type EngineContext, type EngineEvents, type InbandCue, type TextTrackInfo, type TrackList, type VideoTrack } from '@otter-player/media';
+import type { Cea608Decoder, LiveController, LiveSample } from '@otter-player/pipeline';
 import type { TransmuxResult, Transmuxer } from '@otter-player/pipeline/transmux';
 import { createMseSink, type MseSink } from './mse-sink.js';
 
@@ -47,6 +49,14 @@ export function createPipelineEngine(ctx: EngineContext, options: PipelineEngine
   let controller: LiveController | undefined;
   let managed = false;
   let destroyed = false;
+  let cea608: Cea608Decoder | undefined;
+  /** Caption data that arrived while the decoder chunk loads. */
+  let pendingCaptions: TransmuxResult['captions'][number][] | undefined;
+  /** Decoded cues per caption channel track (`cc1` ...), kept for a later selection. */
+  const captionCues = new Map<string, Map<string, InbandCue>>();
+  let selectedText: string | null = null;
+  let videoTracks: VideoTrack[] = [];
+  let audioTracks: AudioTrack[] = [];
 
   const sample = (): LiveSample => ({
     currentTime: media.currentTime,
@@ -82,9 +92,57 @@ export function createPipelineEngine(ctx: EngineContext, options: PipelineEngine
         ]
       : [];
     const audio: AudioTrack[] = info.hasAudio ? [{ kind: 'audio', id: 'audio-0', selected: true, ...(info.audioCodec === undefined ? {} : { codec: info.audioCodec }) }] : [];
-    tracks = { video, audio, text: [], quality: 'opaque', requestedQuality: 'auto' };
+    videoTracks = video;
+    audioTracks = audio;
+    publish();
+  };
+
+  const publish = (): void => {
+    const text: TextTrackInfo[] = [...captionCues.keys()].sort().map((id) => ({
+      kind: 'text',
+      id,
+      role: 'captions',
+      format: 'cea-608',
+      label: id.toUpperCase(),
+      selected: id === selectedText,
+    }));
+    tracks = { video: videoTracks, audio: audioTracks, text, quality: 'opaque', requestedQuality: 'auto' };
     bus.emit('tracks-change', tracks);
   };
+
+  /** cc_data blocks -> cues; a channel becomes a text track with its first caption. */
+  const onCaptions = (captions: TransmuxResult['captions']): void => {
+    if (captions.length === 0 || destroyed) return;
+    if (cea608 === undefined) {
+      // The 608 decoder is its own chunk, loaded with the first caption data.
+      if (pendingCaptions === undefined) {
+        pendingCaptions = [];
+        void import('@otter-player/pipeline/captions').then(({ createCea608Decoder }) => {
+          if (destroyed) return;
+          cea608 = createDecoder(createCea608Decoder);
+          const queued = pendingCaptions ?? [];
+          pendingCaptions = undefined;
+          for (const c of queued) cea608.push(c.time, c.data);
+        });
+      }
+      pendingCaptions.push(...captions);
+      return;
+    }
+    for (const c of captions) cea608.push(c.time, c.data);
+  };
+
+  const createDecoder = (create: typeof import('@otter-player/pipeline/captions').createCea608Decoder): Cea608Decoder =>
+    create((channel, cues) => {
+      const id = `cc${channel}`;
+      let store = captionCues.get(id);
+      const isNew = store === undefined;
+      if (store === undefined) captionCues.set(id, (store = new Map()));
+      for (const c of cues) store.set(c.id, c);
+      // Live captions never end: keep the most recent ones.
+      if (store.size > 2000) for (const k of [...store.keys()].slice(0, store.size - 2000)) store.delete(k);
+      if (isNew) publish();
+      if (id === selectedText) bus.emit('text-cues', { trackId: id, cues });
+    });
 
   return {
     formatId: options.type,
@@ -173,6 +231,7 @@ export function createPipelineEngine(ctx: EngineContext, options: PipelineEngine
         }
         if (r.init.length > 0) await s.init(r.init);
         if (r.init.length > 0) describe(t);
+        onCaptions(r.captions);
         for (const f of r.fragments) {
           await s.append(f.type, f.data);
           if (!firstSegment) {
@@ -229,6 +288,12 @@ export function createPipelineEngine(ctx: EngineContext, options: PipelineEngine
     },
     selectQuality() {
       // One rendition per FLV / TS stream.
+    },
+    selectTextTrack(id) {
+      selectedText = id;
+      publish();
+      const known = id === null ? undefined : captionCues.get(id);
+      if (id !== null && known !== undefined && known.size > 0) bus.emit('text-cues', { trackId: id, cues: [...known.values()] });
     },
     seekToLive() {
       if (controller !== undefined) apply(controller.seekToLive(sample()));

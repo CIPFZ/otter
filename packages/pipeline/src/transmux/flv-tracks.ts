@@ -2,7 +2,7 @@
 // TS. FLV NAL units are length-prefixed and come with an avcC / hvcC record; hls.js wants bare NAL
 // units plus raw parameter sets, which its own SPS / VPS / PPS readers turn into the track fields.
 
-import { AvcVideoParser, HevcVideoParser, type DemuxedAudioTrack, type DemuxedVideoTrack } from '@otter-vendor/hls.js';
+import { AvcVideoParser, HevcVideoParser, parseSEIMessageFromNALu, type DemuxedAudioTrack, type DemuxedUserdataTrack, type DemuxedVideoTrack } from '@otter-vendor/hls.js';
 import type { FlvAudioSample, FlvTrackMeta, FlvVideoSample } from '@otter-vendor/mpegts.js';
 import { parseAvcC, parseHvcC } from './param-sets.js';
 
@@ -94,12 +94,15 @@ function audioTrack(meta: FlvTrackMeta | undefined, samples: readonly FlvAudioSa
 export interface HlsTrackPair {
   readonly audio: DemuxedAudioTrack;
   readonly video: DemuxedVideoTrack;
+  /** SEI user data (CEA-608 cc_data), as hls.js' TS demuxer fills it. */
+  readonly text: DemuxedUserdataTrack;
 }
 
 export function createTrackPair(): HlsTrackPair {
   return {
     audio: { type: 'audio', id: 2, pid: -1, inputTimeScale: FLV_TIMESCALE, sequenceNumber: 0, samples: [], dropped: 0, segmentCodec: 'aac' } as unknown as DemuxedAudioTrack,
     video: { type: 'video', id: 1, pid: -1, inputTimeScale: FLV_TIMESCALE, sequenceNumber: 0, samples: [], dropped: 0, width: 0, height: 0, pixelRatio: [1, 1], segmentCodec: 'avc' } as unknown as DemuxedVideoTrack,
+    text: { type: 'text', id: 4, pid: -1, inputTimeScale: FLV_TIMESCALE, sequenceNumber: 0, samples: [], dropped: 0 } as unknown as DemuxedUserdataTrack,
   };
 }
 
@@ -119,7 +122,13 @@ export function appendFlvSamples(pair: HlsTrackPair, state: FlvTrackState, audio
   const { lengthSize, track } = base;
   const { samples: _unused, ...fields } = track;
   Object.assign(pair.video, fields);
+  const hevc = state.video.hvcc !== undefined;
   for (const s of video) {
+    // SEI (AVC 6, HEVC prefix / suffix 39 / 40) carries CEA-608 cc_data: parsed like hls.js' TS
+    // demuxer does, so both pipelines hand the remuxer the same user-data samples.
+    for (const u of s.units) {
+      if (hevc ? u.type === 39 || u.type === 40 : u.type === 6) parseSEIMessageFromNALu(u.data.subarray(lengthSize), hevc ? 2 : 1, s.pts, pair.text.samples);
+    }
     pair.video.samples.push({
       dts: s.dts,
       pts: s.pts,

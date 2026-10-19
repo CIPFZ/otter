@@ -9,6 +9,7 @@ import {
   TSDemuxer,
   type ChunkMetadata,
   type DemuxedAudioTrack,
+  type DemuxedUserdataTrack,
   type DemuxedVideoTrack,
   type HlsEventEmitter,
 } from '@otter-vendor/hls.js';
@@ -37,10 +38,19 @@ export interface MediaFragment {
   readonly independent?: boolean;
 }
 
+/** One A/53 cc_data() block from SEI (CEA-608 inside CEA-708 packets). */
+export interface CaptionData {
+  /** Seconds on the media timeline (the fragments' clock). */
+  readonly time: number;
+  readonly data: Uint8Array;
+}
+
 export interface TransmuxResult {
   /** New init segments (first output, or after a codec / resolution change). */
   readonly init: readonly InitSegment[];
   readonly fragments: readonly MediaFragment[];
+  /** Closed-caption data found in the video, in presentation order. */
+  readonly captions: readonly CaptionData[];
 }
 
 export interface TransmuxError {
@@ -80,8 +90,8 @@ function createRemuxStep(errors: TransmuxError[]) {
   let remuxer = new MP4Remuxer(observer, DEFAULT_DEMUX_CONFIG, TYPE_SUPPORTED, logger);
   const empty = <T>(type: string, id: number): T => ({ type, id, pid: -1, inputTimeScale: 90000, sequenceNumber: 0, samples: [], dropped: 0 }) as unknown as T;
   return {
-    run(audio: DemuxedAudioTrack, video: DemuxedVideoTrack, flush: boolean): TransmuxResult {
-      const r = remuxer.remux(audio, video, empty('id3', 3), empty('text', 4), 0, true, flush, 'main', META);
+    run(audio: DemuxedAudioTrack, video: DemuxedVideoTrack, flush: boolean, text?: DemuxedUserdataTrack): TransmuxResult {
+      const r = remuxer.remux(audio, video, empty('id3', 3), text ?? empty('text', 4), 0, true, flush, 'main', META);
       const init: InitSegment[] = [];
       const tracks = r.initSegment?.tracks;
       for (const type of ['video', 'audio'] as const) {
@@ -104,7 +114,10 @@ function createRemuxStep(errors: TransmuxError[]) {
           ...(type === 'video' && r.independent !== undefined ? { independent: r.independent } : {}),
         });
       }
-      return { init, fragments };
+      // hls.js tags A/53 cc_data samples with type 3; pts is seconds after the remux.
+      const captions: CaptionData[] = [];
+      for (const s of r.text?.samples ?? []) if (s.type === 3 && s.bytes !== undefined) captions.push({ time: s.pts, data: s.bytes });
+      return { init, fragments, captions };
     },
     reset(): void {
       remuxer.destroy();
@@ -123,7 +136,10 @@ function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
 const merge = (results: readonly TransmuxResult[]): TransmuxResult => ({
   init: results.flatMap((r) => r.init),
   fragments: results.flatMap((r) => r.fragments),
+  captions: results.flatMap((r) => r.captions),
 });
+
+const NOTHING: TransmuxResult = { init: [], fragments: [], captions: [] };
 
 /** HTTP-FLV / WS-FLV (mpegts.js demuxer, L2) -> fMP4 (hls.js remuxer, L2). */
 export function createFlvTransmuxer(): Transmuxer {
@@ -164,7 +180,7 @@ export function createFlvTransmuxer(): Transmuxer {
       audio.length = 0;
       video.samples = [];
       video.length = 0;
-      if (ready) out.push(remux.run(tracks.audio, tracks.video, false));
+      if (ready) out.push(remux.run(tracks.audio, tracks.video, false, tracks.text));
     };
     return d;
   };
@@ -178,12 +194,12 @@ export function createFlvTransmuxer(): Transmuxer {
       if (demuxer === undefined) {
         if (merged.byteLength < 13) {
           pending = merged;
-          return { init: [], fragments: [] };
+          return NOTHING;
         }
         demuxer = create(buffer);
         if (demuxer === undefined) {
           errors.push({ fatal: true, details: 'flvBadHeader', message: 'not an FLV stream' });
-          return { init: [], fragments: [] };
+          return NOTHING;
         }
       }
       const consumed = demuxer.parseChunks(buffer, byteStart);
@@ -194,7 +210,7 @@ export function createFlvTransmuxer(): Transmuxer {
       return result;
     },
     flush() {
-      return remux.run(tracks.audio, tracks.video, true);
+      return remux.run(tracks.audio, tracks.video, true, tracks.text);
     },
     reset() {
       remux.reset();
@@ -239,13 +255,13 @@ export function createTsTransmuxer(): Transmuxer {
       // TS demuxing always yields a sample-array video track (hls.js' transmuxer casts the same way).
       const video = r.videoTrack as DemuxedVideoTrack;
       describe(r.audioTrack, video);
-      return remux.run(r.audioTrack, video, false);
+      return remux.run(r.audioTrack, video, false, r.textTrack);
     },
     flush() {
       const r = demuxer.flush(0, META) as ReturnType<TSDemuxer['demux']>;
       const video = r.videoTrack as DemuxedVideoTrack;
       describe(r.audioTrack, video);
-      return remux.run(r.audioTrack, video, true);
+      return remux.run(r.audioTrack, video, true, r.textTrack);
     },
     reset() {
       remux.reset();

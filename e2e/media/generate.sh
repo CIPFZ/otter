@@ -146,4 +146,7 @@ printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:12\n#EXT-X-PLAYLIST-TYP
 # MP4 renditions for Range loading with quality switching.
 ./generate-mp4-range.sh
 
+# CEA-608 captions in H.264 SEI (own TS / FLV pipeline).
+./generate-cc.sh
+
 du -sh . && find . -type f | sort | sed 's/^/  /' | head -80

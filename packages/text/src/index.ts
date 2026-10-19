@@ -438,10 +438,3 @@ export {
 export { createCueRenderer, type CueRenderer } from './renderer.js';
 export type { NativeTextSink } from './native.js';
 export type { ParsedCaptions, SidecarFormat } from './vtt.js';
-export type { Cea608Channel, Cea608Decoder } from './cea608.js';
-
-/**
- * CEA-608 decoder for pipelines that extract cc_data themselves (M3 own pipeline). Loaded on
- * demand: the parser's tables are module-level and only needed once captions show up.
- */
-export const loadCea608 = (): Promise<typeof import('./cea608.js')> => import('./cea608.js');

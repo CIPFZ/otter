@@ -123,7 +123,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     parsers, `src/remux/mp4-remuxer.ts`, `mp4-generator.ts`, `aac-helper.ts` and the type / utility
     modules they need (full list and local changes in `vendor/hls.js/UPSTREAM.json`). Pre-bundled
     into `@otter-player/pipeline`.
-  - `packages/text/src/vendor/hls.js`: `src/utils/cea-608-parser.ts` and `src/utils/output-filter.ts`
+  - `packages/pipeline/src/vendor/hls.js`: `src/utils/cea-608-parser.ts` and `src/utils/output-filter.ts` (moved from `packages/text` in M3)
     (CEA-608 closed captions). The parser is hls.js' port of dash.js' cea608-parser and keeps the
     DASH Industry Forum BSD-3-Clause notice (see dash.js below).
 

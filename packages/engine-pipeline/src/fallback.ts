@@ -64,6 +64,11 @@ export function withAdapterFallback(primary: Engine & SeekToLive, createFallback
       }
     },
     selectQuality: (id) => current.selectQuality(id),
+    // Every optional Engine method goes to whichever engine is active (608 caption selection on
+    // the pipeline, audio tracks on the adapter, ...).
+    selectTextTrack: (id) => current.selectTextTrack?.(id),
+    selectAudioTrack: (id) => current.selectAudioTrack?.(id),
+    thumbnails: () => current.thumbnails?.() ?? null,
     seekToLive: () => current.seekToLive?.(),
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {

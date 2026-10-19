@@ -67,3 +67,26 @@ test('back to live: pause until behind, the capsule appears, one click returns t
   await expect(back).toBeHidden();
 });
 
+for (const [id, src] of [
+  ['MPEG-TS', '/cc/clip.ts'],
+  ['FLV', '/cc/clip.flv'],
+] as const) {
+  test(`CEA-608 in the ${id} video's SEI becomes a CC1 caption track (ADR-007 §6)`, async ({ page }) => {
+    await page.goto('/player.html?idle=0&pipeline=otter');
+    await page.evaluate(async (url) => {
+      const o = (await window.otter) as OtterFixture;
+      o.dispatch('set-muted', { muted: true });
+      o.load({ src: url }, { autoplay: true });
+    }, src);
+    // The channel appears once it carries a caption (End Of Caption at 1 s).
+    await expect.poll(async () => (await state(page)).textTracks.map((t) => [t.id, t.format, t.role]), { timeout: 15_000 }).toEqual([['inband:cc1', 'cea-608', 'captions']]);
+    expect((await state(page)).route?.format).toBe(id === 'FLV' ? 'flv' : 'ts');
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('select-text-track', { id: 'inband:cc1' }));
+    if ((await state(page)).currentTime > 5.5) await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('seek', { time: 1.5 }));
+    await expect.poll(() => page.evaluate(() => [...document.querySelectorAll('[data-cue-id]')].map((e) => e.textContent).join('|')), { timeout: 10_000 }).toBe('OTTER 608');
+    // Erase Displayed Memory at 6 s ends it.
+    await expect.poll(async () => (await state(page)).currentTime, { timeout: 10_000 }).toBeGreaterThan(6.3);
+    expect(await page.evaluate(() => document.querySelectorAll('[data-cue-id]').length)).toBe(0);
+  });
+}
+

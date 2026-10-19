@@ -47,6 +47,12 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - Playwright 的 Firefox 构建提供 `documentPictureInPicture` 和 `requestPictureInPicture`，无头模式下两者都能真正进入；能力只能靠特性探测，不能按浏览器写死。
 - Document PiP 把整个播放器根节点（含已升级的自定义元素、shadow DOM、`<video>`）移进 PiP 窗口：Chrome 和 Firefox 实测播放不中断，`paused` 保持 false，播放头没有超过 0.5 s 的跳变；保险起见，移动前仍记录 `currentTime`、是否暂停和倍速，移动后按需恢复。
 - Safari 16.4 起有无前缀的元素全屏，13.1 / iOS 14 起有标准 `requestPictureInPicture`；Otter 只用无前缀 API，更旧的引擎走伪全屏、不提供 PiP。iPhone 的 `webkitEnterFullscreen`（系统播放器）是唯一保留的前缀 API。
+- 无头 WebKit（macOS CI）有 `requestPictureInPicture`，但即使在真实点击里也会拒绝打开画中画窗口。能力仍然如实报告为 `native`，拒绝时回滚并发出带原因的 `denied`；e2e 把它记为 CI notice。
+- 在 WebKit 下 MSE 暂停时不发 `progress` 事件：靠 `progress` 刷新直播延迟，「回到直播」就永远不出现。backend-mse 改为暂停期间每秒采样一次。
+- hls.js 1.7 的 I-frame 播放器（`createIFramePlayer`）有两个首次加载的竞态：I-frame 清单比 MediaSource 先就绪时，一个分片都不会请求，所以要等 `MEDIA_ATTACHED` 之后再 `loadMediaAt`；分片缓冲进来之后，挂起的 seek 也可能被丢掉，所以要盯住 `buffered`，必要时自己 seek。
+- hls.js 1.7 的 TS demuxer 用 `new Uint8Array(data.buffer, len, data.buffer.byteLength - len)` 保存剩余字节，没有考虑传入视图的 `byteOffset`。如果输入是大缓冲区上的一个视图，剩余部分就成了整个底层缓冲区，导致分片和字幕重复。vendored 副本改成了 `data.subarray(len)`，可以考虑提交到上游。
+- mp4box.js 2.4：所有轨道的 `setSegmentOptions` 必须用同一个 `nbSamples`，否则该轨道会被静默跳过（音频不出 SourceBuffer）；`appendBuffer(…, true)` 会把剩余样本全部切成单帧分段；`rapAlignement` 判断的是分段最后一个样本，所以视频分段以下一个关键帧结尾。
+- ffmpeg 7：HLS fMP4 muxer 在帧间隔很大时（每 2 s 一个 I 帧）第二个分片的 `tfdt` 写错；原始 H.264 用 `-c copy` 封装时 `-framerate` 不起作用，要用输入侧的 `-r`，否则时间戳会在第 50 帧附近挤在一起。
 
 ## 2. 格式 / 协议 / 编码全景
 

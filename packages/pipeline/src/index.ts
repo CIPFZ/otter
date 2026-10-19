@@ -33,3 +33,4 @@ export {
   type AbrSnapshot,
 } from './abr/driver.js';
 export { createLiveController, type LiveAction, type LiveController, type LiveControllerOptions, type LiveSample } from './live/controller.js';
+export type { Cea608Channel, Cea608Cue, Cea608Decoder } from './captions/cea608.js';

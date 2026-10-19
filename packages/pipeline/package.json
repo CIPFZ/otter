@@ -15,6 +15,11 @@
       "@otter-player/source": "./src/transmux/index.ts",
       "types": "./dist/transmux/index.d.ts",
       "default": "./dist/transmux.js"
+    },
+    "./captions": {
+      "@otter-player/source": "./src/captions/cea608.ts",
+      "types": "./dist/captions/cea608.d.ts",
+      "default": "./dist/captions.js"
     }
   },
   "files": [
@@ -35,7 +40,8 @@
       "@otter-vendor/mpegts.js"
     ],
     "entries": {
-      "transmux": "src/transmux/index.ts"
+      "transmux": "src/transmux/index.ts",
+      "captions": "src/captions/cea608.ts"
     }
   }
 }

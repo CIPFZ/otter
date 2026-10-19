@@ -279,11 +279,9 @@ class TSDemuxer implements Demuxer {
     const syncOffset = Math.max(0, TSDemuxer.syncOffset(data));
     len -= (len - syncOffset) % PACKET_LENGTH;
     if (len < data.byteLength && !flush) {
-      this.remainderData = new Uint8Array(
-        data.buffer,
-        len,
-        data.buffer.byteLength - len,
-      );
+      // Otter: upstream builds this from data.buffer, ignoring data.byteOffset / byteLength, so a
+      // view into a larger buffer left the rest of that whole buffer as the remainder.
+      this.remainderData = data.subarray(len);
     }
 
     // loop through TS packets
