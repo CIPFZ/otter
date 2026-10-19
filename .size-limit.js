@@ -46,13 +46,31 @@ const SCENARIOS = [
   ['tv', '电视遥控器', '90 KB', ['hls.js']],
 ];
 
+/**
+ * First screen = everything except import() targets. Engines, the CMCD encoder and later text
+ * parsers load on demand (ADR-004 §2, ADR-005); esbuild would otherwise inline them, since
+ * size-limit bundles without code splitting.
+ */
+const firstScreenOnly = (config) => ({
+  ...config,
+  plugins: [
+    ...(config.plugins ?? []),
+    {
+      name: 'otter-first-screen',
+      setup(build) {
+        build.onResolve({ filter: /.*/ }, (args) => (args.kind === 'dynamic-import' ? { path: args.path, external: true } : undefined));
+      },
+    },
+  ],
+});
+
 const scenarios = SCENARIOS.flatMap(([id, row, limit, engines, gatedFrom]) => {
   const own = {
     name: gatedFrom === undefined ? `§19 own code: ${row} (≤ ${limit})` : `§19 own code (report, ≤ ${limit} gated from ${gatedFrom}): ${row}`,
     path: `tooling/size/scenario-${id}.js`,
     import: '*',
     gzip: true,
-    ignore: ENGINES,
+    modifyEsbuildConfig: firstScreenOnly,
     ...(gatedFrom === undefined ? { limit } : {}),
   };
   if (engines.length === 0) return [own];
@@ -61,9 +79,21 @@ const scenarios = SCENARIOS.flatMap(([id, row, limit, engines, gatedFrom]) => {
 
 const engineChunks = Object.entries(ENGINE_FILES).map(([e, path]) => ({ name: `engine chunk (dynamic import): ${e}`, path, gzip: true }));
 
+// Otter's own on-demand chunks: every built JS file besides the entry (ADR-004 §2: code that only runs
+// after an engine loads, or only when an opt-in feature is enabled, lives in these).
+const onDemand = readdirSync('packages')
+  .filter((name) => existsSync(`packages/${name}/dist`))
+  .sort()
+  .flatMap((name) =>
+    readdirSync(`packages/${name}/dist`)
+      .filter((f) => f.endsWith('.js') && f !== 'index.js')
+      .sort()
+      .map((f) => ({ name: `on-demand chunk: @otter-player/${name} ${f.replace(/-[A-Za-z0-9_-]{8}\.js$/, '')}`, path: `packages/${name}/dist/${f}`, gzip: true, modifyEsbuildConfig: firstScreenOnly })),
+  );
+
 const reports = readdirSync('packages')
   .filter((name) => existsSync(`packages/${name}/tsconfig.json`))
   .sort()
   .map((name) => ({ name: `@otter-player/${name}`, path: dist(name), import: '*', gzip: true }));
 
-export default [...budgets, ...scenarios, ...engineChunks, ...reports];
+export default [...budgets, ...scenarios, ...engineChunks, ...onDemand, ...reports];
