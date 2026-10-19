@@ -3,7 +3,7 @@
 // keyframe-boundary quality switching (ADR-007 §4), falling back to the native element.
 
 import type { Capabilities, FormatPlugin, Source } from '@otter-player/media';
-import { createMp4RangeEngine } from './engine.js';
+import { lazyEngine } from './lazy.js';
 
 export type { Mp4RangeEngineOptions } from './engine.js';
 
@@ -31,6 +31,9 @@ export function createMp4RangeFormat(options: Mp4RangeFormatOptions = {}): Forma
       const ranged = typeof source.src === 'string' && ((source.renditions?.length ?? 0) > 1 || options.mse === 'always');
       return ranged && (caps.mediaSource || caps.managedMediaSource) ? ['mse', 'native'] : ['native'];
     },
-    createEngine: (ctx) => createMp4RangeEngine(ctx, options.maxBufferAheadS === undefined ? {} : { maxBufferAheadS: options.maxBufferAheadS }),
+    createEngine: (ctx) =>
+      lazyEngine('mp4-range', async () =>
+        (await import('./engine.js')).createMp4RangeEngine(ctx, options.maxBufferAheadS === undefined ? {} : { maxBufferAheadS: options.maxBufferAheadS }),
+      ),
   };
 }
