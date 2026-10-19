@@ -20,6 +20,9 @@
       "path": "../engine-adapter-mpegts"
     },
     {
+      "path": "../engine-pipeline"
+    },
+    {
       "path": "../media"
     }
   ]

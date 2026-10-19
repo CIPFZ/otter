@@ -80,6 +80,8 @@ async function build(policy: RoutePolicy): Promise<{
 }> {
   const params = new URLSearchParams(location.search);
   const abr = params.get('abr') === 'engine' ? 'engine' : 'otter';
+  // ?pipeline=otter|mpegts selects the FLV / TS engine (ADR-007 §2).
+  const pipeline = params.get('pipeline') === 'otter' ? 'otter' : params.get('pipeline') === 'mpegts' ? 'mpegts' : undefined;
   // ?cmcd=query|headers enables CMCD (ADR-005 §2) with a fixed session id for assertions.
   const cmcdMode = params.get('cmcd');
   const cmcd: CmcdConfig | undefined =
@@ -92,7 +94,7 @@ async function build(policy: RoutePolicy): Promise<{
   const media = createMediaPlugin<State, Actions>({
     target: video,
     // ?abr=engine: the engines' own ABR instead of the Otter rule stack, for A/B runs (ADR-005 §1).
-    formats: [createHlsFormat({ abr }), createDashFormat({ abr }), createFlvFormat(), createTsFormat(), createMp4RangeFormat()],
+    formats: [createHlsFormat({ abr }), createDashFormat({ abr }), createFlvFormat(pipeline === undefined ? {} : { engine: pipeline }), createTsFormat(pipeline === undefined ? {} : { engine: pipeline }), createMp4RangeFormat()],
     backends: [createMseBackendFactory(), createNativeBackendFactory(), createWebCodecsBackendFactory()],
     policy,
     ...(cmcd === undefined ? {} : { cmcd }),

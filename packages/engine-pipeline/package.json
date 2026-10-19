@@ -1,0 +1,27 @@
+{
+  "name": "@otter-player/engine-pipeline",
+  "version": "0.0.0",
+  "description": "Otter's own engine (ADR-007 \u00a72): streaming loader -> pipeline transmuxer -> MSE sink, with the LiveController.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@otter-player/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  },
+  "dependencies": {
+    "@otter-player/core": "workspace:*",
+    "@otter-player/media": "workspace:*",
+    "@otter-player/pipeline": "workspace:*"
+  }
+}

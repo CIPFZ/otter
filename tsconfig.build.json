@@ -38,6 +38,9 @@
       "path": "packages/engine-adapter-mpegts"
     },
     {
+      "path": "packages/engine-pipeline"
+    },
+    {
       "path": "packages/engine-adapter-shaka"
     },
     {

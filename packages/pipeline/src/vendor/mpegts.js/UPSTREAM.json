@@ -1,0 +1,17 @@
+{
+  "project": "mpegts.js",
+  "repo": "https://github.com/xqq/mpegts.js",
+  "commit": "791bac89e2ea8cbebe7f7ba247c3b342c09418cc",
+  "tag": "v1.8.2",
+  "license": "Apache-2.0",
+  "level": "L3",
+  "files": [
+    { "upstream": "src/player/live-latency-chaser.ts", "local": "live.ts" },
+    { "upstream": "src/player/live-latency-synchronizer.ts", "local": "live.ts" },
+    { "upstream": "src/player/startup-stall-jumper.ts", "local": "live.ts" }
+  ],
+  "localChanges": [
+    "The three element-bound controllers became pure functions over a LiveSample (currentTime, paused, buffered ranges, playbackRate, readyState); the caller applies the seek / rate. Same conditions and thresholds as upstream (defaults from src/config.js).",
+    "Logging dropped; config object replaced by the typed LatencyConfig."
+  ]
+}

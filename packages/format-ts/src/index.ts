@@ -3,10 +3,18 @@
 
 import type { Capabilities, FormatPlugin, Source } from '@otter-player/media';
 import { createMpegtsEngine } from '@otter-player/engine-adapter-mpegts';
+import { createPipelineEngine, withAdapterFallback } from '@otter-player/engine-pipeline';
 
 export interface TsFormatOptions {
-  /** Extra mpegts.js config. */
+  /** Extra mpegts.js config (adapter engine). */
   readonly config?: Record<string, unknown>;
+  /**
+   * `otter`: Otter's own pipeline (hls.js TS demuxer, L2), falling back to the mpegts.js
+   * adapter on media errors; `mpegts`: the adapter only (ADR-007 §2).
+   */
+  readonly engine?: 'otter' | 'mpegts';
+  /** Live latency to hold with the own pipeline, seconds. */
+  readonly targetLatency?: number;
 }
 
 const TS_TYPE = /mp2t/i;
@@ -23,7 +31,11 @@ export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
     id: 'ts',
     probe: probeTs,
     backends: (_source: Source, caps: Capabilities) => (caps.mediaSource || caps.managedMediaSource ? ['mse'] : []),
-    createEngine: (ctx) =>
-      createMpegtsEngine(ctx, { type: 'mpegts', ...(options.config === undefined ? {} : { config: options.config }) }),
+    createEngine: (ctx) => {
+      const adapter = () => createMpegtsEngine(ctx, { type: 'mpegts', ...(options.config === undefined ? {} : { config: options.config }) });
+      if ((options.engine ?? 'mpegts') === 'mpegts') return adapter();
+      const own = createPipelineEngine(ctx, { type: 'ts', ...(options.targetLatency === undefined ? {} : { targetLatency: options.targetLatency }) });
+      return withAdapterFallback(own, adapter);
+    },
   };
 }

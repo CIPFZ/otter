@@ -310,6 +310,18 @@ importers:
         specifier: 5.2.13
         version: 5.2.13
 
+  packages/engine-pipeline:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+      '@otter-player/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
+
   packages/format-dash:
     dependencies:
       '@otter-player/core':
@@ -339,6 +351,9 @@ importers:
       '@otter-player/engine-adapter-mpegts':
         specifier: workspace:*
         version: link:../engine-adapter-mpegts
+      '@otter-player/engine-pipeline':
+        specifier: workspace:*
+        version: link:../engine-pipeline
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
@@ -375,6 +390,9 @@ importers:
       '@otter-player/engine-adapter-mpegts':
         specifier: workspace:*
         version: link:../engine-adapter-mpegts
+      '@otter-player/engine-pipeline':
+        specifier: workspace:*
+        version: link:../engine-pipeline
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media

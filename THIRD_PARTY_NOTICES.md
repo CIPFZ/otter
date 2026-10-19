@@ -107,6 +107,10 @@ SOFTWARE.
     `h265-parser.js`, `exp-golomb.js`, `demux-errors.js`, `src/core/media-info.js`,
     `src/utils/utf8-conv.js`, `src/utils/typedarray-equality.ts`, ported to TypeScript (list and
     local changes in `vendor/mpegts.js/UPSTREAM.json`). Pre-bundled into `@otter-player/pipeline`.
+- Copies (L3):
+  - `packages/pipeline/src/vendor/mpegts.js`: `src/player/live-latency-chaser.ts`,
+    `live-latency-synchronizer.ts` and `startup-stall-jumper.ts` (Copyright (C) 2023 zheng qian),
+    rewritten as pure decision functions for the LiveController (ADR-007 §3).
 
 ### shaka-player (Apache-2.0)
 

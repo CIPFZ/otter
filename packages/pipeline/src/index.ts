@@ -32,3 +32,4 @@ export {
   type AbrEngineDecision,
   type AbrSnapshot,
 } from './abr/driver.js';
+export { createLiveController, type LiveAction, type LiveController, type LiveControllerOptions, type LiveSample } from './live/controller.js';

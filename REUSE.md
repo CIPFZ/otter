@@ -46,7 +46,7 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | Codec 字符串解析与 MediaCapabilities | hls.js `src/utils/codecs.ts` + `mediacapabilities-helper.ts` | L3 | 直接拿 |
 | MSE 操作队列与配额驱逐 | hls.js `buffer-operation-queue.ts` + `buffer-controller.ts` flush 逻辑 | L3 | 拆出纯操作队列 |
 | MMS 适配（AirPlay 条件、start/endstreaming） | hls.js `buffer-controller.ts`、`utils/mediasource-helper.ts` | L3 | 直接拿。M1 已复制到 `packages/backend-mse/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3） |
-| 直播追帧 / 动态倍速 / 看门狗 | mpegts.js `mse-controller.ts` + `player/mse-player.ts` stall 检测 | L3 | 抽成 `LiveController` |
+| 直播追帧 / 动态倍速 / 看门狗 | mpegts.js `mse-controller.ts` + `player/mse-player.ts` stall 检测 | L3 | 抽成 `LiveController`。M3：`player/live-latency-chaser.ts`、`live-latency-synchronizer.ts`、`startup-stall-jumper.ts` 改写为纯函数，放在 `packages/pipeline/src/vendor/mpegts.js/`（mpegts.js@791bac8）；Otter 自己的策略（目标延迟、尊重用户倍速、回到直播）在 `pipeline/live` |
 | CMCD | `@svta/cml-cmcd`（SVTA common-media-library monorepo 的拆分包，Apache-2.0） | L1 | 直接用。伞包 `@svta/common-media-library` 停在 0.18.1（2025-10），改用拆分包 2.8.2（ADR-005 §2）；对等依赖 `@svta/cml-structured-field-values`、`@svta/cml-utils` |
 | Content Steering | hls.js `content-steering-controller.ts` | L3 | 后期 |
 | HLS 清单解析（自研轻引擎用） | hls.js `m3u8-parser.ts` 或 `m3u8-parser`（video.js 系） | L3 | 均 Apache |
