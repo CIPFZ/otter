@@ -2,6 +2,7 @@
 
 import { createAbrController, type AbrController, type AbrRule } from './abr.js';
 import { createBolaRule, type BolaRuleOptions } from '../vendor/dash.js/bola.js';
+import { createDynamicRule, type DynamicRuleOptions } from '../vendor/dash.js/dynamic.js';
 import {
   createInsufficientBufferRule,
   createThroughputRule,
@@ -21,18 +22,18 @@ export interface DefaultAbrOptions {
   readonly throughput?: ThroughputRuleOptions;
   readonly bola?: BolaRuleOptions;
   readonly insufficientBuffer?: InsufficientBufferRuleOptions;
+  readonly dynamic?: DynamicRuleOptions;
   /** Extra rules appended after the defaults. */
   readonly extra?: readonly AbrRule[];
 }
 
 /**
- * Throughput + BOLA + InsufficientBuffer + ServerHint (dash.js "dynamic" combination): throughput
- * and BOLA vote, InsufficientBuffer caps, ties go to the lower level.
+ * dash.js default combination: Throughput below 12 s of buffer, BOLA above (with hysteresis, never
+ * both at once), InsufficientBuffer caps, ServerHint reserved; ties go to the lower level.
  */
 export function createDefaultAbrController(options: DefaultAbrOptions = {}): AbrController {
   return createAbrController([
-    createThroughputRule(options.throughput),
-    createBolaRule(options.bola),
+    createDynamicRule(createThroughputRule(options.throughput), createBolaRule(options.bola), options.dynamic),
     createInsufficientBufferRule(options.insufficientBuffer),
     createServerHintRule(),
     ...(options.extra ?? []),

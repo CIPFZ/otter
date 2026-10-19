@@ -6,15 +6,33 @@
   "license": "BSD-3-Clause",
   "level": "L3",
   "files": [
-    { "upstream": "src/streaming/rules/abr/ThroughputRule.js", "local": "rules.ts" },
-    { "upstream": "src/streaming/rules/abr/InsufficientBufferRule.js", "local": "rules.ts" },
-    { "upstream": "src/streaming/rules/abr/BolaRule.js", "local": "bola.ts" }
+    {
+      "upstream": "src/streaming/rules/abr/ThroughputRule.js",
+      "local": "rules.ts"
+    },
+    {
+      "upstream": "src/streaming/rules/abr/InsufficientBufferRule.js",
+      "local": "rules.ts"
+    },
+    {
+      "upstream": "src/streaming/rules/abr/BolaRule.js",
+      "local": "bola.ts"
+    },
+    {
+      "upstream": "src/streaming/controllers/AbrController.js",
+      "local": "dynamic.ts"
+    },
+    {
+      "upstream": "src/streaming/rules/abr/ABRRulesCollection.js",
+      "local": "dynamic.ts"
+    }
   ],
   "localChanges": [
     "Rules rewritten from dash.js factory objects into the Otter AbrRule interface (decide(ctx) -> AbrVote): no EventBus, Settings, DashMetrics or SwitchRequest; inputs come from AbrContext, defaults are the dash.js v5.2.1 settings (bandwidthSafetyFactor 0.9, throughputSafetyFactor 0.7, segmentIgnoreCount 2, bufferTimeDefault via ctx.bufferTarget).",
     "ThroughputRule: abandonment state check dropped (Otter engines handle abandonment); scheduleController.setTimeToLoadDelay dropped.",
     "InsufficientBufferRule: emits maxLevel (a cap) instead of a representation; seek / append bookkeeping replaced by ctx.segmentsAppended; disabled in low-latency mode as upstream.",
     "BolaRule: single media type (video) per rule instance; state keyed by the level ladder instead of streamId / mediaType. The steady-state download delay output (setTimeToLoadDelay) is dropped because hls.js / Shaka expose no hook for it; the placeholder buffer is still consumed exactly as upstream. Fragment-loaded / abandoned / min-max-bitrate / element-resize event handlers dropped. Math (utilities, Vp/gp, min/max buffer, BOLA-O) unchanged.",
-    "Each derived file keeps its upstream BSD-3-Clause license header verbatim (copyright year differs per file)."
+    "Each derived file keeps its upstream BSD-3-Clause license header verbatim (copyright year differs per file).",
+    "AbrController._updateDynamicAbrStrategy + ABRRulesCollection.getBestPossibleSwitchRequest reduced to createDynamicRule: one of throughput / BOLA votes, BOLA on at hybridSwitchBufferTime (12 s), off below half (hysteresis as upstream); the per-media-type state dictionary and logging dropped. The remaining combination (lowest level among highest-priority votes, caps first) is the Otter AbrController."
   ]
 }

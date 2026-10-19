@@ -137,6 +137,20 @@ describe('BolaRule', () => {
   });
 });
 
+describe('DynamicRule (dash.js hybrid strategy)', () => {
+  const tagged = (id: string): AbrRule => ({ id, weight: 1, decide: () => ({ level: id === 'bola' ? 3 : 1, priority: PRIORITY.default, reason: id }) });
+  it('uses throughput below 12 s, BOLA from 12 s, and back below 6 s only', () => {
+    const rule = drivers.createDynamicRule(tagged('throughput'), tagged('bola'));
+    const at = (bufferLevel: number): string => rule.decide(ctx({ bufferLevel }))?.reason ?? '';
+    expect(at(5)).toBe('throughput: throughput');
+    expect(at(11.9)).toBe('throughput: throughput');
+    expect(at(12)).toBe('bola: bola');
+    expect(at(7)).toBe('bola: bola'); // hysteresis
+    expect(at(5.9)).toBe('throughput: throughput');
+    expect(at(7)).toBe('throughput: throughput');
+  });
+});
+
 describe('AbrController', () => {
   const fixed = (id: string, vote: ReturnType<AbrRule['decide']>, weight = 1): AbrRule => ({ id, weight, decide: () => vote });
 
@@ -175,13 +189,14 @@ describe('AbrController', () => {
     expect(createAbrController([]).decide(ctx({ current: 2 })).level).toBe(2);
   });
 
-  it('default stack: drops quickly on a throughput collapse and does not oscillate around a level', () => {
+  it('default stack: holds a sustainable level, then steps down on a collapse without rebuffering', () => {
     const c = createDefaultAbrController();
     const est = new EwmaBandwidthEstimator(15, 4, 1_000_000);
     let current = -1;
     let buffer = 0;
+    let minBufferAfterStart = Number.POSITIVE_INFINITY;
     const picks: number[] = [];
-    // 20 segments at ~1.2 Mbps (between l1 0.8 and l2 1.6), then 10 at 0.4 Mbps.
+    // 20 segments at 1.2 Mbps (between l1 0.8 and l2 1.6), then 10 at 0.4 Mbps.
     for (let i = 0; i < 30; i++) {
       const net = i < 20 ? 1_200_000 : 400_000;
       const d = c.decide(ctx({ current, bufferLevel: buffer, bufferState: buffer > 0 ? 'loaded' : 'empty', throughput: est.bandwidth.estimate, segmentsAppended: i, now: i * 4000 }));
@@ -192,15 +207,17 @@ describe('AbrController', () => {
       const downloadMs = (bits / net) * 1000;
       est.sample(downloadMs, bits / 8);
       buffer = Math.max(0, buffer + 4 - downloadMs / 1000);
+      if (i > 0) minBufferAfterStart = Math.min(minBufferAfterStart, buffer);
     }
-    const steady = picks.slice(8, 20);
-    // Between l1 and l2: BOLA-O keeps the sustainable level instead of flapping.
-    const flaps = steady.filter((l, i) => i > 0 && l !== steady[i - 1]).length;
-    expect(flaps).toBeLessThanOrEqual(1);
-    expect(Math.max(...steady)).toBeLessThanOrEqual(1);
-    // After the collapse it reaches the lowest level within a few segments.
-    expect(picks.slice(20, 25)).toContain(0);
+    // Between l1 and l2 it holds the sustainable l1 (BOLA-O), no flapping.
+    expect(picks.slice(1, 20).every((l) => l === 1)).toBe(true);
+    // dash.js hybrid behaviour: a deep buffer is spent at the current level before stepping down,
+    // but the buffer never runs dry and the stack ends on the lowest level.
+    expect(minBufferAfterStart).toBeGreaterThan(4);
+    expect(picks.slice(20)).toContain(0);
+    expect(picks.at(-1)).toBe(0);
   });
+
 });
 
 describe('AbrDriver', () => {

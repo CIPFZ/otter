@@ -22,6 +22,8 @@ export interface AbrSnapshot {
 export interface AbrEngineDecision extends AbrDecision {
   /** Engine index of the chosen level (the decision's `level` is an index in bitrate order). */
   readonly engineLevel: number;
+  /** The chosen level itself, so reasons and stats can name it. */
+  readonly chosen: AbrLevel | undefined;
   readonly bandwidth: BandwidthEstimate;
 }
 
@@ -103,7 +105,10 @@ export function createAbrDriver(options: AbrDriverOptions = {}): AbrDriver {
         bufferTarget: s.bufferTarget,
         now: now(),
       });
-      last = { ...decision, engineLevel: order[decision.level] ?? -1, bandwidth };
+      const engineLevel = order[decision.level] ?? -1;
+      const chosen = s.levels[engineLevel];
+      const reason = chosen === undefined ? decision.reason : `${decision.reason} -> ${chosen.id} @ ${Math.round(chosen.bitrate / 1000)} kbps`;
+      last = { ...decision, reason, engineLevel, chosen, bandwidth };
       return last;
     },
     get canEstimate() {

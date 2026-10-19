@@ -17,6 +17,7 @@ export {
 } from './abr/abr.js';
 export { createDefaultAbrController, createServerHintRule, type DefaultAbrOptions } from './abr/defaults.js';
 export { createBolaRule, type BolaRuleOptions } from './vendor/dash.js/bola.js';
+export { createDynamicRule, type DynamicRuleOptions } from './vendor/dash.js/dynamic.js';
 export {
   createInsufficientBufferRule,
   createThroughputRule,
