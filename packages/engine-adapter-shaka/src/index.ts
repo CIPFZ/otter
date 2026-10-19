@@ -20,15 +20,24 @@ import {
   type ShakaTextTrack,
   type ShakaTrack,
 } from './shaka-types.js';
+import { createAbrDriver, type AbrDriver } from '@otter-player/pipeline';
+import { bufferedEndAt } from '@otter-player/media';
+import { createOtterShakaAbr, type OtterShakaAbr } from './abr.js';
 
 export type { ShakaError, ShakaTrack } from './shaka-types.js';
+export { allowedBy, createOtterShakaAbr, type OtterShakaAbr, type ShakaRestrictions, type ShakaVariant } from './abr.js';
 
 export interface ShakaEngineOptions {
   /** Format id reported by the engine (`dash` by default, `hls` when format-hls routes DRM here). */
   readonly formatId?: string;
   /** Extra Shaka configuration passed to `player.configure()` after the adapter defaults. */
   readonly config?: Record<string, unknown>;
+  /** `otter` (default): the pipeline ABR rule stack decides via abrFactory; `engine`: Shaka's SimpleAbrManager (ADR-005 §1). */
+  readonly abr?: 'otter' | 'engine';
 }
+
+/** Seconds buffered ahead of the playhead. */
+const ahead = (m: HTMLMediaElement): number => Math.max(0, bufferedEndAt(m.buffered, m.currentTime) - m.currentTime);
 
 /** shaka.util.Error.Category -> unified error type. */
 const CATEGORIES: Readonly<Record<number, OtterErrorType>> = {
@@ -122,6 +131,13 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
   let abr = true;
   let destroyed = false;
   let firstSegment = false;
+  const driver: AbrDriver | undefined = options.abr === 'engine' ? undefined : createAbrDriver();
+  const manager: OtterShakaAbr | undefined = driver === undefined ? undefined : createOtterShakaAbr(driver, { bufferAhead: ahead });
+  const abrReason = (id: string): string => {
+    if (manager === undefined) return 'abr (shaka)';
+    const last = manager.lastChoice;
+    return last !== undefined && last.id === id ? `abr: ${last.reason}` : 'abr';
+  };
 
   const refresh = (): void => {
     if (player === undefined) return;
@@ -145,7 +161,9 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
   const reportStats = (): void => {
     if (player === undefined) return;
     const stats = player.getStats();
-    if (Number.isFinite(stats.estimatedBandwidth) && stats.estimatedBandwidth > 0) {
+    if (driver !== undefined && driver.canEstimate) {
+      bus.emit('bandwidth', driver.bandwidth);
+    } else if (Number.isFinite(stats.estimatedBandwidth) && stats.estimatedBandwidth > 0) {
       const estimate = stats.estimatedBandwidth;
       bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
     }
@@ -191,7 +209,7 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       p.addEventListener('adaptation', () => {
         refresh();
         const id = activeQualityId();
-        if (id !== undefined) bus.emit('quality-change', { id, auto: true, reason: 'abr' });
+        if (id !== undefined) bus.emit('quality-change', { id, auto: true, reason: abrReason(id) });
       });
       p.addEventListener('variantchanged', () => {
         refresh();
@@ -210,6 +228,7 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       // Shaka 5 defaults streaming.lowLatencyMode to true and applies it only to low-latency manifests.
       p.configure({
         abr: { enabled: true },
+        ...(manager === undefined ? {} : { abrFactory: () => manager }),
         ...(drm === undefined ? {} : { drm: { servers: { ...drm.servers }, clearKeys: { ...drm.clearKeys } } }),
       });
       if (options.config !== undefined) p.configure(options.config);

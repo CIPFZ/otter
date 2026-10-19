@@ -10,6 +10,8 @@ export interface HlsFormatOptions {
   readonly engine?: 'hlsjs' | 'shaka';
   readonly hlsjs?: HlsJsEngineOptions;
   readonly shaka?: ShakaEngineOptions;
+  /** `otter` (default): pipeline ABR rule stack; `engine`: the engine's own ABR (ADR-005 §1). */
+  readonly abr?: 'otter' | 'engine';
 }
 
 const HLS_TYPE = /mpegurl/i;
@@ -32,10 +34,11 @@ export function createHlsFormat(options: HlsFormatOptions = {}): FormatPlugin {
       return out;
     },
     createEngine(ctx): Engine {
+      const abr = options.abr === undefined ? {} : { abr: options.abr };
       if (ctx.source.drm !== undefined || options.engine === 'shaka') {
-        return createShakaEngine(ctx, { ...options.shaka, formatId: 'hls' });
+        return createShakaEngine(ctx, { ...options.shaka, ...abr, formatId: 'hls' });
       }
-      return createHlsJsEngine(ctx, options.hlsjs);
+      return createHlsJsEngine(ctx, { ...options.hlsjs, ...abr });
     },
   };
 }

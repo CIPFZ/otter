@@ -54,8 +54,11 @@ const snapshot = (page: Page) =>
 
 type Snapshot = Awaited<ReturnType<typeof snapshot>>;
 
+/** OTTER_E2E_ABR=engine runs the matrix with the engines' own ABR, for A/B comparison. */
+const PLAYER_URL = process.env['OTTER_E2E_ABR'] === 'engine' ? '/player.html?abr=engine' : '/player.html';
+
 async function load(page: Page, scenario: Scenario): Promise<void> {
-  await page.goto('/player.html');
+  await page.goto(PLAYER_URL);
   await page.evaluate(
     async ({ source, asBlob }) => {
       const o = (await window.otter) as OtterFixture;

@@ -58,12 +58,14 @@ async function build(policy: RoutePolicy): Promise<{
   core: ReturnType<typeof createCore<State, MediaActionMap>>;
   media: ReturnType<typeof createMediaPlugin<State, MediaActionMap>>;
 }> {
+  const abr = new URLSearchParams(location.search).get('abr') === 'engine' ? 'engine' : 'otter';
   const root = document.getElementById('player') as HTMLElement;
   const video = root.querySelector('video') as HTMLVideoElement;
   createVideoSurface(video);
   const media = createMediaPlugin<State, MediaActionMap>({
     target: video,
-    formats: [createHlsFormat(), createDashFormat(), createFlvFormat(), createTsFormat(), createMp4RangeFormat()],
+    // ?abr=engine: the engines' own ABR instead of the Otter rule stack, for A/B runs (ADR-005 §1).
+    formats: [createHlsFormat({ abr }), createDashFormat({ abr }), createFlvFormat(), createTsFormat(), createMp4RangeFormat()],
     backends: [createMseBackendFactory(), createNativeBackendFactory(), createWebCodecsBackendFactory()],
     policy,
   });

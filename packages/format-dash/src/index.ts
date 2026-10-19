@@ -5,6 +5,8 @@ import { createShakaEngine, type ShakaEngineOptions } from '@otter-player/engine
 
 export interface DashFormatOptions {
   readonly shaka?: ShakaEngineOptions;
+  /** `otter` (default): pipeline ABR rule stack; `engine`: Shaka's own ABR (ADR-005 §1). */
+  readonly abr?: 'otter' | 'engine';
 }
 
 const DASH_TYPE = /dash\+xml/i;
@@ -21,6 +23,7 @@ export function createDashFormat(options: DashFormatOptions = {}): FormatPlugin 
     id: 'dash',
     probe: probeDash,
     backends: (_source: Source, caps: Capabilities) => (caps.mediaSource || caps.managedMediaSource ? ['mse'] : []),
-    createEngine: (ctx) => createShakaEngine(ctx, { ...options.shaka, formatId: 'dash' }),
+    createEngine: (ctx) =>
+      createShakaEngine(ctx, { ...options.shaka, ...(options.abr === undefined ? {} : { abr: options.abr }), formatId: 'dash' }),
   };
 }

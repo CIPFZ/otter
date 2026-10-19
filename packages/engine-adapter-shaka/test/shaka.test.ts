@@ -105,6 +105,9 @@ describe('Shaka adapter', () => {
       drm: { servers: { 'com.widevine.alpha': 'https://lic' }, clearKeys: { aa: 'bb' } },
     });
     expect(engine.formatId).toBe('dash');
+    // Otter ABR is installed through abrFactory (ADR-005 §1).
+    const factory = p.configs[0]?.['abrFactory'] as (() => { chooseVariant: unknown }) | undefined;
+    expect(typeof factory?.().chooseVariant).toBe('function');
     expect(events).toContainEqual(['bandwidth', { estimate: 5_000_000, fast: 5_000_000, slow: 5_000_000 }]);
   });
 
@@ -150,6 +153,12 @@ describe('Shaka adapter', () => {
     expect(engine.latency).toBe(3.2);
     p.getLiveLatency = () => null;
     expect(engine.latency).toBeUndefined();
+  });
+
+  it("abr: 'engine' keeps Shaka's own AbrManager", async () => {
+    await createShakaEngine(ctx(), { abr: 'engine' }).load();
+    const p = FakePlayer.instances.at(-1) as FakePlayer;
+    expect(p.configs[0]?.['abrFactory']).toBeUndefined();
   });
 
   it('reports unsupported browsers', async () => {
