@@ -18,7 +18,9 @@ const CSS = `
   font-size: calc(var(--otter-cue-area-height, 360px) * 0.05 * var(--otter-cue-scale, 1));
   line-height: var(--otter-cue-line-height, 1.25); }
 .otter-cue { position: absolute; box-sizing: border-box; padding: 0 0.5em;
-  white-space: pre-line; overflow-wrap: break-word; transition: top 0.433s; }
+  white-space: pre-line; overflow-wrap: break-word; }
+/* Only WebVTT region scroll-up animates (layout changes from resizes / the safe area jump). */
+.otter-cue[data-region] { transition: top 0.433s; }
 .otter-cue-text { color: var(--otter-cue-color, #fff); background: var(--otter-cue-background, rgb(0 0 0 / 0.8));
   text-shadow: var(--otter-cue-text-shadow, none); padding: 0 0.3em;
   box-decoration-break: clone; -webkit-box-decoration-break: clone; }
@@ -69,6 +71,7 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
       box = doc.createElement('div');
       box.className = 'otter-cue';
       box.dataset['cueId'] = cue.id;
+      if (cue.settings.region?.scroll === 'up') box.dataset['region'] = cue.settings.region.id;
       if (cue.paint === undefined) {
         const text = doc.createElement('span');
         text.className = 'otter-cue-text';

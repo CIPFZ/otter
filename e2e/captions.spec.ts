@@ -55,6 +55,9 @@ const overlap = (a: Rect, b: Rect): boolean => a.left < b.right && b.left < a.ri
 
 test('letterbox: cues stay on the picture, not the container', async ({ page }) => {
   await open(page, '4 / 3');
+  // Without the control bar: on small screens it covers part of the picture (the safe-area test).
+  await page.evaluate(async () => ((await window.otter) as OtterFixture).setControlsVisible(false));
+  await expect.poll(async () => Math.max(...(await layout(page)).cues.map((c) => c.bottom))).toBeGreaterThan(0);
   const { cues, picture } = await layout(page);
   // 16:9 media in a 4:3 box: black bars above and below the picture.
   expect(picture.top).toBeGreaterThan(10);

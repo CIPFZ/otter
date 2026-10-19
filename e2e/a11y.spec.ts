@@ -79,7 +79,10 @@ test('every control is reachable with Tab and shows a visible focus ring', async
     await testInfo.attach(`focus-${seen.length}-${info.name.replace(/[^a-z0-9]+/gi, '-')}.png`, { body: await page.locator('#player').screenshot(), contentType: 'image/png' });
   }
   // Inline player: Tab leaves the player after the last control (no keyboard trap).
-  for (const tag of ['otter-play-button', 'otter-mute-button', 'otter-volume-slider', 'otter-time-slider', 'otter-captions-button', 'otter-settings-menu', 'otter-fullscreen-button']) {
+  // The skin hides the volume slider on touch screens (hardware volume keys).
+  const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+  const required = ['otter-play-button', 'otter-mute-button', ...(coarse ? [] : ['otter-volume-slider']), 'otter-time-slider', 'otter-captions-button', 'otter-settings-menu', 'otter-fullscreen-button'];
+  for (const tag of required) {
     expect(seen.some((s) => s.startsWith(`${tag}:`)), `${tag} reachable (seen: ${seen.join(', ')})`).toBe(true);
   }
 });

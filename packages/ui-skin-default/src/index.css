@@ -1,7 +1,11 @@
 /*
- * @otter-player/ui-skin-default (SPEC §14.4): CSS only.
- * Default theme tokens are the Otter brand palette (SPEC §22, Assets/icon/README.md).
- * :where() keeps specificity at zero so hosts can override any token.
+ * @otter-player/ui-skin-default (SPEC §14.4, ADR-005 §6): CSS only, no JS entry.
+ * Layout written for Otter's otter-* primitives (Vidstack's default layout is a reference for
+ * the arrangement only, L4). Theme tokens are the Otter brand palette (SPEC §22).
+ * :where() keeps specificity at zero so hosts can override any token or rule.
+ *
+ * Host contract: the player root carries [data-otter-player], the control bar
+ * [data-otter-controls]; the shell sets [data-idle] on the bar when the chrome plugin hides it.
  */
 :where(:root) {
   --otter-bg: #243447;
@@ -10,44 +14,63 @@
   /* Use on light backgrounds; #1EE9E6 does not reach contrast there. */
   --otter-accent-deep: #12c9d4;
   --otter-fg: #ffffff;
+  --otter-live: #ff4e45;
+  --otter-radius: 8px;
+  --otter-control-size: 44px;
+  --otter-font: 600 14px/1 system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
+  --otter-font-mono: 500 13px/1 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* Captions (text package): user-overridable, mirrors ::cue preferences. */
+  --otter-cue-color: #ffffff;
+  --otter-cue-background: rgb(0 0 0 / 0.8);
+  --otter-cue-scale: 1;
 }
 
-/* M1 minimal layout. The host marks its player root and control bar with these attributes. */
+/* ---- Player box ------------------------------------------------------------------------- */
 :where([data-otter-player]) {
   position: relative;
   display: block;
-  /* Inline: the page keeps vertical scrolling (the browser cancels vertical swipes); fullscreen:
-     every gesture belongs to the player (SPEC §14.3). */
-  touch-action: pan-y;
   background: #000;
   color: var(--otter-fg);
   aspect-ratio: 16 / 9;
   overflow: hidden;
+  /* Inline: the page keeps vertical scrolling (the browser cancels vertical swipes); fullscreen:
+     every gesture belongs to the player (SPEC §14.3). */
+  touch-action: pan-y;
+  outline: none;
+}
+:where([data-otter-player]:fullscreen) {
+  touch-action: none;
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
 }
 :where([data-otter-player]) > video {
   display: block;
   width: 100%;
   height: 100%;
 }
+/* Picture layers: gesture surface (with the brightness dim), poster, spinner. */
+:where([data-otter-player]) > :is(otter-gesture, otter-poster, otter-spinner) {
+  position: absolute;
+  inset: 0;
+}
+
+/* ---- Control bar -------------------------------------------------------------------------- */
 :where([data-otter-controls]) {
   position: absolute;
   inset: auto 0 0 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background: linear-gradient(to top, color-mix(in srgb, var(--otter-bg-deep) 90%, transparent), transparent);
-}
-:where([data-otter-player]:fullscreen) {
-  touch-action: none;
+  gap: 0 4px;
+  padding: 0 8px 4px;
+  background: linear-gradient(to top, color-mix(in srgb, var(--otter-bg-deep) 92%, transparent) 0%, color-mix(in srgb, var(--otter-bg-deep) 60%, transparent) 60%, transparent);
+  transition: opacity 0.2s;
 }
 :where([data-otter-controls][hidden]) {
   display: none;
 }
 /* Idle (chrome plugin): faded out but still focusable; focusing a control shows the bar. */
-:where([data-otter-controls]) {
-  transition: opacity 0.2s;
-}
 :where([data-otter-controls][data-idle]) {
   opacity: 0;
   pointer-events: none;
@@ -55,14 +78,71 @@
 :where([data-otter-player]:has([data-otter-controls][data-idle])) {
   cursor: none;
 }
+/* Progress on its own row above the buttons. */
+:where([data-otter-controls]) > otter-time-slider {
+  order: -1;
+  flex: 1 0 100%;
+  height: 28px;
+}
+/* Everything after the time display sits at the right. */
+:where([data-otter-controls]) > otter-time-display {
+  margin-inline-end: auto;
+  padding-inline: 8px;
+}
+:where([data-otter-controls]) > otter-volume-slider {
+  flex: 0 1 88px;
+}
+
 :where([data-otter-player]) otter-stats {
   position: absolute;
   inset: 8px auto auto 8px;
   max-width: min(420px, calc(100% - 16px));
 }
-@media (pointer: coarse) {
-  :where([data-otter-player]) { --otter-control-size: 48px; }
+
+/* ---- Small players and touch -------------------------------------------------------------- */
+@container (max-width: 480px) {
+  :where([data-otter-controls]) > :is(otter-volume-slider, otter-pip-button) {
+    display: none;
+  }
 }
+:where([data-otter-player]) {
+  container-type: inline-size;
+}
+@media (pointer: coarse) {
+  :where([data-otter-player]) {
+    --otter-control-size: 48px;
+  }
+  /* Hardware volume keys on phones; the slider would only crowd the bar. */
+  :where([data-otter-controls]) > otter-volume-slider {
+    display: none;
+  }
+}
+
+/* ---- Preferences ---------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  :where([data-otter-player]) * { transition: none !important; animation: none !important; }
+  :where([data-otter-player]) * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+@media (prefers-contrast: more) {
+  :where([data-otter-player]) {
+    --otter-accent: #ffff00;
+    --otter-bg-deep: #000000;
+    --otter-cue-background: #000000;
+  }
+  :where([data-otter-controls]) {
+    background: #000;
+  }
+}
+@media (forced-colors: active) {
+  :where([data-otter-controls]) {
+    background: Canvas;
+    color: CanvasText;
+    border-top: 1px solid CanvasText;
+  }
+  :where([data-otter-player]) {
+    --otter-accent: Highlight;
+    --otter-fg: CanvasText;
+  }
 }
