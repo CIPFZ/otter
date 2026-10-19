@@ -85,7 +85,8 @@ for (const manifest of manifests) {
     else if (latest !== pinned) files.push({ upstream: upstreamPath, status: 'changed', diff: unifiedDiff(pinned, latest, upstreamPath), commits: touching });
     else files.push({ upstream: upstreamPath, status: 'unchanged', commits: touching });
   }
-  projects.push({ project: u.project, dir: relative(root, join(manifest, '..')), pinned: u.commit, branch, files, commitsKnown: commits !== undefined, ...(u.syncLog === undefined ? {} : { lastReview: u.syncLog.at(-1) }) });
+  const lastReview = u.syncLog?.at(-1);
+  projects.push({ project: u.project, dir: relative(root, join(manifest, '..')), pinned: u.commit, branch, files, commitsKnown: commits !== undefined, ...(lastReview === undefined ? {} : { lastReview }) });
 }
 
 const report = renderReport(projects);
