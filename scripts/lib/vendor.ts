@@ -13,6 +13,8 @@ export interface Upstream {
   readonly level: 'L2' | 'L3';
   readonly files: readonly UpstreamFile[];
   readonly localChanges: readonly string[];
+  /** Drift reviews (vendor-sync report evaluated): what was merged or why not. */
+  readonly syncLog?: readonly { readonly date: string; readonly upstream: string; readonly decision: 'merged' | 'not-merged'; readonly reason: string }[];
 }
 
 export interface VendorDir {

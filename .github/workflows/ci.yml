@@ -174,7 +174,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           package-manager-cache: false
       - name: Compare pinned commits with upstream (never blocks)
-        run: node scripts/vendor-sync.ts | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/vendor-sync.ts --out vendor-sync-report.md > /dev/null; cat vendor-sync-report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vendor-sync-report
+          path: vendor-sync-report.md
 
   real-devices:
     name: e2e (real devices)

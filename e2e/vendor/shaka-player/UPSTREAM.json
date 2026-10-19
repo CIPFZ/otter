@@ -5,9 +5,22 @@
   "tag": "v5.2.13",
   "license": "Apache-2.0",
   "level": "L3",
-  "files": [{ "upstream": "demo/common/assets.js", "local": "assets.ts" }],
+  "files": [
+    {
+      "upstream": "demo/common/assets.js",
+      "local": "assets.ts"
+    }
+  ],
   "localChanges": [
     "Kept three assets (Angel One DASH, Angel One ClearKey server, Low Latency DASH Live); dropped icons, feature flags, source enums and the ShakaDemoAssetInfo builder.",
     "Builder calls turned into a typed ESM const with explicit live / licenseServers fields."
+  ],
+  "syncLog": [
+    {
+      "date": "2026-10-19",
+      "upstream": "9e562a3423d5eabc15c7e38645c866e3b0a8d7fb",
+      "decision": "not-merged",
+      "reason": "Upstream added DD / MKV feature tags and an MSF catalog preprocessor (preferLocmafTracks); none of the three kept assets or their fields changed. Test assets only, nothing ships."
+    }
   ]
 }
