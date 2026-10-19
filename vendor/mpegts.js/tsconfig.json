@@ -5,19 +5,17 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo",
     "lib": ["ES2022"],
-    // Private, pre-bundled into @otter-player/pipeline (ADR-007 §1): its declarations are never
-    // published, so explicit return types on every upstream function would be churn against the
-    // upstream diff. All other strict options stay on.
+    // Private, pre-bundled into @otter-player/pipeline (ADR-007 §1): declarations are emitted for the
+    // pipeline's type check only (never published), so isolatedDeclarations' explicit return types on
+    // every upstream function would be churn against the upstream diff. All other strict options on.
     "isolatedDeclarations": false,
     // Bitstream parsers read syntax elements they do not use, only to advance the reader;
     // renaming them would bloat every upstream diff. Lint-level only: type safety stays on.
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "composite": false,
-    "declaration": false,
-    "declarationMap": false,
-    "emitDeclarationOnly": false,
-    "noEmit": true
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true
   },
   "include": ["src"]
 }

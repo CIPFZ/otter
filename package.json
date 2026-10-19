@@ -12,7 +12,7 @@
     "build": "pnpm -r run build && pnpm run build:types",
     "build:types": "tsc -b tsconfig.build.json",
     "clean": "pnpm -r exec rm -rf dist",
-    "typecheck": "tsc -b tsconfig.build.json && tsc -p tsconfig.json && pnpm -s typecheck:vendor",
+    "typecheck": "tsc -b tsconfig.build.json && tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
@@ -23,8 +23,7 @@
     "check": "pnpm license:gate && pnpm check:vendor && pnpm check:boundaries && pnpm typecheck && pnpm build && pnpm test && pnpm check:side-effects && pnpm check:engine-chunks && pnpm size",
     "check:vendor": "node scripts/check-vendor.ts",
     "vendor:sync": "node scripts/vendor-sync.ts",
-    "check:engine-chunks": "node scripts/check-engine-chunks.ts",
-    "typecheck:vendor": "node scripts/typecheck-vendor.ts"
+    "check:engine-chunks": "node scripts/check-engine-chunks.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

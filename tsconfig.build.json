@@ -2,6 +2,12 @@
   "files": [],
   "references": [
     {
+      "path": "vendor/hls.js"
+    },
+    {
+      "path": "vendor/mpegts.js"
+    },
+    {
       "path": "packages/backend-mse"
     },
     {

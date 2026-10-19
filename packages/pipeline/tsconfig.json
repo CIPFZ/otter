@@ -14,6 +14,12 @@
   "references": [
     {
       "path": "../core"
+    },
+    {
+      "path": "../../vendor/hls.js"
+    },
+    {
+      "path": "../../vendor/mpegts.js"
     }
   ]
 }

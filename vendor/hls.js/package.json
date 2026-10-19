@@ -2,13 +2,12 @@
   "name": "@otter-vendor/hls.js",
   "version": "0.0.0",
   "private": true,
-  "description": "L2 copy of hls.js' MPEG-TS demuxer and fMP4 remuxer (ADR-007 §1). Pre-bundled into @otter-player/pipeline, never published.",
+  "description": "L2 copy of hls.js' MPEG-TS demuxer and fMP4 remuxer (ADR-007 \u00a71). Pre-bundled into @otter-player/pipeline, never published.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": {
-      "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     }

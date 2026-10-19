@@ -441,6 +441,12 @@ importers:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+      '@otter-vendor/hls.js':
+        specifier: workspace:*
+        version: link:../../vendor/hls.js
+      '@otter-vendor/mpegts.js':
+        specifier: workspace:*
+        version: link:../../vendor/mpegts.js
 
   packages/plugin-analytics:
     dependencies:
@@ -568,6 +574,8 @@ importers:
   packages/vue: {}
 
   vendor/hls.js: {}
+
+  vendor/mpegts.js: {}
 
 packages:
 

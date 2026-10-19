@@ -98,7 +98,11 @@ export function checkBoundaries(packages: readonly PackageInfo[]): string[] {
 
     if (pkg.lib !== undefined) {
       const refs = [...pkg.references].sort();
-      const expected = [...workspaceDeps].sort();
+      // L2 vendor packages (@otter-vendor/<p>, ADR-007 §1) are referenced as ../vendor/<p>.
+      const vendorRefs = Object.keys(runtimeDeps)
+        .filter((d) => d.startsWith('@otter-vendor/'))
+        .map((d) => `../vendor/${d.slice('@otter-vendor/'.length)}`); // '../../vendor/x' minus the leading '../'
+      const expected = [...workspaceDeps, ...vendorRefs].sort();
       if (refs.join() !== expected.join()) {
         report(dir, `tsconfig references [${refs.join(', ')}] must match workspace deps [${expected.join(', ')}]`);
       }

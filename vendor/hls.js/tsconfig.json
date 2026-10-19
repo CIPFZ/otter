@@ -5,15 +5,13 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo",
     "lib": ["ES2022"],
-    // Private, pre-bundled into @otter-player/pipeline (ADR-007 §1): its declarations are never
-    // published, so explicit return types on every upstream function would be churn against the
-    // upstream diff. All other strict options stay on.
+    // Private, pre-bundled into @otter-player/pipeline (ADR-007 §1): declarations are emitted for the
+    // pipeline's type check only (never published), so isolatedDeclarations' explicit return types on
+    // every upstream function would be churn against the upstream diff. All other strict options on.
     "isolatedDeclarations": false,
-    "composite": false,
-    "declaration": false,
-    "declarationMap": false,
-    "emitDeclarationOnly": false,
-    "noEmit": true
+    "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true
   },
   "include": ["src"]
 }

@@ -1,6 +1,6 @@
 // Shared Vite library build for every @otter-player/* JS package.
 // Invoked from a package directory: `vite build --config ../../tooling/vite.lib.config.ts`.
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
@@ -12,14 +12,36 @@ const shims = resolve(import.meta.dirname, 'shims');
 // Exception, `otter.bundle` in package.json: CommonJS dependencies whose Node-only requires
 // break browser bundlers (imscJS -> sax -> stream / string_decoder). They are bundled into the
 // package's lazy chunk, with the Node builtins replaced by stubs (tooling/shims).
-const manifest = JSON.parse(readFileSync(resolve(pkgDir, 'package.json'), 'utf8')) as { otter?: { bundle?: string[] } };
+const manifest = JSON.parse(readFileSync(resolve(pkgDir, 'package.json'), 'utf8')) as {
+  otter?: { bundle?: string[]; entries?: Record<string, string> };
+};
+// Extra entry points (package.json otter.entries: { name: src path }), built next to index, for
+// sub-path exports that must not ride along with the main entry (ADR-007 §2).
+const entries: Record<string, string> = {
+  index: resolve(pkgDir, 'src/index.ts'),
+  ...Object.fromEntries(Object.entries(manifest.otter?.entries ?? {}).map(([name, src]) => [name, resolve(pkgDir, src)])),
+};
 const bundled = manifest.otter?.bundle ?? [];
 const isBundled = (id: string): boolean => bundled.some((b) => id === b || id.startsWith(`${b}/`)) || id === 'stream' || id === 'string_decoder';
 const isExternal = (id: string): boolean =>
   !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !(bundled.length > 0 && isBundled(id));
 
+/**
+ * dist keeps tsc's .d.ts (emptyOutDir: false), so old hashed chunks would pile up and be counted by
+ * the size report. Drop previous JS output before each build.
+ */
+const cleanJs = {
+  name: 'otter-clean-js',
+  buildStart(): void {
+    const dist = resolve(pkgDir, 'dist');
+    if (!existsSync(dist)) return;
+    for (const f of readdirSync(dist)) if (/\.(js|js\.map)$/.test(f)) rmSync(resolve(dist, f));
+  },
+};
+
 export default defineConfig({
   root: pkgDir,
+  plugins: [cleanJs],
   ...(bundled.length > 0
     ? { resolve: { alias: { stream: resolve(shims, 'stream.js'), string_decoder: resolve(shims, 'string_decoder.js') } } }
     : {}),
@@ -32,9 +54,9 @@ export default defineConfig({
     minify: false,
     sourcemap: true,
     lib: {
-      entry: resolve(pkgDir, 'src/index.ts'),
+      entry: entries,
       formats: ['es'],
-      fileName: 'index',
+      fileName: (_format, name) => `${name}.js`,
     },
     rollupOptions: {
       external: isExternal,

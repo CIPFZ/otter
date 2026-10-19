@@ -3,3 +3,4 @@
 
 export { default as FLVDemuxer } from './demux/flv-demuxer.js';
 export { default as DemuxErrors } from './demux/demux-errors.js';
+export type { FlvAudioSample, FlvTrack, FlvTrackMeta, FlvVideoSample } from './demux/flv-demuxer.js';

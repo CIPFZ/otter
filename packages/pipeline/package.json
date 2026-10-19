@@ -10,6 +10,11 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./transmux": {
+      "@otter-player/source": "./src/transmux/index.ts",
+      "types": "./dist/transmux/index.d.ts",
+      "default": "./dist/transmux.js"
     }
   },
   "files": [
@@ -20,6 +25,17 @@
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
   },
   "dependencies": {
-    "@otter-player/core": "workspace:*"
+    "@otter-player/core": "workspace:*",
+    "@otter-vendor/hls.js": "workspace:*",
+    "@otter-vendor/mpegts.js": "workspace:*"
+  },
+  "otter": {
+    "bundle": [
+      "@otter-vendor/hls.js",
+      "@otter-vendor/mpegts.js"
+    ],
+    "entries": {
+      "transmux": "src/transmux/index.ts"
+    }
   }
 }

@@ -58,7 +58,9 @@ const runtimeDependencies: RuntimeDependency[] = readdirSync(join(root, 'package
   if (!existsSync(file)) return [];
   const m = JSON.parse(readFileSync(file, 'utf8')) as Manifest;
   return Object.keys({ ...m.dependencies, ...m.peerDependencies })
-    .filter((name) => !name.startsWith('@otter-player/'))
+    // Workspace packages are not third-party: @otter-player/* is ours, and @otter-vendor/* are the L2
+    // copies, which this script checks as vendor dirs (UPSTREAM.json, headers, notices) above.
+    .filter((name) => !name.startsWith('@otter-player/') && !(name.startsWith('@otter-vendor/') && m.dependencies?.[name] === 'workspace:*'))
     .map((name) => ({ pkg: m.name, name }));
 });
 
