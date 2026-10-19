@@ -118,6 +118,10 @@ jobs:
       - run: pnpm exec playwright install --with-deps ${{ matrix.browsers }}
       # Public streams (@network) are not deterministic; they run in network-nightly.
       - run: pnpm e2e ${{ matrix.projects }} --grep-invert @network
+      # Per-environment facts the tests record (capabilities, refusals) as run-page notices.
+      - name: Test notices
+        if: always()
+        run: if [ -f test-results/ci-notices.txt ]; then sed 's/^/::notice title=e2e::/' test-results/ci-notices.txt; fi
       - uses: actions/upload-artifact@v7
         if: always()
         with:

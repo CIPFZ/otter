@@ -10,6 +10,7 @@
 // runs; real iPhones are covered by the ADR-004 device run. OTTER_IPHONE_SHAPE=1 applies the same
 // shape to any project (local runs without WebKit).
 
+import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
@@ -28,6 +29,12 @@ const events = (page: Page, type: string) =>
   page.evaluate(async (t) => ((await window.otter) as OtterFixture).events.filter((e) => e.type === t).map((e) => e.payload as { from: Mode; to: Mode; reason?: string }), type);
 const button = (page: Page, tag: string) => page.locator(tag).getByRole('button');
 
+/** One line for the CI run page: the workflow turns test-results/ci-notices.txt into notices. */
+const ciNotice = (text: string): void => {
+  mkdirSync('test-results', { recursive: true });
+  appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
+};
+
 /**
  * Waits for a requested mode to be confirmed or refused. Chromium and Firefox must enter it;
  * headless WebKit has the PiP API but may refuse to open a window, which is a valid outcome as
@@ -42,7 +49,7 @@ async function enteredOrDenied(page: Page, target: Mode, browserName: string): P
   expect(browserName, `${target} refused: ${denied.reason}`).toBe('webkit');
   expect(denied.reason).toBeTruthy();
   expect(await presentation(page)).toMatchObject({ mode: 'inline', pending: null });
-  console.log(`::notice::${test.info().project.name}: ${target} request refused by the browser (${denied.reason}); rolled back to inline`);
+  ciNotice(`${target} request refused by the browser (${denied.reason}); rolled back to inline`);
   return false;
 }
 
@@ -100,7 +107,7 @@ test.describe('presentation modes', () => {
     });
     test.info().annotations.push({ type: 'capabilities', description: JSON.stringify(caps) });
     // Shown on the CI run page: the per-environment table of docs/reports/M3.md.
-    console.log(`::notice::capabilities ${test.info().project.name}: ${JSON.stringify(caps)}`);
+    ciNotice(`capabilities ${JSON.stringify(caps)}`);
     expect(caps.inline).toBe('native');
     expect(caps.theater).toBe('emulated');
     expect(caps.mini).toBe('emulated');
