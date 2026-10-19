@@ -19,6 +19,7 @@ import { detectCapabilities, type Capabilities, type CapabilityProbeOptions } fr
 import type { CmcdConfig, CmcdDecorator } from './cmcd.js';
 import type { Decoder } from './decoder.js';
 import type { FormatPlugin } from './format.js';
+import { createRetryBudget, createStallWatchdog, resolveRecovery, type RecoveryPolicy } from './recovery.js';
 import { createRouter, stepLabel, type RouteDecision, type RoutePolicy, type Router } from './router.js';
 import type { LoadOptions, Source } from './source.js';
 import { EMPTY_TRACKS, type TrackList } from './tracks.js';
@@ -113,6 +114,8 @@ export interface MediaPluginOptions {
   readonly now?: () => number;
   /** CMCD request data (CTA-5004); off by default (ADR-005 §2). */
   readonly cmcd?: CmcdConfig;
+  /** Same-backend retries and stall handling before the fallback chain (ADR-005 §3). */
+  readonly recovery?: Partial<RecoveryPolicy>;
 }
 
 export interface MediaPlugin<S extends MediaState = MediaState, A extends MediaActionMap = MediaActionMap>
@@ -124,6 +127,7 @@ interface Active {
   readonly backend: MediaBackend;
   readonly decision: RouteDecision;
   readonly offs: readonly Unsubscribe[];
+  readonly loadToken: number;
 }
 
 const toError = (err: unknown, details: string): OtterError =>
@@ -144,6 +148,11 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   });
   const detect = options.detect ?? detectCapabilities;
   const now = options.now ?? (() => performance.now());
+  const recovery = resolveRecovery(options.recovery);
+  const budget = createRetryBudget(recovery);
+  const watchdog = createStallWatchdog(recovery);
+  let stallTimer: ReturnType<typeof setInterval> | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   let store: Store<S, A> | undefined;
   let qoe: QoeHook | undefined;
@@ -175,6 +184,9 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   const teardown = (): void => {
     const current = active;
     active = undefined;
+    if (stallTimer !== undefined) clearInterval(stallTimer);
+    stallTimer = undefined;
+    watchdog.reset();
     if (current === undefined) return;
     for (const off of current.offs) off();
     current.backend.destroy();
@@ -189,7 +201,10 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     const s = state();
     if (patch.currentTime !== undefined) {
       const delta = patch.currentTime - lastTime;
-      if (!s.paused && !s.seeking && delta > 0 && delta < 2) watched += delta;
+      if (!s.paused && !s.seeking && delta > 0 && delta < 2) {
+        watched += delta;
+        budget.healthy(now());
+      }
       lastTime = patch.currentTime;
     }
     if (patch.waiting === true && !s.waiting && !s.seeking && s.readyState > 0 && rebufferStart === undefined) {
@@ -286,7 +301,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     } catch (err) {
       return toError(err, 'backendCreateFailed');
     }
-    active = { backend, decision, offs: wire(backend, decision, loadToken) };
+    active = { backend, decision, offs: wire(backend, decision, loadToken), loadToken };
     set({ backend: stepLabel(decision.step), format: decision.format.id });
     try {
       backend.attach(options.target);
@@ -301,6 +316,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       if (loadToken !== token) return null;
       if (prefs.quality !== 'auto') backend.selectQuality(prefs.quality);
       set({ status: 'ready', tracks: backend.tracks, error: null });
+      watchStalls();
       if (opts.autoplay === true) play();
       return null;
     } catch (err) {
@@ -315,6 +331,9 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     while (current !== null) {
       const error = await attempt(current, source, opts, caps, loadToken);
       if (loadToken !== token || error === null) return;
+      // Load failures fall back at once (ADR-003) unless the network is to blame.
+      if (error.type === 'network' && (await retrySame(current, error, loadToken))) continue;
+      if (loadToken !== token) return;
       const next = router.fallback(current, error.details);
       qoe?.emit('error', { error, fallback: next === null ? [] : [stepLabel(next.step), ...next.remaining.map(stepLabel)] });
       publishRoute(router.explain());
@@ -329,11 +348,37 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   let lastCaps: Capabilities | undefined;
   let lastOptions: LoadOptions = {};
 
+  /**
+   * Waits out the retry backoff for rebuilding the same step. Resolves false when the budget for
+   * this error type is spent (or the load was superseded) and the fallback chain takes over.
+   */
+  const retrySame = (decision: RouteDecision, error: OtterError, loadToken: number): Promise<boolean> => {
+    const delay = budget.next(error, now());
+    if (delay === null) return Promise.resolve(false);
+    const label = stepLabel(decision.step);
+    router.annotate({ candidate: label, outcome: 'failed', reason: `${error.details}, retry in ${delay} ms` });
+    qoe?.emit('error', { error, fallback: [label, ...decision.remaining.map(stepLabel)] });
+    publishRoute(router.explain());
+    return new Promise((resolve) => {
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined;
+        resolve(loadToken === token);
+      }, delay);
+    });
+  };
+
   const recover = async (decision: RouteDecision, error: OtterError, loadToken: number): Promise<void> => {
     const source = state().source;
     if (loadToken !== token || source === null || lastCaps === undefined) return;
     const resumeAt = state().currentTime;
+    const autoplay = !state().paused;
     teardown();
+    set({ status: 'loading' });
+    if (await retrySame(decision, error, loadToken)) {
+      await run(decision, source, { ...lastOptions, startTime: resumeAt, autoplay }, lastCaps, loadToken);
+      return;
+    }
+    if (loadToken !== token) return;
     const next = router.fallback(decision, error.details);
     qoe?.emit('error', { error, fallback: next === null ? [] : [stepLabel(next.step), ...next.remaining.map(stepLabel)] });
     publishRoute(router.explain());
@@ -341,8 +386,36 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       set({ status: 'error', error });
       return;
     }
-    set({ status: 'loading' });
-    await run(next, source, { ...lastOptions, startTime: resumeAt, autoplay: !state().paused }, lastCaps, loadToken);
+    await run(next, source, { ...lastOptions, startTime: resumeAt, autoplay }, lastCaps, loadToken);
+  };
+
+  /**
+   * Stall watchdog (ADR-005 §3): playing with media buffered ahead but a frozen playhead. First
+   * nudge past the spot, then treat it as a fatal media error (retry, then fallback).
+   */
+  const watchStalls = (): void => {
+    const current = active;
+    if (current === undefined || recovery.stallTimeoutMs <= 0) return;
+    watchdog.reset();
+    stallTimer = setInterval(() => {
+      if (active !== current) return;
+      const s = state();
+      const action = watchdog.sample({
+        now: now(),
+        currentTime: s.currentTime,
+        playing: !s.paused && !s.ended && !s.seeking,
+        bufferAhead: s.bufferedEnd - s.currentTime,
+      });
+      if (action === 'none') return;
+      const fatal = action === 'escalate';
+      const error = createError({ type: 'media', details: 'playbackStalled', fatal, recoverable: true, message: `playhead stuck at ${s.currentTime}` });
+      if (fatal) {
+        void recover(current.decision, error, current.loadToken);
+        return;
+      }
+      qoe?.emit('error', { error, fallback: [stepLabel(current.decision.step), ...current.decision.remaining.map(stepLabel)] });
+      current.backend.seek(s.currentTime + recovery.nudgeS);
+    }, Math.min(1000, recovery.stallTimeoutMs));
   };
 
   /** Read at request time by CMCD; `bs` is reported once per rebuffer. */
@@ -374,6 +447,9 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     watched = 0;
     lastTime = opts.startTime ?? 0;
     lastOptions = opts;
+    budget.reset();
+    if (retryTimer !== undefined) clearTimeout(retryTimer);
+    retryTimer = undefined;
     const { volume, muted, playbackRate } = state();
     set({
       ...INITIAL_MEDIA_STATE,
@@ -432,6 +508,8 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     emitExit();
     teardown();
     token++;
+    if (retryTimer !== undefined) clearTimeout(retryTimer);
+    retryTimer = undefined;
     const { volume, muted, playbackRate } = state();
     set({ ...INITIAL_MEDIA_STATE, volume, muted, playbackRate });
   };

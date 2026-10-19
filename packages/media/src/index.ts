@@ -66,3 +66,13 @@ export {
   type TrackList,
   type VideoTrack,
 } from './tracks.js';
+export {
+  DEFAULT_RECOVERY,
+  createRetryBudget,
+  createStallWatchdog,
+  resolveRecovery,
+  type RecoveryPolicy,
+  type RetryBudget,
+  type StallAction,
+  type StallWatchdog,
+} from './recovery.js';

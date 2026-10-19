@@ -3,6 +3,7 @@ import { createCore, createError, type QoeEventMap } from '@otter-player/core';
 import {
   createMediaPlugin,
   EMPTY_TIME_RANGES,
+  type RecoveryPolicy,
   EMPTY_TRACKS,
   MEDIA_SLICE,
   NO_CAPABILITIES,
@@ -72,7 +73,11 @@ const hls: FormatPlugin = {
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 const target = {} as HTMLMediaElement;
 
-async function setup(behavior: Partial<Record<BackendKind, { failLoad?: boolean }>> = {}) {
+// No backoff by default so `flush()` covers a retry; stall watchdog off unless a test enables it.
+async function setup(
+  behavior: Partial<Record<BackendKind, { failLoad?: boolean }>> = {},
+  recovery: Partial<RecoveryPolicy> = { backoffMs: () => 0, stallTimeoutMs: 0 },
+) {
   const created: FakeBackend[] = [];
   const factory = (kind: BackendKind): BackendFactory => ({
     kind,
@@ -89,6 +94,7 @@ async function setup(behavior: Partial<Record<BackendKind, { failLoad?: boolean 
     backends: [factory('mse'), factory('native')],
     detect: async () => ({ ...NO_CAPABILITIES, mediaSource: true }),
     now: () => clock,
+    recovery,
   });
   const core = createCore<MediaState, MediaActionMap>({ slices: [MEDIA_SLICE], plugins: [plugin] });
   const qoe: { type: keyof QoeEventMap; payload: unknown }[] = [];
@@ -142,15 +148,31 @@ describe('media plugin', () => {
     expect(qoe.filter((e) => e.type === 'error').at(-1)?.payload).toMatchObject({ fallback: [] });
   });
 
-  it('recovers from a fatal backend error after load, resuming the position', async () => {
-    const { view, created } = await setup();
+  it('recovers from a fatal backend error after load: same backend once, then the fallback chain', async () => {
+    const { view, created, qoe } = await setup();
     view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
     await flush();
     created[0]?.emit('playback-change', { currentTime: 42 });
     created[0]?.emit('error', createError({ type: 'media', details: 'bufferAppendError', fatal: true, recoverable: false }));
     await flush();
-    expect(view.getState().backend).toBe('native');
+    expect(created.map((b) => b.kind)).toEqual(['mse', 'mse']);
+    expect(view.getState()).toMatchObject({ status: 'ready', backend: 'mse' });
     expect(created[1]?.calls).toContain('load');
+    expect(qoe.filter((e) => e.type === 'error').at(-1)?.payload).toMatchObject({ fallback: ['mse', 'native'] });
+    // Media budget (1) spent: the next fatal error moves down the chain.
+    created[1]?.emit('error', createError({ type: 'media', details: 'bufferAppendError', fatal: true, recoverable: false }));
+    await flush();
+    expect(created.map((b) => b.kind)).toEqual(['mse', 'mse', 'native']);
+    expect(view.getState().backend).toBe('native');
+  });
+
+  it('skips the retry for errors a rebuild cannot fix', async () => {
+    const { view, created } = await setup();
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    created[0]?.emit('error', createError({ type: 'media', details: 'mediaSrcNotSupported', fatal: true, recoverable: false }));
+    await flush();
+    expect(created.map((b) => b.kind)).toEqual(['mse', 'native']);
   });
 
   it('dispatches play synchronously (user activation) and maps input actions', async () => {
@@ -234,7 +256,7 @@ describe('media plugin', () => {
   });
 
   it('ignores AbortError from interrupted play() and never masks a fatal error', async () => {
-    const { view, created } = await setup({ native: { failLoad: true } });
+    const { view, created } = await setup({ native: { failLoad: true } }, { retries: { media: 0 }, stallTimeoutMs: 0 });
     view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
     await flush();
     const b = created[0] as FakeBackend;
