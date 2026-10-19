@@ -29,16 +29,17 @@ describe('createCueRenderer', () => {
   });
 });
 
-type S = TextState & { source: Source | null };
+type S = TextState & { source: Source | null; presentation: { videoOnly: boolean } };
 const SOURCE_SLICE: StoreSlice<{ source: Source | null }> = { id: 'source', initialState: { source: null } };
+const PRESENTATION_SLICE: StoreSlice<{ presentation: { videoOnly: boolean } }> = { id: 'presentation', initialState: { presentation: { videoOnly: false } } };
 
-async function setup(files: Record<string, string | number>) {
+async function setup(files: Record<string, string | number>, extra: Partial<Parameters<typeof createText>[0]> = {}) {
   const fetch = vi.fn(async (url: string) => {
     const body = files[url];
     return typeof body === 'string' ? { ok: true, status: 200, text: async () => body } : { ok: false, status: body ?? 404, text: async () => '' };
   });
-  const text = createText({ fetch, persistKey: null });
-  const core = createCore<S, TextActionMap>({ slices: [TEXT_SLICE, SOURCE_SLICE], plugins: [text.plugin] });
+  const text = createText({ fetch, persistKey: null, ...extra });
+  const core = createCore<S, TextActionMap>({ slices: [TEXT_SLICE, SOURCE_SLICE, PRESENTATION_SLICE], plugins: [text.plugin] });
   const errors: string[] = [];
   core.qoe.on('error', ({ error }) => errors.push(error.details));
   await core.start();
@@ -119,6 +120,50 @@ describe('text plugin', () => {
     expect(root.querySelector('[data-cue-id]')).toBeNull();
     text.overlay.destroy();
     expect(root.querySelector('[data-otter-cues]')).toBeNull();
+  });
+
+  it('video-only presentation mirrors the selected track into a native TextTrack, and back', async () => {
+    class FakeCue {
+      line: number | 'auto' = 'auto';
+      position: number | 'auto' = 'auto';
+      size = 100;
+      snapToLines = true;
+      align = 'center';
+      readonly startTime: number;
+      readonly endTime: number;
+      readonly text: string;
+      constructor(startTime: number, endTime: number, text: string) {
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.text = text;
+      }
+    }
+    vi.stubGlobal('VTTCue', FakeCue);
+    const track = { mode: 'disabled' as TextTrackMode, cues: [] as FakeCue[], addCue: (c: FakeCue) => void track.cues.push(c), removeCue: vi.fn() };
+    const addTextTrack = vi.fn(() => track as unknown as TextTrack);
+    const { core, text } = await setup({ '/en.vtt': VTT }, { native: { addTextTrack } });
+    core.store.setState({ source: { src: '/a.mp4', textTracks: [{ src: '/en.vtt', language: 'en', label: 'English', default: true }] } });
+    await flush();
+    await flush();
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    text.overlay.mount({ root, contentRect: new DOMRect(0, 0, 640, 360), safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, store: core.store.view(), onContentRectChange: () => () => undefined });
+    text.overlay.tick?.(0, 2);
+    expect(root.querySelector('[data-cue-id]')?.textContent).toBe('Hello');
+    expect(addTextTrack).not.toHaveBeenCalled();
+    // Video PiP / iPhone system fullscreen: the system draws the captions.
+    core.store.setState({ presentation: { videoOnly: true } });
+    await vi.waitFor(() => expect(track.mode).toBe('showing'));
+    expect(addTextTrack).toHaveBeenCalledWith('subtitles', 'English', 'en');
+    expect(track.cues.map((c) => [c.startTime, c.endTime, c.text])).toEqual([[1, 4, 'Hello']]);
+    text.overlay.tick?.(0, 2);
+    expect(root.querySelector('[data-cue-id]')).toBeNull();
+    core.store.setState({ presentation: { videoOnly: false } });
+    expect(track.mode).toBe('hidden');
+    text.overlay.tick?.(0, 2);
+    expect(root.querySelector('[data-cue-id]')?.textContent).toBe('Hello');
+    text.overlay.destroy();
+    vi.unstubAllGlobals();
   });
 
   it('offers engine tracks, tells the media plugin which one to deliver and renders its cues', async () => {

@@ -63,7 +63,7 @@ describe('M1 elements', () => {
     expect(input.disabled).toBe(true);
   });
 
-  it('stats panel shows QoE and the route explanation', () => {
+  it('stats panel shows QoE and the route explanation (its view loads on first show)', async () => {
     const { store, shadow } = mount('<otter-stats></otter-stats>');
     store.setState({
       status: 'ready',
@@ -75,14 +75,14 @@ describe('M1 elements', () => {
       route: { format: 'hls', backend: 'mse', steps: [{ candidate: 'mse', outcome: 'selected', reason: 'first feasible candidate' }] },
       qoe: { ...EMPTY_QOE, ttff: 412, bandwidth: 4_200_000, droppedFrames: 3, totalFrames: 900 },
     });
-    const stat = (k: string): string | null | undefined => shadow('otter-stats').querySelector(`[data-stat="${k}"]`)?.textContent;
-    expect(stat('Format')).toBe('hls');
+    const stat = (k: string): string | null | undefined => shadow('otter-stats')?.querySelector(`[data-stat="${k}"]`)?.textContent;
+    await vi.waitFor(() => expect(stat('Format')).toBe('hls'));
     expect(stat('Backend')).toBe('mse (MMS)');
     expect(stat('Resolution')).toBe('1280×720');
     expect(stat('Bandwidth')).toBe('4.2 Mbps');
     expect(stat('TTFF')).toBe('412 ms');
     expect(stat('Dropped')).toBe('3 / 900');
-    expect(shadow('otter-stats').querySelector('pre')?.textContent).toContain('"first feasible candidate"');
+    expect(shadow('otter-stats')?.querySelector('pre')?.textContent).toContain('"first feasible candidate"');
   });
 
   it('elements connected before provideStore pick it up, and disconnect unsubscribes', () => {

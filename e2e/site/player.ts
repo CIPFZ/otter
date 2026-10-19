@@ -102,7 +102,8 @@ async function build(policy: RoutePolicy): Promise<{
     policy,
     ...(cmcd === undefined ? {} : { cmcd }),
   });
-  const text = createText({ inband: media });
+  // Native TextTracks while only the <video> shows (PiP, iPhone system fullscreen); ?text=native always.
+  const text = createText({ inband: media, native: video, ...(params.get('text') === 'native' ? { mode: 'native' as const } : {}) });
   // ?idle=<ms> sets the control auto-hide delay (0 keeps them shown).
   const idleMs = Number(params.get('idle') ?? 3000);
   const core = createCore<State, Actions>({

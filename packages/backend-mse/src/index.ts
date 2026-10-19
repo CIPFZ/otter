@@ -73,12 +73,24 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         lastSample = now;
         emit('latency-change', { latency });
       };
-      // timeupdate stops while paused; progress keeps latency current as live data keeps arriving.
+      // timeupdate stops while paused, and WebKit fires no MSE progress events then: a timer keeps
+      // latency current while live data keeps arriving (it drives "Back to live").
+      let timer: ReturnType<typeof setInterval> | undefined;
+      const paused = (): void => {
+        if (timer === undefined) timer = setInterval(sample, LATENCY_SAMPLE_MS);
+      };
+      const playing = (): void => {
+        clearInterval(timer);
+        timer = undefined;
+      };
       target.addEventListener('timeupdate', sample);
-      target.addEventListener('progress', sample);
+      target.addEventListener('pause', paused);
+      target.addEventListener('playing', playing);
       offs.push(() => {
+        playing();
         target.removeEventListener('timeupdate', sample);
-        target.removeEventListener('progress', sample);
+        target.removeEventListener('pause', paused);
+        target.removeEventListener('playing', playing);
       });
     },
     async load(source, opts) {

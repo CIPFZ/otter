@@ -8,6 +8,7 @@ import type { InbandCues, SidecarTextTrack, Source, TextTrackInfo } from '@otter
 import type { Insets, Overlay, OverlayHost } from '@otter-player/surface';
 import { activeCues, plainCue, type TextCue } from './cue.js';
 import { cueArea, DEFAULT_CUE_SETTINGS } from './layout.js';
+import type { NativeMirror, NativeTextSink } from './native.js';
 import { createCueRenderer, type CueRenderer } from './renderer.js';
 
 export interface TextTrackEntry {
@@ -60,8 +61,14 @@ export interface TextActionMap {
 }
 
 export interface TextOptions {
-  /** `custom` (default): Otter's renderer. The native TextTrack path arrives with presentation (M3). */
-  readonly mode?: 'custom';
+  /**
+   * `custom` (default): Otter's renderer, switching to native TextTracks by itself while
+   * presentation shows only the <video> (iPhone system fullscreen, video PiP). `native`: always
+   * native TextTracks (system caption style; CVAA settings do not apply). Both need `native`.
+   */
+  readonly mode?: 'custom' | 'native';
+  /** Where native TextTracks go: the <video> element, passed by the shell (ADR-007 §6). */
+  readonly native?: NativeTextSink;
   /** Engine in-band cues (the media plugin); without it only sidecar tracks are offered. */
   readonly inband?: { onTextCues(h: (cues: InbandCues) => void): Unsubscribe };
   /** Cues kept per in-band track (live streams never end); oldest dropped first. */
@@ -82,8 +89,9 @@ export interface TextController {
 const formatOf = (t: SidecarTextTrack): 'vtt' | 'srt' | 'ttml' =>
   t.format ?? (/\.srt(\?|#|$)/i.test(t.src) ? 'srt' : /\.(ttml|dfxp|xml)(\?|#|$)/i.test(t.src) ? 'ttml' : 'vtt');
 
-/** Media state the plugin reads when present (MediaState provides both). */
+/** Media state the plugin reads when present (MediaState provides both; presentation the last). */
 type TextHostState = TextState & {
+  readonly presentation?: { readonly videoOnly: boolean };
   readonly source?: Source | null;
   readonly tracks?: { readonly text: readonly TextTrackInfo[] };
 };
@@ -105,6 +113,30 @@ export function createText(options: TextOptions = {}): TextController {
   const inbandCues = new Map<string, Map<string, TextCue>>();
   let generation = 0;
   let changed = (): void => undefined;
+  let mirror: NativeMirror | undefined;
+  let mirrorLoading = false;
+  /** Captions go to native TextTracks now (host choice, or only the <video> is on screen). */
+  const nativeActive = (): boolean =>
+    store !== undefined && options.native !== undefined && (options.mode === 'native' || state().presentation?.videoOnly === true);
+  const syncNative = (): void => {
+    if (store === undefined || options.native === undefined) return;
+    const active = nativeActive();
+    if (!active) return mirror?.hide();
+    if (mirror === undefined) {
+      if (!mirrorLoading) {
+        mirrorLoading = true;
+        void import('./native.js').then((m) => {
+          mirror = m.createNativeMirror(options.native as NativeTextSink);
+          changed();
+        });
+      }
+      return;
+    }
+    const id = state().textTrack;
+    const entry = id === null ? undefined : state().textTracks.find((t) => t.id === id);
+    if (entry === undefined) return mirror.hide();
+    mirror.show(entry, cueStore.get(entry.id) ?? []);
+  };
 
   const state = (): Readonly<S> => (store as Store<S, TextActionMap>).getState();
 
@@ -251,6 +283,7 @@ export function createText(options: TextOptions = {}): TextController {
     sidecars.clear();
     cueStore.clear();
     inbandCues.clear();
+    mirror?.reset();
     const tracks = source?.textTracks ?? [];
     const entries: TextTrackEntry[] = tracks.map((t, i) => {
       const id = `sidecar:${i}`;
@@ -304,6 +337,10 @@ export function createText(options: TextOptions = {}): TextController {
           (s) => s.tracks?.text,
           (text) => onEngineTracks(text),
         ),
+        ctx.store.select(
+          (s) => s.presentation?.videoOnly,
+          () => changed(),
+        ),
         ...(options.inband === undefined ? [] : [options.inband.onTextCues((c) => void onInbandCues(c))]),
       ];
       saved = restore();
@@ -330,7 +367,8 @@ export function createText(options: TextOptions = {}): TextController {
     if (host === undefined || renderer === undefined) return;
     const view = host.store.getState() as Partial<TextState>;
     const id = view.textTrack ?? null;
-    const cues = id === null ? [] : activeCues(cueStore.get(id) ?? [], mediaTime);
+    // On the native path the system draws the cues.
+    const cues = id === null || nativeActive() ? [] : activeCues(cueStore.get(id) ?? [], mediaTime);
     const rect = host.contentRect;
     // UI-DESIGN §9: cues sit 8% of the picture height above its bottom edge; a bar that covers
     // the picture pushes them up by what it covers plus 8 px.
@@ -341,7 +379,10 @@ export function createText(options: TextOptions = {}): TextController {
     renderer.style(view.captionStyle ?? {});
     renderer.render(cues, area, mediaTime, rect.height);
   };
-  changed = draw;
+  changed = () => {
+    draw();
+    syncNative();
+  };
 
   const overlay: Overlay = {
     id: 'text',
@@ -395,6 +436,7 @@ export {
   type RegionSettings,
 } from './layout.js';
 export { createCueRenderer, type CueRenderer } from './renderer.js';
+export type { NativeTextSink } from './native.js';
 export type { ParsedCaptions, SidecarFormat } from './vtt.js';
 export type { Cea608Channel, Cea608Decoder } from './cea608.js';
 

@@ -36,25 +36,32 @@ const iphoneShape = (): void => {
   Object.defineProperty(Document.prototype, 'webkitFullscreenEnabled', { configurable: true, get: () => false });
   Object.defineProperty(window, 'documentPictureInPicture', none);
   const proto = HTMLVideoElement.prototype as HTMLVideoElement & Record<string, unknown>;
-  proto['webkitEnterFullscreen'] = function (this: HTMLVideoElement & Record<string, unknown>) {
-    this['webkitDisplayingFullscreen'] = true;
+  // WebKit's own webkitDisplayingFullscreen is a read-only accessor: shadow it on the instance.
+  const displaying = (v: HTMLVideoElement, on: boolean): void => void Object.defineProperty(v, 'webkitDisplayingFullscreen', { configurable: true, value: on });
+  proto['webkitEnterFullscreen'] = function (this: HTMLVideoElement) {
+    displaying(this, true);
     this.dispatchEvent(new Event('webkitbeginfullscreen'));
   };
-  proto['webkitExitFullscreen'] = function (this: HTMLVideoElement & Record<string, unknown>) {
-    this['webkitDisplayingFullscreen'] = false;
+  proto['webkitExitFullscreen'] = function (this: HTMLVideoElement) {
+    displaying(this, false);
     this.dispatchEvent(new Event('webkitendfullscreen'));
   };
 };
 const isIphone = (): boolean => test.info().project.name === 'emulated-iphone' || process.env['OTTER_IPHONE_SHAPE'] === '1';
 
-async function open(page: Page, query = '', play = false): Promise<void> {
+const CAPTIONED = { src: '/vod/progressive.mp4', textTracks: [{ src: '/subs/sidecar.vtt', language: 'en', label: 'English', default: true }] };
+
+async function open(page: Page, query = '', play = false, source: object = { src: '/hls-fmp4/master.m3u8' }): Promise<void> {
   if (isIphone()) await page.addInitScript(iphoneShape);
   await page.goto(`/player.html?idle=0${query}`);
-  await page.evaluate(async (autoplay) => {
-    const o = (await window.otter) as OtterFixture;
-    o.dispatch('set-muted', { muted: true });
-    o.load({ src: '/hls-fmp4/master.m3u8' }, { autoplay });
-  }, play);
+  await page.evaluate(
+    async ([autoplay, src]) => {
+      const o = (await window.otter) as OtterFixture;
+      o.dispatch('set-muted', { muted: true });
+      o.load(src as Parameters<OtterFixture['load']>[0], { autoplay: autoplay as boolean });
+    },
+    [play, source] as const,
+  );
   await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().status), { timeout: 20_000 }).toBe('ready');
   if (play) await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().currentTime), { timeout: 15_000 }).toBeGreaterThan(0.3);
 }
@@ -167,9 +174,10 @@ test.describe('presentation modes', () => {
       await expect.poll(async () => (await events(page, 'presentation-denied')).at(-1)?.reason).toBe('unsupported');
       return;
     }
-    // The click activates; the request runs inside the same dispatch.
-    await page.locator('#player').click({ position: { x: 5, y: 5 } });
-    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('request-presentation', { mode: 'pip' }));
+    // WebKit only allows PiP inside the click itself: use the button (narrow layouts hide it, so
+    // show it for the test).
+    await page.addStyleTag({ content: 'otter-pip-button { display: inline-block !important; }' });
+    await button(page, 'otter-pip-button').click();
     await expect.poll(() => presentation(page)).toMatchObject({ mode: 'pip', videoOnly: true, pending: null });
     await page.evaluate(() => document.exitPictureInPicture());
     await expect.poll(() => mode(page)).toBe('inline');
@@ -259,6 +267,49 @@ test.describe('presentation modes', () => {
     expect(ms).toEqual({ title: 'Otter Player Demo', state: 'playing' });
     await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('pause', undefined));
     await expect.poll(() => page.evaluate(() => navigator.mediaSession.playbackState)).toBe('paused');
+  });
+});
+
+test.describe('native TextTrack fallback (ADR-007 §6)', () => {
+  /** The mirrored track on the <video>: mode and cue count, null when none was created. */
+  const nativeTrack = (page: Page) =>
+    page.evaluate(() => {
+      const t = (document.querySelector('video') as HTMLVideoElement).textTracks[0];
+      return t === undefined ? null : { mode: t.mode, cues: t.cues?.length ?? 0, label: t.label };
+    });
+  const customCues = (page: Page) => page.locator('[data-otter-cues] [data-cue-id]').count();
+
+  test('video-only modes show captions as a native TextTrack, Otter renders them again after', async ({ page }) => {
+    await open(page, '', true, CAPTIONED);
+    const caps = (await presentation(page)).capabilities;
+    const system = isIphone();
+    test.skip(!system && caps.pip === false, 'no video PiP here');
+    await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().textStatus)).toBe('ready');
+    // The sample's cues cover 0-8 s: Otter draws them inline.
+    await expect.poll(() => customCues(page)).toBeGreaterThan(0);
+    expect(await nativeTrack(page)).toBeNull();
+    if (system) await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('request-presentation', { mode: 'fullscreen', system: true }));
+    else {
+      // A real click: WebKit only allows PiP inside it.
+      await page.addStyleTag({ content: 'otter-pip-button { display: inline-block !important; }' });
+      await button(page, 'otter-pip-button').click();
+    }
+    await expect.poll(() => presentation(page)).toMatchObject({ videoOnly: true });
+    await expect.poll(() => nativeTrack(page)).toMatchObject({ mode: 'showing', label: 'English' });
+    expect((await nativeTrack(page))?.cues).toBeGreaterThan(0);
+    expect(await customCues(page)).toBe(0);
+    if (system) await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { webkitExitFullscreen(): void }).webkitExitFullscreen());
+    else await page.evaluate(() => document.exitPictureInPicture());
+    await expect.poll(() => presentation(page)).toMatchObject({ mode: 'inline', videoOnly: false });
+    await expect.poll(() => nativeTrack(page)).toMatchObject({ mode: 'hidden' });
+    await expect.poll(() => customCues(page)).toBeGreaterThan(0);
+  });
+
+  test('mode: native always uses the native TextTrack', async ({ page }) => {
+    await open(page, '&text=native', true, CAPTIONED);
+    await expect.poll(() => nativeTrack(page)).toMatchObject({ mode: 'showing', label: 'English' });
+    await page.waitForTimeout(500);
+    expect(await customCues(page)).toBe(0);
   });
 });
 
