@@ -39,7 +39,7 @@ export const OTTER_ELEMENTS = {
 
 export type OtterElementName = (typeof OTTER_ELEMENTS)[keyof typeof OTTER_ELEMENTS];
 
-export { findStore, provideStore, type StoreConsumer, type UiActions, type UiState, type UiStore } from './context.js';
+export { findStore, findThumbnails, provideStore, provideThumbnails, type StoreConsumer, type UiActions, type UiState, type UiStore } from './context.js';
 export {
   defineElements,
   defineOtterElements,

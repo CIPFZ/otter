@@ -28,6 +28,24 @@ const events = (page: Page, type: string) =>
   page.evaluate(async (t) => ((await window.otter) as OtterFixture).events.filter((e) => e.type === t).map((e) => e.payload as { from: Mode; to: Mode; reason?: string }), type);
 const button = (page: Page, tag: string) => page.locator(tag).getByRole('button');
 
+/**
+ * Waits for a requested mode to be confirmed or refused. Chromium and Firefox must enter it;
+ * headless WebKit has the PiP API but may refuse to open a window, which is a valid outcome as
+ * long as it is a rollback with a reason (reported as a CI notice).
+ */
+async function enteredOrDenied(page: Page, target: Mode, browserName: string): Promise<boolean> {
+  await expect
+    .poll(async () => (await mode(page)) === target || (await events(page, 'presentation-denied')).some((d) => d.to === target), { timeout: 8000 })
+    .toBe(true);
+  const denied = (await events(page, 'presentation-denied')).find((d) => d.to === target);
+  if (denied === undefined) return true;
+  expect(browserName, `${target} refused: ${denied.reason}`).toBe('webkit');
+  expect(denied.reason).toBeTruthy();
+  expect(await presentation(page)).toMatchObject({ mode: 'inline', pending: null });
+  console.log(`::notice::${test.info().project.name}: ${target} request refused by the browser (${denied.reason}); rolled back to inline`);
+  return false;
+}
+
 const iphoneShape = (): void => {
   const none = { configurable: true, get: () => undefined };
   Object.defineProperty(Element.prototype, 'requestFullscreen', none);
@@ -166,7 +184,7 @@ test.describe('presentation modes', () => {
     await expect(page.locator('#player')).not.toHaveAttribute('data-otter-theater');
   });
 
-  test('video PiP: entered on click, video-only, closed back to inline (or unsupported)', async ({ page }) => {
+  test('video PiP: entered on click, video-only, closed back to inline (or unsupported)', async ({ page, browserName }) => {
     await open(page, '', true);
     const caps = (await presentation(page)).capabilities;
     if (caps.pip === false) {
@@ -178,6 +196,7 @@ test.describe('presentation modes', () => {
     // show it for the test).
     await page.addStyleTag({ content: 'otter-pip-button { display: inline-block !important; }' });
     await button(page, 'otter-pip-button').click();
+    if (!(await enteredOrDenied(page, 'pip', browserName))) return;
     await expect.poll(() => presentation(page)).toMatchObject({ mode: 'pip', videoOnly: true, pending: null });
     await page.evaluate(() => document.exitPictureInPicture());
     await expect.poll(() => mode(page)).toBe('inline');
@@ -279,7 +298,7 @@ test.describe('native TextTrack fallback (ADR-007 §6)', () => {
     });
   const customCues = (page: Page) => page.locator('[data-otter-cues] [data-cue-id]').count();
 
-  test('video-only modes show captions as a native TextTrack, Otter renders them again after', async ({ page }) => {
+  test('video-only modes show captions as a native TextTrack, Otter renders them again after', async ({ page, browserName }) => {
     await open(page, '', true, CAPTIONED);
     const caps = (await presentation(page)).capabilities;
     const system = isIphone();
@@ -293,6 +312,7 @@ test.describe('native TextTrack fallback (ADR-007 §6)', () => {
       // A real click: WebKit only allows PiP inside it.
       await page.addStyleTag({ content: 'otter-pip-button { display: inline-block !important; }' });
       await button(page, 'otter-pip-button').click();
+      if (!(await enteredOrDenied(page, 'pip', browserName))) return;
     }
     await expect.poll(() => presentation(page)).toMatchObject({ videoOnly: true });
     await expect.poll(() => nativeTrack(page)).toMatchObject({ mode: 'showing', label: 'English' });

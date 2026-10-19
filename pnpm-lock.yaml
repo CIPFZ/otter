@@ -441,9 +441,12 @@ importers:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
-      '@otter-player/surface':
+      '@otter-player/media':
         specifier: workspace:*
-        version: link:../surface
+        version: link:../media
+      media-captions:
+        specifier: 1.0.4
+        version: 1.0.4
 
   packages/overlay-watermark:
     dependencies:

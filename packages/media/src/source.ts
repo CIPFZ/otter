@@ -46,6 +46,8 @@ export interface Source {
   readonly airplaySrc?: string;
   readonly headers?: Readonly<Record<string, string>>;
   readonly textTracks?: readonly SidecarTextTrack[];
+  /** Seek-preview thumbnails: a WebVTT track of `image#xywh=x,y,w,h` cues (ADR-007 §7). */
+  readonly thumbnails?: { readonly src: string };
 }
 
 export interface LoadOptions {

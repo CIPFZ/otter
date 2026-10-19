@@ -18,6 +18,7 @@ import type { BackendEvents, BackendFactory, BackendKind, MediaBackend, Playback
 import { detectCapabilities, type Capabilities, type CapabilityProbeOptions } from './capabilities.js';
 import type { CmcdConfig, CmcdDecorator } from './cmcd.js';
 import type { Decoder } from './decoder.js';
+import type { ThumbnailProvider } from './thumbnails.js';
 import type { FormatPlugin } from './format.js';
 import { createRetryBudget, createStallWatchdog, resolveRecovery, type RecoveryPolicy } from './recovery.js';
 import { createRouter, stepLabel, type RouteDecision, type RoutePolicy, type Router } from './router.js';
@@ -128,6 +129,8 @@ export interface MediaPlugin<S extends MediaState = MediaState, A extends MediaA
   readonly router: Router;
   /** In-band cues of the track chosen with `set-text-track`, for the text renderer. */
   onTextCues(h: (cues: InbandCues) => void): Unsubscribe;
+  /** The active engine's seek-preview pictures (I-frame playlist), null without. */
+  thumbnails(): ThumbnailProvider | null;
 }
 
 interface Active {
@@ -576,6 +579,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       cueListeners.add(h);
       return () => cueListeners.delete(h);
     },
+    thumbnails: () => active?.backend.thumbnails?.() ?? null,
     install(ctx: PluginContext<S, A>) {
       store = ctx.store;
       qoe = ctx.qoe;

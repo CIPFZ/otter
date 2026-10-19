@@ -34,8 +34,9 @@ import {
   VolumeX,
   X,
 } from 'lucide';
+import type { Thumbnail } from '@otter-player/media';
 import type { CaptionStyle } from '@otter-player/text';
-import type { UiState } from './context.js';
+import { findThumbnails, type UiState } from './context.js';
 import { formatBitrate, formatMs, formatSeconds, formatTime } from './format.js';
 import { icon, LiveDot, SpinnerRing, Theater, type IconNode } from './icons.js';
 import { buttonCss, createBase, glass, glassFallback, rangeCss, REDUCED_MOTION, speakTime, speakVolume, T, unsupported, type OtterBase } from './primitives.js';
@@ -484,6 +485,8 @@ const timeSliderClass = () =>
       #dragging = false;
       #hoverTime: number | null = null;
       #last: Readonly<UiState> | undefined;
+      /** Latest thumbnail request; older answers are dropped. */
+      #thumbSeq = 0;
       protected setup(): void {
         if (this.#input !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
@@ -498,6 +501,9 @@ const timeSliderClass = () =>
 .thumb { position: relative; width: var(--otter-thumbnail-width, 160px); height: var(--otter-thumbnail-height, 90px); border-radius: ${T.radius};
   border: 2px solid rgb(255 255 255 / 0.85); background: rgb(0 0 0 / 0.6) no-repeat; box-shadow: ${T.shadow}; overflow: hidden; }
 .card:not([data-thumb]) .thumb { width: auto; height: auto; border: none; background: none; box-shadow: none; overflow: visible; }
+.thumb > i, .thumb > canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.thumb > canvas { width: 100%; height: 100%; }
+.thumb > [hidden] { display: none; }
 /* Without a thumbnail the time is a small version of the card (same frame and corner). */
 .time { display: block; padding: 5px 10px; border-radius: ${T.radius}; border: 2px solid rgb(255 255 255 / 0.85); ${glass()}
   color: ${T.fg}; font: 600 12px/1.2 ${T.font}; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -565,6 +571,7 @@ ${glassFallback('.time')}
         const max = Number(input.max);
         if (time === null || max <= 0) {
           card.removeAttribute('data-show');
+          this.#thumbSeq++;
           return;
         }
         const s = this.#last;
@@ -577,6 +584,39 @@ ${glassFallback('.time')}
         const half = Math.min(w / 2, (card.getBoundingClientRect().width || 160) / 2);
         card.style.left = `${Math.min(w - half, Math.max(half, (time / max) * w))}px`;
         card.setAttribute('data-show', '');
+        const seq = ++this.#thumbSeq;
+        const provider = findThumbnails(this);
+        if (provider === undefined) card.removeAttribute('data-thumb');
+        else void provider.at(time).then((t) => seq === this.#thumbSeq && this.#thumb(t));
+      }
+      /** Sprite tile (scaled into the card) or decoded frame; null shows the time only. */
+      #thumb(t: Thumbnail | null): void {
+        const card = this.#card as HTMLElement;
+        const box = card.querySelector('.thumb') as HTMLElement;
+        card.toggleAttribute('data-thumb', t !== null);
+        if (t === null) return;
+        const doc = this.ownerDocument;
+        const tile = box.querySelector('i') ?? box.insertBefore(doc.createElement('i'), box.firstChild);
+        const canvas = box.querySelector('canvas') ?? box.insertBefore(doc.createElement('canvas'), box.firstChild);
+        tile.hidden = !('url' in t);
+        canvas.hidden = 'url' in t;
+        if ('bitmap' in t) {
+          canvas.width = t.bitmap.width;
+          canvas.height = t.bitmap.height;
+          canvas.getContext('2d')?.drawImage(t.bitmap, 0, 0);
+          return;
+        }
+        const s = tile.style;
+        const W = box.clientWidth;
+        const H = box.clientHeight;
+        // Escaped for a quoted CSS url(): provider URLs come from untrusted track files.
+        s.backgroundImage = `url("${t.url.replace(/["\\\n\r]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `)}")`;
+        s.backgroundRepeat = 'no-repeat';
+        s.width = `${t.w || W}px`;
+        s.height = `${t.h || H}px`;
+        s.backgroundPosition = `${-t.x}px ${-t.y}px`;
+        s.backgroundSize = t.w > 0 ? '' : 'cover';
+        s.transform = t.w > 0 ? `scale(${W / t.w}, ${H / t.h})` : '';
       }
       protected render(s: Readonly<UiState>): void {
         this.#last = s;

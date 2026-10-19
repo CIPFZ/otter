@@ -10,7 +10,6 @@ import {
   type InputActionMap,
 } from '@otter-player/input';
 import { createAdsOverlay } from '@otter-player/overlay-ads';
-import { createThumbnailsOverlay } from '@otter-player/overlay-thumbnails';
 import { createWatermarkOverlay } from '@otter-player/overlay-watermark';
 import { createCanvasSurface, createGPUSurface, ZERO_RECT } from '@otter-player/surface';
 import { createTextOverlay } from '@otter-player/text';
@@ -41,7 +40,6 @@ describe('overlays', () => {
     ['danmaku', createDanmakuOverlay],
     ['text', createTextOverlay],
     ['text-ass', createAssOverlay],
-    ['thumbnails', createThumbnailsOverlay],
     ['watermark', createWatermarkOverlay],
     ['ads', createAdsOverlay],
   ] as const)('%s overlay', (id, create) => {
@@ -56,7 +54,6 @@ describe('overlays', () => {
       createDanmakuOverlay(),
       createTextOverlay(),
       createAssOverlay(),
-      createThumbnailsOverlay(),
       createWatermarkOverlay(),
       createAdsOverlay(),
     ];

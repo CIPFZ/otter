@@ -6,6 +6,7 @@ import type { BackendKind } from './backend.js';
 import type { Capabilities } from './capabilities.js';
 import type { CmcdDecorator } from './cmcd.js';
 import type { LoadOptions, Source } from './source.js';
+import type { ThumbnailProvider } from './thumbnails.js';
 import type { InbandCues, TrackList } from './tracks.js';
 
 export interface EngineContext {
@@ -51,6 +52,8 @@ export interface Engine {
   selectAudioTrack?(id: string): void;
   /** Live: jump to the engine's live position (back to live, ADR-007 §3). */
   seekToLive?(): void;
+  /** Seek-preview pictures from the stream itself (HLS I-frame playlists), null without. */
+  thumbnails?(): ThumbnailProvider | null;
   on<E extends keyof EngineEvents>(e: E, h: (p: EngineEvents[E]) => void): Unsubscribe;
   destroy(): void;
 }

@@ -19,6 +19,7 @@ import type { AbrDriver } from '@otter-player/pipeline';
 import type Hls from 'hls.js';
 import type { CuesParsedData, ErrorData, HlsConfig, Level, MediaPlaylist } from 'hls.js';
 import type { createOtterAbrController } from './abr.js';
+import { createIFrameThumbnails, type IFrameThumbnails } from './iframes.js';
 
 
 export interface HlsJsEngineOptions {
@@ -110,6 +111,8 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
   let hls: Hls | undefined;
   let tracks: TrackList = EMPTY_TRACKS;
   let destroyed = false;
+  // undefined: not asked yet; null: no I-frame variants.
+  let thumbs: IFrameThumbnails | null | undefined;
   let firstSegment = false;
   let lastMediaRecovery = Number.NEGATIVE_INFINITY;
   // Created in load(): the rule stack is imported next to hls.js so it stays out of the first screen.
@@ -326,6 +329,12 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
         }
       });
     },
+    thumbnails() {
+      // Before MANIFEST_PARSED the I-frame variants are not known yet.
+      if (hls === undefined || hls.levels.length === 0) return null;
+      if (thumbs === undefined) thumbs = createIFrameThumbnails(hls, ctx.media.ownerDocument);
+      return thumbs;
+    },
     seekToLive() {
       const position = hls?.liveSyncPosition;
       if (position !== null && position !== undefined) ctx.media.currentTime = position;
@@ -357,6 +366,7 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
       destroyed = true;
       bus.clear();
       ctx.media.removeEventListener('seeking', onSeeking);
+      thumbs?.destroy();
       hls?.destroy();
       hls = undefined;
     },

@@ -3,7 +3,7 @@
 // dispatch actions only.
 
 import type { StoreView } from '@otter-player/core';
-import type { MediaActionMap, MediaState } from '@otter-player/media';
+import type { MediaActionMap, MediaState, ThumbnailProvider } from '@otter-player/media';
 import type { PresentationActionMap, PresentationState } from '@otter-player/presentation';
 import type { QoeState } from '@otter-player/qoe';
 import type { TextActionMap, TextState } from '@otter-player/text';
@@ -37,14 +37,31 @@ export function provideStore(root: HTMLElement, store: StoreView<UiState, UiActi
   for (const el of Array.from(root.querySelectorAll('*'))) if (isConsumer(el)) el.connectStore();
 }
 
-export function findStore(from: Node): UiStore | undefined {
+/** Nearest value registered on `from` or an ancestor (crossing shadow roots). */
+function lookup<T>(map: WeakMap<Node, T>, from: Node): T | undefined {
   let node: Node | null = from;
   while (node !== null) {
-    const store = stores.get(node);
-    if (store !== undefined) return store;
+    const value = map.get(node);
+    if (value !== undefined) return value;
     const parent: Node | null = node.parentNode;
     // Step out of a shadow root to its host.
     node = parent ?? ((node as { host?: Node }).host ?? null);
   }
   return undefined;
+}
+
+export function findStore(from: Node): UiStore | undefined {
+  return lookup(stores, from);
+}
+
+const thumbnails = new WeakMap<Node, ThumbnailProvider>();
+
+/** Seek-preview pictures for the progress bar's card (ADR-007 §7); null removes them. */
+export function provideThumbnails(root: HTMLElement, provider: ThumbnailProvider | null): void {
+  if (provider === null) thumbnails.delete(root);
+  else thumbnails.set(root, provider);
+}
+
+export function findThumbnails(from: Node): ThumbnailProvider | undefined {
+  return lookup(thumbnails, from);
 }

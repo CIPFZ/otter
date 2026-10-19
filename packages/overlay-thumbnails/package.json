@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/overlay-thumbnails",
   "version": "0.0.0",
-  "description": "Seek preview thumbnails: VTT sprites and I-frame playlists.",
+  "description": "Seek preview thumbnails: WebVTT sprite tracks and HLS I-frame playlists for the preview card.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*",
-    "@otter-player/surface": "workspace:*"
+    "@otter-player/media": "workspace:*",
+    "media-captions": "1.0.4"
   }
 }

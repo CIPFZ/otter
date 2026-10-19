@@ -140,4 +140,7 @@ M3U8
 printf 'WEBVTT\nX-TIMESTAMP-MAP=MPEGTS:126000,LOCAL:00:00:00.000\n\n00:00:00.500 --> 00:00:12.000\nThe tide comes in slowly tonight\n' > demo/subs.vtt
 printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:12\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:12.0,\nsubs.vtt\n#EXT-X-ENDLIST\n' > demo/subs.m3u8
 
+# Seek-preview thumbnails (VTT sprite, I-frame playlist) next to hls-fmp4.
+./generate-thumbnails.sh
+
 du -sh . && find . -type f | sort | sed 's/^/  /' | head -80

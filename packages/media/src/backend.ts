@@ -8,6 +8,7 @@ import type { CmcdDecorator } from './cmcd.js';
 import type { FormatPlugin } from './format.js';
 import type { FallbackStep } from './router.js';
 import type { LoadOptions, Source } from './source.js';
+import type { ThumbnailProvider } from './thumbnails.js';
 import type { InbandCues, TrackList } from './tracks.js';
 
 export type BackendKind = 'native' | 'mse' | 'webcodecs';
@@ -70,6 +71,8 @@ export interface MediaBackend {
   selectAudioTrack?(id: string): void;
   /** Live: back to the live edge. */
   seekToLive?(): void;
+  /** The engine's seek-preview pictures (Engine.thumbnails), null without. */
+  thumbnails?(): ThumbnailProvider | null;
   readonly buffered: TimeRanges;
   /** Seconds behind the live edge, live sources only. */
   readonly latency?: number | undefined;

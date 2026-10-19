@@ -24,6 +24,7 @@ import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
 import { createOverlayLayer, createVideoSurface, type OverlayLayer, type Surface } from '@otter-player/surface';
 import { createText, TEXT_SLICE, type TextActionMap, type TextState } from '@otter-player/text';
 import { createInputController } from '@otter-player/input';
+import { createThumbnails } from '@otter-player/overlay-thumbnails';
 import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationState } from '@otter-player/presentation';
 import {
   bindActivity,
@@ -31,6 +32,7 @@ import {
   createChromePlugin,
   defineOtterElements,
   provideStore,
+  provideThumbnails,
   type ChromeActionMap,
   type ChromeState,
 } from '@otter-player/ui-core';
@@ -128,6 +130,8 @@ async function build(policy: RoutePolicy): Promise<{
   const layer = createOverlayLayer({ container: root, surface, store: core.store.view(), mediaTime: () => video.currentTime });
   layer.add(text.overlay);
   provideStore(root, core.store.view());
+  // Preview card pictures: the source's WebVTT sprite track, else the engine's I-frame playlist.
+  provideThumbnails(root, createThumbnails({ store: core.store.view(), media }));
   // Keyboard, pointer and touch go through one InputController on the player root (SPEC §14.3).
   const input = createInputController({ store: core.store.view() });
   input.attach(root);

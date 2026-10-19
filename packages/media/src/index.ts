@@ -78,3 +78,4 @@ export {
   type StallAction,
   type StallWatchdog,
 } from './recovery.js';
+export type { Thumbnail, ThumbnailProvider } from './thumbnails.js';
