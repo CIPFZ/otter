@@ -99,6 +99,8 @@ test.describe('presentation modes', () => {
       };
     });
     test.info().annotations.push({ type: 'capabilities', description: JSON.stringify(caps) });
+    // Shown on the CI run page: the per-environment table of docs/reports/M3.md.
+    console.log(`::notice::capabilities ${test.info().project.name}: ${JSON.stringify(caps)}`);
     expect(caps.inline).toBe('native');
     expect(caps.theater).toBe('emulated');
     expect(caps.mini).toBe('emulated');

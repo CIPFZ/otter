@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Seek-preview thumbnail fixtures (ADR-007 §7), next to the HLS fMP4 sample in ../hls-fmp4:
 #   thumbs/        WebVTT sprite: one 160x90 tile per 2 s in a 4x1 JPEG sheet
+#   demo/          sprite + WebVTT for the review demo clip
 #   hls-iframes/   the same ladder plus an EXT-X-I-FRAME-STREAM-INF rendition (one keyframe per
 #                  2 s, 320x180), for hls.js' I-frame player
 # testsrc2 draws the frame from its timestamp, so tiles and I-frames show what the main stream
@@ -58,3 +59,13 @@ cat > hls-iframes/master.m3u8 <<'M3U8'
 ../hls-fmp4/v1.m3u8
 #EXT-X-I-FRAME-STREAM-INF:BANDWIDTH=80000,RESOLUTION=320x180,CODECS="avc1.42c00c",URI="iframe.m3u8"
 M3U8
+
+# Sprite for the review demo clip (docs/reports screenshots): a 160x90 tile every 2 s of 12 s.
+# init + segments concatenated is a playable fragmented MP4 (ffmpeg's HLS demuxer rejects .m4s).
+cat demo/init720.mp4 demo/v720_*.m4s | "${FF[@]}" -i - -vf "select='not(mod(n,50))',scale=160:90,tile=6x1" -frames:v 1 -q:v 4 demo/sprite.jpg
+{
+  echo 'WEBVTT'
+  for i in 0 1 2 3 4 5; do
+    printf '\n00:00:%02d.000 --> 00:00:%02d.000\nsprite.jpg#xywh=%d,0,160,90\n' $((i * 2)) $((i * 2 + 2)) $((i * 160))
+  done
+} > demo/thumbs.vtt
