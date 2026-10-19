@@ -16,6 +16,9 @@
 :where([data-otter-player]) {
   position: relative;
   display: block;
+  /* Inline: the page keeps vertical scrolling (the browser cancels vertical swipes); fullscreen:
+     every gesture belongs to the player (SPEC §14.3). */
+  touch-action: pan-y;
   background: #000;
   color: var(--otter-fg);
   aspect-ratio: 16 / 9;
@@ -34,6 +37,9 @@
   gap: 4px;
   padding: 4px 8px;
   background: linear-gradient(to top, color-mix(in srgb, var(--otter-bg-deep) 90%, transparent), transparent);
+}
+:where([data-otter-player]:fullscreen) {
+  touch-action: none;
 }
 :where([data-otter-controls][hidden]) {
   display: none;

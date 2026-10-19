@@ -95,7 +95,6 @@ describe('input', () => {
     expect(input.hotkeys).toBe(DEFAULT_HOTKEYS);
     input.setHotkeys({ x: { type: 'toggle-pip' } });
     expect(input.hotkeys).toEqual({ x: { type: 'toggle-pip' } });
-    expect(() => input.attach(fakeElement<HTMLElement>())).toThrow(expect.objectContaining(notImplemented));
   });
 });
 

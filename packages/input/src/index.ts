@@ -2,7 +2,10 @@
 // Actions are dispatched synchronously from the originating event callback, so fullscreen, PiP,
 // orientation lock and unmuted autoplay keep their user activation (SPEC §3 rule 3).
 
-import { notImplemented, type StoreView } from '@otter-player/core';
+import type { StoreView } from '@otter-player/core';
+import { attachInput, DEFAULT_TIMINGS, type InputTimings } from './controller.js';
+
+export { DEFAULT_TIMINGS, type InputTimings } from './controller.js';
 
 export type InputAction =
   | { readonly type: 'toggle-paused' }
@@ -10,8 +13,8 @@ export type InputAction =
   | { readonly type: 'toggle-controls' }
   | { readonly type: 'seek-by'; readonly seconds: number }
   | { readonly type: 'seek-to-percent'; readonly percent: number }
-  /** Horizontal swipe previews; the real seek happens on release. */
-  | { readonly type: 'seek-preview'; readonly seconds: number }
+  /** Horizontal swipe previews an offset from where it started; release sends `commit: true`. */
+  | { readonly type: 'seek-preview'; readonly seconds: number; readonly commit?: boolean }
   | { readonly type: 'toggle-fullscreen' }
   /** Long press: play at `rate` while held, restore on release. */
   | { readonly type: 'hold-rate'; readonly rate: number }
@@ -113,12 +116,25 @@ export interface InputControllerOptions<S extends object = object> {
   readonly store: StoreView<S, InputActionMap>;
   readonly hotkeys?: HotkeyMap;
   readonly gestures?: GestureMap;
+  /**
+   * Whether Tab should cycle inside the player. Default: the player (or an ancestor) is the
+   * fullscreen element. Hosts with modal menus can widen it.
+   */
+  readonly modal?: (target: HTMLElement) => boolean;
+  readonly timings?: Partial<InputTimings>;
 }
 
-/** M0 empty implementation: mappings are stored, nothing is listened to yet. */
+const isFullscreen = (target: HTMLElement): boolean => {
+  const fs = target.ownerDocument.fullscreenElement;
+  return fs != null && (fs === target || fs.contains(target) || target.contains(fs));
+};
+
 export function createInputController<S extends object>(options: InputControllerOptions<S>): InputController {
   let hotkeys = options.hotkeys ?? DEFAULT_HOTKEYS;
   let gestures = options.gestures ?? DEFAULT_GESTURES;
+  let detach: (() => void) | undefined;
+  const timings = { ...DEFAULT_TIMINGS, ...options.timings };
+  const modal = options.modal ?? isFullscreen;
   return {
     get hotkeys() {
       return hotkeys;
@@ -126,16 +142,23 @@ export function createInputController<S extends object>(options: InputController
     get gestures() {
       return gestures;
     },
-    attach() {
-      throw notImplemented('@otter-player/input attach');
+    attach(target) {
+      detach?.();
+      detach = attachInput({ target, store: options.store, hotkeys: () => hotkeys, gestures: () => gestures, modal: () => modal(target), timings });
     },
-    detach: () => undefined,
+    detach() {
+      detach?.();
+      detach = undefined;
+    },
     setHotkeys(map) {
       hotkeys = map;
     },
     setGestures(map) {
       gestures = map;
     },
-    destroy: () => undefined,
+    destroy() {
+      detach?.();
+      detach = undefined;
+    },
   };
 }
