@@ -40,6 +40,9 @@ enforced by `scripts/license-gate.ts`.
   - `e2e/vendor/hls.js`: subset of `tests/test-streams.js` (test assets only, not shipped).
   - `packages/pipeline/src/vendor/hls.js`: `src/utils/ewma.ts` and
     `src/utils/ewma-bandwidth-estimator.ts` (ABR bandwidth estimate).
+  - `packages/text/src/vendor/hls.js`: `src/utils/cea-608-parser.ts` and `src/utils/output-filter.ts`
+    (CEA-608 closed captions). The parser is hls.js' port of dash.js' cea608-parser and keeps the
+    DASH Industry Forum BSD-3-Clause notice (see dash.js below).
 
 ### shaka-player (Apache-2.0)
 
