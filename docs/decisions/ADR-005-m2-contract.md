@@ -49,8 +49,8 @@ M2 要做引擎侧的 ABR 规则叠加、CMCD 和错误恢复，以及渲染侧�
   4. 走 ADR-003 的降级链换 backend。
   
   每一步都发 `error` QoE 事件，`fallback` 字段写明剩余路径。
-- 新增 `RecoveryPolicy`：每类错误的重试次数、窗口和退避，默认网络 3 次（1 s → 2 s → 4 s），媒体 1 次。
-- 卡顿恢复：`stalled` 持续超过 `stallTimeoutMs`（默认 8 s）而且有缓冲时，先 nudge（`currentTime += 0.1`），再按媒体错误处理。M3 的 LiveController 会接管直播场景。
+- 新增 `RecoveryPolicy`：每类错误的重试次数、窗口和退避，默认网络 3 次（1 s → 2 s → 4 s），媒体 1 次。（2026-10-19 实施补充：重试是"同一 backend 重建"，计数在连续正常播放 30 s 后清零；`noRetry` 列出重建修不好的错误（如 `mediaSrcNotSupported`、`manifestIncompatibleCodecsError`），这类错误直接走降级链；加载阶段只有网络错误重试，其余照 ADR-003 立即降级。）
+- 卡顿恢复：`stalled` 持续超过 `stallTimeoutMs`（默认 8 s）而且有缓冲时，先 nudge（`currentTime += 0.1`），再按媒体错误处理。M3 的 LiveController 会接管直播场景。（2026-10-19 修订：起播后播放头还没动过时用 `startupStallMs`（1.5 s）。CI 实验证实 WebKit MSE 在音频早于首个视频帧时会停在首帧，nudge 立即解除，8 s 太慢；见 RESEARCH §1。）
 - 「每个 fatal 错误必须附降级路径」（AGENT §4）：`error.fallback` 为空时，表示降级链已耗尽，store 的 `status` 为 `error`，UI 显示错误态。
 
 ### 4. 字幕（`text`）
@@ -61,7 +61,7 @@ M2 要做引擎侧的 ABR 规则叠加、CMCD 和错误恢复，以及渲染侧�
   - **渲染器**：自定义 `CueRenderer` 或原生 `TextTrack`。
 - 解析：
   - WebVTT / SRT 用 `media-captions`（MIT，L1，1.0.4）；
-  - IMSC1 用 imscJS（BSD-2，L1，1.1.5；传递依赖 `sax` 为 ISC）；
+  - IMSC1 用 imscJS（BSD-2，L1，1.1.5；传递依赖 `sax` 为 ISC）；（2026-10-19 实施补充：imscJS 与 sax 是 CommonJS，sax 会 `require` Node 内置模块，webpack 5 与 esbuild 浏览器构建因此直接失败，所以构建时把两者预打包进 TTML 懒加载块，Node 内置模块换成空实现，见 REUSE §4。）
   - CEA-608 用 hls.js `cea-608-parser.ts` + `output-filter.ts`（L3）。
   
   三个解析器都在第一次需要时动态加载。
@@ -72,7 +72,7 @@ M2 要做引擎侧的 ABR 规则叠加、CMCD 和错误恢复，以及渲染侧�
 
 ### 5. InputController（`input`）
 
-- 实现 SPEC §14.3 全表。键盘事件绑在播放器根上，并带焦点陷阱：Tab 和 Shift+Tab 在播放器内循环，Esc 关菜单，然后退出全屏。
+- 实现 SPEC §14.3 全表。键盘事件绑在播放器根上，并带焦点陷阱：Tab 和 Shift+Tab 在播放器内循环，Esc 关菜单，然后退出全屏。（2026-10-19 修订：焦点只在播放器处于模态时（默认为全屏，宿主可以通过 `modal` 选项扩展）才困在内部。内联播放器困住 Tab 违反 WCAG 2.1.2（No Keyboard Trap），e2e 断言最后一个控件之后 Tab 会离开播放器。菜单打开时焦点由菜单按 APG 菜单按钮模式管理。）
 - 指针：单击、双击、长按、左右半区竖滑、横滑、双指捏合；`pointer: coarse` 下单击只切换控件显隐。
 - 全部可重映射（`setHotkeys` / `setGestures`）。焦点落在文本输入框或可编辑区时不拦截按键。
 - 同步派发：action 在原始事件回调内同步 `dispatch`。`toggle-fullscreen` / `toggle-pip` 在 M2 派发给 presentation；presentation 完整实现在 M3，M2 由临时 handler 调用 `requestFullscreen` / `requestPictureInPicture`，并且同样在原回调内同步执行。

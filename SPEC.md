@@ -325,7 +325,7 @@ Overlay 拿到的是画面实际矩形而非容器矩形（黑边时字幕仍贴
 | 双指捏合 | 电子放大 | |
 | 上下方向键 / M / C / P / I | 音量 / 静音 / 字幕 / PiP / 小窗 | 全部可重映射 |
 | 数字 0-9 | 跳到百分比 | |
-| Tab / Shift+Tab / Esc | 焦点循环 / 关闭菜单退出全屏 | 焦点困在播放器内 |
+| Tab / Shift+Tab / Esc | 焦点循环 / 关闭菜单退出全屏 | 只在模态（全屏）时把焦点困在播放器内；内联时 Tab 可以离开（WCAG 2.1.2，ADR-005 §5） |
 
 ### 14.4 皮肤
 `ui-skin-default`、`ui-skin-minimal`、`ui-skin-tv`（大焦点、只用方向键）、`ui-skin-audio`。皮肤层只有 CSS：包内禁止任何 JS 入口，`"sideEffects": ["*.css"]`，可以用 JS `import`、`<link>` 或 CSS `@import` 引入（ADR-002 第 10 条）。
