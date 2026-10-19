@@ -26,6 +26,8 @@ class FakeHls {
     SUBTITLE_TRACKS_UPDATED: 'hlsSubtitleTracksUpdated',
     FRAG_LOADED: 'hlsFragLoaded',
     FRAG_BUFFERED: 'hlsFragBuffered',
+    NON_NATIVE_TEXT_TRACKS_FOUND: 'hlsNonNativeTextTracksFound',
+    CUES_PARSED: 'hlsCuesParsed',
   };
   handlers = new Map<string, Handler[]>();
   calls: string[] = [];
@@ -39,6 +41,7 @@ class FakeHls {
   audioTrack = -1;
   subtitleTracks = [{ id: 0, name: 'English', lang: 'en', type: 'SUBTITLES' }];
   subtitleTrack = -1;
+  subtitleDisplay = false;
   bandwidthEstimate = 3_000_000;
   latency = 0;
   latestLevelDetails: { live: boolean } | null = { live: false };
@@ -117,7 +120,7 @@ const ctx = (overrides: Partial<EngineContext> = {}): EngineContext => ({
 async function loaded() {
   const engine = createHlsJsEngine(ctx());
   const events: [keyof EngineEvents, unknown][] = [];
-  for (const e of ['tracks-change', 'quality-change', 'first-segment', 'bandwidth', 'latency-change', 'error'] as const) {
+  for (const e of ['tracks-change', 'quality-change', 'first-segment', 'bandwidth', 'latency-change', 'text-cues', 'error'] as const) {
     engine.on(e, (p) => events.push([e, p]));
   }
   const before = FakeHls.instances.length;
@@ -272,5 +275,37 @@ describe('hls.js adapter', () => {
   it('maps hls.js error types to the unified model', () => {
     expect(mapHlsError({ type: 'keySystemError' as never, details: 'keySystemNoKeys' as never, fatal: true, error: new Error() })).toMatchObject({ type: 'drm', fatal: true, recoverable: false });
     expect(mapHlsError({ type: 'muxError' as never, details: 'fragParsingError' as never, fatal: false, error: new Error() })).toMatchObject({ type: 'mux' });
+  });
+
+  it('renders no text itself and delivers the selected track as cue batches', async () => {
+    const { engine, hls, events } = await loaded();
+    expect(hls.config).toMatchObject({ renderTextTracksNatively: false });
+    const cues = (type: string, extra: Record<string, unknown>, text: string) =>
+      hls.fire(FakeHls.Events.CUES_PARSED, { type, ...extra, cues: [{ id: '', startTime: 1, endTime: 2, text, line: 0, align: 'left', size: 50 }] });
+    // Nothing selected: nothing delivered.
+    cues('subtitles', { track: 'default', subtitleTrack: { id: 0 } }, 'ignored');
+    expect(events.filter(([e]) => e === 'text-cues')).toEqual([]);
+
+    engine.selectTextTrack?.('text-0');
+    expect(hls).toMatchObject({ subtitleTrack: 0, subtitleDisplay: true });
+    cues('subtitles', { track: 'default', subtitleTrack: { id: 0 } }, '<i>Hi</i>');
+    expect(events.filter(([e]) => e === 'text-cues').at(-1)?.[1]).toEqual({
+      trackId: 'text-0',
+      cues: [{ id: '1|2|<i>Hi</i>', startTime: 1, endTime: 2, text: '<i>Hi</i>', line: 0, align: 'left', size: 50 }],
+    });
+
+    // CEA-608 channels show up as caption tracks once hls.js finds them.
+    hls.fire(FakeHls.Events.NON_NATIVE_TEXT_TRACKS_FOUND, { tracks: [{ _id: 'textTrack1', label: 'English', kind: 'captions' }] });
+    expect(engine.tracks.text.map((t) => [t.id, t.role, t.format])).toEqual([
+      ['text-0', 'subtitles', 'vtt'],
+      ['caption-textTrack1', 'captions', 'cea-608'],
+    ]);
+    engine.selectTextTrack?.('caption-textTrack1');
+    expect(hls).toMatchObject({ subtitleTrack: -1, subtitleDisplay: false });
+    cues('subtitles', { track: 'default', subtitleTrack: { id: 0 } }, 'stale');
+    cues('captions', { track: 'textTrack1' }, 'CC1');
+    const delivered = events.filter(([e]) => e === 'text-cues').map(([, p]) => p as { trackId: string; cues: { text: string }[] });
+    expect(delivered.map((d) => `${d.trackId}:${d.cues[0]?.text}`)).toEqual(['text-0:<i>Hi</i>', 'caption-textTrack1:CC1']);
+    expect(engine.tracks.text.find((t) => t.id === 'caption-textTrack1')?.selected).toBe(true);
   });
 });

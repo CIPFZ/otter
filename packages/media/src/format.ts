@@ -6,7 +6,7 @@ import type { BackendKind } from './backend.js';
 import type { Capabilities } from './capabilities.js';
 import type { CmcdDecorator } from './cmcd.js';
 import type { LoadOptions, Source } from './source.js';
-import type { TrackList } from './tracks.js';
+import type { InbandCues, TrackList } from './tracks.js';
 
 export interface EngineContext {
   readonly source: Source;
@@ -30,6 +30,8 @@ export interface EngineEvents {
   'latency-change': { readonly latency: number; readonly target?: number };
   'first-segment': { readonly at: number };
   bandwidth: { readonly estimate: number; readonly fast: number; readonly slow: number };
+  /** Cues of the selected in-band text track (ADR-005 §4). */
+  'text-cues': InbandCues;
   /** `fatal` errors make the session fall back to the next backend. */
   error: OtterError;
 }
@@ -43,6 +45,8 @@ export interface Engine {
   /** Loads the engine library (dynamic import) and the manifest; resolves once tracks are known. */
   load(): Promise<void>;
   selectQuality(id: string | 'auto'): void;
+  /** Enables delivery of one in-band text track's cues (`text-cues`), null for none. */
+  selectTextTrack?(id: string | null): void;
   on<E extends keyof EngineEvents>(e: E, h: (p: EngineEvents[E]) => void): Unsubscribe;
   destroy(): void;
 }

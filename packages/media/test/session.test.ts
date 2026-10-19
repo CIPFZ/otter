@@ -48,6 +48,7 @@ function fakeBackend(kind: BackendKind, behavior: { failLoad?: boolean } = {}): 
     setMuted: (m) => calls.push(`muted:${m}`),
     setPlaybackRate: (r) => calls.push(`rate:${r}`),
     selectQuality: (id) => calls.push(`quality:${id}`),
+    selectTextTrack: (id) => calls.push(`text:${id}`),
     on(e, h) {
       let set = listeners.get(e);
       if (set === undefined) listeners.set(e, (set = new Set()));
@@ -164,6 +165,21 @@ describe('media plugin', () => {
     await flush();
     expect(created.map((b) => b.kind)).toEqual(['mse', 'mse', 'native']);
     expect(view.getState().backend).toBe('native');
+  });
+
+  it('forwards in-band cues and re-applies the text track to a rebuilt backend', async () => {
+    const { view, created, plugin } = await setup();
+    const got: string[] = [];
+    plugin.onTextCues(({ trackId, cues }) => got.push(`${trackId}:${cues.length}`));
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    view.dispatch('set-text-track', { id: 'text-0' });
+    expect(created[0]?.calls).toContain('text:text-0');
+    created[0]?.emit('text-cues', { trackId: 'text-0', cues: [{ id: 'a', startTime: 0, endTime: 1, text: 'x' }] });
+    expect(got).toEqual(['text-0:1']);
+    created[0]?.emit('error', createError({ type: 'media', details: 'bufferAppendError', fatal: true, recoverable: false }));
+    await flush();
+    expect(created[1]?.calls).toContain('text:text-0');
   });
 
   it('skips the retry for errors a rebuild cannot fix', async () => {

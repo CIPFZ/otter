@@ -61,6 +61,8 @@ export {
   EMPTY_TRACKS,
   type AudioTrack,
   type BaseTrack,
+  type InbandCue,
+  type InbandCues,
   type MediaTrack,
   type TextTrackInfo,
   type TrackList,

@@ -100,6 +100,7 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         // Latency is sampled from engine.latency on timeupdate (see attach), not forwarded.
         e.on('first-segment', (f) => emit('first-segment', f)),
         e.on('bandwidth', (b) => emit('bandwidth', b)),
+        e.on('text-cues', (c) => emit('text-cues', c)),
         e.on('error', (err) => emit('error', err)),
       );
       await e.load();
@@ -125,6 +126,9 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
     },
     selectQuality(id) {
       engine?.selectQuality(id);
+    },
+    selectTextTrack(id) {
+      engine?.selectTextTrack?.(id);
     },
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {

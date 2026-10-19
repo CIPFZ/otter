@@ -8,7 +8,7 @@ import type { CmcdDecorator } from './cmcd.js';
 import type { FormatPlugin } from './format.js';
 import type { FallbackStep } from './router.js';
 import type { LoadOptions, Source } from './source.js';
-import type { TrackList } from './tracks.js';
+import type { InbandCues, TrackList } from './tracks.js';
 
 export type BackendKind = 'native' | 'mse' | 'webcodecs';
 
@@ -47,6 +47,8 @@ export interface BackendEvents {
   waiting: { readonly position: number };
   stalled: { readonly position: number };
   ended: { readonly position: number };
+  /** In-band cues of the selected text track. */
+  'text-cues': InbandCues;
   error: OtterError;
 }
 
@@ -63,6 +65,8 @@ export interface MediaBackend {
   /** video / audio / text, unified model */
   readonly tracks: TrackList;
   selectQuality(id: string | 'auto'): void;
+  /** Selects the in-band text track whose cues are delivered as `text-cues`; null for none. */
+  selectTextTrack?(id: string | null): void;
   readonly buffered: TimeRanges;
   /** Seconds behind the live edge, live sources only. */
   readonly latency?: number | undefined;

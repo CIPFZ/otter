@@ -93,3 +93,26 @@ test('simultaneous cues do not overlap', async ({ page }) => {
     for (let j = i + 1; j < cues.length; j++) expect(overlap(cues[i] as Rect, cues[j] as Rect), `${cues[i]?.text} / ${cues[j]?.text}`).toBe(false);
   }
 });
+
+for (const src of ['/hls-ts/master.m3u8', '/hls-fmp4/master.m3u8']) {
+  test(`in-band HLS subtitles through hls.js render with the same renderer · ${src}`, async ({ page }) => {
+    await page.goto('/player.html');
+    await page.evaluate(async (s) => {
+      const o = (await window.otter) as OtterFixture;
+      o.dispatch('set-muted', { muted: true });
+      o.load({ src: s }, { autoplay: true });
+    }, src);
+    await expect
+      .poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().textTracks.map((t) => `${t.id}:${t.language ?? ''}`)), { timeout: 20_000 })
+      .toContain('inband:text-0:en');
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('select-text-track', { id: 'inband:text-0' }));
+    await expect
+      .poll(async () => page.evaluate(() => [...document.querySelectorAll('[data-cue-id]')].map((e) => e.textContent).join('|')), { timeout: 20_000 })
+      .toMatch(/Otter test subtitle (one|two)/);
+    const { cues, picture } = await layout(page);
+    for (const c of cues) expect(c.bottom).toBeLessThanOrEqual(picture.bottom + 1);
+    // Captions off: the engine stops delivering and the layer empties.
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('toggle-captions', {}));
+    await expect.poll(async () => (await layout(page)).cues.length).toBe(0);
+  });
+}

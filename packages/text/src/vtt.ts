@@ -79,6 +79,12 @@ const settingsOf = (c: VTTCue): CueSettings => ({
   region: region(c.region),
 });
 
+/** Cue text with WebVTT markup (engine in-band cues) to nodes, same rules as sidecar files. */
+export async function vttNodes(text: string): Promise<CueNode[]> {
+  const { tokenizeVTTCue } = await import('media-captions');
+  return toNodes(tokenizeVTTCue({ text } as VTTCue));
+}
+
 export async function parseCaptions(text: string, format: SidecarFormat = 'vtt', idPrefix = 'cue'): Promise<ParsedCaptions> {
   const { parseText, tokenizeVTTCue } = await import('media-captions');
   const result = await parseText(text, { type: format, strict: false });

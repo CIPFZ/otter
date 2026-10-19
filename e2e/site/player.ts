@@ -86,7 +86,7 @@ async function build(policy: RoutePolicy): Promise<{
     policy,
     ...(cmcd === undefined ? {} : { cmcd }),
   });
-  const text = createText();
+  const text = createText({ inband: media });
   const core = createCore<State, Actions>({ slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE], plugins: [media, createQoePlugin(), text.plugin] });
   await core.start();
   root.querySelector('[data-otter-overlays]')?.remove();

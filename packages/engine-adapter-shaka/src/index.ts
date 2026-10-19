@@ -130,6 +130,8 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
   let tracks: TrackList = EMPTY_TRACKS;
   let abr = true;
   let destroyed = false;
+  // Selected in-band text track; the session re-applies it after every (re)load.
+  let selectedText: string | null = null;
   let firstSegment = false;
   // Created in load(): the rule stack is imported next to Shaka so it stays out of the first screen.
   let driver: AbrDriver | undefined;
@@ -190,11 +192,12 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
         throw createError({ type: 'other', details: 'unsupportedSource', fatal: true, recoverable: false, message: 'Shaka needs a URL' });
       }
       // ABR rule stack and CMCD glue load together with Shaka (ADR-004 §2).
-      const [shakaModule, pipeline, abrGlue, cmcdGlue] = await Promise.all([
+      const [shakaModule, pipeline, abrGlue, cmcdGlue, textGlue] = await Promise.all([
         import('shaka-player'),
         options.abr === 'engine' ? undefined : import('@otter-player/pipeline'),
         options.abr === 'engine' ? undefined : import('./abr.js'),
         ctx.cmcd === undefined ? undefined : import('./cmcd.js'),
+        import('./text.js'),
       ]);
       const shaka = resolveShakaNamespace(shakaModule);
       driver = pipeline?.createAbrDriver();
@@ -239,6 +242,12 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       p.configure({
         abr: { enabled: true },
         ...(manager === undefined ? {} : { abrFactory: () => manager }),
+        // Cues go to the text package instead of Shaka's own DOM / native displayer.
+        textDisplayFactory: () =>
+          textGlue.createTextDisplayer(
+            () => (selectedText !== null && player?.getTextTracks().some((t) => t.active && `text-${t.id}` === selectedText) === true ? selectedText : null),
+            (cues) => bus.emit('text-cues', cues),
+          ),
         ...(drm === undefined ? {} : { drm: { servers: { ...drm.servers }, clearKeys: { ...drm.clearKeys } } }),
       });
       if (options.config !== undefined) p.configure(options.config);
@@ -270,6 +279,14 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       }
       refresh();
       reportStats();
+    },
+    selectTextTrack(id) {
+      selectedText = id;
+      if (player === undefined) return;
+      const track = id === null ? undefined : player.getTextTracks().find((t) => `text-${t.id}` === id);
+      if (track !== undefined) player.selectTextTrack(track);
+      player.setTextTrackVisibility(track !== undefined);
+      refresh();
     },
     selectQuality(id) {
       if (player === undefined) return;

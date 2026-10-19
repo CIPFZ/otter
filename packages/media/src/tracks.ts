@@ -34,6 +34,32 @@ export interface TextTrackInfo extends BaseTrack {
 
 export type MediaTrack = VideoTrack | AudioTrack | TextTrackInfo;
 
+/**
+ * Engine-neutral in-band cue (HLS / DASH subtitles, CEA-608 closed captions), delivered for the
+ * selected text track when the engine renders nothing itself (ADR-005 §4). Seconds; layout
+ * fields follow WebVTT and are absent when the engine has none.
+ */
+export interface InbandCue {
+  readonly id: string;
+  readonly startTime: number;
+  readonly endTime: number;
+  readonly text: string;
+  readonly line?: number | 'auto';
+  readonly snapToLines?: boolean;
+  readonly lineAlign?: 'start' | 'center' | 'end';
+  readonly position?: number | 'auto';
+  readonly positionAlign?: 'line-left' | 'center' | 'line-right' | 'auto';
+  /** Percent. */
+  readonly size?: number;
+  readonly align?: 'start' | 'center' | 'end' | 'left' | 'right';
+}
+
+export interface InbandCues {
+  /** TextTrackInfo id the cues belong to. */
+  readonly trackId: string;
+  readonly cues: readonly InbandCue[];
+}
+
 export interface TrackList {
   /** Video renditions; `selectQuality` takes one of these ids. */
   readonly video: readonly VideoTrack[];

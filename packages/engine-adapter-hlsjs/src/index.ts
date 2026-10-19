@@ -9,13 +9,15 @@ import {
   type Engine,
   type EngineContext,
   type EngineEvents,
+  type InbandCue,
+  type InbandCues,
   type TextTrackInfo,
   type TrackList,
   type VideoTrack,
 } from '@otter-player/media';
 import type { AbrDriver } from '@otter-player/pipeline';
 import type Hls from 'hls.js';
-import type { ErrorData, HlsConfig, Level, MediaPlaylist } from 'hls.js';
+import type { CuesParsedData, ErrorData, HlsConfig, Level, MediaPlaylist } from 'hls.js';
 import type { createOtterAbrController } from './abr.js';
 
 
@@ -117,7 +119,47 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
   const refresh = (): void => {
     if (hls === undefined) return;
     tracks = mapHlsTracks(hls);
+    if (captions.size > 0) {
+      // CEA-608 caption channels are not subtitle playlists; keep them selectable too.
+      const text = [...tracks.text, ...[...captions.values()].map((c) => ({ ...c, selected: c.id === selectedText }))];
+      tracks = { ...tracks, text };
+    }
     bus.emit('tracks-change', tracks);
+  };
+
+  // In-band text (ADR-005 §4): the adapter renders nothing itself; the selected subtitle track
+  // (and, for TS streams, a CEA-608 channel) is delivered to the text package as cue batches.
+  const captions = new Map<string, TextTrackInfo>();
+  const captionTracks = new Set<string>();
+  let selectedText: string | null = null;
+  const subtitleIndexOf = (id: string | null): number => {
+    if (id === null || hls === undefined) return -1;
+    const index = Number(id.replace(/^text-/, ''));
+    return Number.isInteger(index) && index >= 0 && index < hls.subtitleTracks.length ? index : -1;
+  };
+  const applyTextSelection = (): void => {
+    if (hls === undefined) return;
+    const index = subtitleIndexOf(selectedText);
+    hls.subtitleTrack = index;
+    hls.subtitleDisplay = index >= 0;
+    refresh();
+  };
+  const toCue = (c: Partial<VTTCue>): InbandCue => {
+    const text = c.text ?? '';
+    return {
+      // hls.js cue ids are often empty and batches overlap: identity is time + text.
+      id: `${c.startTime ?? 0}|${c.endTime ?? 0}|${text}`,
+      startTime: c.startTime ?? 0,
+      endTime: c.endTime ?? 0,
+      text,
+      ...(c.line === undefined ? {} : { line: c.line }),
+      ...(c.snapToLines === undefined ? {} : { snapToLines: c.snapToLines }),
+      ...(c.lineAlign === undefined ? {} : { lineAlign: c.lineAlign }),
+      ...(c.position === undefined ? {} : { position: c.position }),
+      ...(c.positionAlign === undefined ? {} : { positionAlign: c.positionAlign }),
+      ...(c.size === undefined ? {} : { size: c.size }),
+      ...(c.align === undefined ? {} : { align: c.align }),
+    };
   };
 
   return {
@@ -161,6 +203,8 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
         ...(abrController === undefined ? {} : { abrController }),
         ...(loaders ?? {}),
         preferManagedMediaSource: ctx.mms,
+        // The text package renders cues itself (ADR-005 §4); hls.js only parses them.
+        renderTextTracksNatively: false,
         startPosition: ctx.options.startTime ?? -1,
         ...(headers === undefined
           ? {}
@@ -225,7 +269,27 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
       });
       ctx.media.addEventListener('seeking', onSeeking);
       instance.on(Events.AUDIO_TRACKS_UPDATED, refresh);
-      instance.on(Events.SUBTITLE_TRACKS_UPDATED, refresh);
+      instance.on(Events.SUBTITLE_TRACKS_UPDATED, () => {
+        refresh();
+        applyTextSelection();
+      });
+      instance.on(Events.NON_NATIVE_TEXT_TRACKS_FOUND, (_e, { tracks: found }) => {
+        for (const t of found) {
+          if (t.kind !== 'captions' || t._id === undefined) continue;
+          captionTracks.add(t._id);
+          captions.set(`caption-${t._id}`, { kind: 'text', id: `caption-${t._id}`, role: 'captions', format: 'cea-608', label: t.label, selected: false });
+        }
+        refresh();
+      });
+      instance.on(Events.CUES_PARSED, (_e, data: CuesParsedData) => {
+        if (selectedText === null) return;
+        const trackId =
+          data.type === 'captions' ? `caption-${data.track}` : data.subtitleTrack === undefined ? selectedText : `text-${data.subtitleTrack.id}`;
+        // Cues of a track that is no longer selected (switch in flight) are dropped.
+        if (trackId !== selectedText || (data.type === 'captions' && !captionTracks.has(data.track))) return;
+        const cues: InbandCues = { trackId, cues: (data.cues as Partial<VTTCue>[]).map(toCue) };
+        bus.emit('text-cues', cues);
+      });
       instance.on(Events.FRAG_LOADED, (_e, { frag, part }) => {
         const stats = (part ?? frag).stats as typeof frag.stats | undefined;
         if (driver !== undefined && frag.type === 'main' && stats !== undefined && !stats.aborted && stats.loaded > 0) {
@@ -258,6 +322,11 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
           bus.emit('latency-change', target === null ? { latency } : { latency, target });
         }
       });
+    },
+    selectTextTrack(id) {
+      if (hls === undefined) return;
+      selectedText = id;
+      applyTextSelection();
     },
     selectQuality(id) {
       if (hls === undefined) return;

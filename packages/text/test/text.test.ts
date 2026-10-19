@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
 import { createCore, type StoreSlice } from '@otter-player/core';
-import type { Source } from '@otter-player/media';
+import type { InbandCues, Source, TextTrackInfo } from '@otter-player/media';
 import type { OverlayHost } from '@otter-player/surface';
 import { createCueRenderer, createText, TEXT_SLICE, type TextActionMap, type TextState } from '@otter-player/text';
 import { parseCaptions } from '../src/vtt.js';
@@ -117,5 +117,31 @@ describe('text plugin', () => {
     expect(root.querySelector('[data-cue-id]')).toBeNull();
     text.overlay.destroy();
     expect(root.querySelector('[data-otter-cues]')).toBeNull();
+  });
+
+  it('offers engine tracks, tells the media plugin which one to deliver and renders its cues', async () => {
+    let deliver: ((c: InbandCues) => void) | undefined;
+    const text = createText({ inband: { onTextCues: (h) => ((deliver = h), () => undefined) } });
+    type HS = S & { tracks: { text: TextTrackInfo[] } };
+    const TRACKS: StoreSlice<{ tracks: { text: TextTrackInfo[] } }> = { id: 'tracks', initialState: { tracks: { text: [] } } };
+    const core = createCore<HS, TextActionMap>({ slices: [TEXT_SLICE, SOURCE_SLICE, TRACKS], plugins: [text.plugin] });
+    const engineSelection: (string | null)[] = [];
+    await core.start();
+    core.store.handle('set-text-track', ({ id }) => void engineSelection.push(id));
+    core.store.setState({ tracks: { text: [{ kind: 'text', id: 'text-0', role: 'subtitles', format: 'vtt', language: 'en', selected: false }] } });
+    expect(core.store.getState().textTracks).toEqual([{ id: 'inband:text-0', source: 'inband', role: 'subtitles', format: 'vtt', language: 'en' }]);
+    core.store.dispatch('select-text-track', { id: 'inband:text-0' });
+    expect(engineSelection).toEqual(['text-0']);
+    expect(core.store.getState().textStatus).toBe('ready');
+    deliver?.({ trackId: 'text-0', cues: [{ id: 'a', startTime: 1, endTime: 2, text: '<i>Hi</i> there', line: 0 }] });
+    deliver?.({ trackId: 'text-0', cues: [{ id: 'a', startTime: 1, endTime: 2, text: '<i>Hi</i> there', line: 0 }] });
+    await vi.waitFor(() => expect(text.cues('inband:text-0')).toHaveLength(1));
+    const [c] = text.cues('inband:text-0');
+    expect(c?.settings.line).toBe(0);
+    expect(c?.nodes[0]).toMatchObject({ type: 'i' });
+    // The track disappears (new engine, new manifest): selection falls back to off.
+    core.store.setState({ tracks: { text: [] } });
+    expect(core.store.getState()).toMatchObject({ textTracks: [], textTrack: null });
+    expect(engineSelection.at(-1)).toBeNull();
   });
 });

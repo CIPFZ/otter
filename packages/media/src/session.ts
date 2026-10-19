@@ -22,7 +22,7 @@ import type { FormatPlugin } from './format.js';
 import { createRetryBudget, createStallWatchdog, resolveRecovery, type RecoveryPolicy } from './recovery.js';
 import { createRouter, stepLabel, type RouteDecision, type RoutePolicy, type Router } from './router.js';
 import type { LoadOptions, Source } from './source.js';
-import { EMPTY_TRACKS, type TrackList } from './tracks.js';
+import { EMPTY_TRACKS, type InbandCues, type TrackList } from './tracks.js';
 
 export interface MediaState extends PlaybackSnapshot {
   readonly status: 'idle' | 'loading' | 'ready' | 'error';
@@ -65,6 +65,8 @@ export interface MediaActionMap {
   'volume-by': { readonly delta: number };
   /** rate > 0 starts a hold (e.g. long press 2x); rate <= 0 releases and restores the previous rate. */
   'hold-rate': { readonly rate: number };
+  /** In-band text track whose cues the engine delivers (used by @otter-player/text), null for none. */
+  'set-text-track': { readonly id: string | null };
 }
 
 const PLAYBACK_RESET: PlaybackSnapshot = {
@@ -121,6 +123,8 @@ export interface MediaPluginOptions {
 export interface MediaPlugin<S extends MediaState = MediaState, A extends MediaActionMap = MediaActionMap>
   extends Plugin<S, A> {
   readonly router: Router;
+  /** In-band cues of the track chosen with `set-text-track`, for the text renderer. */
+  onTextCues(h: (cues: InbandCues) => void): Unsubscribe;
 }
 
 interface Active {
@@ -171,6 +175,9 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   let starvedSinceRequest = false;
   let firstFrameSeen = false;
   let cmcd: CmcdDecorator | undefined;
+  // In-band text: survives backend rebuilds and fallbacks within a load.
+  let textTrack: string | null = null;
+  const cueListeners = new Set<(cues: InbandCues) => void>();
 
   const state = (): Readonly<MediaState> => (store as Store<S, A>).getState();
   const set = (patch: Partial<MediaState>): void => store?.setState(patch as Partial<S>);
@@ -275,6 +282,9 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         qoe?.emit('bandwidth', bw);
       }),
       on('dropped-frames', (df) => qoe?.emit('dropped-frames', df)),
+      on('text-cues', (c) => {
+        for (const h of cueListeners) h(c);
+      }),
       on('error', (error) => {
         if (error.fatal) {
           void recover(decision, error, loadToken);
@@ -315,6 +325,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       await backend.load(source, opts);
       if (loadToken !== token) return null;
       if (prefs.quality !== 'auto') backend.selectQuality(prefs.quality);
+      if (textTrack !== null) backend.selectTextTrack?.(textTrack);
       set({ status: 'ready', tracks: backend.tracks, error: null });
       watchStalls();
       if (opts.autoplay === true) play();
@@ -447,6 +458,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     watched = 0;
     lastTime = opts.startTime ?? 0;
     lastOptions = opts;
+    textTrack = null;
     budget.reset();
     if (retryTimer !== undefined) clearTimeout(retryTimer);
     retryTimer = undefined;
@@ -557,6 +569,10 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   return {
     id: 'media',
     router,
+    onTextCues(h) {
+      cueListeners.add(h);
+      return () => cueListeners.delete(h);
+    },
     install(ctx: PluginContext<S, A>) {
       store = ctx.store;
       qoe = ctx.qoe;
@@ -583,6 +599,10 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         }),
         s.handle('toggle-muted', () => setMuted(!state().muted)),
         s.handle('volume-by', ({ delta }) => setVolume(state().volume + delta)),
+        s.handle('set-text-track', ({ id }) => {
+          textTrack = id;
+          active?.backend.selectTextTrack?.(id);
+        }),
         s.handle('hold-rate', ({ rate }) => {
           if (rate > 0) {
             heldRate ??= state().playbackRate;

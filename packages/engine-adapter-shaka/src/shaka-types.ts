@@ -70,6 +70,8 @@ export interface ShakaPlayer {
   getVariantTracks(): ShakaTrack[];
   getTextTracks(): ShakaTextTrack[];
   selectVariantTrack(track: ShakaTrack, clearBuffer?: boolean): void;
+  selectTextTrack(track: ShakaTextTrack): void;
+  setTextTrackVisibility(visible: boolean): void;
   getStats(): ShakaStats;
   isLive(): boolean;
   seekRange(): { readonly start: number; readonly end: number };
