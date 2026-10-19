@@ -1,0 +1,150 @@
+// UI strings (ADR-005 §6): primitives never hard-code text. English and Chinese ship; a host
+// swaps or extends the table with provideStrings(). `{n}` / `{label}` are placeholders.
+
+export interface UiStrings {
+  readonly play: string;
+  readonly pause: string;
+  readonly mute: string;
+  readonly unmute: string;
+  readonly volume: string;
+  readonly seek: string;
+  /** "{current} of {duration}" */
+  readonly timeOf: string;
+  readonly live: string;
+  readonly behindLive: string;
+  readonly captions: string;
+  readonly captionsOff: string;
+  readonly settings: string;
+  readonly quality: string;
+  /** "Auto ({label})" when the playing rendition is known. */
+  readonly qualityAuto: string;
+  readonly qualityAutoActive: string;
+  readonly speed: string;
+  readonly speedNormal: string;
+  readonly fullscreen: string;
+  readonly exitFullscreen: string;
+  readonly pip: string;
+  readonly exitPip: string;
+  readonly loading: string;
+  readonly player: string;
+  readonly statistics: string;
+  // Announcer (aria-live) messages.
+  readonly announcePlaying: string;
+  readonly announcePaused: string;
+  readonly announceMuted: string;
+  readonly announceUnmuted: string;
+  /** "Volume {n}%" */
+  readonly announceVolume: string;
+  /** "Captions on: {label}" */
+  readonly announceCaptionsOn: string;
+  readonly announceCaptionsOff: string;
+  /** "Quality {label}" */
+  readonly announceQuality: string;
+  /** "Speed {n}x" */
+  readonly announceSpeed: string;
+  /** "Playback error: {label}" */
+  readonly announceError: string;
+  readonly announceFullscreen: string;
+  readonly announceExitFullscreen: string;
+}
+
+export const STRINGS_EN: UiStrings = {
+  play: 'Play',
+  pause: 'Pause',
+  mute: 'Mute',
+  unmute: 'Unmute',
+  volume: 'Volume',
+  seek: 'Seek',
+  timeOf: '{current} of {duration}',
+  live: 'Live',
+  behindLive: 'Behind live',
+  captions: 'Captions',
+  captionsOff: 'Off',
+  settings: 'Settings',
+  quality: 'Quality',
+  qualityAuto: 'Auto',
+  qualityAutoActive: 'Auto ({label})',
+  speed: 'Speed',
+  speedNormal: 'Normal',
+  fullscreen: 'Fullscreen',
+  exitFullscreen: 'Exit fullscreen',
+  pip: 'Picture in picture',
+  exitPip: 'Exit picture in picture',
+  loading: 'Loading',
+  player: 'Video player',
+  statistics: 'Playback statistics',
+  announcePlaying: 'Playing',
+  announcePaused: 'Paused',
+  announceMuted: 'Muted',
+  announceUnmuted: 'Unmuted',
+  announceVolume: 'Volume {n}%',
+  announceCaptionsOn: 'Captions on: {label}',
+  announceCaptionsOff: 'Captions off',
+  announceQuality: 'Quality {label}',
+  announceSpeed: 'Speed {n}x',
+  announceError: 'Playback error: {label}',
+  announceFullscreen: 'Fullscreen',
+  announceExitFullscreen: 'Exited fullscreen',
+};
+
+export const STRINGS_ZH: UiStrings = {
+  play: '播放',
+  pause: '暂停',
+  mute: '静音',
+  unmute: '取消静音',
+  volume: '音量',
+  seek: '进度',
+  timeOf: '{current}，共 {duration}',
+  live: '直播',
+  behindLive: '落后直播',
+  captions: '字幕',
+  captionsOff: '关闭',
+  settings: '设置',
+  quality: '清晰度',
+  qualityAuto: '自动',
+  qualityAutoActive: '自动（{label}）',
+  speed: '倍速',
+  speedNormal: '正常',
+  fullscreen: '全屏',
+  exitFullscreen: '退出全屏',
+  pip: '画中画',
+  exitPip: '退出画中画',
+  loading: '加载中',
+  player: '视频播放器',
+  statistics: '播放统计',
+  announcePlaying: '正在播放',
+  announcePaused: '已暂停',
+  announceMuted: '已静音',
+  announceUnmuted: '已取消静音',
+  announceVolume: '音量 {n}%',
+  announceCaptionsOn: '字幕已开启：{label}',
+  announceCaptionsOff: '字幕已关闭',
+  announceQuality: '清晰度 {label}',
+  announceSpeed: '倍速 {n}x',
+  announceError: '播放出错：{label}',
+  announceFullscreen: '已进入全屏',
+  announceExitFullscreen: '已退出全屏',
+};
+
+const tables = new WeakMap<Node, UiStrings>();
+
+/** Strings for every primitive under `root` (default: from the closest `lang`, en or zh). */
+export function provideStrings(root: Node, strings: UiStrings): void {
+  tables.set(root, strings);
+}
+
+export function findStrings(from: Node): UiStrings {
+  let node: Node | null = from;
+  while (node !== null) {
+    const table = tables.get(node);
+    if (table !== undefined) return table;
+    const lang = node instanceof Element ? node.getAttribute('lang') : null;
+    if (lang !== null && lang !== '') return /^zh\b/i.test(lang) ? STRINGS_ZH : STRINGS_EN;
+    node = node.parentNode ?? ((node as { host?: Node }).host ?? null);
+  }
+  return STRINGS_EN;
+}
+
+/** `format('Volume {n}%', { n: 50 })` */
+export const fill = (template: string, values: Readonly<Record<string, string | number>>): string =>
+  template.replace(/\{(\w+)\}/g, (m, k: string) => (values[k] === undefined ? m : String(values[k])));

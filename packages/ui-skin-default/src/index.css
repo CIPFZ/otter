@@ -44,6 +44,17 @@
 :where([data-otter-controls][hidden]) {
   display: none;
 }
+/* Idle (chrome plugin): faded out but still focusable; focusing a control shows the bar. */
+:where([data-otter-controls]) {
+  transition: opacity 0.2s;
+}
+:where([data-otter-controls][data-idle]) {
+  opacity: 0;
+  pointer-events: none;
+}
+:where([data-otter-player]:has([data-otter-controls][data-idle])) {
+  cursor: none;
+}
 :where([data-otter-player]) otter-stats {
   position: absolute;
   inset: 8px auto auto 8px;

@@ -23,7 +23,9 @@
     "@otter-player/core": "workspace:*",
     "@otter-player/input": "workspace:*",
     "@otter-player/media": "workspace:*",
+    "@otter-player/presentation": "workspace:*",
     "@otter-player/qoe": "workspace:*",
+    "@otter-player/text": "workspace:*",
     "@otter-player/surface": "workspace:*"
   }
 }

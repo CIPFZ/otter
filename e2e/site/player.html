@@ -14,14 +14,26 @@
   <body>
     <main>
       <h1>Otter player fixture</h1>
-      <div id="player" data-otter-player role="region" aria-label="Video player">
-        <video playsinline crossorigin="anonymous"></video>
+      <!-- tabindex=-1: the player root takes keyboard focus for hotkeys; the picture itself is not a
+           control (Firefox would otherwise put the bare <video> in the tab order). -->
+      <div id="player" data-otter-player role="region" aria-label="Video player" tabindex="-1">
+        <video playsinline crossorigin="anonymous" tabindex="-1"></video>
+        <otter-gesture></otter-gesture>
+        <otter-poster></otter-poster>
+        <otter-spinner></otter-spinner>
         <otter-stats hidden></otter-stats>
+        <otter-announcer></otter-announcer>
         <div data-otter-controls>
           <otter-play-button></otter-play-button>
           <otter-mute-button></otter-mute-button>
+          <otter-volume-slider></otter-volume-slider>
           <otter-time-slider></otter-time-slider>
           <otter-time-display></otter-time-display>
+          <otter-live-indicator></otter-live-indicator>
+          <otter-captions-button></otter-captions-button>
+          <otter-settings-menu></otter-settings-menu>
+          <otter-pip-button></otter-pip-button>
+          <otter-fullscreen-button></otter-fullscreen-button>
         </div>
       </div>
       <p><label><input id="toggle-stats" type="checkbox" /> Stats for nerds</label></p>

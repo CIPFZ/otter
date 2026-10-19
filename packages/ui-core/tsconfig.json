@@ -23,7 +23,13 @@
       "path": "../media"
     },
     {
+      "path": "../presentation"
+    },
+    {
       "path": "../qoe"
+    },
+    {
+      "path": "../text"
     },
     {
       "path": "../surface"

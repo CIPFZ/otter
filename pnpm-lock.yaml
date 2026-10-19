@@ -538,12 +538,18 @@ importers:
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
+      '@otter-player/presentation':
+        specifier: workspace:*
+        version: link:../presentation
       '@otter-player/qoe':
         specifier: workspace:*
         version: link:../qoe
       '@otter-player/surface':
         specifier: workspace:*
         version: link:../surface
+      '@otter-player/text':
+        specifier: workspace:*
+        version: link:../text
 
   packages/ui-skin-audio: {}
 

@@ -4,11 +4,21 @@
 
 import type { StoreView } from '@otter-player/core';
 import type { MediaActionMap, MediaState } from '@otter-player/media';
+import type { PresentationActionMap, PresentationState } from '@otter-player/presentation';
 import type { QoeState } from '@otter-player/qoe';
+import type { TextActionMap, TextState } from '@otter-player/text';
+import type { ChromeActionMap, ChromeState } from './chrome.js';
 
-/** State the M1 primitives read. `qoe` is optional: the stats panel shows what is available. */
-export type UiState = MediaState & Partial<QoeState>;
-export type UiActions = MediaActionMap;
+/**
+ * State the primitives read: the media session plus whatever the shell added. `qoe` is optional
+ * (the stats panel shows what is available); text / chrome / presentation slices may be absent.
+ */
+export type UiState = MediaState &
+  Partial<QoeState> &
+  Partial<TextState> &
+  Partial<ChromeState> &
+  Partial<PresentationState>;
+export type UiActions = MediaActionMap & ChromeActionMap & TextActionMap & PresentationActionMap;
 export type UiStore = StoreView<UiState, UiActions>;
 
 const stores = new WeakMap<Node, UiStore>();

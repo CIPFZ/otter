@@ -59,7 +59,7 @@ describe('M1 elements', () => {
     input.dispatchEvent(new Event('change'));
     expect(calls).toEqual([['seek', { time: 30 }, 'change']]);
     store.setState({ live: true, duration: Number.POSITIVE_INFINITY });
-    expect(shadow('otter-time-display').querySelector('span')?.textContent).toBe('LIVE');
+    expect(shadow('otter-time-display').querySelector('span')?.textContent).toBe('Live');
     expect(input.disabled).toBe(true);
   });
 

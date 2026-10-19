@@ -20,7 +20,7 @@ export function defineUIFeature<const F extends UIFeature>(feature: F): F {
   return feature;
 }
 
-/** Tag names of the SPEC §14.1 primitives. Implementations arrive in M1 / M2. */
+/** Tag names of the SPEC §14.1 primitives. */
 export const OTTER_ELEMENTS = {
   PlayButton: 'otter-play-button',
   MuteButton: 'otter-mute-button',
@@ -40,5 +40,24 @@ export const OTTER_ELEMENTS = {
 export type OtterElementName = (typeof OTTER_ELEMENTS)[keyof typeof OTTER_ELEMENTS];
 
 export { findStore, provideStore, type StoreConsumer, type UiActions, type UiState, type UiStore } from './context.js';
-export { defineOtterElements, M1_ELEMENTS, type DefineOptions } from './elements.js';
+export {
+  defineOtterElements,
+  M1_ELEMENTS,
+  M2_ELEMENTS,
+  settingsGroups,
+  type DefineOptions,
+  type MenuGroup,
+  type MenuOption,
+} from './elements.js';
 export { formatBitrate, formatMs, formatSeconds, formatTime, speakTime } from './format.js';
+export {
+  bindActivity,
+  CHROME_SLICE,
+  createChromePlugin,
+  INITIAL_CHROME_STATE,
+  type ChromeActionMap,
+  type ChromeOptions,
+  type ChromeState,
+  type ChromeUiActions,
+} from './chrome.js';
+export { fill, findStrings, provideStrings, STRINGS_EN, STRINGS_ZH, type UiStrings } from './strings.js';

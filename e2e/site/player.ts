@@ -23,10 +23,20 @@ import {
 import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
 import { createOverlayLayer, createVideoSurface, type OverlayLayer, type Surface } from '@otter-player/surface';
 import { createText, TEXT_SLICE, type TextActionMap, type TextState } from '@otter-player/text';
-import { defineOtterElements, provideStore } from '@otter-player/ui-core';
+import { createInputController } from '@otter-player/input';
+import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationState } from '@otter-player/presentation';
+import {
+  bindActivity,
+  CHROME_SLICE,
+  createChromePlugin,
+  defineOtterElements,
+  provideStore,
+  type ChromeActionMap,
+  type ChromeState,
+} from '@otter-player/ui-core';
 
-type State = MediaState & QoeState & TextState;
-type Actions = MediaActionMap & TextActionMap;
+type State = MediaState & QoeState & TextState & ChromeState & PresentationState;
+type Actions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap;
 
 export interface OtterFixture {
   load(source: Source, options?: LoadOptions): void;
@@ -66,6 +76,7 @@ async function build(policy: RoutePolicy): Promise<{
   media: ReturnType<typeof createMediaPlugin<State, Actions>>;
   surface: Surface;
   layer: OverlayLayer;
+  dispose: () => void;
 }> {
   const params = new URLSearchParams(location.search);
   const abr = params.get('abr') === 'engine' ? 'engine' : 'otter';
@@ -87,24 +98,58 @@ async function build(policy: RoutePolicy): Promise<{
     ...(cmcd === undefined ? {} : { cmcd }),
   });
   const text = createText({ inband: media });
-  const core = createCore<State, Actions>({ slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE], plugins: [media, createQoePlugin(), text.plugin] });
+  // ?idle=<ms> sets the control auto-hide delay (0 keeps them shown).
+  const idleMs = Number(params.get('idle') ?? 3000);
+  const core = createCore<State, Actions>({
+    slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE],
+    plugins: [media, createQoePlugin(), text.plugin, createChromePlugin({ idleMs }), createPresentationPlugin({ container: root, surface })],
+  });
   await core.start();
   root.querySelector('[data-otter-overlays]')?.remove();
   const layer = createOverlayLayer({ container: root, surface, store: core.store.view(), mediaTime: () => video.currentTime });
   layer.add(text.overlay);
   provideStore(root, core.store.view());
-  return { core, media, surface, layer };
+  // Keyboard, pointer and touch go through one InputController on the player root (SPEC §14.3).
+  const input = createInputController({ store: core.store.view() });
+  input.attach(root);
+  const offActivity = bindActivity(root, core.store.view());
+  const offControls = trackControls(core.store.view(), layer);
+  return {
+    core,
+    media,
+    surface,
+    layer,
+    dispose: () => {
+      input.destroy();
+      offActivity();
+      offControls();
+    },
+  };
 }
 
-/** Shell duty (SPEC §13.1): the visible control bar's height is the overlays' bottom safe area. */
-function trackControls(layer: () => OverlayLayer): (visible: boolean) => void {
+/**
+ * Shell duty (SPEC §13.1): controls fade out when the chrome plugin says so (they stay in the
+ * tab order; focusing one shows them again), and the visible bar is the overlays' safe area.
+ */
+function trackControls(store: { getState(): State; subscribe(h: (s: State) => void): () => void }, layer: OverlayLayer): () => void {
   const controls = document.querySelector('[data-otter-controls]') as HTMLElement;
-  const report = (): void => layer().setSafeArea({ top: 0, right: 0, bottom: controls.hidden ? 0 : controls.offsetHeight, left: 0 });
-  new ResizeObserver(report).observe(controls);
-  report();
-  return (visible) => {
-    controls.hidden = !visible;
+  const report = (): void => {
+    const visible = store.getState().controlsVisible;
+    controls.toggleAttribute('data-idle', !visible);
+    layer.setSafeArea({ top: 0, right: 0, bottom: visible ? controls.offsetHeight : 0, left: 0 });
+  };
+  const observer = new ResizeObserver(report);
+  observer.observe(controls);
+  let last = store.getState().controlsVisible;
+  const off = store.subscribe((s) => {
+    if (s.controlsVisible === last) return;
+    last = s.controlsVisible;
     report();
+  });
+  report();
+  return () => {
+    observer.disconnect();
+    off();
   };
 }
 
@@ -116,7 +161,7 @@ async function start(): Promise<OtterFixture> {
     for (const type of QOE_TYPES) current.core.qoe.on(type, (payload) => events.push({ type, payload }));
   };
   listen();
-  const setControlsVisible = trackControls(() => current.layer);
+  const setControlsVisible = (visible: boolean): void => current.core.store.setState({ controlsVisible: visible });
 
   const toggle = document.getElementById('toggle-stats') as HTMLInputElement;
   const stats = document.querySelector('otter-stats') as HTMLElement;
@@ -139,11 +184,11 @@ async function start(): Promise<OtterFixture> {
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     },
     async setPolicy(policy) {
+      current.dispose();
       await current.core.destroy();
       current.layer.destroy();
       current = await build(policy);
       listen();
-      setControlsVisible(!(document.querySelector('[data-otter-controls]') as HTMLElement).hidden);
     },
   };
 }
