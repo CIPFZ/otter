@@ -304,6 +304,11 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       player.setTextTrackVisibility(track !== undefined);
       refresh();
     },
+    seekToLive() {
+      if (player === undefined || !player.isLive()) return;
+      if (typeof player.goToLive === 'function') player.goToLive();
+      else ctx.media.currentTime = player.seekRange().end;
+    },
     selectQuality(id) {
       if (player === undefined) return;
       if (id === 'auto') {

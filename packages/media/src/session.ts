@@ -68,6 +68,8 @@ export interface MediaActionMap {
   /** In-band text track whose cues the engine delivers (used by @otter-player/text), null for none. */
   'set-text-track': { readonly id: string | null };
   'select-audio-track': { readonly id: string };
+  /** Live: back to the live edge (the "Back to live" capsule). */
+  'seek-to-live': Record<string, never>;
 }
 
 const PLAYBACK_RESET: PlaybackSnapshot = {
@@ -601,6 +603,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         s.handle('toggle-muted', () => setMuted(!state().muted)),
         s.handle('volume-by', ({ delta }) => setVolume(state().volume + delta)),
         s.handle('select-audio-track', ({ id }) => active?.backend.selectAudioTrack?.(id)),
+        s.handle('seek-to-live', () => active?.backend.seekToLive?.()),
         s.handle('set-text-track', ({ id }) => {
           textTrack = id;
           active?.backend.selectTextTrack?.(id);

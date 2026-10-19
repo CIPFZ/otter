@@ -68,6 +68,8 @@ export interface MediaBackend {
   /** Selects the in-band text track whose cues are delivered as `text-cues`; null for none. */
   selectTextTrack?(id: string | null): void;
   selectAudioTrack?(id: string): void;
+  /** Live: back to the live edge. */
+  seekToLive?(): void;
   readonly buffered: TimeRanges;
   /** Seconds behind the live edge, live sources only. */
   readonly latency?: number | undefined;

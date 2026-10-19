@@ -190,6 +190,14 @@ export function createNativeBackend(_ctx: BackendContext, options: NativeBackend
     },
     // Quality is opaque on the native path (tracks.quality === 'opaque').
     selectQuality: () => undefined,
+    seekToLive() {
+      // Native HLS: the live edge is the end of the seekable range; stay a target duration-ish
+      // (3 s) behind it so playback does not immediately stall.
+      const m = media;
+      if (m === undefined || m.seekable.length === 0) return;
+      const end = m.seekable.end(m.seekable.length - 1);
+      m.currentTime = Math.max(m.seekable.start(0), end - 3);
+    },
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
       observer?.destroy();

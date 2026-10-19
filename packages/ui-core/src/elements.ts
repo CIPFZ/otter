@@ -589,34 +589,53 @@ const volumeSliderClass = () =>
     };
   });
 
-/** Live badge; behind the edge by more than 3 s it becomes the "back to live" capsule (UI-DESIGN §10). */
+/**
+ * Live badge (UI-DESIGN §6.1 / §10): at the live edge a status "● Live"; more than 3 s behind it
+ * becomes a "Back to live" button (seek-to-live, then play if paused, in the same click).
+ */
 const liveIndicatorClass = () =>
   once('LiveIndicator', () => {
     const Base = base();
     return class LiveIndicator extends Base {
       #badge: HTMLElement | undefined;
+      #button: HTMLButtonElement | undefined;
       protected setup(): void {
         if (this.#badge !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>
 :host { display: inline-flex; align-items: center; }
 :host([hidden]), :host([data-otter-unsupported]) { display: none; }
-span { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 2px; border-radius: 999px;
-  font: 600 13px/1 ${T.font}; color: ${T.fg}; text-shadow: ${T.textShadow}; }
-span svg { width: 8px; height: 8px; color: ${T.live}; }
-:host([behind]) span { padding: 0 10px; border: 1px solid ${T.accent}; }
-:host([behind]) span svg { color: ${T.dim}; }
-</style><span part="badge" role="status">${icon(LiveDot)}<b part="label" style="font-weight:inherit"></b></span>`;
-        this.#badge = root.querySelector('b') as HTMLElement;
+.badge, button { display: inline-flex; align-items: center; gap: 6px; height: 24px; font: 600 13px/1 ${T.font}; color: ${T.fg};
+  text-shadow: ${T.textShadow}; white-space: nowrap; }
+.badge svg, button svg { width: 8px; height: 8px; color: ${T.live}; }
+.badge[hidden], button[hidden] { display: none; }
+button { all: unset; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid ${T.accent}; cursor: pointer; font: 600 13px/1 ${T.font}; color: ${T.fg}; }
+button svg { color: ${T.dim}; }
+button:hover { background: ${T.hover}; }
+button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; }
+</style><span class="badge" part="badge" role="status">${icon(LiveDot)}<b part="label" style="font-weight:inherit"></b></span><button part="back-to-live" type="button" hidden>${icon(LiveDot)}<span></span></button>`;
+        this.#badge = root.querySelector('.badge') as HTMLElement;
+        this.#button = root.querySelector('button') as HTMLButtonElement;
+        this.#button.addEventListener('click', (e) => {
+          const trigger = { type: e.type, source: 'otter-live-indicator' };
+          this.ui?.dispatch('seek-to-live', {}, trigger);
+          if (this.ui?.getState().paused === true) this.ui.dispatch('play', undefined, trigger);
+        });
       }
       protected render(s: Readonly<UiState>): void {
         const badge = this.#badge;
-        if (badge === undefined) return;
+        const button = this.#button;
+        if (badge === undefined || button === undefined) return;
         unsupported(this, !s.live);
         const behind = s.live && s.latency !== null && s.latency > 3;
         this.toggleAttribute('behind', behind);
-        const text = behind ? this.strings.backToLive : this.strings.live;
-        if (badge.textContent !== text) badge.textContent = text;
+        badge.hidden = behind;
+        button.hidden = !behind;
+        const label = badge.querySelector('b') as HTMLElement;
+        if (label.textContent !== this.strings.live) label.textContent = this.strings.live;
+        const text = button.querySelector('span') as HTMLElement;
+        if (text.textContent !== this.strings.backToLive) text.textContent = this.strings.backToLive;
       }
     };
   });

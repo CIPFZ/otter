@@ -85,6 +85,7 @@ export interface ShakaPlayer {
   getStats(): ShakaStats;
   isLive(): boolean;
   seekRange(): { readonly start: number; readonly end: number };
+  goToLive?(): void;
   /** Wall-clock distance from the live edge in ms (Shaka 5); null when unknown. */
   getLiveLatency?(): number | null;
   getNetworkingEngine(): ShakaNetworkingEngine | null;

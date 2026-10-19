@@ -326,6 +326,10 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
         }
       });
     },
+    seekToLive() {
+      const position = hls?.liveSyncPosition;
+      if (position !== null && position !== undefined) ctx.media.currentTime = position;
+    },
     selectAudioTrack(id) {
       if (hls === undefined) return;
       const index = Number(id.replace(/^audio-/, ''));

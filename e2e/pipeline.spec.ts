@@ -50,3 +50,20 @@ test('the mpegts.js adapter (fallback target) still plays live FLV', async ({ pa
   await expect.poll(async () => (await state(page)).currentTime - start, { timeout: 15_000 }).toBeGreaterThan(2);
 });
 
+test('back to live: pause until behind, the capsule appears, one click returns to the edge and plays', async ({ page }) => {
+  await page.goto('/player.html?idle=0');
+  await page.evaluate(async () => {
+    const o = (await window.otter) as OtterFixture;
+    o.dispatch('set-muted', { muted: true });
+    o.load({ src: '/live/stream.flv', live: true }, { autoplay: true });
+  });
+  await expect.poll(async () => (await state(page)).qoe.ttff, { timeout: 20_000 }).not.toBeNull();
+  await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('pause', undefined));
+  const back = page.locator('otter-live-indicator').getByRole('button', { name: 'Back to live' });
+  await expect(back).toBeVisible({ timeout: 15_000 });
+  await back.click();
+  await expect.poll(async () => (await state(page)).paused).toBe(false);
+  await expect.poll(async () => (await state(page)).latency ?? 99, { timeout: 10_000 }).toBeLessThanOrEqual(2);
+  await expect(back).toBeHidden();
+});
+

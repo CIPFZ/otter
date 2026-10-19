@@ -49,6 +49,8 @@ export interface Engine {
   selectTextTrack?(id: string | null): void;
   /** Switches the audio rendition (language / description track); ABR keeps choosing video. */
   selectAudioTrack?(id: string): void;
+  /** Live: jump to the engine's live position (back to live, ADR-007 §3). */
+  seekToLive?(): void;
   on<E extends keyof EngineEvents>(e: E, h: (p: EngineEvents[E]) => void): Unsubscribe;
   destroy(): void;
 }

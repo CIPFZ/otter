@@ -165,6 +165,22 @@ describe('M2 primitives', () => {
     expect(el.hasAttribute('behind')).toBe(true);
   });
 
+  it('behind the live edge the badge becomes a "Back to live" button: seek-to-live, then play', () => {
+    const { store, root } = mount('<otter-live-indicator></otter-live-indicator>');
+    const got: string[] = [];
+    store.handle('seek-to-live', () => void got.push('seek-to-live'));
+    store.handle('play', () => void got.push('play'));
+    const el = root.querySelector('otter-live-indicator') as HTMLElement;
+    const button = el.shadowRoot?.querySelector('button') as HTMLButtonElement;
+    store.setState({ live: true, latency: 1, paused: false });
+    expect(button.hidden).toBe(true);
+    store.setState({ latency: 12, paused: true });
+    expect(button.hidden).toBe(false);
+    expect(button.textContent).toBe('Back to live');
+    button.click();
+    expect(got).toEqual(['seek-to-live', 'play']);
+  });
+
   it('gesture layer dims with brightness; slider shows the swipe seek preview', () => {
     const { store, shadow } = mount('<otter-gesture></otter-gesture><otter-time-slider></otter-time-slider>');
     store.setState({ brightness: 0.6, duration: 100, currentTime: 40 });

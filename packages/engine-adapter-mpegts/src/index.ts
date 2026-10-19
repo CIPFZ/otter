@@ -209,6 +209,11 @@ export function createMpegtsEngine(ctx: EngineContext, options: MpegtsEngineOpti
     },
     // Single rendition: nothing to select.
     selectQuality: () => undefined,
+    seekToLive() {
+      const m = ctx.media;
+      if (!live || m.buffered.length === 0) return;
+      m.currentTime = Math.max(m.buffered.start(m.buffered.length - 1), m.buffered.end(m.buffered.length - 1) - 1);
+    },
     on: (e, h) => bus.on(e, (payload) => h(payload)),
     destroy() {
       destroyed = true;

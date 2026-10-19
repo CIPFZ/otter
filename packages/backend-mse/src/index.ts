@@ -73,8 +73,13 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         lastSample = now;
         emit('latency-change', { latency });
       };
+      // timeupdate stops while paused; progress keeps latency current as live data keeps arriving.
       target.addEventListener('timeupdate', sample);
-      offs.push(() => target.removeEventListener('timeupdate', sample));
+      target.addEventListener('progress', sample);
+      offs.push(() => {
+        target.removeEventListener('timeupdate', sample);
+        target.removeEventListener('progress', sample);
+      });
     },
     async load(source, opts) {
       const m = element();
@@ -132,6 +137,9 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
     },
     selectAudioTrack(id) {
       engine?.selectAudioTrack?.(id);
+    },
+    seekToLive() {
+      engine?.seekToLive?.();
     },
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
