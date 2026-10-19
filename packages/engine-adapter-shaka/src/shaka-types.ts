@@ -31,6 +31,14 @@ export interface ShakaTextTrack {
   readonly mimeType: string | null;
 }
 
+export interface ShakaAudioTrack {
+  readonly id?: number;
+  readonly active: boolean;
+  readonly language: string;
+  readonly label: string | null;
+  readonly channelsCount: number | null;
+}
+
 export interface ShakaStats {
   readonly estimatedBandwidth: number;
   readonly liveLatency: number;
@@ -71,6 +79,8 @@ export interface ShakaPlayer {
   getTextTracks(): ShakaTextTrack[];
   selectVariantTrack(track: ShakaTrack, clearBuffer?: boolean): void;
   selectTextTrack(track: ShakaTextTrack): void;
+  getAudioTracks?(): ShakaAudioTrack[];
+  selectAudioTrack?(track: ShakaAudioTrack): void;
   setTextTrackVisibility(visible: boolean): void;
   getStats(): ShakaStats;
   isLive(): boolean;

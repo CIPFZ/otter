@@ -47,6 +47,8 @@ export interface Engine {
   selectQuality(id: string | 'auto'): void;
   /** Enables delivery of one in-band text track's cues (`text-cues`), null for none. */
   selectTextTrack?(id: string | null): void;
+  /** Switches the audio rendition (language / description track); ABR keeps choosing video. */
+  selectAudioTrack?(id: string): void;
   on<E extends keyof EngineEvents>(e: E, h: (p: EngineEvents[E]) => void): Unsubscribe;
   destroy(): void;
 }

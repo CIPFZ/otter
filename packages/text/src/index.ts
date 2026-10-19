@@ -19,14 +19,32 @@ export interface TextTrackEntry {
   readonly label?: string;
 }
 
+/**
+ * User caption display settings (CVAA, 47 CFR §79.103(c)): size, character colour and opacity,
+ * background colour / opacity, edge style, font. Absent fields keep the skin's --otter-cue-*.
+ */
+export interface CaptionStyle {
+  /** Multiplier of the default size (5% of the picture height). */
+  readonly scale?: number;
+  readonly color?: string;
+  /** 0..1 */
+  readonly opacity?: number;
+  readonly background?: string;
+  /** Background opacity, 0..1. */
+  readonly backgroundOpacity?: number;
+  readonly edge?: 'none' | 'shadow' | 'outline' | 'raised' | 'depressed';
+  readonly font?: 'default' | 'serif' | 'monospace' | 'casual';
+}
+
 export interface TextState {
   readonly textTracks: readonly TextTrackEntry[];
   /** Selected track id, null when captions are off. */
   readonly textTrack: string | null;
   readonly textStatus: 'idle' | 'loading' | 'ready' | 'error';
+  readonly captionStyle: CaptionStyle;
 }
 
-export const INITIAL_TEXT_STATE: TextState = { textTracks: [], textTrack: null, textStatus: 'idle' };
+export const INITIAL_TEXT_STATE: TextState = { textTracks: [], textTrack: null, textStatus: 'idle', captionStyle: {} };
 export const TEXT_SLICE: StoreSlice<TextState> = { id: 'text', initialState: INITIAL_TEXT_STATE };
 
 /**
@@ -37,6 +55,8 @@ export interface TextActionMap {
   'select-text-track': { readonly id: string | null };
   'toggle-captions': Record<string, never>;
   'set-text-track': { readonly id: string | null };
+  /** Merges into the caption style; a field set to null returns to the skin default. */
+  'set-caption-style': { readonly [K in keyof CaptionStyle]?: CaptionStyle[K] | null };
 }
 
 export interface TextOptions {
@@ -46,6 +66,8 @@ export interface TextOptions {
   readonly inband?: { onTextCues(h: (cues: InbandCues) => void): Unsubscribe };
   /** Cues kept per in-band track (live streams never end); oldest dropped first. */
   readonly maxInbandCues?: number;
+  /** localStorage key that keeps the caption style and the last caption language across visits (CVAA retention); null disables. */
+  readonly persistKey?: string | null;
   /** Injectable for tests. */
   readonly fetch?: (url: string) => Promise<{ readonly ok: boolean; readonly status: number; text(): Promise<string> }>;
 }
@@ -86,6 +108,40 @@ export function createText(options: TextOptions = {}): TextController {
 
   const state = (): Readonly<S> => (store as Store<S, TextActionMap>).getState();
 
+  const persistKey = options.persistKey === undefined ? 'otter:caption-style' : options.persistKey;
+  const storage = (): Storage | undefined => {
+    try {
+      return persistKey === null || typeof localStorage === 'undefined' ? undefined : localStorage;
+    } catch {
+      // Sandboxed iframes and some privacy modes throw on access.
+      return undefined;
+    }
+  };
+  /** Retained across visits: the style, and the caption language (null = the user turned captions off). */
+  interface Saved {
+    readonly style?: CaptionStyle;
+    readonly language?: string | null;
+  }
+  let saved: Saved = {};
+  const restore = (): Saved => {
+    try {
+      const raw = storage()?.getItem(persistKey as string);
+      const parsed: unknown = raw == null ? undefined : JSON.parse(raw);
+      return typeof parsed === 'object' && parsed !== null ? (parsed as Saved) : {};
+    } catch {
+      return {};
+    }
+  };
+  const persist = (language?: string | null): void => {
+    const lang = language === undefined ? saved.language : language;
+    saved = lang === undefined ? { style: state().captionStyle } : { style: state().captionStyle, language: lang };
+    try {
+      storage()?.setItem(persistKey as string, JSON.stringify(saved));
+    } catch {
+      // Quota or privacy mode: the settings still apply for this session.
+    }
+  };
+
   const load = async (id: string): Promise<void> => {
     const track = sidecars.get(id);
     if (track === undefined || cueStore.has(id)) {
@@ -122,9 +178,10 @@ export function createText(options: TextOptions = {}): TextController {
     store?.setState({ textTracks: [...sidecarEntries, ...inbandEntries] } as Partial<S>);
   };
 
-  const select = (id: string | null): void => {
+  const select = (id: string | null, byUser = true): void => {
     const known = id === null || state().textTracks.some((t) => t.id === id);
     if (!known) return;
+    if (byUser) persist(id === null ? null : (state().textTracks.find((t) => t.id === id)?.language ?? saved.language ?? null));
     if (id !== null) lastSelected = id;
     const inband = id !== null && id.startsWith(INBAND);
     store?.setState({ textTrack: id, textStatus: id === null ? 'idle' : inband ? 'ready' : state().textStatus } as Partial<S>);
@@ -146,7 +203,12 @@ export function createText(options: TextOptions = {}): TextController {
     }));
     publishTracks();
     const current = state().textTrack;
-    if (current !== null && current.startsWith(INBAND) && !inbandEntries.some((e) => e.id === current)) select(null);
+    if (current !== null && current.startsWith(INBAND) && !inbandEntries.some((e) => e.id === current)) select(null, false);
+    // Remembered language available in-band only (no sidecar chosen yet): turn it on.
+    if (state().textTrack === null && typeof saved.language === 'string') {
+      const match = inbandEntries.find((e) => e.language === saved.language);
+      if (match !== undefined) select(match.id, false);
+    }
   };
 
   let vttNodes: ((text: string) => Promise<TextCue['nodes']>) | undefined;
@@ -205,8 +267,10 @@ export function createText(options: TextOptions = {}): TextController {
     sidecarEntries = entries;
     store?.setState({ textTracks: [...entries, ...inbandEntries], textTrack: null, textStatus: 'idle' } as Partial<S>);
     lastSelected = null;
-    const preferred = tracks.findIndex((t) => t.default === true);
-    if (preferred >= 0) select(`sidecar:${preferred}`);
+    // The user's retained choice beats the host's default: their language, or captions off.
+    const remembered = saved.language === undefined ? -2 : saved.language === null ? -1 : tracks.findIndex((t) => t.language === saved.language);
+    const preferred = remembered >= 0 || saved.language === null ? remembered : tracks.findIndex((t) => t.default === true);
+    if (preferred >= 0) select(`sidecar:${preferred}`, false);
     changed();
   };
 
@@ -217,6 +281,16 @@ export function createText(options: TextOptions = {}): TextController {
       qoe = ctx.qoe;
       offs = [
         ctx.store.handle('select-text-track', ({ id }) => select(id)),
+        ctx.store.handle('set-caption-style', (patch) => {
+          const next: Record<string, unknown> = { ...state().captionStyle };
+          for (const [k, v] of Object.entries(patch)) {
+            if (v === null || v === undefined) delete next[k];
+            else next[k] = v;
+          }
+          store?.setState({ captionStyle: next as CaptionStyle } as Partial<S>);
+          persist(undefined);
+          changed();
+        }),
         ctx.store.handle('toggle-captions', () => {
           const s = state();
           if (s.textTrack !== null) select(null);
@@ -232,6 +306,8 @@ export function createText(options: TextOptions = {}): TextController {
         ),
         ...(options.inband === undefined ? [] : [options.inband.onTextCues((c) => void onInbandCues(c))]),
       ];
+      saved = restore();
+      if (saved.style !== undefined) store.setState({ captionStyle: saved.style } as Partial<S>);
       if (state().source != null) onSource(state().source);
       onEngineTracks(state().tracks?.text);
     },
@@ -261,6 +337,7 @@ export function createText(options: TextOptions = {}): TextController {
       { width: host.root.clientWidth, height: host.root.clientHeight },
       safe.bottom,
     );
+    renderer.style(view.captionStyle ?? {});
     renderer.render(cues, area, mediaTime);
   };
   changed = draw;

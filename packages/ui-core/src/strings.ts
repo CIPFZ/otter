@@ -25,6 +25,29 @@ export interface UiStrings {
   readonly exitFullscreen: string;
   readonly pip: string;
   readonly exitPip: string;
+  readonly audio: string;
+  // Caption display settings (CVAA).
+  readonly captionSize: string;
+  readonly captionColor: string;
+  readonly captionBackground: string;
+  readonly captionEdge: string;
+  readonly captionFont: string;
+  readonly styleDefault: string;
+  readonly colorWhite: string;
+  readonly colorYellow: string;
+  readonly colorCyan: string;
+  readonly colorGreen: string;
+  readonly backgroundNone: string;
+  readonly backgroundSemi: string;
+  readonly backgroundOpaque: string;
+  readonly edgeNone: string;
+  readonly edgeShadow: string;
+  readonly edgeOutline: string;
+  readonly edgeRaised: string;
+  readonly edgeDepressed: string;
+  readonly fontSerif: string;
+  readonly fontMonospace: string;
+  readonly fontCasual: string;
   readonly loading: string;
   readonly player: string;
   readonly statistics: string;
@@ -70,6 +93,28 @@ export const STRINGS_EN: UiStrings = {
   exitFullscreen: 'Exit fullscreen',
   pip: 'Picture in picture',
   exitPip: 'Exit picture in picture',
+  audio: 'Audio',
+  captionSize: 'Caption size',
+  captionColor: 'Caption color',
+  captionBackground: 'Caption background',
+  captionEdge: 'Caption edge',
+  captionFont: 'Caption font',
+  styleDefault: 'Default',
+  colorWhite: 'White',
+  colorYellow: 'Yellow',
+  colorCyan: 'Cyan',
+  colorGreen: 'Green',
+  backgroundNone: 'None',
+  backgroundSemi: 'Semi-transparent',
+  backgroundOpaque: 'Opaque',
+  edgeNone: 'None',
+  edgeShadow: 'Drop shadow',
+  edgeOutline: 'Outline',
+  edgeRaised: 'Raised',
+  edgeDepressed: 'Depressed',
+  fontSerif: 'Serif',
+  fontMonospace: 'Monospace',
+  fontCasual: 'Casual',
   loading: 'Loading',
   player: 'Video player',
   statistics: 'Playback statistics',
@@ -109,6 +154,28 @@ export const STRINGS_ZH: UiStrings = {
   exitFullscreen: '退出全屏',
   pip: '画中画',
   exitPip: '退出画中画',
+  audio: '音轨',
+  captionSize: '字幕大小',
+  captionColor: '字幕颜色',
+  captionBackground: '字幕背景',
+  captionEdge: '字幕描边',
+  captionFont: '字幕字体',
+  styleDefault: '默认',
+  colorWhite: '白色',
+  colorYellow: '黄色',
+  colorCyan: '青色',
+  colorGreen: '绿色',
+  backgroundNone: '无',
+  backgroundSemi: '半透明',
+  backgroundOpaque: '不透明',
+  edgeNone: '无',
+  edgeShadow: '阴影',
+  edgeOutline: '描边',
+  edgeRaised: '凸起',
+  edgeDepressed: '凹陷',
+  fontSerif: '衬线',
+  fontMonospace: '等宽',
+  fontCasual: '手写',
   loading: '加载中',
   player: '视频播放器',
   statistics: '播放统计',

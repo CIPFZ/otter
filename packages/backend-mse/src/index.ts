@@ -130,6 +130,9 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
     selectTextTrack(id) {
       engine?.selectTextTrack?.(id);
     },
+    selectAudioTrack(id) {
+      engine?.selectAudioTrack?.(id);
+    },
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
       // Stop observing first: detaching the MediaSource fires element errors we must not report.

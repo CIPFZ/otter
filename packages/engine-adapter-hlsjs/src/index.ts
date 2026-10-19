@@ -323,6 +323,11 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
         }
       });
     },
+    selectAudioTrack(id) {
+      if (hls === undefined) return;
+      const index = Number(id.replace(/^audio-/, ''));
+      if (Number.isInteger(index) && index >= 0 && index < hls.audioTracks.length) hls.audioTrack = index;
+    },
     selectTextTrack(id) {
       if (hls === undefined) return;
       selectedText = id;

@@ -308,4 +308,13 @@ describe('hls.js adapter', () => {
     expect(delivered.map((d) => `${d.trackId}:${d.cues[0]?.text}`)).toEqual(['text-0:<i>Hi</i>', 'caption-textTrack1:CC1']);
     expect(engine.tracks.text.find((t) => t.id === 'caption-textTrack1')?.selected).toBe(true);
   });
+
+  it('switches the audio rendition by track id', async () => {
+    const { engine, hls } = await loaded();
+    hls.audioTracks = [{ id: 0 }, { id: 1 }];
+    engine.selectAudioTrack?.('audio-1');
+    expect(hls.audioTrack).toBe(1);
+    engine.selectAudioTrack?.('audio-7');
+    expect(hls.audioTrack).toBe(1);
+  });
 });

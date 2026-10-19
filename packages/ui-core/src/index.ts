@@ -44,6 +44,7 @@ export {
   defineOtterElements,
   M1_ELEMENTS,
   M2_ELEMENTS,
+  captionStyleGroups,
   settingsGroups,
   type DefineOptions,
   type MenuGroup,

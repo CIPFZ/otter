@@ -33,6 +33,8 @@ function mount(html: string, lang?: string) {
     'select-quality',
     'set-playback-rate',
     'select-text-track',
+    'select-audio-track',
+    'set-caption-style',
   ] as const) {
     store.handle(type, (payload) => void calls.push([type, payload]));
   }
@@ -181,7 +183,7 @@ describe('announcer', () => {
 describe('settings menu (APG menu button)', () => {
   it('groups quality (Auto shows the playing rendition), speed and captions', () => {
     const groups = settingsGroups({ ...(MEDIA_SLICE.initialState as UiState), ...READY } as UiState, STRINGS_EN);
-    expect(groups.map((g) => g.id)).toEqual(['quality', 'speed', 'captions']);
+    expect(groups.map((g) => g.id)).toEqual(['quality', 'speed', 'captions', 'caption-size', 'caption-color', 'caption-background', 'caption-edge', 'caption-font']);
     expect(groups[0]?.options.map((o) => `${o.label}${o.checked ? '*' : ''}`)).toEqual(['Auto (720p)*', '720p', '360p']);
     expect(groups[1]?.options.find((o) => o.checked)?.label).toBe('Normal');
     expect(groups[2]?.options.map((o) => o.label)).toEqual(['Off', 'English']);
@@ -211,9 +213,12 @@ describe('settings menu (APG menu button)', () => {
     key('ArrowDown');
     expect(focused().textContent).toBe('720p');
     key('End');
-    expect(focused().textContent).toBe('English');
+    expect(focused().textContent).toBe('Casual');
+    key('Home');
+    key('ArrowUp');
+    expect(focused().textContent).toBe('Casual');
     key('Enter');
-    expect(calls).toEqual([['select-text-track', { id: 'sidecar:0' }]]);
+    expect(calls).toEqual([['set-caption-style', { font: 'casual' }]]);
     expect(menu.hidden).toBe(true);
     expect(sr.activeElement).toBe(trigger);
     expect(store.getState().menu).toBeNull();
@@ -227,12 +232,34 @@ describe('settings menu (APG menu button)', () => {
     expect(host.isConnected).toBe(true);
   });
 
+  it('caption style groups (CVAA) dispatch style patches; audio group appears with several tracks', () => {
+    const { store, calls, shadow } = mount('<otter-settings-menu></otter-settings-menu>');
+    store.setState({
+      ...READY,
+      captionStyle: { scale: 2 },
+      tracks: { ...(READY.tracks as UiState['tracks']), audio: [{ kind: 'audio', id: 'audio-0', selected: true, language: 'en' }, { kind: 'audio', id: 'audio-1', selected: false, language: 'en', label: 'Audio description' }] },
+    });
+    const sr = shadow('otter-settings-menu');
+    (sr.querySelector('button') as HTMLButtonElement).click();
+    const ids = [...sr.querySelectorAll('[role="group"]')].map((g) => (g as HTMLElement).dataset['group']);
+    expect(ids).toEqual(['quality', 'speed', 'audio', 'captions', 'caption-size', 'caption-color', 'caption-background', 'caption-edge', 'caption-font']);
+    const checkedSize = sr.querySelector('[data-group="caption-size"] [aria-checked="true"]');
+    expect(checkedSize?.textContent).toBe('200%');
+    const yellow = [...sr.querySelectorAll<HTMLElement>('[data-group="caption-color"] [role="menuitemradio"]')].find((i) => i.textContent === 'Yellow');
+    (sr.querySelector('button') as HTMLButtonElement).click();
+    yellow?.click();
+    expect(calls.at(-1)).toEqual(['set-caption-style', { color: '#ffff00' }]);
+    (sr.querySelector('button') as HTMLButtonElement).click();
+    [...sr.querySelectorAll<HTMLElement>('[data-group="audio"] [role="menuitemradio"]')].find((i) => i.textContent === 'Audio description')?.click();
+    expect(calls.at(-1)).toEqual(['select-audio-track', { id: 'audio-1' }]);
+  });
+
   it('every item is a menuitemradio with aria-checked inside a labelled group', () => {
     const { store, shadow } = mount('<otter-settings-menu></otter-settings-menu>');
     store.setState({ ...READY });
     (shadow('otter-settings-menu').querySelector('button') as HTMLButtonElement).click();
     const groups = [...shadow('otter-settings-menu').querySelectorAll('[role="group"]')];
-    expect(groups.length).toBe(3);
+    expect(groups.length).toBe(8);
     for (const g of groups) {
       const label = shadow('otter-settings-menu').getElementById(g.getAttribute('aria-labelledby') ?? '');
       expect(label?.textContent).not.toBe('');

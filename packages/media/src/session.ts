@@ -67,6 +67,7 @@ export interface MediaActionMap {
   'hold-rate': { readonly rate: number };
   /** In-band text track whose cues the engine delivers (used by @otter-player/text), null for none. */
   'set-text-track': { readonly id: string | null };
+  'select-audio-track': { readonly id: string };
 }
 
 const PLAYBACK_RESET: PlaybackSnapshot = {
@@ -599,6 +600,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         }),
         s.handle('toggle-muted', () => setMuted(!state().muted)),
         s.handle('volume-by', ({ delta }) => setVolume(state().volume + delta)),
+        s.handle('select-audio-track', ({ id }) => active?.backend.selectAudioTrack?.(id)),
         s.handle('set-text-track', ({ id }) => {
           textTrack = id;
           active?.backend.selectTextTrack?.(id);

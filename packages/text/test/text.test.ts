@@ -37,7 +37,7 @@ async function setup(files: Record<string, string | number>) {
     const body = files[url];
     return typeof body === 'string' ? { ok: true, status: 200, text: async () => body } : { ok: false, status: body ?? 404, text: async () => '' };
   });
-  const text = createText({ fetch });
+  const text = createText({ fetch, persistKey: null });
   const core = createCore<S, TextActionMap>({ slices: [TEXT_SLICE, SOURCE_SLICE], plugins: [text.plugin] });
   const errors: string[] = [];
   core.qoe.on('error', ({ error }) => errors.push(error.details));
@@ -121,7 +121,7 @@ describe('text plugin', () => {
 
   it('offers engine tracks, tells the media plugin which one to deliver and renders its cues', async () => {
     let deliver: ((c: InbandCues) => void) | undefined;
-    const text = createText({ inband: { onTextCues: (h) => ((deliver = h), () => undefined) } });
+    const text = createText({ persistKey: null, inband: { onTextCues: (h) => ((deliver = h), () => undefined) } });
     type HS = S & { tracks: { text: TextTrackInfo[] } };
     const TRACKS: StoreSlice<{ tracks: { text: TextTrackInfo[] } }> = { id: 'tracks', initialState: { tracks: { text: [] } } };
     const core = createCore<HS, TextActionMap>({ slices: [TEXT_SLICE, SOURCE_SLICE, TRACKS], plugins: [text.plugin] });
@@ -143,5 +143,41 @@ describe('text plugin', () => {
     core.store.setState({ tracks: { text: [] } });
     expect(core.store.getState()).toMatchObject({ textTracks: [], textTrack: null });
     expect(engineSelection.at(-1)).toBeNull();
+  });
+
+  it('caption style (CVAA): applied to the cue layer, retained with the caption language', async () => {
+    localStorage.clear();
+    const make = async () => {
+      const text = createText({ fetch: async () => ({ ok: true, status: 200, text: async () => VTT }) });
+      const core = createCore<S, TextActionMap>({ slices: [TEXT_SLICE, SOURCE_SLICE], plugins: [text.plugin] });
+      await core.start();
+      return { core, text };
+    };
+    const first = await make();
+    first.core.store.setState({ source: { src: '/a.mp4', textTracks: [{ src: '/en.vtt', language: 'en' }, { src: '/fr.vtt', language: 'fr' }] } });
+    first.core.store.dispatch('select-text-track', { id: 'sidecar:1' });
+    first.core.store.dispatch('set-caption-style', { scale: 2, color: '#ffff00', edge: 'outline' });
+    first.core.store.dispatch('set-caption-style', { color: null });
+    expect(first.core.store.getState().captionStyle).toEqual({ scale: 2, edge: 'outline' });
+
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    first.text.overlay.mount({ root, contentRect: new DOMRect(0, 0, 640, 360), safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, store: first.core.store.view(), onContentRectChange: () => () => undefined });
+    const layer = root.querySelector<HTMLElement>('[data-otter-cues]');
+    expect(layer?.style.getPropertyValue('--otter-cue-user-scale')).toBe('2');
+    expect(layer?.style.getPropertyValue('--otter-cue-user-shadow')).toContain('#000');
+    expect(layer?.style.getPropertyValue('--otter-cue-user-color')).toBe('');
+
+    // Next visit: same style, and French chosen again although the host marks English default.
+    const second = await make();
+    expect(second.core.store.getState().captionStyle).toEqual({ scale: 2, edge: 'outline' });
+    second.core.store.setState({ source: { src: '/b.mp4', textTracks: [{ src: '/en.vtt', language: 'en', default: true }, { src: '/fr.vtt', language: 'fr' }] } });
+    expect(second.core.store.getState().textTrack).toBe('sidecar:1');
+    // Turning captions off is remembered too.
+    second.core.store.dispatch('select-text-track', { id: null });
+    const third = await make();
+    third.core.store.setState({ source: { src: '/c.mp4', textTracks: [{ src: '/en.vtt', language: 'en', default: true }] } });
+    expect(third.core.store.getState().textTrack).toBeNull();
+    localStorage.clear();
   });
 });

@@ -3,32 +3,57 @@
 // (picture rectangle minus the chrome's safe area). Styling hooks are --otter-cue-* variables.
 
 import type { CueNode, TextCue } from './cue.js';
+import type { CaptionStyle } from './index.js';
 import { horizontalLayout, layoutCues, type Box } from './layout.js';
 
 export interface CueRenderer {
   readonly element: HTMLElement;
   /** Shows `cues` (already filtered to the active ones) in `area`, container coordinates. */
   render(cues: readonly TextCue[], area: Box, time: number): void;
+  /** User caption style (CVAA); unset fields fall back to the skin's --otter-cue-* values. */
+  style(style: CaptionStyle): void;
   destroy(): void;
 }
 
 const CSS = `
 .otter-cues { position: absolute; pointer-events: none; overflow: hidden;
   font-family: var(--otter-cue-font-family, system-ui, sans-serif);
-  font-size: calc(var(--otter-cue-area-height, 360px) * 0.05 * var(--otter-cue-scale, 1));
+  font-size: calc(var(--otter-cue-area-height, 360px) * 0.05 * var(--otter-cue-user-scale, var(--otter-cue-scale, 1)));
   line-height: var(--otter-cue-line-height, 1.25); }
 .otter-cue { position: absolute; box-sizing: border-box; padding: 0 0.5em;
   white-space: pre-line; overflow-wrap: break-word; }
 /* Only WebVTT region scroll-up animates (layout changes from resizes / the safe area jump). */
 .otter-cue[data-region] { transition: top 0.433s; }
-.otter-cue-text { color: var(--otter-cue-color, #fff); background: var(--otter-cue-background, rgb(0 0 0 / 0.8));
-  text-shadow: var(--otter-cue-text-shadow, none); padding: 0 0.3em;
+.otter-cue-text { color: var(--otter-cue-user-color, var(--otter-cue-color, #fff)); background: var(--otter-cue-user-background, var(--otter-cue-background, rgb(0 0 0 / 0.8)));
+  text-shadow: var(--otter-cue-user-shadow, var(--otter-cue-text-shadow, none)); font-family: var(--otter-cue-user-font, inherit); padding: 0 0.3em;
   box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .otter-cue [data-future] { color: var(--otter-cue-future-color, inherit); }
 @media (prefers-reduced-motion: reduce) { .otter-cue { transition: none; } }
 `;
 
 const TAG: Readonly<Record<string, string>> = { b: 'b', i: 'i', u: 'u', ruby: 'ruby', rt: 'rt' };
+
+/** CEA-708 / CVAA edge styles as text-shadow. */
+const EDGES: Readonly<Record<NonNullable<CaptionStyle['edge']>, string>> = {
+  none: 'none',
+  shadow: '0.06em 0.06em 0.12em rgb(0 0 0 / 0.9)',
+  outline: '-0.05em -0.05em 0 #000, 0.05em -0.05em 0 #000, -0.05em 0.05em 0 #000, 0.05em 0.05em 0 #000',
+  raised: '-0.04em -0.04em 0 rgb(255 255 255 / 0.6), 0.05em 0.05em 0 #000',
+  depressed: '0.04em 0.04em 0 rgb(255 255 255 / 0.6), -0.05em -0.05em 0 #000',
+};
+const FONTS: Readonly<Record<Exclude<NonNullable<CaptionStyle['font']>, 'default'>, string>> = {
+  serif: 'Georgia, "Times New Roman", "Noto Serif SC", serif',
+  monospace: 'ui-monospace, Menlo, Consolas, "Noto Sans Mono CJK SC", monospace',
+  casual: '"Comic Sans MS", "Comic Neue", "Segoe Print", cursive',
+};
+
+/** `#rrggbb` + alpha -> `rgb(r g b / a)`; other colour syntaxes pass through (alpha ignored). */
+function withAlpha(color: string, alpha: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (m === null) return color;
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h as string, 16));
+  return `rgb(${r} ${g} ${b} / ${Math.max(0, Math.min(1, alpha))})`;
+}
 
 function build(doc: Document, nodes: readonly CueNode[], parent: Node, time: number): void {
   for (const n of nodes) {
@@ -64,6 +89,7 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
 
   const boxes = new Map<string, HTMLElement>();
   let signature = '';
+  let styleKey = '';
 
   const cueBox = (cue: TextCue, time: number): HTMLElement => {
     let box = boxes.get(cue.id);
@@ -138,6 +164,25 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
         el.style.top = `${p.top}px`;
         el.style.visibility = p.hidden ? 'hidden' : '';
       });
+    },
+    style(style) {
+      const key = JSON.stringify(style);
+      if (key === styleKey) return;
+      styleKey = key;
+      // A size change re-measures every box.
+      signature = '';
+      const set = (name: string, value: string | undefined): void => {
+        if (value === undefined) element.style.removeProperty(name);
+        else element.style.setProperty(name, value);
+      };
+      set('--otter-cue-user-scale', style.scale === undefined ? undefined : String(style.scale));
+      set('--otter-cue-user-color', style.color === undefined && style.opacity === undefined ? undefined : withAlpha(style.color ?? '#ffffff', style.opacity ?? 1));
+      set(
+        '--otter-cue-user-background',
+        style.background === undefined && style.backgroundOpacity === undefined ? undefined : withAlpha(style.background ?? '#000000', style.backgroundOpacity ?? 0.8),
+      );
+      set('--otter-cue-user-shadow', style.edge === undefined ? undefined : EDGES[style.edge]);
+      set('--otter-cue-user-font', style.font === undefined || style.font === 'default' ? undefined : FONTS[style.font]);
     },
     destroy() {
       element.remove();

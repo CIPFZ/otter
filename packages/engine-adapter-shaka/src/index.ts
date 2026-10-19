@@ -280,6 +280,18 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       refresh();
       reportStats();
     },
+    selectAudioTrack(id) {
+      if (player === undefined) return;
+      const variant = player.getVariantTracks().find((v) => v.audioId !== null && `audio-${v.audioId}` === id);
+      const tracks = player.getAudioTracks?.() ?? [];
+      if (variant === undefined || tracks.length === 0) return;
+      // Shaka's audio tracks are not keyed by stream id in every build; match what identifies them.
+      const track =
+        tracks.find((t) => t.id === variant.audioId) ??
+        tracks.find((t) => t.language === variant.language && (t.label ?? null) === (variant.label ?? null) && (t.channelsCount ?? null) === (variant.channelsCount ?? null));
+      if (track !== undefined) player.selectAudioTrack?.(track);
+      refresh();
+    },
     selectTextTrack(id) {
       selectedText = id;
       if (player === undefined) return;

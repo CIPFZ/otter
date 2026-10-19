@@ -10,6 +10,7 @@ import type { UiState } from './context.js';
 import { formatBitrate, formatMs, formatSeconds, formatTime } from './format.js';
 import { BUTTON_CSS, createBase, ICON, SLIDER_CSS, speakTime, speakVolume, svg, unsupported } from './primitives.js';
 import { fill, type UiStrings } from './strings.js';
+import type { CaptionStyle } from '@otter-player/text';
 
 export const M1_ELEMENTS = {
   PlayButton: 'otter-play-button',
@@ -84,6 +85,13 @@ export function settingsGroups(s: Readonly<UiState>, strings: UiStrings): MenuGr
     label: strings.speed,
     options: PLAYBACK_RATES.map((r) => ({ value: String(r), label: r === 1 ? strings.speedNormal : `${r}x`, checked: s.playbackRate === r })),
   });
+  if (s.tracks.audio.length > 1) {
+    groups.push({
+      id: 'audio',
+      label: strings.audio,
+      options: s.tracks.audio.map((a) => ({ value: a.id, label: trackLabel(a), checked: a.selected })),
+    });
+  }
   const tracks = s.textTracks ?? [];
   if (tracks.length > 0) {
     groups.push({
@@ -94,8 +102,26 @@ export function settingsGroups(s: Readonly<UiState>, strings: UiStrings): MenuGr
         ...tracks.map((t) => ({ value: t.id, label: trackLabel(t), checked: s.textTrack === t.id })),
       ],
     });
+    groups.push(...captionStyleGroups(s, strings));
   }
   return groups;
+}
+
+/** CVAA caption display settings (47 CFR §79.103(c)); `value` is the JSON style patch. */
+export function captionStyleGroups(s: Readonly<UiState>, strings: UiStrings): MenuGroup[] {
+  const style: CaptionStyle = s.captionStyle ?? {};
+  const group = <K extends keyof CaptionStyle>(id: string, label: string, key: K, values: readonly [CaptionStyle[K] | null, string][]): MenuGroup => ({
+    id,
+    label,
+    options: values.map(([v, text]) => ({ value: JSON.stringify({ [key]: v }), label: text, checked: (style[key] ?? null) === v })),
+  });
+  return [
+    group('caption-size', strings.captionSize, 'scale', [[null, strings.styleDefault], [0.75, '75%'], [1.5, '150%'], [2, '200%']]),
+    group('caption-color', strings.captionColor, 'color', [[null, strings.styleDefault], ['#ffffff', strings.colorWhite], ['#ffff00', strings.colorYellow], ['#00ffff', strings.colorCyan], ['#00ff00', strings.colorGreen]]),
+    group('caption-background', strings.captionBackground, 'backgroundOpacity', [[null, strings.styleDefault], [0, strings.backgroundNone], [0.5, strings.backgroundSemi], [1, strings.backgroundOpaque]]),
+    group('caption-edge', strings.captionEdge, 'edge', [[null, strings.styleDefault], ['none', strings.edgeNone], ['shadow', strings.edgeShadow], ['outline', strings.edgeOutline], ['raised', strings.edgeRaised], ['depressed', strings.edgeDepressed]]),
+    group('caption-font', strings.captionFont, 'font', [[null, strings.styleDefault], ['serif', strings.fontSerif], ['monospace', strings.fontMonospace], ['casual', strings.fontCasual]]),
+  ];
 }
 
 let menuIds = 0;
@@ -638,6 +664,8 @@ div { width: 48px; height: 48px; border-radius: 50%; border: 4px solid color-mix
         if (group === 'quality') this.ui?.dispatch('select-quality', { id: value }, trigger);
         else if (group === 'speed') this.ui?.dispatch('set-playback-rate', { rate: Number(value) }, trigger);
         else if (group === 'captions') this.ui?.dispatch('select-text-track', { id: value === '' ? null : value }, trigger);
+        else if (group === 'audio') this.ui?.dispatch('select-audio-track', { id: value }, trigger);
+        else if (group.startsWith('caption-')) this.ui?.dispatch('set-caption-style', JSON.parse(value) as Record<string, never>, trigger);
       });
     }
     protected override label(): void {
