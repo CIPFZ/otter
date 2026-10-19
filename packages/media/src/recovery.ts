@@ -15,6 +15,11 @@ export interface RecoveryPolicy {
   readonly resetAfterMs: number;
   /** Playing with media buffered ahead but no playhead progress this long counts as a stall, ms. */
   readonly stallTimeoutMs: number;
+  /**
+   * Same, before the playhead has moved at all since playback started, ms. WebKit MSE can sit on
+   * the first video frame when audio starts before it (RESEARCH §1); a nudge frees it at once.
+   */
+  readonly startupStallMs: number;
   /** Nudge distance for a stall, seconds (hls.js nudgeOffset is 0.1). */
   readonly nudgeS: number;
 }
@@ -33,6 +38,7 @@ export const DEFAULT_RECOVERY: RecoveryPolicy = {
   ],
   resetAfterMs: 30_000,
   stallTimeoutMs: 8_000,
+  startupStallMs: 1_500,
   nudgeS: 0.1,
 };
 
@@ -91,20 +97,25 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
   let lastTime = Number.NaN;
   let since = Number.NaN;
   let nudged = false;
+  let progressed = false;
   const reset = (): void => {
     lastTime = Number.NaN;
     since = Number.NaN;
     nudged = false;
+    progressed = false;
   };
   return {
     sample({ now, currentTime, playing, bufferAhead }) {
       if (!playing || bufferAhead < 0.5 || currentTime !== lastTime) {
-        if (currentTime !== lastTime && !Number.isNaN(lastTime)) nudged = false;
+        if (currentTime !== lastTime && !Number.isNaN(lastTime)) {
+          nudged = false;
+          if (playing) progressed = true;
+        }
         lastTime = currentTime;
         since = now;
         return 'none';
       }
-      if (now - since < policy.stallTimeoutMs) return 'none';
+      if (now - since < (progressed ? policy.stallTimeoutMs : Math.min(policy.startupStallMs, policy.stallTimeoutMs))) return 'none';
       since = now;
       if (!nudged) {
         nudged = true;

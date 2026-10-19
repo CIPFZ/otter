@@ -52,13 +52,25 @@ describe('stall watchdog', () => {
     bufferAhead: over.bufferAhead ?? 5,
   });
 
+  it('a playhead that never moved is nudged after startupStallMs', () => {
+    const w = createStallWatchdog(DEFAULT_RECOVERY);
+    expect(w.sample(sample(0, 0.021))).toBe('none');
+    expect(w.sample(sample(1_499, 0.021))).toBe('none');
+    expect(w.sample(sample(1_500, 0.021))).toBe('nudge');
+    // Freed by the nudge: from now on the regular timeout applies.
+    expect(w.sample(sample(2_000, 0.2))).toBe('none');
+    expect(w.sample(sample(4_000, 0.2))).toBe('none');
+    expect(w.sample(sample(10_000, 0.2))).toBe('nudge');
+  });
+
   it('nudges after stallTimeoutMs with buffer ahead, escalates if still stuck', () => {
     const w = createStallWatchdog(DEFAULT_RECOVERY);
-    expect(w.sample(sample(0, 3))).toBe('none');
-    expect(w.sample(sample(7_999, 3))).toBe('none');
-    expect(w.sample(sample(8_000, 3))).toBe('nudge');
-    expect(w.sample(sample(15_000, 3))).toBe('none');
-    expect(w.sample(sample(16_000, 3))).toBe('escalate');
+    expect(w.sample(sample(0, 2))).toBe('none');
+    expect(w.sample(sample(100, 3))).toBe('none');
+    expect(w.sample(sample(8_099, 3))).toBe('none');
+    expect(w.sample(sample(8_100, 3))).toBe('nudge');
+    expect(w.sample(sample(15_100, 3))).toBe('none');
+    expect(w.sample(sample(16_100, 3))).toBe('escalate');
   });
 
   it('ignores paused playback, empty buffers and progress', () => {
@@ -123,7 +135,8 @@ describe('session stall handling', () => {
       backends: [factory('mse'), factory('native')],
       detect: async () => ({ ...NO_CAPABILITIES, mediaSource: true }),
       now: () => clock,
-      recovery: { backoffMs: () => 0 },
+      // Steady-state path (the startup threshold has its own unit test).
+      recovery: { backoffMs: () => 0, startupStallMs: 8_000 },
     });
     const core = createCore<MediaState, MediaActionMap>({ slices: [MEDIA_SLICE], plugins: [plugin] });
     const errors: string[] = [];

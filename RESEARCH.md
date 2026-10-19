@@ -39,6 +39,7 @@ M1 实测发现的坑（2026-10，Otter 真实浏览器矩阵与 Windows Edge �
 - ffmpeg 7 的 fragmented CENC（`encryption_scheme=cenc-aes-ctr`）输出的 `senc` 不合法（自己也解不了："Incorrect number of samples in encryption info"）；加密测试样本用 Shaka Packager 生成。
 - Chrome 默认不开放 `HTMLMediaElement.videoTracks`；native 路径上拿不到档位是常态，不是缺陷。
 - Web Component 的 shadow 样式写了 `:host { display: ... }` 就会覆盖 UA 对 `[hidden]` 的规则，必须同时写 `:host([hidden]) { display: none }`。
+- Playwright WebKit（macOS 15 CI，desktop-safari 项目）MSE 起播卡死：MPEG-TS 里音频 PTS 比首个视频帧早 21 ms（AAC 编码器 priming，`start_pts` 音频 1.400、视频 1.421）时，`currentTime` 停在 0.021（首个视频帧）再也不动，`readyState=4`、已解码数帧、`buffered` 覆盖整段。hls.js 的转封装把两条轨道对齐到同一时刻所以不触发；mpegts.js 直传 TS 时 8 次里约 2–5 次触发，对齐时间戳（裸 H.264 + AAC 重新复用，`start_time` 都是 1.400）后 0/8。Chrome / Firefox 不受影响。（2026-10-19，分支 `feat/ci-webkit-diag2` 实验）因此 `media` 的卡顿恢复对"起播后播放头从未移动"用更短的阈值（`startupStallMs`，1.5 s）先 nudge 一次，再按常规 8 s 卡顿处理；测试样本保持不变，作为回归用例。
 
 ## 2. 格式 / 协议 / 编码全景
 
