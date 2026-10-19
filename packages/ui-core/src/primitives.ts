@@ -1,9 +1,6 @@
-// UI primitive elements (SPEC §14.1, ADR-005 §6). Each element binds one slice of store state to
-// one piece of DOM and dispatches actions; none talks to the engine or the <video> (SPEC §3 rule
-// 1). Text comes from the strings table, styling from --otter-* variables, ::part() and slots.
-//
-// Constructors live inside defineElements() so nothing extends HTMLElement at module top level
-// (Workers / SSR, AGENT §4).
+// Shared base and styles of the UI primitives (SPEC §14.1, UI-DESIGN §4 / §10). Every value
+// comes from a --otter-* design token; the fallbacks here equal the default skin's values, so
+// primitives look right even without a skin. Store lifecycle lives in createBase().
 
 import type { Unsubscribe } from '@otter-player/core';
 import { findStore, type StoreConsumer, type UiState, type UiStore } from './context.js';
@@ -11,47 +8,106 @@ import { findStrings, type UiStrings } from './strings.js';
 
 export { speakTime } from './format.js';
 
-export const BUTTON_CSS = `
-:host { display: inline-flex; }
+/** Token fallbacks (UI-DESIGN §4). */
+export const T = {
+  fg: 'var(--otter-fg, rgb(255 255 255 / 0.92))',
+  muted: 'var(--otter-fg-muted, rgb(255 255 255 / 0.64))',
+  dim: 'var(--otter-fg-dim, rgb(255 255 255 / 0.4))',
+  accent: 'var(--otter-accent, #1ee9e6)',
+  accentDeep: 'var(--otter-accent-deep, #12c9d4)',
+  live: 'var(--otter-live, #ff4d4f)',
+  danger: 'var(--otter-danger, #ff6b6b)',
+  glass: 'var(--otter-glass, rgb(18 22 30 / 0.88))',
+  glassBorder: 'var(--otter-glass-border, rgb(255 255 255 / 0.08))',
+  hover: 'var(--otter-hover, rgb(255 255 255 / 0.1))',
+  track: 'var(--otter-track, rgb(255 255 255 / 0.22))',
+  buffered: 'var(--otter-buffered-color, rgb(255 255 255 / 0.45))',
+  font: 'var(--otter-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif)',
+  mono: 'var(--otter-font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace)',
+  shadow: 'var(--otter-shadow-pop, 0 8px 32px rgb(0 0 0 / 0.45), 0 1px 0 rgb(255 255 255 / 0.06) inset)',
+  textShadow: 'var(--otter-text-shadow, 0 1px 2px rgb(0 0 0 / 0.6))',
+  easeOut: 'var(--otter-ease-out, cubic-bezier(0.2, 0, 0, 1))',
+  easeIn: 'var(--otter-ease-in, cubic-bezier(0.4, 0, 1, 1))',
+  fast: 'var(--otter-t-fast, 120ms)',
+  show: 'var(--otter-t-show, 150ms)',
+  hide: 'var(--otter-t-hide, 250ms)',
+  size: 'var(--otter-control-size, 40px)',
+  icon: 'var(--otter-icon-size, 24px)',
+  radiusSm: 'var(--otter-radius-sm, 4px)',
+  radius: 'var(--otter-radius, 8px)',
+  radiusLg: 'var(--otter-radius-lg, 12px)',
+} as const;
+
+/**
+ * Glass material (UI-DESIGN §4.1, ADR-006): blur where supported, otherwise a near-opaque fill.
+ * Styles are functions: module-level strings built from T would be top-level side effects.
+ */
+export const glass = (): string => `background: ${T.glass}; border: 1px solid ${T.glassBorder}; box-shadow: ${T.shadow};
+  -webkit-backdrop-filter: blur(var(--otter-glass-blur, 16px)); backdrop-filter: blur(var(--otter-glass-blur, 16px));`;
+/** ADR-006 degradation: without backdrop-filter the glass fill goes to 0.96 opacity. */
+export const glassFallback = (selector: string): string =>
+  `@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { ${selector} { background: var(--otter-glass-solid, rgb(18 22 30 / 0.96)); } }`;
+
+export const REDUCED_MOTION: string = `@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; animation-duration: 0s !important; } }`;
+
+export const buttonCss = (): string => `
+:host { display: inline-flex; position: relative; }
 :host([hidden]), :host([data-otter-unsupported]) { display: none; }
 button {
-  all: unset; box-sizing: border-box; cursor: pointer;
-  min-width: var(--otter-control-size, 44px); min-height: var(--otter-control-size, 44px);
-  display: inline-flex; align-items: center; justify-content: center;
-  color: var(--otter-fg, #fff); border-radius: var(--otter-radius, 8px);
-  font: var(--otter-font, 600 14px/1 system-ui, sans-serif);
+  all: unset; box-sizing: border-box; cursor: pointer; position: relative;
+  min-width: ${T.size}; height: ${T.size};
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  color: ${T.fg}; border-radius: ${T.radius}; font: 600 13px/1 ${T.font}; text-shadow: ${T.textShadow};
+  -webkit-tap-highlight-color: transparent;
 }
-button:focus-visible, :host(:focus-visible) { outline: 3px solid var(--otter-accent, #1ee9e6); outline-offset: 2px; }
-button:disabled { opacity: 0.5; cursor: default; }
-button[aria-pressed="true"] { color: var(--otter-accent, #1ee9e6); }
-svg { width: 24px; height: 24px; fill: currentColor; }
+button svg { width: ${T.icon}; height: ${T.icon}; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.45));
+  transition: opacity ${T.fast} ${T.easeOut}, transform ${T.fast} ${T.easeOut}; }
+.icon { display: grid; }
+.icon > svg { grid-area: 1 / 1; }
+.icon > svg:not([data-on]) { opacity: 0; transform: scale(0.85); }
+button:hover .icon > svg[data-on] { transform: scale(1.1); }
+button:active .icon > svg[data-on] { transform: scale(0.95); }
+button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; }
+button:disabled { opacity: 0.4; cursor: default; }
+button:disabled .icon > svg[data-on] { transform: none; }
+.text { padding: 0 8px; }
+button[aria-pressed="true"]::after { content: ''; position: absolute; left: 30%; right: 30%; bottom: 5px; height: 2px;
+  border-radius: 1px; background: ${T.accent}; }
+.tip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); padding: 4px 8px;
+  border-radius: ${T.radiusSm}; ${glass()} color: ${T.fg}; font: 500 11px/1.3 ${T.font}; white-space: nowrap;
+  pointer-events: none; opacity: 0; transition: opacity ${T.fast} ${T.easeOut}; text-shadow: none; z-index: 1; }
+:host(:hover) .tip { opacity: 1; transition-delay: 400ms; }
+:host([data-tip-align="end"]) .tip { left: auto; right: 0; transform: none; }
+:host([data-tip-align="start"]) .tip { left: 0; transform: none; }
+@media (hover: none) { .tip { display: none; } }
+${glassFallback('.tip')}
+${REDUCED_MOTION}
 `;
 
-export const SLIDER_CSS = `
-:host { display: flex; align-items: center; flex: 1; min-width: 80px; }
-:host([hidden]), :host([data-otter-unsupported]) { display: none; }
-input { width: 100%; margin: 0; height: var(--otter-control-size, 44px); background: transparent;
-  accent-color: var(--otter-accent, #1ee9e6); cursor: pointer; }
-input:focus-visible { outline: 3px solid var(--otter-accent, #1ee9e6); outline-offset: 2px; }
+/** Native range input over a drawn rail (UI-DESIGN §6.2); the input keeps all slider semantics. */
+export const rangeCss = (): string => `
+.range { position: relative; height: var(--otter-hit, 24px); }  /* WCAG 2.5.8: 24 px target, 3 px drawn */
+input { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
+  background: transparent; cursor: pointer; }
 input:disabled { cursor: default; }
+input:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; border-radius: ${T.radiusSm}; }
+input::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+input::-moz-range-track { height: 100%; background: transparent; }
+input::-moz-range-progress { background: transparent; }
+input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: var(--otter-thumb, 13px); height: var(--otter-thumb, 13px);
+  border-radius: 50%; background: ${T.accent}; box-shadow: 0 0 0 2px rgb(0 0 0 / 0.35);
+  transform: scale(var(--otter-thumb-scale, 0)); transition: transform ${T.fast} ${T.easeOut}; }
+input::-moz-range-thumb { width: var(--otter-thumb, 13px); height: var(--otter-thumb, 13px); border: none; border-radius: 50%;
+  background: ${T.accent}; box-shadow: 0 0 0 2px rgb(0 0 0 / 0.35); transform: scale(var(--otter-thumb-scale, 0));
+  transition: transform ${T.fast} ${T.easeOut}; }
+input:focus-visible, .range:hover input { --otter-thumb-scale: 1; }
+.rail { position: absolute; left: 0; right: 0; top: 50%; height: var(--otter-rail, 3px); transform: translateY(-50%);
+  border-radius: 999px; background: ${T.track}; overflow: hidden; pointer-events: none; transition: height ${T.fast} ${T.easeOut}; }
+.rail > i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: inherit; }
+.buffered { background: ${T.buffered}; width: var(--otter-buffered, 0%); }
+.played { background: ${T.accent}; width: var(--otter-played, 0%); }
+${REDUCED_MOTION}
 `;
-
-// evenodd: icons with holes (captions bars, PiP frame) are drawn as one path.
-export const svg = (path: string): string => `<svg viewBox="0 0 24 24" fill-rule="evenodd" aria-hidden="true" focusable="false">${path}</svg>`;
-
-export const ICON = {
-  play: '<path d="M8 5v14l11-7z"/>',
-  pause: '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>',
-  volume: '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/>',
-  volumeLow: '<path d="M5 9v6h4l5 5V4L9 9H5z"/>',
-  muted: '<path d="M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z"/>',
-  captions: '<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm2 8h4v2H6zm8 0h4v2h-4zM6 9h3v2H6zm9 0h3v2h-3z"/>',
-  settings: '<path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9.4 5.4-1.7-.3a7.6 7.6 0 0 0-.8-2l1-1.4-2.6-2.6-1.4 1a7.6 7.6 0 0 0-2-.8L13.6 5h-3.2l-.3 1.9a7.6 7.6 0 0 0-2 .8L6.7 6.7 4.1 9.3l1 1.4a7.6 7.6 0 0 0-.8 2l-1.9.3v3.2l1.9.3a7.6 7.6 0 0 0 .8 2l-1 1.4 2.6 2.6 1.4-1a7.6 7.6 0 0 0 2 .8l.3 1.9h3.2l.3-1.9a7.6 7.6 0 0 0 2-.8l1.4 1 2.6-2.6-1-1.4a7.6 7.6 0 0 0 .8-2l1.9-.3z"/>',
-  fullscreen: '<path d="M5 5h5V3H3v7h2zm9-2v2h5v5h2V3zM5 14H3v7h7v-2H5zm14 5h-5v2h7v-7h-2z"/>',
-  exitFullscreen: '<path d="M8 3v5H3v2h7V3zM16 3v7h5V8h-5V3zM3 14v2h5v5h2v-7zm16 0h-5v7h2v-5h3z"/>',
-  pip: '<path d="M3 5h18v14H3zM5 7v10h14V7z"/><path d="M12 11h6v5h-6z"/>',
-  live: '<path d="M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm0-4a6 6 0 0 1 6 6 6 6 0 0 1-6 6 6 6 0 0 1-6-6 6 6 0 0 1 6-6z"/>',
-} as const;
 
 /** Shared lifecycle: find the store and strings, subscribe while connected, render on change. */
 export function createBase(): abstract new () => HTMLElement & StoreConsumer & { readonly ui: UiStore | undefined; readonly strings: UiStrings } {
@@ -97,4 +153,3 @@ export const unsupported = (el: HTMLElement, yes: boolean): void => {
 
 /** `aria-valuetext` for a 0..1 volume. */
 export const speakVolume = (v: number): string => `${Math.round(v * 100)}%`;
-

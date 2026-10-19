@@ -110,9 +110,11 @@ describe('text plugin', () => {
     text.overlay.tick?.(0, 2);
     expect(root.querySelector('[data-cue-id]')?.textContent).toBe('Hello');
     const layer = root.querySelector<HTMLElement>('[data-otter-cues]');
-    expect(layer?.style.height).toBe('480px');
+    // 8% of the picture stays free at the bottom (UI-DESIGN §9).
+    expect(layer?.style.height).toBe('441.6px');
+    // A 64 px bar over the picture: 8% + 64 px + 8 px.
     text.overlay.setSafeArea?.({ top: 0, right: 0, bottom: 64, left: 0 });
-    expect(layer?.style.height).toBe('416px');
+    expect(layer?.style.height).toBe('369.6px');
     core.store.dispatch('toggle-captions', {});
     expect(root.querySelector('[data-cue-id]')).toBeNull();
     text.overlay.destroy();

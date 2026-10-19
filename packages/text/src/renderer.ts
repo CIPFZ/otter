@@ -9,26 +9,31 @@ import { horizontalLayout, layoutCues, type Box } from './layout.js';
 export interface CueRenderer {
   readonly element: HTMLElement;
   /** Shows `cues` (already filtered to the active ones) in `area`, container coordinates. */
-  render(cues: readonly TextCue[], area: Box, time: number): void;
+  render(cues: readonly TextCue[], area: Box, time: number, pictureHeight?: number): void;
   /** User caption style (CVAA); unset fields fall back to the skin's --otter-cue-* values. */
   style(style: CaptionStyle): void;
   destroy(): void;
 }
 
+// Default look (UI-DESIGN §9): 36 px at a 1080p picture (never below 15 px), weight 500, soft
+// shadow, translucent per-line background with rounded corners. CVAA user settings win.
 const CSS = `
 .otter-cues { position: absolute; pointer-events: none; overflow: hidden;
-  font-family: var(--otter-cue-font-family, system-ui, sans-serif);
-  font-size: calc(var(--otter-cue-area-height, 360px) * 0.05 * var(--otter-cue-user-scale, var(--otter-cue-scale, 1)));
-  line-height: var(--otter-cue-line-height, 1.25); }
+  font-family: var(--otter-cue-font-family, var(--otter-font, system-ui, sans-serif)); font-weight: 500; letter-spacing: 0.01em;
+  font-size: calc(max(15px, var(--otter-cue-picture-height, 360px) * 0.0333) * var(--otter-cue-user-scale, var(--otter-cue-scale, 1)));
+  line-height: var(--otter-cue-line-height, 1.35);
+  transition: height var(--otter-t-show, 150ms) var(--otter-ease-out, cubic-bezier(0.2, 0, 0, 1)); }
 .otter-cue { position: absolute; box-sizing: border-box; padding: 0 0.5em;
   white-space: pre-line; overflow-wrap: break-word; }
-/* Only WebVTT region scroll-up animates (layout changes from resizes / the safe area jump). */
-.otter-cue[data-region] { transition: top 0.433s; }
-.otter-cue-text { color: var(--otter-cue-user-color, var(--otter-cue-color, #fff)); background: var(--otter-cue-user-background, var(--otter-cue-background, rgb(0 0 0 / 0.8)));
-  text-shadow: var(--otter-cue-user-shadow, var(--otter-cue-text-shadow, none)); font-family: var(--otter-cue-user-font, inherit); padding: 0 0.3em;
+/* WebVTT region scroll-up animates; other cues ride on the layer's animated bottom edge. */
+.otter-cue[data-region] { transition: bottom 0.433s; }
+.otter-cue-text { color: var(--otter-cue-user-color, var(--otter-cue-color, #fff));
+  background: var(--otter-cue-user-background, var(--otter-cue-background, rgb(0 0 0 / 0.55)));
+  text-shadow: var(--otter-cue-user-shadow, var(--otter-cue-text-shadow, 0 0 4px rgb(0 0 0 / 0.9), 0 1px 2px rgb(0 0 0 / 0.9)));
+  font-family: var(--otter-cue-user-font, inherit); padding: 0.11em 0.28em; border-radius: 4px;
   box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .otter-cue [data-future] { color: var(--otter-cue-future-color, inherit); }
-@media (prefers-reduced-motion: reduce) { .otter-cue { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .otter-cues, .otter-cue { transition: none; } }
 `;
 
 const TAG: Readonly<Record<string, string>> = { b: 'b', i: 'i', u: 'u', ruby: 'ruby', rt: 'rt' };
@@ -111,7 +116,7 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
 
   return {
     element,
-    render(cues, area, time) {
+    render(cues, area, time, pictureHeight = area.height) {
       const key = `${cues.map((c) => c.id).join('|')}@${area.left},${area.top},${area.width},${area.height}`;
       if (key === signature) {
         // Same cues, same area: only karaoke timestamps move.
@@ -124,6 +129,8 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
       signature = key;
       Object.assign(element.style, { left: `${area.left}px`, top: `${area.top}px`, width: `${area.width}px`, height: `${area.height}px` });
       element.style.setProperty('--otter-cue-area-height', `${area.height}px`);
+      // Size follows the picture, not the area the chrome leaves: showing the bar moves cues, it does not shrink them.
+      element.style.setProperty('--otter-cue-picture-height', `${pictureHeight}px`);
       const ids = new Set(cues.map((c) => c.id));
       for (const [id, el] of boxes) {
         if (!ids.has(id)) {
@@ -150,8 +157,8 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
         if (el.parentNode !== element) element.appendChild(el);
         return el;
       });
-      const fontSize = parseFloat(doc.defaultView?.getComputedStyle(element).fontSize ?? '') || area.height * 0.05;
-      const lineHeight = fontSize * 1.25;
+      const fontSize = parseFloat(doc.defaultView?.getComputedStyle(element).fontSize ?? '') || Math.max(15, pictureHeight * 0.0333);
+      const lineHeight = fontSize * 1.35;
       // Pass 2: place.
       const placed = layoutCues(
         cues.map((cue, i) => ({ settings: cue.settings, height: (els[i] as HTMLElement).offsetHeight || lineHeight })),
@@ -161,7 +168,14 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
       placed.forEach((p, i) => {
         const el = els[i] as HTMLElement;
         el.style.left = `${p.left}px`;
-        el.style.top = `${p.top}px`;
+        // Lower-half cues hang from the bottom edge, so the animated layer height carries them.
+        if (p.top + p.height / 2 > area.height / 2) {
+          el.style.top = '';
+          el.style.bottom = `${area.height - p.top - p.height}px`;
+        } else {
+          el.style.bottom = '';
+          el.style.top = `${p.top}px`;
+        }
         el.style.visibility = p.hidden ? 'hidden' : '';
       });
     },

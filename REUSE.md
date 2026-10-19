@@ -20,6 +20,7 @@
 | Apache-2.0 | hls.js、Shaka、video.js、flv.js、mpegts.js、Vidstack、RxPlayer、imscJS、media-chrome、vtt.js、`@svta/common-media-library` | L1–L4，保留 NOTICE 与头部声明 |
 | MIT | xgplayer、ArtPlayer、DPlayer、Plyr、mp4box.js、mediabunny、CommentCoreLibrary、`danmaku`（weizhenye）、`media-captions`、yuv-canvas、webcodecsfundamentals 示例 | L1–L4 |
 | BSD-3 / BSD-2 | dash.js、imscJS | L1–L4，保留声明 |
+| ISC | Lucide（图标，含源自 Feather 的 MIT 部分）、sax | L1–L4，保留声明 |
 | LGPL | libmedia、FFmpeg 构建、libass、libde265 | 仅 L1，且以独立 WASM / 动态模块加载，源码不进核心 |
 | GPLv3 | Jessibuca 开源版、EasyPlayer 部分组件 | 仅 L4，禁止看完照抄，相似结构也不行 |
 | 闭源 | B 站 nano、腾讯 TCPlayer、阿里 Aliplayer、THEO、Bitmovin、JW、IVS | 只观察行为与 API 形状，不反编译 |
@@ -63,6 +64,7 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | State store 与 features 组合 | video.js v10 `@videojs/core`（zustand 风格 slices） | L2 或 L4 | GA 后 L2；RC 期间 L4 自写同形状（见 SPEC Q2） |
 | 无样式 UI 原语 | video.js v10 原语 / Media Chrome `media-*` 元素 | L2 | Media Chrome 已稳定可直接 vendoring，其 `MediaController` 状态桥接是 Chrome 层参考实现 |
 | 默认皮肤与布局 | Vidstack default layout CSS | L4 | 只借布局与交互设计，按 `otter-*` 原语与 `--otter-*` 变量重写（原计划 L2，因其 CSS 与 Vidstack 元素 / data 属性强耦合而改为 L4，ADR-005 §6） |
+| 图标集 | Lucide（ISC，npm `lucide`） | L1 | M2.5 起（UI-DESIGN §5，ADR-006）。24 px 网格、2 px 线性描边；Lucide 缺的媒体图标（live 点、spinner、剧场）在 `ui-core/src/icons.ts` 按同样网格自绘。`ui-core` 构建时把用到的图标预打包进 dist（`otter.bundle`），消费方按元素 tree-shake |
 | 无障碍清单与键盘模型 | Vidstack a11y 文档与 `MediaKeyboardController` | L3 | 快捷键映射表直接拿。CVAA 清单逐条进 `docs/reports/M2.md` |
 | 手势识别 | xgplayer `mobile` 插件、ArtPlayer `gesture` | L3 | MIT |
 | 进度条缩略图（VTT sprite） | Vidstack `thumbnails` / `videojs-vtt-thumbnails` | L3 | |

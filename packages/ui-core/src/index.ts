@@ -44,6 +44,12 @@ export {
   defineElements,
   defineOtterElements,
   otterAnnouncer,
+  otterBigPlay,
+  otterErrorCard,
+  otterFeedback,
+  otterQualityMenu,
+  otterSeekButton,
+  otterSpeedMenu,
   otterCaptionsButton,
   otterFullscreenButton,
   otterGesture,
@@ -63,6 +69,7 @@ export {
   otterVolumeSlider,
   M1_ELEMENTS,
   M2_ELEMENTS,
+  M25_ELEMENTS,
   captionStyleGroups,
   settingsGroups,
   type DefineOptions,
@@ -80,4 +87,5 @@ export {
   type ChromeState,
   type ChromeUiActions,
 } from './chrome.js';
+export { icon, type IconNode } from './icons.js';
 export { fill, findStrings, provideStrings, STRINGS_EN, STRINGS_ZH, type UiStrings } from './strings.js';

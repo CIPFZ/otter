@@ -133,9 +133,11 @@ async function build(policy: RoutePolicy): Promise<{
  */
 function trackControls(store: { getState(): State; subscribe(h: (s: State) => void): () => void }, layer: OverlayLayer): () => void {
   const controls = document.querySelector('[data-otter-controls]') as HTMLElement;
+  const chrome = [...document.querySelectorAll<HTMLElement>('[data-otter-top], [data-otter-center]')];
   const report = (): void => {
     const visible = store.getState().controlsVisible;
     controls.toggleAttribute('data-idle', !visible);
+    for (const el of chrome) el.toggleAttribute('data-idle', !visible);
     layer.setSafeArea({ top: 0, right: 0, bottom: visible ? controls.offsetHeight : 0, left: 0 });
   };
   const observer = new ResizeObserver(report);

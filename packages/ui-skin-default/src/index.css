@@ -1,124 +1,266 @@
 /*
- * @otter-player/ui-skin-default (SPEC §14.4, ADR-005 §6): CSS only, no JS entry.
- * Layout written for Otter's otter-* primitives (Vidstack's default layout is a reference for
- * the arrangement only, L4). Theme tokens are the Otter brand palette (SPEC §22).
- * :where() keeps specificity at zero so hosts can override any token or rule.
+ * @otter-player/ui-skin-default (SPEC §14.4, UI-DESIGN v1): CSS only, no JS entry.
+ * Design tokens (UI-DESIGN §4) on :root, layout for the otter-* primitives (§6), preference
+ * modes (§10). :where() keeps specificity at zero so hosts can override any token or rule.
  *
- * Host contract: the player root carries [data-otter-player], the control bar
- * [data-otter-controls]; the shell sets [data-idle] on the bar when the chrome plugin hides it.
+ * Host contract: [data-otter-player] root; [data-otter-top] top bar (optional [data-otter-title]);
+ * [data-otter-center] mobile centre controls; [data-otter-controls] bottom bar with
+ * [data-otter-group="left"|"right"] and a [data-otter-volume] mute + slider pair. The shell sets
+ * [data-idle] on top bar, centre and bottom bar while the chrome plugin hides the controls.
  */
 :where(:root) {
-  --otter-bg: #243447;
-  --otter-bg-deep: #1e2d40;
+  /* 4.1 colour */
   --otter-accent: #1ee9e6;
-  /* Use on light backgrounds; #1EE9E6 does not reach contrast there. */
   --otter-accent-deep: #12c9d4;
-  --otter-fg: #ffffff;
-  --otter-live: #ff4e45;
+  --otter-fg: rgb(255 255 255 / 0.92);
+  --otter-fg-muted: rgb(255 255 255 / 0.64);
+  --otter-fg-dim: rgb(255 255 255 / 0.4);
+  --otter-track: rgb(255 255 255 / 0.22);
+  --otter-buffered-color: rgb(255 255 255 / 0.45);
+  /* UI-DESIGN §4.1 shape, darkened where the button row and the title sit so white text keeps
+     4.5:1 even over a white frame (§11.3; ADR-006). */
+  --otter-scrim-bottom: linear-gradient(to top, rgb(0 0 0 / 0.8) 0%, rgb(0 0 0 / 0.68) 45%, rgb(0 0 0 / 0.35) 70%, transparent 100%);
+  --otter-scrim-top: linear-gradient(to bottom, rgb(0 0 0 / 0.72) 0%, rgb(0 0 0 / 0.6) 45%, transparent 100%);
+  --otter-glass: rgb(18 22 30 / 0.88);
+  --otter-glass-solid: rgb(18 22 30 / 0.96);
+  --otter-glass-blur: 16px;
+  --otter-glass-border: rgb(255 255 255 / 0.08);
+  --otter-hover: rgb(255 255 255 / 0.1);
+  --otter-live: #ff4d4f;
+  --otter-danger: #ff6b6b;
+  /* 4.2 size */
+  --otter-control-size: 40px;
+  --otter-icon-size: 24px;
+  --otter-bar-height: 56px;
+  --otter-bar-padding-x: 12px;
+  --otter-gap: 4px;
+  --otter-progress-height: 3px;
+  --otter-progress-thumb: 13px;
+  --otter-radius-sm: 4px;
   --otter-radius: 8px;
-  --otter-control-size: 44px;
-  --otter-font: 600 14px/1 system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif;
-  --otter-font-mono: 500 13px/1 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  /* Captions (text package): user-overridable, mirrors ::cue preferences. */
-  --otter-cue-color: #ffffff;
-  --otter-cue-background: rgb(0 0 0 / 0.8);
+  --otter-radius-lg: 12px;
+  --otter-menu-width: 280px;
+  --otter-menu-row: 40px;
+  /* 4.3 type */
+  --otter-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
+  --otter-font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  /* 4.4 depth and motion */
+  --otter-shadow-pop: 0 8px 32px rgb(0 0 0 / 0.45), 0 1px 0 rgb(255 255 255 / 0.06) inset;
+  --otter-text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
+  --otter-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --otter-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --otter-t-fast: 120ms;
+  --otter-t-show: 150ms;
+  --otter-t-hide: 250ms;
+  /* captions (text package) */
+  --otter-cue-background: rgb(0 0 0 / 0.55);
   --otter-cue-scale: 1;
 }
 
-/* ---- Player box ------------------------------------------------------------------------- */
+/* ---- Player box ---------------------------------------------------------------------- */
 :where([data-otter-player]) {
   position: relative;
   display: block;
+  container-type: inline-size;
   background: #000;
   color: var(--otter-fg);
+  font-family: var(--otter-font);
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  /* Inline: the page keeps vertical scrolling (the browser cancels vertical swipes); fullscreen:
-     every gesture belongs to the player (SPEC §14.3). */
-  touch-action: pan-y;
   outline: none;
+  /* Inline: the page keeps vertical scrolling; fullscreen: every gesture is the player's (SPEC §14.3). */
+  touch-action: pan-y;
+  /* Inline the box is 16:9, so its height is 56.25cqw; fullscreen measures it (container-type: size). */
+  --otter-menu-max-height: calc(56.25cqw - var(--otter-bar-height) - 64px);
 }
 :where([data-otter-player]:fullscreen) {
   touch-action: none;
   aspect-ratio: auto;
   width: 100%;
   height: 100%;
+  container-type: size;
+  --otter-menu-max-height: calc(100cqh - var(--otter-bar-height) - 64px);
 }
 :where([data-otter-player]) > video {
   display: block;
   width: 100%;
   height: 100%;
 }
-/* Picture layers: gesture surface (with the brightness dim), poster, spinner. */
-:where([data-otter-player]) > :is(otter-gesture, otter-poster, otter-spinner) {
+:where([data-otter-player]) > :is(otter-gesture, otter-poster, otter-spinner, otter-feedback, otter-big-play, otter-error) {
   position: absolute;
   inset: 0;
 }
 
-/* ---- Control bar -------------------------------------------------------------------------- */
-:where([data-otter-controls]) {
-  position: absolute;
-  inset: auto 0 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 4px;
-  padding: 0 8px 4px;
-  background: linear-gradient(to top, color-mix(in srgb, var(--otter-bg-deep) 92%, transparent) 0%, color-mix(in srgb, var(--otter-bg-deep) 60%, transparent) 60%, transparent);
-  transition: opacity 0.2s;
+/* ---- Show / hide rhythm (§3.5, §6.1) ------------------------------------------------- */
+:where([data-otter-top], [data-otter-controls], [data-otter-center]) {
+  transition: opacity var(--otter-t-show) var(--otter-ease-out), transform var(--otter-t-show) var(--otter-ease-out);
 }
-:where([data-otter-controls][hidden]) {
-  display: none;
-}
-/* Idle (chrome plugin): faded out but still focusable; focusing a control shows the bar. */
-:where([data-otter-controls][data-idle]) {
+:where([data-otter-top], [data-otter-controls], [data-otter-center])[data-idle] {
   opacity: 0;
   pointer-events: none;
+  transition-duration: var(--otter-t-hide);
+  transition-timing-function: var(--otter-ease-in);
+}
+:where([data-otter-controls])[data-idle] {
+  transform: translateY(4px);
 }
 :where([data-otter-player]:has([data-otter-controls][data-idle])) {
   cursor: none;
 }
-/* Progress on its own row above the buttons. */
+:where([data-otter-controls][hidden], [data-otter-top][hidden]) {
+  display: none;
+}
+
+/* ---- Top bar (§6.3) ------------------------------------------------------------------- */
+:where([data-otter-top]) {
+  position: absolute;
+  inset: 0 0 auto 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--otter-gap);
+  padding: 14px var(--otter-bar-padding-x) 0 20px;
+  pointer-events: none;
+}
+/* Scrims are drawn behind the bars, not part of their boxes (the bar box is the safe area). */
+:where([data-otter-top])::before,
+:where([data-otter-controls])::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+:where([data-otter-top])::before {
+  top: 0;
+  height: 88px;
+  background: var(--otter-scrim-top);
+}
+:where([data-otter-controls])::before {
+  bottom: 0;
+  height: 120px;
+  background: var(--otter-scrim-bottom);
+}
+:where([data-otter-top]) > * {
+  pointer-events: auto;
+}
+:where([data-otter-title]) {
+  flex: 1;
+  min-width: 0;
+  margin-top: 6px;
+  font: 600 16px/1.3 var(--otter-font);
+  color: var(--otter-fg);
+  text-shadow: var(--otter-text-shadow);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Bottom bar (§6.1) ---------------------------------------------------------------- */
+:where([data-otter-controls]) {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--otter-bar-padding-x);
+}
+:where([data-otter-top]) {
+  z-index: 2;
+}
 :where([data-otter-controls]) > otter-time-slider {
-  order: -1;
   flex: 1 0 100%;
-  height: 28px;
+  margin: 0 0 4px;
 }
-/* Everything after the time display sits at the right. */
-:where([data-otter-controls]) > otter-time-display {
-  margin-inline-end: auto;
-  padding-inline: 8px;
+:where([data-otter-group]) {
+  display: flex;
+  align-items: center;
+  gap: var(--otter-gap);
+  min-height: var(--otter-bar-height);
 }
-:where([data-otter-controls]) > otter-volume-slider {
-  flex: 0 1 88px;
+:where([data-otter-group='left']) > otter-time-display,
+:where([data-otter-group='left']) > otter-live-indicator {
+  margin-inline-start: 8px;
+}
+/* Volume: icon, slider expands on hover / focus (72 px). */
+:where([data-otter-volume]) {
+  display: flex;
+  align-items: center;
+}
+:where([data-otter-volume]) > otter-volume-slider {
+  --otter-volume-width: 0px;
+  opacity: 0;
+}
+:where([data-otter-volume]:hover, [data-otter-volume]:focus-within) > otter-volume-slider {
+  --otter-volume-width: 72px;
+  opacity: 1;
+  margin-inline: 4px 8px;
 }
 
 :where([data-otter-player]) otter-stats {
   position: absolute;
-  inset: 8px auto auto 8px;
-  max-width: min(420px, calc(100% - 16px));
+  /* Under the title line of the top bar (UI-DESIGN §8). */
+  inset: 52px auto auto 12px;
+  z-index: 3;
 }
 
-/* ---- Small players and touch -------------------------------------------------------------- */
-@container (max-width: 480px) {
-  :where([data-otter-controls]) > :is(otter-volume-slider, otter-pip-button) {
-    display: none;
-  }
+/* ---- Mobile and small players (§6.5) ---------------------------------------------------- */
+:where([data-otter-center]) {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  pointer-events: none;
 }
-:where([data-otter-player]) {
-  container-type: inline-size;
+:where([data-otter-center]) > * {
+  pointer-events: auto;
+  --otter-control-size: 56px;
+  --otter-icon-size: 32px;
+}
+/* Over the bare picture: a dark disc keeps the icons at 4.5:1 on any frame (§11.3). */
+:where([data-otter-center]) > *::part(button) {
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.6);
 }
 @media (pointer: coarse) {
   :where([data-otter-player]) {
     --otter-control-size: 48px;
+    --otter-icon-size: 26px;
   }
-  /* Hardware volume keys on phones; the slider would only crowd the bar. */
-  :where([data-otter-controls]) > otter-volume-slider {
+  :where([data-otter-center]) {
+    display: flex;
+  }
+  :where([data-otter-controls]) > [data-otter-group='left'] > otter-play-button,
+  :where([data-otter-volume]) > otter-volume-slider,
+  :where([data-otter-controls]) :is(otter-quality-menu, otter-speed-menu) {
+    display: none;
+  }
+  /* Progress always readable on touch; the thumb stays. */
+  :where([data-otter-controls]) > otter-time-slider {
+    --otter-thumb-scale: 0.85;
+  }
+}
+@container (max-width: 640px) {
+  :where([data-otter-controls]) :is(otter-quality-menu, otter-speed-menu) {
     display: none;
   }
 }
+@container (max-width: 420px) {
+  :where([data-otter-controls]) :is(otter-pip-button, otter-volume-slider) {
+    display: none;
+  }
+  :where([data-otter-title]) {
+    font-size: 14px;
+  }
+}
 
-/* ---- Preferences ---------------------------------------------------------------------------- */
+/* ---- Preferences (§10) ----------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   :where([data-otter-player]) * {
     transition: none !important;
@@ -127,22 +269,29 @@
 }
 @media (prefers-contrast: more) {
   :where([data-otter-player]) {
-    --otter-accent: #ffff00;
-    --otter-bg-deep: #000000;
-    --otter-cue-background: #000000;
-  }
-  :where([data-otter-controls]) {
-    background: #000;
+    --otter-accent: #ffd60a;
+    --otter-accent-deep: #ffd60a;
+    --otter-fg: #fff;
+    --otter-fg-muted: rgb(255 255 255 / 0.85);
+    --otter-scrim-bottom: linear-gradient(rgb(0 0 0 / 0.85), rgb(0 0 0 / 0.85));
+    --otter-scrim-top: linear-gradient(rgb(0 0 0 / 0.85), rgb(0 0 0 / 0.85));
+    --otter-glass: #000;
+    --otter-glass-blur: 0px;
+    --otter-glass-border: #fff;
+    --otter-cue-background: #000;
   }
 }
 @media (forced-colors: active) {
-  :where([data-otter-controls]) {
+  :where([data-otter-controls], [data-otter-top]) {
     background: Canvas;
     color: CanvasText;
     border-top: 1px solid CanvasText;
   }
   :where([data-otter-player]) {
     --otter-accent: Highlight;
+    --otter-accent-deep: Highlight;
     --otter-fg: CanvasText;
+    --otter-glass: Canvas;
+    --otter-glass-border: CanvasText;
   }
 }

@@ -76,11 +76,12 @@ describe('M1 elements', () => {
       qoe: { ...EMPTY_QOE, ttff: 412, bandwidth: 4_200_000, droppedFrames: 3, totalFrames: 900 },
     });
     const stat = (k: string): string | null | undefined => shadow('otter-stats').querySelector(`[data-stat="${k}"]`)?.textContent;
-    expect(stat('Format / backend')).toBe('hls / mse (ManagedMediaSource)');
+    expect(stat('Format')).toBe('hls');
+    expect(stat('Backend')).toBe('mse (MMS)');
     expect(stat('Resolution')).toBe('1280×720');
     expect(stat('Bandwidth')).toBe('4.2 Mbps');
     expect(stat('TTFF')).toBe('412 ms');
-    expect(stat('Dropped frames')).toBe('3 / 900');
+    expect(stat('Dropped')).toBe('3 / 900');
     expect(shadow('otter-stats').querySelector('pre')?.textContent).toContain('"first feasible candidate"');
   });
 

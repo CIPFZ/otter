@@ -332,13 +332,14 @@ export function createText(options: TextOptions = {}): TextController {
     const id = view.textTrack ?? null;
     const cues = id === null ? [] : activeCues(cueStore.get(id) ?? [], mediaTime);
     const rect = host.contentRect;
-    const area = cueArea(
-      { left: rect.x, top: rect.y, width: rect.width, height: rect.height },
-      { width: host.root.clientWidth, height: host.root.clientHeight },
-      safe.bottom,
-    );
+    // UI-DESIGN §9: cues sit 8% of the picture height above its bottom edge; a bar that covers
+    // the picture pushes them up by what it covers plus 8 px.
+    const picture = { left: rect.x, top: rect.y, width: rect.width, height: rect.height };
+    const covered = rect.height - cueArea(picture, { width: host.root.clientWidth, height: host.root.clientHeight }, safe.bottom).height;
+    const margin = rect.height * 0.08 + (covered > 0 ? covered + 8 : 0);
+    const area = { ...picture, height: Math.max(0, rect.height - margin) };
     renderer.style(view.captionStyle ?? {});
-    renderer.render(cues, area, mediaTime);
+    renderer.render(cues, area, mediaTime, rect.height);
   };
   changed = draw;
 

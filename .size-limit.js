@@ -36,6 +36,7 @@ const budgets = [
     modifyEsbuildConfig: firstScreenOnly,
   },
   { name: 'budget: danmaku (SPEC §1.1, ≤ 10 KB)', path: dist('danmaku'), import: '*', gzip: true, limit: '10 KB' },
+  { name: 'budget: ui-skin-default CSS (UI-DESIGN §11, ≤ 8 KB)', path: 'packages/ui-skin-default/dist/index.css', gzip: true, limit: '8 KB' },
 ];
 
 // SPEC §19 scenarios, two scopes (ADR-004):

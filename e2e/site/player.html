@@ -16,24 +16,43 @@
       <h1>Otter player fixture</h1>
       <!-- tabindex=-1: the player root takes keyboard focus for hotkeys; the picture itself is not a
            control (Firefox would otherwise put the bare <video> in the tab order). -->
+      <!-- tabindex=-1: the player root takes keyboard focus for hotkeys; the picture itself is not a
+           control (Firefox would otherwise put the bare <video> in the tab order). -->
       <div id="player" data-otter-player role="region" aria-label="Video player" tabindex="-1">
         <video playsinline crossorigin="anonymous" tabindex="-1"></video>
         <otter-gesture></otter-gesture>
         <otter-poster></otter-poster>
+        <otter-big-play></otter-big-play>
         <otter-spinner></otter-spinner>
+        <otter-feedback></otter-feedback>
+        <otter-error></otter-error>
+        <div data-otter-top><span data-otter-title>Otter Player Demo</span></div>
+        <div data-otter-center>
+          <otter-seek-button seconds="-10"></otter-seek-button>
+          <otter-play-button></otter-play-button>
+          <otter-seek-button seconds="10"></otter-seek-button>
+        </div>
         <otter-stats hidden></otter-stats>
         <otter-announcer></otter-announcer>
         <div data-otter-controls>
-          <otter-play-button></otter-play-button>
-          <otter-mute-button></otter-mute-button>
-          <otter-volume-slider></otter-volume-slider>
           <otter-time-slider></otter-time-slider>
-          <otter-time-display></otter-time-display>
-          <otter-live-indicator></otter-live-indicator>
-          <otter-captions-button></otter-captions-button>
-          <otter-settings-menu></otter-settings-menu>
-          <otter-pip-button></otter-pip-button>
-          <otter-fullscreen-button></otter-fullscreen-button>
+          <div data-otter-group="left">
+            <otter-play-button data-tip-align="start"></otter-play-button>
+            <div data-otter-volume>
+              <otter-mute-button></otter-mute-button>
+              <otter-volume-slider></otter-volume-slider>
+            </div>
+            <otter-time-display></otter-time-display>
+            <otter-live-indicator></otter-live-indicator>
+          </div>
+          <div data-otter-group="right">
+            <otter-quality-menu></otter-quality-menu>
+            <otter-speed-menu></otter-speed-menu>
+            <otter-captions-button></otter-captions-button>
+            <otter-settings-menu></otter-settings-menu>
+            <otter-pip-button></otter-pip-button>
+            <otter-fullscreen-button data-tip-align="end"></otter-fullscreen-button>
+          </div>
         </div>
       </div>
       <p><label><input id="toggle-stats" type="checkbox" /> Stats for nerds</label></p>

@@ -25,7 +25,13 @@
     "@otter-player/media": "workspace:*",
     "@otter-player/presentation": "workspace:*",
     "@otter-player/qoe": "workspace:*",
+    "@otter-player/surface": "workspace:*",
     "@otter-player/text": "workspace:*",
-    "@otter-player/surface": "workspace:*"
+    "lucide": "1.59.0"
+  },
+  "otter": {
+    "bundle": [
+      "lucide"
+    ]
   }
 }

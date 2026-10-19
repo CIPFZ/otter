@@ -1,16 +1,43 @@
-// UI primitives and composites (SPEC §14.1 / §14.2, ADR-005 §6). Every control is a native
-// <button> / <input type=range> or a complete ARIA pattern (menu + menuitemradio), has a visible
-// focus ring and takes its text from the strings table. Clicks dispatch synchronously, so play,
-// fullscreen and PiP keep their user activation (SPEC §3 rule 3).
+// UI primitives and composites (SPEC §14.1 / §14.2, ADR-005 §6, UI-DESIGN v1). Every control is
+// a native <button> / <input type=range> or a complete ARIA pattern (menu with menuitem /
+// menuitemradio / menuitemcheckbox), has a visible focus ring and takes its text from the
+// strings table. Clicks dispatch synchronously, so play, fullscreen and PiP keep their user
+// activation (SPEC §3 rule 3). Icons are Lucide (ADR-006), one SVG per state, cross-faded.
 //
-// Classes are created inside defineOtterElements(), not at module top level: `extends HTMLElement`
-// at top level would throw in Workers / SSR and is a top-level side effect (AGENT §4).
+// Element classes are built on first use by module-level factories (no `extends HTMLElement` at
+// top level: Workers / SSR, AGENT §4), so a bundler keeps only the elements a host defines.
 
+import {
+  Activity,
+  AudioLines,
+  Captions,
+  CaptionsOff,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  Copy,
+  Maximize,
+  Minimize,
+  Pause,
+  PictureInPicture2,
+  Play,
+  RotateCcw,
+  RotateCw,
+  Settings,
+  Settings2,
+  Type,
+  Volume1,
+  Volume2,
+  VolumeX,
+  X,
+} from 'lucide';
+import type { CaptionStyle } from '@otter-player/text';
 import type { UiState } from './context.js';
 import { formatBitrate, formatMs, formatSeconds, formatTime } from './format.js';
-import { BUTTON_CSS, createBase, ICON, SLIDER_CSS, speakTime, speakVolume, svg, unsupported, type OtterBase } from './primitives.js';
+import { icon, LiveDot, SpinnerRing, type IconNode } from './icons.js';
+import { buttonCss, createBase, glass, glassFallback, rangeCss, REDUCED_MOTION, speakTime, speakVolume, T, unsupported, type OtterBase } from './primitives.js';
 import { fill, type UiStrings } from './strings.js';
-import type { CaptionStyle } from '@otter-player/text';
 
 export const M1_ELEMENTS = {
   PlayButton: 'otter-play-button',
@@ -36,6 +63,16 @@ export const M2_ELEMENTS = {
   SettingsMenu: 'otter-settings-menu',
 } as const;
 
+/** M2.5 visual layer (UI-DESIGN §6). */
+export const M25_ELEMENTS = {
+  QualityMenu: 'otter-quality-menu',
+  SpeedMenu: 'otter-speed-menu',
+  SeekButton: 'otter-seek-button',
+  BigPlay: 'otter-big-play',
+  Feedback: 'otter-feedback',
+  ErrorCard: 'otter-error',
+} as const;
+
 export interface DefineOptions {
   readonly registry?: CustomElementRegistry;
 }
@@ -44,6 +81,8 @@ export interface DefineOptions {
 export interface MenuOption {
   readonly value: string;
   readonly label: string;
+  /** Second line (quality: "2.5 Mbps"). */
+  readonly detail?: string;
   readonly checked: boolean;
 }
 
@@ -58,33 +97,18 @@ const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 const qualityLabel = (s: Readonly<UiState>, id: string | null): string | undefined => {
   const t = s.tracks.video.find((v) => v.id === id);
   if (t === undefined) return undefined;
-  return t.height !== undefined ? `${t.height}p` : t.label ?? (t.bitrate === undefined ? t.id : formatBitrate(t.bitrate));
+  return t.height !== undefined ? `${t.height}P` : t.label ?? (t.bitrate === undefined ? t.id : formatBitrate(t.bitrate));
 };
 
 const trackLabel = (t: { readonly label?: string; readonly language?: string; readonly id: string }): string => t.label ?? t.language ?? t.id;
 
-/** Groups of the settings menu from state: quality (when selectable), speed, captions. */
+const rateLabel = (r: number): string => `${r.toFixed(r * 100 % 10 === 0 ? 1 : 2)}x`;
+
+/** Groups of the settings menu from state: quality (when selectable), speed, audio, captions, caption style. */
 export function settingsGroups(s: Readonly<UiState>, strings: UiStrings): MenuGroup[] {
   const groups: MenuGroup[] = [];
-  if (s.tracks.quality === 'selectable' && s.tracks.video.length > 1) {
-    const active = qualityLabel(s, s.activeQuality);
-    const auto = s.quality === 'auto' && active !== undefined ? fill(strings.qualityAutoActive, { label: active }) : strings.qualityAuto;
-    groups.push({
-      id: 'quality',
-      label: strings.quality,
-      options: [
-        { value: 'auto', label: auto, checked: s.quality === 'auto' },
-        ...[...s.tracks.video]
-          .sort((a, b) => (b.height ?? b.bitrate ?? 0) - (a.height ?? a.bitrate ?? 0))
-          .map((v) => ({ value: v.id, label: qualityLabel(s, v.id) ?? v.id, checked: s.quality === v.id })),
-      ],
-    });
-  }
-  groups.push({
-    id: 'speed',
-    label: strings.speed,
-    options: PLAYBACK_RATES.map((r) => ({ value: String(r), label: r === 1 ? strings.speedNormal : `${r}x`, checked: s.playbackRate === r })),
-  });
+  if (s.tracks.quality === 'selectable' && s.tracks.video.length > 1) groups.push(qualityGroup(s, strings));
+  groups.push(speedGroup(s, strings));
   if (s.tracks.audio.length > 1) {
     groups.push({
       id: 'audio',
@@ -107,6 +131,34 @@ export function settingsGroups(s: Readonly<UiState>, strings: UiStrings): MenuGr
   return groups;
 }
 
+function qualityGroup(s: Readonly<UiState>, strings: UiStrings): MenuGroup {
+  const active = qualityLabel(s, s.activeQuality);
+  const auto = s.quality === 'auto' && active !== undefined ? fill(strings.qualityAutoActive, { label: active }) : strings.qualityAuto;
+  return {
+    id: 'quality',
+    label: strings.quality,
+    options: [
+      { value: 'auto', label: auto, checked: s.quality === 'auto' },
+      ...[...s.tracks.video]
+        .sort((a, b) => (b.height ?? b.bitrate ?? 0) - (a.height ?? a.bitrate ?? 0))
+        .map((v) => ({
+          value: v.id,
+          label: qualityLabel(s, v.id) ?? v.id,
+          ...(v.bitrate === undefined ? {} : { detail: formatBitrate(v.bitrate) }),
+          checked: s.quality === v.id,
+        })),
+    ],
+  };
+}
+
+function speedGroup(s: Readonly<UiState>, strings: UiStrings): MenuGroup {
+  return {
+    id: 'speed',
+    label: strings.speed,
+    options: PLAYBACK_RATES.map((r) => ({ value: String(r), label: r === 1 ? strings.speedNormal : `${r}x`, checked: s.playbackRate === r })),
+  };
+}
+
 /** CVAA caption display settings (47 CFR §79.103(c)); `value` is the JSON style patch. */
 export function captionStyleGroups(s: Readonly<UiState>, strings: UiStrings): MenuGroup[] {
   const style: CaptionStyle = s.captionStyle ?? {};
@@ -126,10 +178,6 @@ export function captionStyleGroups(s: Readonly<UiState>, strings: UiStrings): Me
 
 let menuIds = 0;
 
-// Element classes are built on first use by these factories (module level, side-effect free), so
-// a bundler keeps only the elements a host defines. `defineElements({ tag: factory })` registers a
-// subset; `defineOtterElements()` registers all of them.
-
 type Ctor = CustomElementConstructor;
 const built = new Map<string, unknown>();
 const once = <T>(key: string, make: () => T): T => {
@@ -138,32 +186,53 @@ const once = <T>(key: string, make: () => T): T => {
 };
 const base = (): OtterBase => once('base', createBase);
 
-/** A button primitive: icon + accessible name from state; click dispatches. */
+const playerRoot = (el: Element): Element | null => el.closest('[data-otter-player]');
+
+/** Item by its data-key (values are JSON: no attribute selector, no escaping). */
+const byKey = (root: ParentNode | undefined, key: string): HTMLElement | null =>
+  [...(root?.querySelectorAll<HTMLElement>('[data-key]') ?? [])].find((e) => e.dataset['key'] === key) ?? null;
+
+// ---- Buttons ---------------------------------------------------------------------------------
+
+/** Icon button: every state's icon is rendered once and cross-faded (UI-DESIGN §5). */
 const buttonElementClass = () =>
   once('ButtonElement', () => {
     const Base = base();
     abstract class ButtonElement extends Base {
       protected button: HTMLButtonElement | undefined;
-      #icon = '';
+      #tip: HTMLElement | undefined;
+      #shown = '';
+      /** State name -> icon. The first entry is shown before the first render. */
+      protected abstract icons(): Readonly<Record<string, IconNode>>;
       protected setup(): void {
         if (this.button !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
-        root.innerHTML = `<style>${BUTTON_CSS}</style><button part="button" type="button"></button>`;
+        const svgs = Object.entries(this.icons())
+          .map(([k, n], i) => icon(n).replace('<svg ', `<svg data-icon="${k}"${i === 0 ? ' data-on' : ''} `))
+          .join('');
+        root.innerHTML = `<style>${buttonCss()}${this.extraCss()}</style><button part="button" type="button"><span class="icon">${svgs}</span>${this.extraHtml()}</button><span class="tip" part="tooltip" aria-hidden="true"></span>`;
         this.button = root.querySelector('button') as HTMLButtonElement;
+        this.#tip = root.querySelector('.tip') as HTMLElement;
         this.button.addEventListener('click', (e) => this.activate(e));
       }
+      protected extraCss(): string {
+        return '';
+      }
+      protected extraHtml(): string {
+        return '';
+      }
       protected abstract activate(e: Event): void;
-      /** Updates label and icon only when they change (no DOM churn on every state tick). */
-      protected show(label: string, icon: string): void {
+      /** Accessible name + tooltip + visible icon; DOM is touched only when something changes. */
+      protected show(label: string, state: string): void {
         const b = this.button;
         if (b === undefined) return;
         if (b.getAttribute('aria-label') !== label) {
           b.setAttribute('aria-label', label);
-          b.title = label;
+          if (this.#tip !== undefined) this.#tip.textContent = label;
         }
-        if (this.#icon !== icon) {
-          this.#icon = icon;
-          b.innerHTML = svg(icon);
+        if (this.#shown !== state) {
+          this.#shown = state;
+          for (const svg of b.querySelectorAll('svg[data-icon]')) svg.toggleAttribute('data-on', svg.getAttribute('data-icon') === state);
         }
       }
     }
@@ -174,12 +243,15 @@ const playButtonClass = () =>
   once('PlayButton', () => {
     const ButtonElement = buttonElementClass();
     return class PlayButton extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { play: Play, pause: Pause };
+      }
       protected activate(e: Event): void {
         this.ui?.dispatch('toggle-paused', {}, { type: e.type, source: 'otter-play-button' });
       }
       protected render(s: Readonly<UiState>): void {
         const playing = !s.paused;
-        this.show(playing ? this.strings.pause : this.strings.play, playing ? ICON.pause : ICON.play);
+        this.show(playing ? this.strings.pause : this.strings.play, playing ? 'pause' : 'play');
         if (this.button !== undefined) this.button.disabled = s.status !== 'ready';
         this.toggleAttribute('paused', !playing);
       }
@@ -190,12 +262,15 @@ const muteButtonClass = () =>
   once('MuteButton', () => {
     const ButtonElement = buttonElementClass();
     return class MuteButton extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { high: Volume2, low: Volume1, muted: VolumeX };
+      }
       protected activate(e: Event): void {
         this.ui?.dispatch('toggle-muted', {}, { type: e.type, source: 'otter-mute-button' });
       }
       protected render(s: Readonly<UiState>): void {
         const muted = s.muted || s.volume === 0;
-        this.show(muted ? this.strings.unmute : this.strings.mute, muted ? ICON.muted : s.volume < 0.5 ? ICON.volumeLow : ICON.volume);
+        this.show(muted ? this.strings.unmute : this.strings.mute, muted ? 'muted' : s.volume < 0.5 ? 'low' : 'high');
         this.toggleAttribute('muted', muted);
       }
     };
@@ -205,13 +280,17 @@ const captionsButtonClass = () =>
   once('CaptionsButton', () => {
     const ButtonElement = buttonElementClass();
     return class CaptionsButton extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { off: CaptionsOff, on: Captions };
+      }
       protected activate(e: Event): void {
         this.ui?.dispatch('toggle-captions', {}, { type: e.type, source: 'otter-captions-button' });
       }
       protected render(s: Readonly<UiState>): void {
-        this.show(this.strings.captions, ICON.captions);
+        const on = (s.textTrack ?? null) !== null;
+        this.show(this.strings.captions, on ? 'on' : 'off');
         unsupported(this, (s.textTracks ?? []).length === 0);
-        this.button?.setAttribute('aria-pressed', String((s.textTrack ?? null) !== null));
+        this.button?.setAttribute('aria-pressed', String(on));
       }
     };
   });
@@ -220,12 +299,15 @@ const fullscreenButtonClass = () =>
   once('FullscreenButton', () => {
     const ButtonElement = buttonElementClass();
     return class FullscreenButton extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { enter: Maximize, exit: Minimize };
+      }
       protected activate(e: Event): void {
         this.ui?.dispatch('toggle-fullscreen', {}, { type: e.type, source: 'otter-fullscreen-button' });
       }
       protected render(s: Readonly<UiState>): void {
         const on = s.fullscreen === true;
-        this.show(on ? this.strings.exitFullscreen : this.strings.fullscreen, on ? ICON.exitFullscreen : ICON.fullscreen);
+        this.show(on ? this.strings.exitFullscreen : this.strings.fullscreen, on ? 'exit' : 'enter');
         unsupported(this, s.fullscreenAvailable === false);
       }
     };
@@ -235,17 +317,79 @@ const pipButtonClass = () =>
   once('PipButton', () => {
     const ButtonElement = buttonElementClass();
     return class PipButton extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { pip: PictureInPicture2 };
+      }
       protected activate(e: Event): void {
         this.ui?.dispatch('toggle-pip', {}, { type: e.type, source: 'otter-pip-button' });
       }
       protected render(s: Readonly<UiState>): void {
         const on = s.pip === true;
-        this.show(on ? this.strings.exitPip : this.strings.pip, ICON.pip);
+        this.show(on ? this.strings.exitPip : this.strings.pip, 'pip');
         this.button?.setAttribute('aria-pressed', String(on));
         unsupported(this, s.pipAvailable !== true);
       }
     };
   });
+
+/** ±N seconds (`seconds` attribute, default 10; negative goes back). Mobile centre controls. */
+const seekButtonClass = () =>
+  once('SeekButton', () => {
+    const ButtonElement = buttonElementClass();
+    return class SeekButton extends ButtonElement {
+      get seconds(): number {
+        const n = Number(this.getAttribute('seconds') ?? 10);
+        return Number.isFinite(n) && n !== 0 ? n : 10;
+      }
+      protected icons(): Record<string, IconNode> {
+        return this.seconds < 0 ? { back: RotateCcw } : { forward: RotateCw };
+      }
+      protected override extraCss(): string {
+        return `.n { position: absolute; font: 700 9px/1 ${T.font}; top: 50%; left: 50%; transform: translate(-50%, -38%); pointer-events: none; }`;
+      }
+      protected override extraHtml(): string {
+        return `<span class="n" aria-hidden="true">${Math.abs(this.seconds)}</span>`;
+      }
+      protected activate(e: Event): void {
+        this.ui?.dispatch('seek-by', { seconds: this.seconds }, { type: e.type, source: 'otter-seek-button' });
+      }
+      protected render(s: Readonly<UiState>): void {
+        const n = Math.abs(this.seconds);
+        this.show(fill(this.seconds < 0 ? this.strings.seekBack : this.strings.seekForward, { n }), this.seconds < 0 ? 'back' : 'forward');
+        if (this.button !== undefined) this.button.disabled = s.status !== 'ready' || s.live;
+      }
+    };
+  });
+
+/** Large centre play button, poster state only (UI-DESIGN §6.4). */
+const bigPlayClass = () =>
+  once('BigPlay', () => {
+    const ButtonElement = buttonElementClass();
+    return class BigPlay extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { play: Play };
+      }
+      protected override extraCss(): string {
+        return `:host { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+button { pointer-events: auto; width: 72px; height: 72px; border-radius: 50%; ${glass()} }
+button svg { width: 32px; height: 32px; transform: translateX(2px); }
+.tip { display: none; }
+${glassFallback('button')}`;
+      }
+      protected activate(e: Event): void {
+        this.ui?.dispatch('play', undefined, { type: e.type, source: 'otter-big-play' });
+      }
+      protected render(s: Readonly<UiState>): void {
+        this.show(this.strings.play, 'play');
+        // Poster state: loaded, never played (a decoded first frame does not count as started).
+        const poster = s.status === 'ready' && s.paused && s.currentTime === 0 && !s.ended;
+        this.hidden = !poster;
+        if (this.button !== undefined) this.button.disabled = s.status !== 'ready';
+      }
+    };
+  });
+
+// ---- Time --------------------------------------------------------------------------------------
 
 const timeDisplayClass = () =>
   once('TimeDisplay', () => {
@@ -255,74 +399,148 @@ const timeDisplayClass = () =>
       protected setup(): void {
         if (this.#text !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
-        root.innerHTML = `<style>:host([hidden]){display:none}:host{display:inline-flex;align-items:center;color:var(--otter-fg,#fff);font:var(--otter-font-mono,500 13px/1 ui-monospace,monospace);font-variant-numeric:tabular-nums;white-space:nowrap}</style><span part="text"></span>`;
+        root.innerHTML = `<style>:host([hidden]){display:none}
+:host{display:inline-flex;align-items:center;white-space:nowrap;font:500 13px/1 ${T.font};font-variant-numeric:tabular-nums;
+  color:${T.fg};text-shadow:${T.textShadow}}
+.d{color:${T.muted}}</style><span part="text"></span>`;
         this.#text = root.querySelector('span') as HTMLElement;
       }
       protected render(s: Readonly<UiState>): void {
         const t = this.#text;
         if (t === undefined) return;
-        // Visual "1:15 / 1:30"; the slider carries the spoken form.
+        // Visual "1:15 / 1:30"; the slider carries the spoken form. Live shows the live badge instead.
         const text = s.live ? this.strings.live : `${formatTime(s.currentTime)} / ${formatTime(s.duration)}`;
-        if (t.textContent !== text) t.textContent = text;
+        if (t.textContent === text) return;
+        if (s.live) {
+          t.textContent = text;
+          return;
+        }
+        t.replaceChildren(`${formatTime(s.currentTime)} `, Object.assign(this.ownerDocument.createElement('span'), { className: 'd', textContent: `/ ${formatTime(s.duration)}` }));
+        this.hidden = false;
       }
     };
   });
 
+/** Progress bar (UI-DESIGN §6.2): track / buffered / played, hover thickening and preview card. */
 const timeSliderClass = () =>
   once('TimeSlider', () => {
     const Base = base();
     return class TimeSlider extends Base {
       #input: HTMLInputElement | undefined;
+      #card: HTMLElement | undefined;
       #dragging = false;
+      #hoverTime: number | null = null;
+      #last: Readonly<UiState> | undefined;
       protected setup(): void {
         if (this.#input !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
-        root.innerHTML = `<style>${SLIDER_CSS}
-    :host { position: relative; }
-    .preview { position: absolute; bottom: 100%; transform: translateX(-50%); padding: 2px 6px; border-radius: 4px;
-    background: var(--otter-bg-deep, #1e2d40); color: var(--otter-fg, #fff); font: var(--otter-font-mono, 500 12px/1.4 ui-monospace, monospace); pointer-events: none; }
-    .preview[hidden] { display: none; }
-    </style><input part="range" type="range" min="0" max="0" step="0.1" value="0"><span class="preview" part="preview" aria-hidden="true" hidden></span>`;
+        root.innerHTML = `<style>${rangeCss()}
+:host { display: block; position: relative; flex: 1 0 100%; --otter-hit: 24px; }
+:host([hidden]) { display: none; }
+:host(:hover), :host([data-active]) { --otter-rail: 5px; }
+.card { position: absolute; bottom: calc(100% + 10px); transform: translateX(-50%); display: grid; justify-items: center; gap: 4px;
+  pointer-events: none; opacity: 0; transition: opacity ${T.fast} ${T.easeOut}; }
+.card[data-show] { opacity: 1; }
+.thumb { width: var(--otter-thumbnail-width, 160px); height: var(--otter-thumbnail-height, 90px); border-radius: ${T.radius};
+  border: 2px solid rgb(255 255 255 / 0.85); background: rgb(0 0 0 / 0.6) center / cover no-repeat; box-shadow: ${T.shadow}; }
+.thumb:not([style*="url"]) { display: none; }
+.time { padding: 3px 8px; border-radius: 999px; ${glass()} color: ${T.fg}; font: 600 12px/1.3 ${T.font}; font-variant-numeric: tabular-nums; }
+${glassFallback('.time')}
+</style><div class="range" part="range"><div class="rail" part="rail"><i class="buffered"></i><i class="played"></i></div><input part="input" type="range" min="0" max="0" step="0.1" value="0"></div>
+<div class="card" part="preview" aria-hidden="true"><div class="thumb" part="thumbnail"></div><span class="time" part="preview-time"></span></div>`;
         const input = root.querySelector('input') as HTMLInputElement;
+        const range = root.querySelector('.range') as HTMLElement;
         this.#input = input;
+        this.#card = root.querySelector('.card') as HTMLElement;
         input.addEventListener('input', () => {
           this.#dragging = true;
+          this.toggleAttribute('data-active', true);
           this.#valueText(Number(input.value), Number(input.max));
+          this.#played(Number(input.value), Number(input.max));
+          this.#preview(Number(input.value));
         });
         input.addEventListener('change', (e) => {
           this.#dragging = false;
+          this.removeAttribute('data-active');
+          this.#preview(null);
           this.ui?.dispatch('seek', { time: Number(input.value) }, { type: e.type, source: 'otter-time-slider' });
+        });
+        // Arrows step 5 s (Shift: 10 s) instead of the input's 0.1 s step (UI-DESIGN §6.2).
+        input.addEventListener('keydown', (e) => {
+          if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+          const s = this.ui?.getState();
+          if (s === undefined || input.disabled) return;
+          e.preventDefault();
+          const dir = e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -1 : 1;
+          const time = Math.min(s.duration, Math.max(0, s.currentTime + dir * (e.shiftKey ? 10 : 5)));
+          this.ui?.dispatch('seek', { time }, { type: e.type, source: 'otter-time-slider' });
+        });
+        range.addEventListener('pointermove', (e) => {
+          const max = Number(input.max);
+          const r = range.getBoundingClientRect();
+          if (max <= 0 || r.width <= 0) return;
+          this.#hoverTime = Math.min(max, Math.max(0, ((e.clientX - r.left) / r.width) * max));
+          this.#preview(this.#hoverTime);
+        });
+        range.addEventListener('pointerleave', () => {
+          this.#hoverTime = null;
+          if (!this.#dragging) this.#preview(this.#swipeTarget());
         });
       }
       #valueText(current: number, duration: number): void {
         this.#input?.setAttribute('aria-valuetext', fill(this.strings.timeOf, { current: speakTime(current), duration: speakTime(duration) }));
       }
+      #played(current: number, duration: number): void {
+        this.style.setProperty('--otter-played', `${duration > 0 ? Math.min(100, (current / duration) * 100) : 0}%`);
+      }
+      #swipeTarget(): number | null {
+        const s = this.#last;
+        const offset = s?.seekPreview ?? null;
+        return s === undefined || offset === null ? null : Math.min(s.duration, Math.max(0, s.currentTime + offset));
+      }
+      /** Shows the preview card at `time` (null hides it). */
+      #preview(time: number | null): void {
+        const card = this.#card;
+        const input = this.#input;
+        if (card === undefined || input === undefined) return;
+        const max = Number(input.max);
+        if (time === null || max <= 0) {
+          card.removeAttribute('data-show');
+          return;
+        }
+        const s = this.#last;
+        const offset = s?.seekPreview ?? null;
+        const label = offset !== null && this.#hoverTime === null ? `${offset >= 0 ? '+' : '−'}${formatTime(Math.abs(offset))} · ${formatTime(time)}` : formatTime(time);
+        const t = card.querySelector('.time') as HTMLElement;
+        if (t.textContent !== label) t.textContent = label;
+        // Keep the card inside the bar: half its width from each end.
+        const w = this.getBoundingClientRect().width;
+        const half = Math.min(w / 2, (card.getBoundingClientRect().width || 160) / 2);
+        card.style.left = `${Math.min(w - half, Math.max(half, (time / max) * w))}px`;
+        card.setAttribute('data-show', '');
+      }
       protected render(s: Readonly<UiState>): void {
+        this.#last = s;
         const input = this.#input;
         if (input === undefined) return;
         if (input.getAttribute('aria-label') !== this.strings.seek) input.setAttribute('aria-label', this.strings.seek);
         const seekable = Number.isFinite(s.duration) && s.duration > 0 && !s.live;
         input.disabled = !seekable;
-        const preview = this.shadowRoot?.querySelector<HTMLElement>('.preview');
         if (!seekable) {
-          if (preview !== undefined && preview !== null) preview.hidden = true;
+          this.#preview(null);
           return;
         }
         if (input.max !== String(s.duration)) input.max = String(s.duration);
         if (!this.#dragging) {
           input.value = String(s.currentTime);
           this.#valueText(s.currentTime, s.duration);
+          this.#played(s.currentTime, s.duration);
         }
         this.style.setProperty('--otter-buffered', `${Math.min(100, (s.bufferedEnd / s.duration) * 100)}%`);
         // Swipe seek preview (chrome slice): where the release would land.
-        if (preview !== null && preview !== undefined) {
-          const offset = s.seekPreview ?? null;
-          preview.hidden = offset === null;
-          if (offset !== null) {
-            const target = Math.min(s.duration, Math.max(0, s.currentTime + offset));
-            preview.textContent = `${offset >= 0 ? '+' : '−'}${formatTime(Math.abs(offset))} · ${formatTime(target)}`;
-            preview.style.left = `${(target / s.duration) * 100}%`;
-          }
+        if (this.#hoverTime === null && !this.#dragging) {
+          this.toggleAttribute('data-active', (s.seekPreview ?? null) !== null);
+          this.#preview(this.#swipeTarget());
         }
       }
     };
@@ -336,7 +554,13 @@ const volumeSliderClass = () =>
       protected setup(): void {
         if (this.#input !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
-        root.innerHTML = `<style>${SLIDER_CSS} :host { flex: 0 1 96px; min-width: 64px; }</style><input part="range" type="range" min="0" max="1" step="0.05" value="1">`;
+        root.innerHTML = `<style>${rangeCss()}
+:host { display: inline-flex; align-items: center; width: var(--otter-volume-width, 72px); --otter-rail: 4px; --otter-thumb: 12px; --otter-thumb-scale: 1;
+  transition: width ${T.show} ${T.easeOut}, opacity ${T.show} ${T.easeOut}; }
+:host([hidden]), :host([data-otter-unsupported]) { display: none; }
+.range { width: 100%; }
+.played { background: ${T.fg}; }
+</style><div class="range" part="range"><div class="rail" part="rail"><i class="played"></i></div><input part="input" type="range" min="0" max="1" step="0.05" value="1"></div>`;
         const input = root.querySelector('input') as HTMLInputElement;
         this.#input = input;
         input.addEventListener('input', (e) => {
@@ -353,11 +577,13 @@ const volumeSliderClass = () =>
         if (input.getAttribute('aria-label') !== this.strings.volume) input.setAttribute('aria-label', this.strings.volume);
         const value = s.muted ? 0 : s.volume;
         if (Number(input.value) !== value) input.value = String(value);
+        this.style.setProperty('--otter-played', `${value * 100}%`);
         input.setAttribute('aria-valuetext', s.muted ? this.strings.announceMuted : speakVolume(s.volume));
       }
     };
   });
 
+/** Live badge; behind the edge by more than 3 s it becomes the "back to live" capsule (UI-DESIGN §10). */
 const liveIndicatorClass = () =>
   once('LiveIndicator', () => {
     const Base = base();
@@ -367,27 +593,29 @@ const liveIndicatorClass = () =>
         if (this.#badge !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>
-    :host { display: inline-flex; align-items: center; }
-    :host([hidden]), :host([data-otter-unsupported]) { display: none; }
-    span { display: inline-flex; align-items: center; gap: 6px; font: var(--otter-font, 700 12px/1 system-ui, sans-serif);
-    text-transform: uppercase; letter-spacing: 0.04em; color: var(--otter-fg, #fff); }
-    span::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--otter-live, #ff4e45); }
-    :host([behind]) span::before { background: var(--otter-live-behind, #8a96a3); }
-    </style><span part="badge" role="status"></span>`;
-        this.#badge = root.querySelector('span') as HTMLElement;
+:host { display: inline-flex; align-items: center; }
+:host([hidden]), :host([data-otter-unsupported]) { display: none; }
+span { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 2px; border-radius: 999px;
+  font: 600 13px/1 ${T.font}; color: ${T.fg}; text-shadow: ${T.textShadow}; }
+span svg { width: 8px; height: 8px; color: ${T.live}; }
+:host([behind]) span { padding: 0 10px; border: 1px solid ${T.accent}; }
+:host([behind]) span svg { color: ${T.dim}; }
+</style><span part="badge" role="status">${icon(LiveDot)}<b part="label" style="font-weight:inherit"></b></span>`;
+        this.#badge = root.querySelector('b') as HTMLElement;
       }
       protected render(s: Readonly<UiState>): void {
         const badge = this.#badge;
         if (badge === undefined) return;
         unsupported(this, !s.live);
-        // Behind the live edge by more than ~3 target durations of a typical HLS live window.
-        const behind = s.live && s.latency !== null && s.latency > 10;
+        const behind = s.live && s.latency !== null && s.latency > 3;
         this.toggleAttribute('behind', behind);
-        const text = behind ? this.strings.behindLive : this.strings.live;
+        const text = behind ? this.strings.backToLive : this.strings.live;
         if (badge.textContent !== text) badge.textContent = text;
       }
     };
   });
+
+// ---- Picture layers ------------------------------------------------------------------------------
 
 /** Visual tooltip for the element named by `for` (by id, in the same tree); the name stays aria-label. */
 const tooltipClass = () =>
@@ -409,9 +637,10 @@ const tooltipClass = () =>
         if (this.#tip !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>:host { position: absolute; z-index: 10; pointer-events: none; }
-    :host([hidden]) { display: none; }
-    span { display: block; padding: 4px 8px; border-radius: 4px; white-space: nowrap; background: var(--otter-bg-deep, #1e2d40);
-    color: var(--otter-fg, #fff); font: var(--otter-font, 500 12px/1.3 system-ui, sans-serif); }</style><span part="tooltip" role="tooltip"></span>`;
+:host([hidden]) { display: none; }
+span { display: block; padding: 4px 8px; border-radius: ${T.radiusSm}; white-space: nowrap; ${glass()}
+  color: ${T.fg}; font: 500 11px/1.3 ${T.font}; }
+${glassFallback('span')}</style><span part="tooltip" role="tooltip"></span>`;
         this.#tip = root.querySelector('span') as HTMLElement;
         this.hidden = true;
         const id = this.getAttribute('for');
@@ -426,7 +655,7 @@ const tooltipClass = () =>
     };
   });
 
-/** Gesture surface over the picture: the dimming layer and gesture feedback. */
+/** Gesture surface over the picture: the dimming layer (brightness gesture). */
 const gestureClass = () =>
   once('Gesture', () => {
     const Base = base();
@@ -436,8 +665,8 @@ const gestureClass = () =>
         if (this.#dim !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>:host { position: absolute; inset: 0; display: block; }
-    .dim { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.15s; }
-    @media (prefers-reduced-motion: reduce) { .dim { transition: none; } }</style><div class="dim" part="dim"></div><slot></slot>`;
+.dim { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity ${T.show}; }
+${REDUCED_MOTION}</style><div class="dim" part="dim"></div><slot></slot>`;
         this.#dim = root.querySelector('.dim') as HTMLElement;
       }
       protected render(s: Readonly<UiState>): void {
@@ -464,7 +693,7 @@ const posterClass = () =>
         if (this.#img !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>:host { position: absolute; inset: 0; display: block; pointer-events: none; }
-    :host([hidden]) { display: none; } img { width: 100%; height: 100%; object-fit: var(--otter-poster-fit, contain); }</style><img part="img" alt="">`;
+:host([hidden]) { display: none; } img { width: 100%; height: 100%; object-fit: var(--otter-poster-fit, contain); }</style><img part="img" alt="">`;
         this.#img = root.querySelector('img') as HTMLImageElement;
         this.#img.src = this.getAttribute('src') ?? '';
         // Decorative: the player region is labelled; the picture itself has no text alternative.
@@ -477,26 +706,142 @@ const posterClass = () =>
     };
   });
 
+/** Loading spinner, shown only when loading lasts longer than 800 ms (no flicker, UI-DESIGN §6.4). */
 const spinnerClass = () =>
   once('Spinner', () => {
     const Base = base();
     return class Spinner extends Base {
       #el: HTMLElement | undefined;
+      #timer: ReturnType<typeof setTimeout> | undefined;
       protected setup(): void {
         if (this.#el !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>:host { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-    :host([hidden]) { display: none; }
-    div { width: 48px; height: 48px; border-radius: 50%; border: 4px solid color-mix(in srgb, var(--otter-fg, #fff) 25%, transparent);
-    border-top-color: var(--otter-accent, #1ee9e6); animation: spin 0.9s linear infinite; }
-    @keyframes spin { to { transform: rotate(1turn); } }
-    @media (prefers-reduced-motion: reduce) { div { animation-duration: 3s; } }</style><div part="spinner" role="progressbar"></div>`;
+:host([hidden]) { display: none; }
+div { width: 48px; height: 48px; color: ${T.accent}; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.5)); }
+svg { width: 100%; height: 100%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { svg { animation-duration: 3s; } }</style><div part="spinner" role="progressbar">${icon(SpinnerRing)}</div>`;
         this.#el = root.querySelector('div') as HTMLElement;
+        this.hidden = true;
       }
       protected render(s: Readonly<UiState>): void {
         const busy = s.status === 'loading' || (s.waiting && !s.paused && s.status === 'ready');
-        this.hidden = !busy;
         this.#el?.setAttribute('aria-label', this.strings.loading);
+        if (!busy) {
+          if (this.#timer !== undefined) clearTimeout(this.#timer);
+          this.#timer = undefined;
+          this.hidden = true;
+          return;
+        }
+        if (this.hidden && this.#timer === undefined) {
+          this.#timer = setTimeout(() => {
+            this.#timer = undefined;
+            this.hidden = false;
+          }, Number(this.getAttribute('delay') ?? 800));
+        }
+      }
+    };
+  });
+
+/**
+ * Centre feedback (UI-DESIGN §6.4): "+10s" after a seek jump, volume / brightness level, the
+ * held rate. Derived from state changes only; decorative (the announcer speaks).
+ */
+const feedbackClass = () =>
+  once('Feedback', () => {
+    const Base = base();
+    return class Feedback extends Base {
+      #badge: HTMLElement | undefined;
+      #prev: Readonly<UiState> | undefined;
+      #timer: ReturnType<typeof setTimeout> | undefined;
+      protected setup(): void {
+        if (this.#badge !== undefined) return;
+        const root = this.attachShadow({ mode: 'open' });
+        root.innerHTML = `<style>:host { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.b { min-width: 72px; padding: 12px 16px; border-radius: 999px; ${glass()} color: ${T.fg}; font: 600 15px/1 ${T.font};
+  text-align: center; opacity: 0; transform: scale(0.8); transition: opacity ${T.hide} ${T.easeIn}, transform ${T.hide} ${T.easeIn}; }
+.b[data-show] { opacity: 1; transform: scale(1); transition-duration: ${T.show}; transition-timing-function: ${T.easeOut}; }
+.b[data-kind="rate"] { position: absolute; top: 16px; }
+.level { display: block; width: 96px; height: 4px; margin-top: 8px; border-radius: 2px; background: ${T.track}; overflow: hidden; }
+.level > i { display: block; height: 100%; background: ${T.fg}; }
+${glassFallback('.b')}
+${REDUCED_MOTION}</style><div class="b" part="badge" aria-hidden="true"></div>`;
+        this.#badge = root.querySelector('.b') as HTMLElement;
+      }
+      #flash(kind: string, text: string, level?: number): void {
+        const b = this.#badge;
+        if (b === undefined) return;
+        b.dataset['kind'] = kind;
+        b.replaceChildren(text);
+        if (level !== undefined) {
+          const bar = this.ownerDocument.createElement('span');
+          bar.className = 'level';
+          const fillEl = this.ownerDocument.createElement('i');
+          fillEl.style.width = `${Math.round(level * 100)}%`;
+          bar.append(fillEl);
+          b.append(bar);
+        }
+        b.setAttribute('data-show', '');
+        if (this.#timer !== undefined) clearTimeout(this.#timer);
+        this.#timer = setTimeout(() => b.removeAttribute('data-show'), kind === 'rate' ? 1200 : 500);
+      }
+      protected render(s: Readonly<UiState>): void {
+        const p = this.#prev;
+        this.#prev = s;
+        if (p === undefined || s.status !== 'ready' || p.status !== 'ready') return;
+        const jump = s.currentTime - p.currentTime;
+        // A seek jump (not playback progress): show the offset for jumps a hotkey or double tap makes.
+        if (s.seeking && !p.seeking && Math.abs(jump) >= 2 && Math.abs(jump) <= 60) {
+          this.#flash('seek', `${jump > 0 ? '+' : '−'}${Math.round(Math.abs(jump))}s`);
+        } else if (s.volume !== p.volume || s.muted !== p.muted) {
+          this.#flash('volume', s.muted ? this.strings.announceMuted : `${Math.round(s.volume * 100)}%`, s.muted ? 0 : s.volume);
+        } else if ((s.brightness ?? 1) !== (p.brightness ?? 1)) {
+          this.#flash('brightness', `${Math.round((s.brightness ?? 1) * 100)}%`, s.brightness ?? 1);
+        } else if (s.playbackRate !== p.playbackRate && s.playbackRate !== 1) {
+          this.#flash('rate', `${rateLabel(s.playbackRate)} ▶▶`);
+        }
+      }
+    };
+  });
+
+/** Fatal error card with retry (reloads the current source). */
+const errorCardClass = () =>
+  once('ErrorCard', () => {
+    const Base = base();
+    return class ErrorCard extends Base {
+      #title: HTMLElement | undefined;
+      #detail: HTMLElement | undefined;
+      #retry: HTMLButtonElement | undefined;
+      protected setup(): void {
+        if (this.#title !== undefined) return;
+        const root = this.attachShadow({ mode: 'open' });
+        root.innerHTML = `<style>:host { position: absolute; inset: 0; display: grid; place-items: center; }
+:host([hidden]) { display: none; }
+.card { display: grid; justify-items: center; gap: 8px; max-width: min(360px, 80%); padding: 20px 24px; border-radius: ${T.radiusLg};
+  ${glass()} color: ${T.fg}; font: 500 14px/1.4 ${T.font}; text-align: center; }
+svg { width: 32px; height: 32px; color: ${T.danger}; }
+.detail { color: ${T.muted}; font-size: 12px; font-family: ${T.mono}; }
+button { all: unset; cursor: pointer; margin-top: 4px; padding: 8px 16px; border-radius: 999px; background: ${T.fg}; color: #10161e;
+  font: 600 13px/1 ${T.font}; }
+button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; }
+${glassFallback('.card')}</style><div class="card" part="card" role="alert">${icon(CircleAlert)}<span class="t" part="title"></span><span class="detail" part="detail"></span><button part="retry" type="button"></button></div>`;
+        this.#title = root.querySelector('.t') as HTMLElement;
+        this.#detail = root.querySelector('.detail') as HTMLElement;
+        this.#retry = root.querySelector('button') as HTMLButtonElement;
+        this.#retry.addEventListener('click', (e) => {
+          const s = this.ui?.getState();
+          if (s?.source != null) this.ui?.dispatch('load', { source: s.source, options: { autoplay: true } }, { type: e.type, source: 'otter-error' });
+        });
+        this.hidden = true;
+      }
+      protected render(s: Readonly<UiState>): void {
+        const fatal = s.status === 'error' && s.error !== null;
+        this.hidden = !fatal;
+        if (!fatal || this.#title === undefined || this.#detail === undefined || this.#retry === undefined) return;
+        this.#title.textContent = this.strings.errorTitle;
+        this.#detail.textContent = `${s.error?.type ?? ''} · ${s.error?.details ?? ''}`;
+        this.#retry.textContent = this.strings.retry;
       }
     };
   });
@@ -518,7 +863,7 @@ const announcerClass = () =>
       say(message: string): void {
         const r = this.#region;
         if (r === undefined) return;
-        // Re-announce identical text: clear first, set on the next frame.
+        // Re-announce identical text: clear first, set shortly after.
         r.textContent = '';
         setTimeout(() => {
           r.textContent = message;
@@ -548,10 +893,12 @@ const announcerClass = () =>
     };
   });
 
+// ---- Menus -----------------------------------------------------------------------------------------
+
 /** menuitemradio inside an otter-menu. `value`, `checked` and the text content are the API. */
 const menuItemClass = () =>
-  once('MenuItem', () => {
-    return class MenuItem extends HTMLElement {
+  once('MenuItem', () =>
+    class MenuItem extends HTMLElement {
       static get observedAttributes(): string[] {
         return ['checked'];
       }
@@ -563,42 +910,80 @@ const menuItemClass = () =>
       attributeChangedCallback(): void {
         this.setAttribute('aria-checked', String(this.hasAttribute('checked')));
       }
-    };
-  });
+    },
+  );
 
-/**
- * Menu button + menu (WAI-ARIA APG menu button pattern): Enter / Space / ArrowDown open and
- * focus the checked item, arrows / Home / End move, Enter / Space choose, Esc and Tab close and
- * return focus to the trigger. Fires `otter-select` with { group, value }.
- */
+const menuCss = (): string => `
+:host { position: relative; }
+.panel { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 5; box-sizing: border-box;
+  min-width: var(--otter-menu-min-width, 160px); width: var(--otter-menu-panel-width, auto);
+  max-height: var(--otter-menu-max-height, 60vh); overflow: hidden auto; overscroll-behavior: contain;
+  padding: 6px 0; border-radius: ${T.radiusLg}; ${glass()} color: ${T.fg}; font: 500 14px/1.2 ${T.font};
+  scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.3) transparent;
+  opacity: 0; transform: translateY(8px); transition: opacity 100ms ${T.easeIn}, transform 100ms ${T.easeIn}; }
+.panel[hidden] { display: none; }
+.panel[data-open] { opacity: 1; transform: none; transition: opacity ${T.show} ${T.easeOut}, transform ${T.show} ${T.easeOut}; }
+.view[data-enter="forward"] { animation: in-f ${T.show} ${T.easeOut}; }
+.view[data-enter="back"] { animation: in-b ${T.show} ${T.easeOut}; }
+@keyframes in-f { from { transform: translateX(24px); opacity: 0; } }
+@keyframes in-b { from { transform: translateX(-24px); opacity: 0; } }
+[role="group"] > .gh { padding: 10px 16px 4px; font: 600 11px/1 ${T.font}; letter-spacing: 0.06em; text-transform: uppercase; color: ${T.dim}; }
+[role^="menuitem"], ::slotted(otter-menu-item) { box-sizing: border-box; display: flex; align-items: center; gap: 12px;
+  min-height: var(--otter-menu-row, 40px); padding: 0 16px; cursor: pointer; outline: none; position: relative; }
+[role^="menuitem"]:hover { background: ${T.hover}; }
+[role^="menuitem"]:focus-visible { box-shadow: inset 0 0 0 2px ${T.accentDeep}; border-radius: 6px; }
+.ic { width: 24px; height: 24px; flex: none; color: ${T.fg}; }
+.ic:empty { visibility: hidden; }
+.ic svg { width: 24px; height: 24px; }
+[role="menuitemradio"] .ic svg { color: ${T.accent}; }
+.lb { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.lb small { font: 400 12px/1.2 ${T.font}; color: ${T.muted}; }
+.val { color: ${T.muted}; font: 400 13px/1 ${T.font}; white-space: nowrap; }
+.chev { width: 18px; height: 18px; color: ${T.muted}; flex: none; }
+.chev svg, .back svg { width: 18px; height: 18px; }
+.back { min-height: 44px; border-bottom: 1px solid ${T.glassBorder}; margin-bottom: 4px; font-weight: 600; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 12px 8px; }
+.seg [role="menuitemradio"] { flex: 1 0 auto; justify-content: center; min-height: 30px; padding: 0 8px; border-radius: 999px;
+  background: rgb(255 255 255 / 0.08); font: 600 12px/1 ${T.font}; gap: 0; }
+.seg [role="menuitemradio"][aria-checked="true"] { background: ${T.accent}; color: #0b1b24; }
+.switch { width: 34px; height: 20px; border-radius: 999px; background: rgb(255 255 255 / 0.25); position: relative; flex: none;
+  transition: background ${T.fast}; }
+.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  transition: transform ${T.fast} ${T.easeOut}; }
+[aria-checked="true"] > .switch { background: ${T.accent}; }
+[aria-checked="true"] > .switch::after { transform: translateX(14px); }
+.preview { margin: 4px 16px 8px; padding: 18px 8px; border-radius: ${T.radius}; text-align: center;
+  background: linear-gradient(135deg, #2b3a4d, #10161e); }
+.preview span { font-size: calc(15px * var(--otter-cue-user-scale, 1)); padding: 2px 8px; border-radius: 4px;
+  color: var(--otter-cue-user-color, #fff); background: var(--otter-cue-user-background, rgb(0 0 0 / 0.55));
+  text-shadow: var(--otter-cue-user-shadow, 0 0 4px rgb(0 0 0 / 0.9)); font-family: var(--otter-cue-user-font, inherit); }
+${glassFallback('.panel')}
+${REDUCED_MOTION}
+`;
+
+/** Text or icon trigger opening a menu panel (WAI-ARIA APG menu button). */
 const menuClass = () =>
   once('Menu', () => {
     const Base = base();
-    return class Menu extends Base {
+    /**
+     * Menu button + menu (WAI-ARIA APG): Enter / Space / ArrowDown open and focus the checked item,
+     * arrows / Home / End move (roving tabindex), Enter / Space choose, Esc and Tab close and
+     * return focus to the trigger. Fires `otter-select` with { group, value }.
+     */
+    class Menu extends Base {
       protected trigger: HTMLButtonElement | undefined;
       protected list: HTMLElement | undefined;
+      #tip: HTMLElement | undefined;
       readonly menuId = `otter-menu-${++menuIds}`;
       protected setup(): void {
         if (this.trigger !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
-        root.innerHTML = `<style>${BUTTON_CSS}
-    :host { position: relative; }
-    [role="menu"] { position: absolute; bottom: calc(100% + 4px); right: 0; min-width: 180px; max-height: var(--otter-menu-max-height, 60vh); overflow: auto;
-    padding: 4px; border-radius: var(--otter-radius, 8px); background: color-mix(in srgb, var(--otter-bg-deep, #1e2d40) 96%, transparent);
-    color: var(--otter-fg, #fff); font: var(--otter-font, 500 14px/1.2 system-ui, sans-serif); box-shadow: 0 4px 16px rgb(0 0 0 / 0.4); }
-    [role="menu"][hidden] { display: none; }
-    [role="group"] > [role="presentation"] { padding: 8px 12px 4px; font-size: 12px; opacity: 0.75; }
-    ::slotted(otter-menu-item), [role="menuitemradio"] { display: flex; align-items: center; gap: 8px; min-height: var(--otter-control-size, 44px);
-    padding: 0 12px; border-radius: 6px; cursor: pointer; }
-    [role="menuitemradio"]::before { content: ''; width: 16px; text-align: center; }
-    [role="menuitemradio"][aria-checked="true"]::before { content: '✓'; color: var(--otter-accent, #1ee9e6); }
-    [role="menuitemradio"]:hover { background: color-mix(in srgb, var(--otter-fg, #fff) 10%, transparent); }
-    [role="menuitemradio"]:focus-visible { outline: 3px solid var(--otter-accent, #1ee9e6); outline-offset: -3px; }
-    </style><button part="button trigger" type="button" aria-haspopup="menu" aria-expanded="false"></button><div part="menu" role="menu" hidden><slot></slot></div>`;
+        root.innerHTML = `<style>${buttonCss()}${menuCss()}${this.extraCss()}</style><button part="button trigger" type="button" aria-haspopup="menu" aria-expanded="false"></button><span class="tip" part="tooltip" aria-hidden="true"></span><div class="panel" part="menu" role="menu" hidden><slot></slot></div>`;
         const trigger = root.querySelector('button') as HTMLButtonElement;
         const list = root.querySelector('[role="menu"]') as HTMLElement;
         this.trigger = trigger;
         this.list = list;
+        this.#tip = root.querySelector('.tip') as HTMLElement;
         list.id = this.menuId;
         trigger.setAttribute('aria-controls', this.menuId);
         trigger.addEventListener('click', () => (this.open ? this.close(true) : this.openMenu('checked')));
@@ -608,29 +993,32 @@ const menuClass = () =>
             this.openMenu(e.key === 'ArrowUp' ? 'last' : 'checked');
           }
         });
-        list.addEventListener('keydown', (e) => this.#onKey(e));
+        list.addEventListener('keydown', (e) => this.onKey(e));
         list.addEventListener('click', (e) => {
-          const item = this.#itemFrom(e);
-          if (item !== undefined) this.choose(item);
+          const item = this.itemFrom(e);
+          if (item !== undefined) this.activateItem(item);
         });
         // Clicking elsewhere closes the menu.
         this.ownerDocument.addEventListener('pointerdown', (e) => {
           if (this.open && !e.composedPath().includes(this)) this.close(false);
         });
       }
+      protected extraCss(): string {
+        return '';
+      }
       get open(): boolean {
         return this.list !== undefined && !this.list.hidden;
       }
       protected items(): HTMLElement[] {
         const slot = this.list?.querySelector('slot');
-        const slotted = (slot?.assignedElements() ?? []).filter((e): e is HTMLElement => e.getAttribute('role') === 'menuitemradio');
-        const own = [...(this.list?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])];
+        const slotted = (slot?.assignedElements() ?? []).filter((e): e is HTMLElement => (e.getAttribute('role') ?? '').startsWith('menuitem'));
+        const own = [...(this.list?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])];
         return [...own, ...slotted];
       }
-      #itemFrom(e: Event): HTMLElement | undefined {
+      protected itemFrom(e: Event): HTMLElement | undefined {
         for (const n of e.composedPath()) {
           if (n === this.list) return undefined;
-          if (n instanceof HTMLElement && n.getAttribute('role') === 'menuitemradio') return n;
+          if (n instanceof HTMLElement && (n.getAttribute('role') ?? '').startsWith('menuitem')) return n;
         }
         return undefined;
       }
@@ -639,8 +1027,13 @@ const menuClass = () =>
         if (list === undefined) return;
         this.beforeOpen();
         list.hidden = false;
+        // Next frame: let the panel lay out before it animates in.
+        requestAnimationFrame(() => list.setAttribute('data-open', ''));
         this.trigger?.setAttribute('aria-expanded', 'true');
         this.ui?.dispatch('open-menu', { id: this.menuId });
+        this.focusIn(focus);
+      }
+      protected focusIn(focus: 'checked' | 'first' | 'last'): void {
         const items = this.items();
         const target = focus === 'last' ? items.at(-1) : focus === 'first' ? items[0] : (items.find((i) => i.getAttribute('aria-checked') === 'true') ?? items[0]);
         if (target !== undefined) this.focusItem(target);
@@ -653,9 +1046,17 @@ const menuClass = () =>
       close(returnFocus: boolean): void {
         if (this.list === undefined || this.list.hidden) return;
         this.list.hidden = true;
+        this.list.removeAttribute('data-open');
         this.trigger?.setAttribute('aria-expanded', 'false');
         if (this.ui?.getState().menu === this.menuId) this.ui.dispatch('open-menu', { id: null });
+        this.afterClose();
         if (returnFocus) this.trigger?.focus();
+      }
+      protected afterClose(): void {}
+      /** Click / Enter / Space on an item. Radio items choose and close by default. */
+      protected activateItem(item: HTMLElement): void {
+        this.choose(item);
+        this.close(true);
       }
       protected choose(item: HTMLElement): void {
         this.dispatchEvent(
@@ -665,13 +1066,14 @@ const menuClass = () =>
             detail: { group: item.dataset['group'] ?? item.closest('[data-group]')?.getAttribute('data-group') ?? '', value: item.getAttribute('value') ?? item.dataset['value'] ?? '' },
           }),
         );
-        this.close(true);
       }
-      #onKey(e: KeyboardEvent): void {
+      protected currentItem(): { items: HTMLElement[]; index: number } {
         const items = this.items();
-        const shadow = this.shadowRoot;
-        const current = (shadow?.activeElement as HTMLElement | null) ?? (this.ownerDocument.activeElement as HTMLElement | null);
-        const index = items.findIndex((i) => i === current);
+        const active = (this.shadowRoot?.activeElement as HTMLElement | null) ?? (this.ownerDocument.activeElement as HTMLElement | null);
+        return { items, index: items.findIndex((i) => i === active) };
+      }
+      protected onKey(e: KeyboardEvent): void {
+        const { items, index } = this.currentItem();
         const move = (to: number): void => {
           e.preventDefault();
           const item = items[(to + items.length) % items.length];
@@ -693,7 +1095,7 @@ const menuClass = () =>
           case 'Enter':
           case ' ':
             e.preventDefault();
-            if (index >= 0) this.choose(items[index] as HTMLElement);
+            if (index >= 0) this.activateItem(items[index] as HTMLElement);
             break;
           case 'Escape':
             // Handled here: the player's Esc (leave fullscreen) must not fire as well.
@@ -711,29 +1113,148 @@ const menuClass = () =>
       /** Composites rebuild their items here. */
       protected beforeOpen(): void {}
       protected render(s: Readonly<UiState>): void {
-        this.label();
+        this.label(s);
         // Another menu opened, or Esc went through the chrome plugin.
         if (this.open && s.menu !== undefined && s.menu !== this.menuId) this.close(false);
       }
-      protected label(): void {
-        if (this.trigger === undefined) return;
-        const label = this.getAttribute('label') ?? '';
-        if (this.trigger.getAttribute('aria-label') !== label) {
-          this.trigger.setAttribute('aria-label', label);
-          this.trigger.title = label;
-          this.trigger.innerHTML = svg(ICON.settings);
+      protected label(_s: Readonly<UiState>): void {
+        this.setTrigger(this.getAttribute('label') ?? '', icon(Settings));
+      }
+      /** Trigger accessible name, tooltip and content (icon markup or text). */
+      protected setTrigger(label: string, content: string, text = false): void {
+        const t = this.trigger;
+        if (t === undefined) return;
+        if (t.getAttribute('aria-label') !== label) {
+          t.setAttribute('aria-label', label);
+          if (this.#tip !== undefined) this.#tip.textContent = label;
         }
+        if (t.dataset['content'] !== content) {
+          t.dataset['content'] = content;
+          t.classList.toggle('text', text);
+          if (text) t.textContent = content;
+          else t.innerHTML = `<span class="icon">${content.replace('<svg ', '<svg data-on ')}</span>`;
+        }
+      }
+      /** A radio row: check slot, label (+ detail line). */
+      protected radioRow(group: string, o: MenuOption): HTMLElement {
+        const doc = this.ownerDocument;
+        const item = doc.createElement('div');
+        item.setAttribute('role', 'menuitemradio');
+        item.setAttribute('aria-checked', String(o.checked));
+        item.setAttribute('value', o.value);
+        item.dataset['group'] = group;
+        item.dataset['key'] = `${group}:${o.value}`;
+        item.tabIndex = -1;
+        const ic = doc.createElement('span');
+        ic.className = 'ic';
+        if (o.checked) ic.innerHTML = icon(Check);
+        const lb = doc.createElement('span');
+        lb.className = 'lb';
+        lb.append(o.label);
+        if (o.detail !== undefined) lb.append(Object.assign(doc.createElement('small'), { textContent: o.detail }));
+        item.append(ic, lb);
+        return item;
+      }
+    }
+    return Menu;
+  });
+
+/** Text menu button with one radio list (UI-DESIGN §6.1 right group: "1080P", "1.0x"). */
+const textMenuClass = () =>
+  once('TextMenu', () => {
+    const Menu = menuClass();
+    abstract class TextMenu extends Menu {
+      #signature = '';
+      protected abstract group(s: Readonly<UiState>): MenuGroup | undefined;
+      protected abstract triggerText(s: Readonly<UiState>): string;
+      protected abstract dispatchValue(value: string): void;
+      constructor() {
+        super();
+        this.addEventListener('otter-select', (e) => this.dispatchValue((e as CustomEvent<{ value: string }>).detail.value));
+      }
+      protected override beforeOpen(): void {
+        const s = this.ui?.getState();
+        if (s !== undefined) this.#build(s);
+      }
+      #build(s: Readonly<UiState>): void {
+        const list = this.list;
+        const g = this.group(s);
+        if (list === undefined || g === undefined) return;
+        const signature = JSON.stringify(g);
+        if (signature === this.#signature) return;
+        this.#signature = signature;
+        const group = this.ownerDocument.createElement('div');
+        group.setAttribute('role', 'group');
+        group.setAttribute('aria-label', g.label);
+        group.dataset['group'] = g.id;
+        group.append(...g.options.map((o) => this.radioRow(g.id, o)));
+        const slot = list.querySelector('slot');
+        list.replaceChildren(group, ...(slot === null ? [] : [slot]));
+      }
+      protected override render(s: Readonly<UiState>): void {
+        super.render(s);
+        unsupported(this, this.group(s) === undefined);
+        if (this.open) this.#build(s);
+      }
+    }
+    return TextMenu;
+  });
+
+const qualityMenuClass = () =>
+  once('QualityMenu', () => {
+    const TextMenu = textMenuClass();
+    return class QualityMenu extends TextMenu {
+      protected group(s: Readonly<UiState>): MenuGroup | undefined {
+        return s.tracks.quality === 'selectable' && s.tracks.video.length > 1 ? qualityGroup(s, this.strings) : undefined;
+      }
+      protected triggerText(s: Readonly<UiState>): string {
+        return qualityLabel(s, s.quality === 'auto' ? s.activeQuality : s.quality) ?? this.strings.qualityAuto;
+      }
+      protected dispatchValue(value: string): void {
+        this.ui?.dispatch('select-quality', { id: value }, { type: 'click', source: 'otter-quality-menu' });
+      }
+      protected override label(s: Readonly<UiState>): void {
+        const text = this.triggerText(s);
+        this.setTrigger(`${this.strings.quality}: ${text}`, text, true);
       }
     };
   });
 
-/** Settings: quality (shows the actual rendition under Auto), speed, captions. */
+const speedMenuClass = () =>
+  once('SpeedMenu', () => {
+    const TextMenu = textMenuClass();
+    return class SpeedMenu extends TextMenu {
+      protected group(s: Readonly<UiState>): MenuGroup | undefined {
+        return speedGroup(s, this.strings);
+      }
+      protected triggerText(s: Readonly<UiState>): string {
+        return rateLabel(s.playbackRate);
+      }
+      protected dispatchValue(value: string): void {
+        this.ui?.dispatch('set-playback-rate', { rate: Number(value) }, { type: 'click', source: 'otter-speed-menu' });
+      }
+      protected override label(s: Readonly<UiState>): void {
+        const text = this.triggerText(s);
+        this.setTrigger(`${this.strings.speed}: ${text}`, text, true);
+      }
+    };
+  });
+
+type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style';
+
+/**
+ * Settings (UI-DESIGN §7): a two-level menu. Level one: rows "icon + label + current value +
+ * chevron" for quality / audio / subtitles / caption style, the speed segmented control, and the
+ * stats switch (when the player has an otter-stats element). Level two: a back row and the
+ * options. ArrowRight / Enter open a row, ArrowLeft / the back row return, focus never drops.
+ */
 const settingsMenuClass = () =>
   once('SettingsMenu', () => {
     const Menu = menuClass();
     return class SettingsMenu extends Menu {
-      #groups: MenuGroup[] = [];
+      #view: SettingsView = 'root';
       #signature = '';
+      #returnTo: string | undefined;
       constructor() {
         super();
         this.addEventListener('otter-select', (e) => {
@@ -746,112 +1267,341 @@ const settingsMenuClass = () =>
           else if (group.startsWith('caption-')) this.ui?.dispatch('set-caption-style', JSON.parse(value) as Record<string, never>, trigger);
         });
       }
+      protected override extraCss(): string {
+        return `.panel { width: var(--otter-menu-width, 280px); }`;
+      }
       protected override label(): void {
-        if (this.trigger === undefined) return;
-        const label = this.strings.settings;
-        if (this.trigger.getAttribute('aria-label') !== label) {
-          this.trigger.setAttribute('aria-label', label);
-          this.trigger.title = label;
-          this.trigger.innerHTML = svg(ICON.settings);
-        }
+        this.setTrigger(this.strings.settings, icon(Settings));
       }
       protected override beforeOpen(): void {
+        this.#view = 'root';
+        this.#signature = '';
         const s = this.ui?.getState();
-        if (s !== undefined) this.#build(s);
+        if (s !== undefined) this.#build(s, undefined);
       }
-      #build(s: Readonly<UiState>): void {
+      protected override afterClose(): void {
+        this.#view = 'root';
+      }
+      #stats(): HTMLElement | null {
+        return playerRoot(this)?.querySelector<HTMLElement>('otter-stats') ?? null;
+      }
+      #go(view: SettingsView, from?: string): void {
+        const s = this.ui?.getState();
+        if (s === undefined) return;
+        const back = view === 'root';
+        this.#returnTo = back ? this.#returnTo : from;
+        const focusKey = back ? `row:${this.#view}` : undefined;
+        this.#view = view;
+        this.#signature = '';
+        this.#build(s, back ? 'back' : 'forward');
+        const list = this.list;
+        const target = focusKey === undefined ? undefined : byKey(list, focusKey);
+        if (target !== null && target !== undefined) this.focusItem(target);
+        else this.focusIn('checked');
+      }
+      protected override activateItem(item: HTMLElement): void {
+        const action = item.dataset['action'];
+        if (action === 'back') return this.#go('root');
+        if (action === 'open') return this.#go(item.dataset['view'] as SettingsView, item.dataset['key']);
+        if (action === 'stats') {
+          const stats = this.#stats();
+          if (stats !== null) stats.hidden = !stats.hidden;
+          item.setAttribute('aria-checked', String(stats !== null && !stats.hidden));
+          return;
+        }
+        this.choose(item);
+        const group = item.dataset['group'] ?? '';
+        // Picking a value in a list view goes back to level one, on that row (YouTube style);
+        // segmented controls and caption style stay where they are.
+        if (this.#view === 'quality' || this.#view === 'audio' || this.#view === 'captions') this.#go('root');
+        else if (group === 'speed' || group.startsWith('caption-')) {
+          const key = item.dataset['key'];
+          queueMicrotask(() => {
+            const again = key === undefined ? null : byKey(this.list, key);
+            if (again !== null && again !== undefined) this.focusItem(again);
+          });
+        }
+      }
+      protected override onKey(e: KeyboardEvent): void {
+        const { items, index } = this.currentItem();
+        const item = items[index];
+        if (item !== undefined && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+          const seg = item.closest('.seg');
+          if (seg !== null) {
+            // Inside a segmented control the horizontal arrows move between segments.
+            const segs = [...seg.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+            const i = segs.indexOf(item);
+            const next = segs[i + (e.key === 'ArrowRight' ? 1 : -1)];
+            e.preventDefault();
+            if (next !== undefined) this.focusItem(next);
+            return;
+          }
+          if (e.key === 'ArrowRight' && item.dataset['action'] === 'open') {
+            e.preventDefault();
+            this.activateItem(item);
+            return;
+          }
+          if (e.key === 'ArrowLeft' && this.#view !== 'root') {
+            e.preventDefault();
+            this.#go('root');
+            return;
+          }
+        }
+        super.onKey(e);
+      }
+      #build(s: Readonly<UiState>, enter: 'forward' | 'back' | undefined): void {
         const list = this.list;
         if (list === undefined) return;
-        this.#groups = settingsGroups(s, this.strings);
-        const signature = JSON.stringify(this.#groups);
+        const groups = settingsGroups(s, this.strings);
+        const signature = JSON.stringify([this.#view, groups, this.#stats()?.hidden ?? null]);
         if (signature === this.#signature) return;
         this.#signature = signature;
-        const focusedValue = (this.shadowRoot?.activeElement as HTMLElement | null)?.dataset['key'];
+        const focused = (this.shadowRoot?.activeElement as HTMLElement | null)?.dataset['key'];
+        const view = this.ownerDocument.createElement('div');
+        view.className = 'view';
+        if (enter !== undefined) view.dataset['enter'] = enter;
+        view.append(...(this.#view === 'root' ? this.#root(s, groups) : this.#level(this.#view, groups)));
+        const slot = list.querySelector('slot');
+        list.replaceChildren(view, ...(slot === null ? [] : [slot]));
+        const refocus = focused === undefined ? null : byKey(list, focused);
+        if (refocus !== null && this.open) this.focusItem(refocus);
+      }
+      #row(key: string, iconNode: IconNode, label: string, value: string, view: SettingsView): HTMLElement {
         const doc = this.ownerDocument;
-        const nodes = this.#groups.map((g) => {
+        const item = doc.createElement('div');
+        item.setAttribute('role', 'menuitem');
+        item.setAttribute('aria-haspopup', 'menu');
+        item.dataset['action'] = 'open';
+        item.dataset['view'] = view;
+        item.dataset['key'] = key;
+        item.tabIndex = -1;
+        item.innerHTML = `<span class="ic">${icon(iconNode)}</span><span class="lb"></span><span class="val"></span><span class="chev">${icon(ChevronRight)}</span>`;
+        (item.querySelector('.lb') as HTMLElement).textContent = label;
+        (item.querySelector('.val') as HTMLElement).textContent = value;
+        // The current value is part of the item's name ("Quality, Auto (720P)").
+        item.setAttribute('aria-label', `${label}, ${value}`);
+        return item;
+      }
+      #root(s: Readonly<UiState>, groups: MenuGroup[]): HTMLElement[] {
+        const doc = this.ownerDocument;
+        const t = this.strings;
+        const out: HTMLElement[] = [];
+        const checked = (id: string): string => groups.find((g) => g.id === id)?.options.find((o) => o.checked)?.label ?? '';
+        if (groups.some((g) => g.id === 'quality')) out.push(this.#row('row:quality', Settings2, t.quality, checked('quality'), 'quality'));
+        // Speed: segmented control in place (UI-DESIGN §7).
+        const speed = groups.find((g) => g.id === 'speed');
+        if (speed !== undefined) {
           const group = doc.createElement('div');
           group.setAttribute('role', 'group');
-          group.dataset['group'] = g.id;
-          const heading = doc.createElement('div');
-          heading.setAttribute('role', 'presentation');
-          heading.id = `${this.menuId}-${g.id}`;
-          heading.textContent = g.label;
-          group.setAttribute('aria-labelledby', heading.id);
-          group.append(heading);
-          for (const o of g.options) {
-            const item = doc.createElement('div');
-            item.setAttribute('role', 'menuitemradio');
-            item.setAttribute('aria-checked', String(o.checked));
-            item.setAttribute('value', o.value);
-            item.dataset['group'] = g.id;
-            item.dataset['key'] = `${g.id}:${o.value}`;
-            item.tabIndex = -1;
-            item.textContent = o.label;
-            group.append(item);
+          group.dataset['group'] = 'speed';
+          const head = doc.createElement('div');
+          head.className = 'gh';
+          head.id = `${this.menuId}-speed`;
+          head.setAttribute('role', 'presentation');
+          head.textContent = t.speed;
+          group.setAttribute('aria-labelledby', head.id);
+          const seg = doc.createElement('div');
+          seg.className = 'seg';
+          for (const o of speed.options) {
+            const b = doc.createElement('div');
+            b.setAttribute('role', 'menuitemradio');
+            b.setAttribute('aria-checked', String(o.checked));
+            b.setAttribute('value', o.value);
+            b.dataset['group'] = 'speed';
+            b.dataset['key'] = `speed:${o.value}`;
+            b.tabIndex = -1;
+            b.textContent = o.value === '1' ? '1.0' : o.value;
+            b.setAttribute('aria-label', o.label);
+            seg.append(b);
           }
-          return group;
-        });
-        const slot = list.querySelector('slot');
-        list.replaceChildren(...nodes, ...(slot === null ? [] : [slot]));
-        const refocus = focusedValue === undefined ? null : list.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusedValue)}"]`);
-        if (refocus !== null && this.open) this.focusItem(refocus);
+          group.append(head, seg);
+          out.push(group);
+        }
+        if (groups.some((g) => g.id === 'audio')) out.push(this.#row('row:audio', AudioLines, t.audio, checked('audio'), 'audio'));
+        if (groups.some((g) => g.id === 'captions')) {
+          out.push(this.#row('row:captions', Captions, t.captions, checked('captions'), 'captions'));
+          const custom = Object.keys(s.captionStyle ?? {}).length > 0;
+          out.push(this.#row('row:caption-style', Type, t.captionStyle, custom ? '✓' : t.styleDefault, 'caption-style'));
+        }
+        const stats = this.#stats();
+        if (stats !== null) {
+          const item = doc.createElement('div');
+          item.setAttribute('role', 'menuitemcheckbox');
+          item.setAttribute('aria-checked', String(!stats.hidden));
+          item.dataset['action'] = 'stats';
+          item.dataset['key'] = 'row:stats';
+          item.tabIndex = -1;
+          item.innerHTML = `<span class="ic">${icon(Activity)}</span><span class="lb"></span><span class="switch" aria-hidden="true"></span>`;
+          (item.querySelector('.lb') as HTMLElement).textContent = t.statsForNerds;
+          out.push(item);
+        }
+        return out;
+      }
+      #level(view: Exclude<SettingsView, 'root'>, groups: MenuGroup[]): HTMLElement[] {
+        const doc = this.ownerDocument;
+        const t = this.strings;
+        const back = doc.createElement('div');
+        back.setAttribute('role', 'menuitem');
+        back.className = 'back';
+        back.dataset['action'] = 'back';
+        back.dataset['key'] = 'back';
+        back.tabIndex = -1;
+        const title = view === 'quality' ? t.quality : view === 'audio' ? t.audio : view === 'captions' ? t.captions : t.captionStyle;
+        back.innerHTML = `<span class="ic">${icon(ChevronLeft)}</span><span class="lb"></span>`;
+        (back.querySelector('.lb') as HTMLElement).textContent = title;
+        back.setAttribute('aria-label', `${t.back}: ${title}`);
+        const out: HTMLElement[] = [back];
+        if (view === 'caption-style') {
+          // Live preview of the current caption style (decorative; the cues themselves update too).
+          const preview = doc.createElement('div');
+          preview.className = 'preview';
+          preview.setAttribute('aria-hidden', 'true');
+          preview.append(Object.assign(doc.createElement('span'), { textContent: t.captionPreview }));
+          this.#applyPreview(preview);
+          out.push(preview);
+          for (const g of groups.filter((x) => x.id.startsWith('caption-'))) {
+            const group = doc.createElement('div');
+            group.setAttribute('role', 'group');
+            group.dataset['group'] = g.id;
+            const head = doc.createElement('div');
+            head.className = 'gh';
+            head.setAttribute('role', 'presentation');
+            head.id = `${this.menuId}-${g.id}`;
+            head.textContent = g.label;
+            group.setAttribute('aria-labelledby', head.id);
+            const seg = doc.createElement('div');
+            seg.className = 'seg';
+            for (const o of g.options) {
+              const b = doc.createElement('div');
+              b.setAttribute('role', 'menuitemradio');
+              b.setAttribute('aria-checked', String(o.checked));
+              b.setAttribute('value', o.value);
+              b.dataset['group'] = g.id;
+              b.dataset['key'] = `${g.id}:${o.value}`;
+              b.tabIndex = -1;
+              b.textContent = o.label;
+              seg.append(b);
+            }
+            group.append(head, seg);
+            out.push(group);
+          }
+          return out;
+        }
+        const g = groups.find((x) => x.id === view);
+        if (g !== undefined) {
+          const group = doc.createElement('div');
+          group.setAttribute('role', 'group');
+          group.setAttribute('aria-label', g.label);
+          group.dataset['group'] = g.id;
+          group.append(...g.options.map((o) => this.radioRow(g.id, o)));
+          out.push(group);
+        }
+        return out;
+      }
+      #applyPreview(preview: HTMLElement): void {
+        // Mirror the cue layer's user variables (set by the text renderer on its layer element).
+        const layer = playerRoot(this)?.querySelector<HTMLElement>('[data-otter-cues]');
+        for (const v of ['--otter-cue-user-scale', '--otter-cue-user-color', '--otter-cue-user-background', '--otter-cue-user-shadow', '--otter-cue-user-font']) {
+          const value = layer?.style.getPropertyValue(v) ?? '';
+          if (value !== '') preview.style.setProperty(v, value);
+        }
       }
       protected override render(s: Readonly<UiState>): void {
         super.render(s);
-        // Keep an open menu current (e.g. "Auto (720p)" while ABR switches).
-        if (this.open) this.#build(s);
+        // Keep an open menu current (e.g. "Auto (720P)" while ABR switches, the style preview).
+        if (this.open) this.#build(s, undefined);
       }
     };
   });
 
+// ---- Stats ------------------------------------------------------------------------------------
+
+/** Stats for nerds (UI-DESIGN §8): grouped two-column panel with copy and close. */
 const statsClass = () =>
   once('Stats', () => {
     const Base = base();
     return class Stats extends Base {
-      #list: HTMLElement | undefined;
+      #body: HTMLElement | undefined;
       #route: HTMLElement | undefined;
+      #json = '';
       protected setup(): void {
-        if (this.#list !== undefined) return;
+        if (this.#body !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>
-    :host([hidden]) { display: none; }
-    :host { display: block; color: var(--otter-fg, #fff); background: color-mix(in srgb, var(--otter-bg, #243447) 88%, transparent);
-    font: var(--otter-font-mono, 12px/1.5 ui-monospace, monospace); padding: 8px 12px; border-radius: var(--otter-radius, 8px); max-width: 100%; }
-    dl { display: grid; grid-template-columns: max-content 1fr; gap: 0 12px; margin: 0; }
-    dt { opacity: 0.75; } dd { margin: 0; overflow-wrap: anywhere; }
-    pre { white-space: pre-wrap; margin: 4px 0 0; max-height: 12em; overflow: auto; }
-    summary { cursor: pointer; } summary:focus-visible { outline: 3px solid var(--otter-accent, #1ee9e6); }
-    </style><section part="panel"><dl part="list"></dl>
-    <details part="route"><summary>Route (router.explain)</summary><pre></pre></details></section>`;
-        this.#list = root.querySelector('dl') as HTMLElement;
+:host([hidden]) { display: none; }
+:host { display: block; box-sizing: border-box; max-width: 360px; padding: 10px 12px 8px; border-radius: ${T.radius}; ${glass()}
+  color: ${T.fg}; font: 500 11px/18px ${T.font}; }
+.bar { display: flex; justify-content: flex-end; gap: 2px; margin: -6px -8px 0 0; float: right; }
+.bar button { all: unset; cursor: pointer; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: ${T.muted}; }
+.bar button:hover { background: ${T.hover}; color: ${T.fg}; }
+.bar button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 1px; }
+.bar svg { width: 14px; height: 14px; }
+dl { display: grid; grid-template-columns: max-content 1fr; column-gap: 14px; margin: 0; }
+dl + dl { margin-top: 6px; }
+dt { color: ${T.muted}; } dd { margin: 0; font-family: ${T.mono}; overflow-wrap: anywhere; }
+details { margin-top: 6px; color: ${T.muted}; }
+summary { cursor: pointer; } summary:focus-visible { outline: 2px solid ${T.accentDeep}; border-radius: 4px; }
+pre { white-space: pre-wrap; margin: 4px 0 0; max-height: 12em; overflow: auto; font: 10px/1.4 ${T.mono}; color: ${T.fg}; }
+${glassFallback(':host')}
+</style><section part="panel"><div class="bar"><button part="copy" type="button" data-action="copy">${icon(Copy)}</button><button part="close" type="button" data-action="close">${icon(X)}</button></div>
+<div class="body"></div><details part="route"><summary>Route (router.explain)</summary><pre></pre></details></section>`;
+        this.#body = root.querySelector('.body') as HTMLElement;
         this.#route = root.querySelector('pre') as HTMLElement;
+        root.querySelector('[data-action="close"]')?.addEventListener('click', () => {
+          this.hidden = true;
+        });
+        root.querySelector('[data-action="copy"]')?.addEventListener('click', () => {
+          void navigator.clipboard?.writeText(this.#json).catch(() => undefined);
+        });
       }
       protected render(s: Readonly<UiState>): void {
-        const list = this.#list;
+        const body = this.#body;
         const route = this.#route;
-        if (list === undefined || route === undefined) return;
-        this.shadowRoot?.querySelector('section')?.setAttribute('aria-label', this.strings.statistics);
+        if (body === undefined || route === undefined) return;
+        const t = this.strings;
+        const shadow = this.shadowRoot;
+        shadow?.querySelector('section')?.setAttribute('aria-label', t.statistics);
+        shadow?.querySelector('[data-action="copy"]')?.setAttribute('aria-label', t.copy);
+        shadow?.querySelector('[data-action="close"]')?.setAttribute('aria-label', t.close);
         const q = s.qoe;
         const active = s.tracks.video.find((v) => v.id === s.activeQuality) ?? s.tracks.video.find((v) => v.selected);
         const buffer = Math.max(0, s.bufferedEnd - s.currentTime);
-        const rows: [string, string][] = [
-          ['Status', s.error === null ? s.status : `${s.status} (${s.error.type}: ${s.error.details})`],
-          ['Format / backend', `${s.format ?? '–'} / ${s.backend ?? '–'}${s.mms ? ' (ManagedMediaSource)' : ''}`],
-          ['Remote playback', s.remotePlayback ?? '–'],
-          ['Resolution', s.videoWidth > 0 ? `${s.videoWidth}×${s.videoHeight}` : '–'],
-          ['Quality', `${s.activeQuality ?? '–'} (${s.quality})${active?.bitrate === undefined ? '' : ` · ${formatBitrate(active.bitrate)}`}`],
-          ['Codec', active?.codec ?? q?.codec ?? '–'],
-          ['Buffer', formatSeconds(buffer)],
-          ['Bandwidth', formatBitrate(q?.bandwidth)],
-          ['Latency', s.live ? formatSeconds(s.latency ?? q?.latency) : '–'],
-          ['Dropped frames', q === undefined ? '–' : `${q.droppedFrames} / ${q.totalFrames}`],
-          ['TTFF', formatMs(q?.ttff)],
-          ['Rebuffers', q === undefined ? '–' : `${q.rebufferCount} (${formatMs(q.rebufferDuration)})`],
-          ['Quality switches', q === undefined ? '–' : String(q.qualitySwitches)],
-          ['Errors', q === undefined ? '–' : `${q.errors}${q.lastError === null ? '' : ` (last: ${q.lastError.details})`}`],
+        const groups: [string, [string, string][]][] = [
+          [
+            t.statsPlayback,
+            [
+              ['Status', s.error === null ? s.status : `${s.status} (${s.error.type}: ${s.error.details})`],
+              ['Format', s.format ?? '–'],
+              ['Backend', `${s.backend ?? '–'}${s.mms ? ' (MMS)' : ''}`],
+              ['Resolution', s.videoWidth > 0 ? `${s.videoWidth}×${s.videoHeight}` : '–'],
+              ['Codec', active?.codec ?? q?.codec ?? '–'],
+            ],
+          ],
+          [
+            t.statsNetwork,
+            [
+              ['Quality', `${s.activeQuality ?? '–'} (${s.quality})${active?.bitrate === undefined ? '' : ` · ${formatBitrate(active.bitrate)}`}`],
+              ['Bandwidth', formatBitrate(q?.bandwidth)],
+              ['Buffer', formatSeconds(buffer)],
+              ['Latency', s.live ? formatSeconds(s.latency ?? q?.latency) : '–'],
+            ],
+          ],
+          [
+            t.statsQuality,
+            [
+              ['TTFF', formatMs(q?.ttff)],
+              ['Rebuffers', q === undefined ? '–' : `${q.rebufferCount} (${formatMs(q.rebufferDuration)})`],
+              ['Switches', q === undefined ? '–' : String(q.qualitySwitches)],
+              ['Dropped', q === undefined ? '–' : `${q.droppedFrames} / ${q.totalFrames}`],
+              ['Errors', q === undefined ? '–' : `${q.errors}${q.lastError === null ? '' : ` (last: ${q.lastError.details})`}`],
+            ],
+          ],
         ];
-        const html = rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd data-stat="${escapeHtml(k)}">${escapeHtml(v)}</dd>`).join('');
-        if (list.innerHTML !== html) list.innerHTML = html;
+        this.#json = JSON.stringify(Object.fromEntries(groups.flatMap(([, rows]) => rows)), null, 2);
+        const html = groups
+          .map(([, rows]) => `<dl>${rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd data-stat="${escapeHtml(k)}">${escapeHtml(v)}</dd>`).join('')}</dl>`)
+          .join('');
+        if (body.innerHTML !== html) body.innerHTML = html;
         const json = s.route === null ? 'no decision yet' : JSON.stringify(s.route, null, 2);
         if (route.textContent !== json) route.textContent = json;
       }
@@ -894,6 +1644,18 @@ export const otterMenu = (): Ctor => menuClass();
 export const otterSettingsMenu = (): Ctor => settingsMenuClass();
 /** `M1_ELEMENTS.Stats` element class. */
 export const otterStats = (): Ctor => statsClass();
+/** `M25_ELEMENTS.QualityMenu` element class. */
+export const otterQualityMenu = (): Ctor => qualityMenuClass();
+/** `M25_ELEMENTS.SpeedMenu` element class. */
+export const otterSpeedMenu = (): Ctor => speedMenuClass();
+/** `M25_ELEMENTS.SeekButton` element class. */
+export const otterSeekButton = (): Ctor => seekButtonClass();
+/** `M25_ELEMENTS.BigPlay` element class. */
+export const otterBigPlay = (): Ctor => bigPlayClass();
+/** `M25_ELEMENTS.Feedback` element class. */
+export const otterFeedback = (): Ctor => feedbackClass();
+/** `M25_ELEMENTS.ErrorCard` element class. */
+export const otterErrorCard = (): Ctor => errorCardClass();
 
 /** Registers the given elements (tag -> factory) once per registry; returns the constructors. */
 export function defineElements(elements: Readonly<Record<string, () => Ctor>>, options: DefineOptions = {}): Record<string, Ctor> {
@@ -930,6 +1692,12 @@ export function defineOtterElements(options: DefineOptions = {}): Record<string,
       [M2_ELEMENTS.Menu]: otterMenu,
       [M2_ELEMENTS.SettingsMenu]: otterSettingsMenu,
       [M1_ELEMENTS.Stats]: otterStats,
+      [M25_ELEMENTS.QualityMenu]: otterQualityMenu,
+      [M25_ELEMENTS.SpeedMenu]: otterSpeedMenu,
+      [M25_ELEMENTS.SeekButton]: otterSeekButton,
+      [M25_ELEMENTS.BigPlay]: otterBigPlay,
+      [M25_ELEMENTS.Feedback]: otterFeedback,
+      [M25_ELEMENTS.ErrorCard]: otterErrorCard,
     },
     options,
   );

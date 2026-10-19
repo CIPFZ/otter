@@ -48,6 +48,22 @@ export interface UiStrings {
   readonly fontSerif: string;
   readonly fontMonospace: string;
   readonly fontCasual: string;
+  readonly captionStyle: string;
+  /** Sample text in the caption style preview. */
+  readonly captionPreview: string;
+  readonly back: string;
+  readonly statsForNerds: string;
+  readonly copy: string;
+  readonly close: string;
+  /** "Back {n} seconds" */
+  readonly seekBack: string;
+  readonly seekForward: string;
+  readonly backToLive: string;
+  readonly errorTitle: string;
+  readonly retry: string;
+  readonly statsPlayback: string;
+  readonly statsNetwork: string;
+  readonly statsQuality: string;
   readonly loading: string;
   readonly player: string;
   readonly statistics: string;
@@ -115,6 +131,20 @@ export const STRINGS_EN: UiStrings = {
   fontSerif: 'Serif',
   fontMonospace: 'Monospace',
   fontCasual: 'Casual',
+  captionStyle: 'Caption style',
+  captionPreview: 'Captions look like this',
+  back: 'Back',
+  statsForNerds: 'Stats for nerds',
+  copy: 'Copy as JSON',
+  close: 'Close',
+  seekBack: 'Back {n} seconds',
+  seekForward: 'Forward {n} seconds',
+  backToLive: 'Back to live',
+  errorTitle: 'This video can’t be played',
+  retry: 'Retry',
+  statsPlayback: 'Playback',
+  statsNetwork: 'Network',
+  statsQuality: 'Quality',
   loading: 'Loading',
   player: 'Video player',
   statistics: 'Playback statistics',
@@ -176,6 +206,20 @@ export const STRINGS_ZH: UiStrings = {
   fontSerif: '衬线',
   fontMonospace: '等宽',
   fontCasual: '手写',
+  captionStyle: '字幕样式',
+  captionPreview: '字幕效果预览',
+  back: '返回',
+  statsForNerds: '统计信息',
+  copy: '复制为 JSON',
+  close: '关闭',
+  seekBack: '后退 {n} 秒',
+  seekForward: '前进 {n} 秒',
+  backToLive: '回到直播',
+  errorTitle: '视频无法播放',
+  retry: '重试',
+  statsPlayback: '播放',
+  statsNetwork: '网络',
+  statsQuality: '质量',
   loading: '加载中',
   player: '视频播放器',
   statistics: '播放统计',
