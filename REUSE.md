@@ -38,7 +38,7 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | HLS 完整引擎 | hls.js | L1 适配器 | 包成 `EngineAdapter`，只暴露 `MediaBackend` 事件。M1 接入：`engine-adapter-hlsjs` 依赖 `hls.js@1.7.3`，`load()` 内动态 `import()` |
 | DASH 引擎 + DRM + 离线 | Shaka Player | L1 适配器 | 同上；DRM 配置映射 Shaka `drm.servers`。M1 接入：`engine-adapter-shaka` 依赖 `shaka-player@5.2.13`（DASH，以及带 DRM 的 HLS） |
 | FLV / TS 直播引擎 | mpegts.js | L1 起步，后期 L2 `demux/flv-demuxer`、`demux/ts-demuxer`、`remux/mp4-remuxer` | 自研管线时拷 demuxer 改成 `Demuxer` 接口。M1 接入：`engine-adapter-mpegts` 依赖 `mpegts.js@1.8.2` |
-| TS → fMP4 转封装 | hls.js `src/demux/tsdemuxer.ts` + `src/remux/mp4-remuxer.ts` + `mp4-generator.ts` | L2 | 去掉事件总线耦合，改纯函数 |
+| TS → fMP4 转封装 | hls.js `src/demux/tsdemuxer.ts` + `src/remux/mp4-remuxer.ts` + `mp4-generator.ts` | L2 | 去掉事件总线耦合，改纯函数。M3 已复制到 `vendor/hls.js/`（私有 workspace 包 `@otter-vendor/hls.js`，hls.js@e5ff358，ADR-007 §1）；事件总线、config、logger 换成 `src/otter/shims.ts`；SAMPLE-AES 与 AC-3 未复制；严格 TS 由 `scripts/vendor-strictify.ts` 机械处理加人工收尾 |
 | MP4 分段加载（Range + moov） | xgplayer `xgplayer-mp4` + mp4box.js | L2 / L1 | 分段策略 + box 解析拼成 `format-mp4-range` |
 | 通用 demux（MP4/WebM/MKV）给 WebCodecs | mediabunny（MIT，TS，无依赖） | L1 | 直接出 `EncodedVideoChunk` |
 | ABR 带宽估计 | hls.js `src/utils/ewma-bandwidth-estimator.ts` + `src/utils/ewma.ts` | L3 | 几十行直接拿。M2 复制到 `packages/pipeline/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3） |

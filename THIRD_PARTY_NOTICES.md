@@ -89,6 +89,10 @@ SOFTWARE.
   - `e2e/vendor/hls.js`: subset of `tests/test-streams.js` (test assets only, not shipped).
   - `packages/pipeline/src/vendor/hls.js`: `src/utils/ewma.ts` and
     `src/utils/ewma-bandwidth-estimator.ts` (ABR bandwidth estimate).
+  - `vendor/hls.js` (L2, ADR-007): `src/demux/tsdemuxer.ts` with the ADTS / MPEG audio and AVC / HEVC
+    parsers, `src/remux/mp4-remuxer.ts`, `mp4-generator.ts`, `aac-helper.ts` and the type / utility
+    modules they need (full list and local changes in `vendor/hls.js/UPSTREAM.json`). Pre-bundled
+    into `@otter-player/pipeline`.
   - `packages/text/src/vendor/hls.js`: `src/utils/cea-608-parser.ts` and `src/utils/output-filter.ts`
     (CEA-608 closed captions). The parser is hls.js' port of dash.js' cea608-parser and keeps the
     DASH Industry Forum BSD-3-Clause notice (see dash.js below).

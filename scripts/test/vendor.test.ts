@@ -82,3 +82,32 @@ describe('checkVendor', () => {
     ]);
   });
 });
+
+describe('L2 own files', () => {
+  it('own files may sit next to copies, but must not carry a copy header; ownFiles is L2-only', async () => {
+    const { checkVendor } = await import('../lib/vendor.ts');
+    const upstream = (extra: Record<string, unknown>) => ({
+      project: 'hls.js',
+      repo: 'https://github.com/video-dev/hls.js',
+      commit: 'e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de',
+      license: 'Apache-2.0',
+      level: 'L2',
+      files: [{ upstream: 'src/a.ts', local: 'src/a.ts' }],
+      localChanges: ['x'],
+      ...extra,
+    });
+    const header = '// Derived from hls.js@e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de src/a.ts, Apache-2.0\n';
+    const run = (u: unknown, contents: Record<string, string>) =>
+      checkVendor({
+        vendorDirs: [{ dir: 'vendor/hls.js', upstream: u, files: Object.keys(contents), contents }],
+        notices: '### hls.js (Apache-2.0)\ne5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de vendor/hls.js',
+        reuse: 'hls.js',
+        runtimeDependencies: [],
+      });
+    expect(run(upstream({ ownFiles: ['src/otter/**', 'package.json'] }), { 'src/a.ts': header, 'src/otter/shims.ts': '// own\n', 'package.json': '{}' })).toEqual([]);
+    expect(run(upstream({ ownFiles: ['src/otter/**'] }), { 'src/a.ts': header, 'src/otter/b.ts': header })).toEqual([
+      'vendor/hls.js/src/otter/b.ts: listed as own file but carries a "Derived from" header',
+    ]);
+    expect(run(upstream({ level: 'L3', ownFiles: ['x'] }), { 'src/a.ts': header })).toContain('vendor/hls.js/UPSTREAM.json: "ownFiles" is only for L2 packages');
+  });
+});

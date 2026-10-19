@@ -1,0 +1,95 @@
+{
+  "project": "hls.js",
+  "repo": "https://github.com/video-dev/hls.js",
+  "commit": "e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de",
+  "tag": "v1.7.3",
+  "license": "Apache-2.0",
+  "level": "L2",
+  "files": [
+    {
+      "upstream": "src/demux/audio/adts.ts",
+      "local": "src/demux/audio/adts.ts"
+    },
+    {
+      "upstream": "src/demux/audio/mpegaudio.ts",
+      "local": "src/demux/audio/mpegaudio.ts"
+    },
+    {
+      "upstream": "src/demux/dummy-demuxed-track.ts",
+      "local": "src/demux/dummy-demuxed-track.ts"
+    },
+    {
+      "upstream": "src/demux/tsdemuxer.ts",
+      "local": "src/demux/tsdemuxer.ts"
+    },
+    {
+      "upstream": "src/demux/video/avc-video-parser.ts",
+      "local": "src/demux/video/avc-video-parser.ts"
+    },
+    {
+      "upstream": "src/demux/video/base-video-parser.ts",
+      "local": "src/demux/video/base-video-parser.ts"
+    },
+    {
+      "upstream": "src/demux/video/exp-golomb.ts",
+      "local": "src/demux/video/exp-golomb.ts"
+    },
+    {
+      "upstream": "src/demux/video/hevc-video-parser.ts",
+      "local": "src/demux/video/hevc-video-parser.ts"
+    },
+    {
+      "upstream": "src/remux/aac-helper.ts",
+      "local": "src/remux/aac-helper.ts"
+    },
+    {
+      "upstream": "src/remux/mp4-generator.ts",
+      "local": "src/remux/mp4-generator.ts"
+    },
+    {
+      "upstream": "src/remux/mp4-remuxer.ts",
+      "local": "src/remux/mp4-remuxer.ts"
+    },
+    {
+      "upstream": "src/types/demuxer.ts",
+      "local": "src/types/demuxer.ts"
+    },
+    {
+      "upstream": "src/types/remuxer.ts",
+      "local": "src/types/remuxer.ts"
+    },
+    {
+      "upstream": "src/utils/mp4-tools.ts",
+      "local": "src/utils/mp4-tools.ts"
+    },
+    {
+      "upstream": "src/utils/numeric-encoding-utils.ts",
+      "local": "src/utils/numeric-encoding-utils.ts"
+    },
+    {
+      "upstream": "src/utils/timescale-conversion.ts",
+      "local": "src/utils/timescale-conversion.ts"
+    },
+    {
+      "upstream": "src/utils/user-agent.ts",
+      "local": "src/utils/user-agent.ts"
+    }
+  ],
+  "ownFiles": [
+    "package.json",
+    "tsconfig.json",
+    "src/index.ts",
+    "src/otter/**",
+    "test/**"
+  ],
+  "localChanges": [
+    "Imports of hls.js modules that are not copied (errors, events, config, hls, logger, codecs, loader/level-key, types/transmuxer|track|buffer|loader) point at Otter's own src/otter/shims.ts with the same names and shapes; '.js' extensions added (NodeNext).",
+    "Build-time defines __USE_M2TS_ADVANCED_CODECS__ / __USE_IFRAMES__ became constants in shims.ts (true / false).",
+    "SAMPLE-AES removed: sample-aes.ts not copied, demuxSampleAes/decrypt deleted, the three SAMPLE-AES stream types log and skip instead of falling through. AC-3 demuxer not copied; parseAC3PES is a stub (unreachable: typeSupported.ac3 is always false).",
+    "utils/mp4-tools.ts: only the box type table, RemuxerTrackIdConfig, uint read/write, appendUint8Array, decodeUtf8UserData, parseSEIMessageFromNALu and discardEPB; utf8 via TextDecoder instead of @svta/cml-id3.",
+    "types/demuxer.ts: enum MetadataSchema -> const object + type (erasableSyntaxOnly); fMP4 passthrough types (InitData, ParsedSampleData) replaced by unknown; demuxSampleAes removed from Demuxer.",
+    "utils/user-agent.ts: navigator read lazily (no top-level side effect).",
+    "Strict TypeScript: non-null assertions on index reads (scripts/vendor-strictify.ts, mechanical), optional members typed '| undefined' (exactOptionalPropertyTypes), explicit 'return undefined', override modifier, catch values cast to Error, MP4.box spread instead of apply. Behaviour unchanged; tests in vendor/hls.js/test."
+  ],
+  "syncLog": []
+}

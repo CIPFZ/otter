@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo",
+    "lib": ["ES2022", "DOM"],
+    // Private, pre-bundled into @otter-player/pipeline (ADR-007 §1): its declarations are never
+    // published, so explicit return types on every upstream function would be churn against the
+    // upstream diff. All other strict options stay on.
+    "isolatedDeclarations": false,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true
+  },
+  "include": ["src"]
+}

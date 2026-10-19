@@ -12,7 +12,7 @@ const root = join(import.meta.dirname, '..');
 
 const walk = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.name === 'node_modules' ? [] : e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
+    e.name === 'node_modules' || e.name === 'dist' ? [] : e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
   );
 
 /** Directories that hold vendored code: vendor/<project>, packages/<pkg>/src/vendor/<project>, e2e/vendor/<project>. */

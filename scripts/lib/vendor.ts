@@ -13,6 +13,11 @@ export interface Upstream {
   readonly level: 'L2' | 'L3';
   readonly files: readonly UpstreamFile[];
   readonly localChanges: readonly string[];
+  /**
+   * L2 packages only: Otter's own files in the vendor dir (package.json, shims, entry, tests).
+   * Globs: a trailing `/**` matches a directory. They must NOT carry a "Derived from" header.
+   */
+  readonly ownFiles?: readonly string[];
   /** Drift reviews (vendor-sync report evaluated): what was merged or why not. */
   readonly syncLog?: readonly { readonly date: string; readonly upstream: string; readonly decision: 'merged' | 'not-merged'; readonly reason: string }[];
 }
@@ -97,8 +102,17 @@ export function checkVendor(input: VendorInput): string[] {
     }
 
     const listed = new Set(u.files.map((f) => f.local));
+    const own = (file: string): boolean =>
+      (u.ownFiles ?? []).some((g) => (g.endsWith('/**') ? file.startsWith(g.slice(0, -2)) : file === g));
+    if (u.ownFiles !== undefined && u.level !== 'L2') problems.push(`${vd.dir}/UPSTREAM.json: "ownFiles" is only for L2 packages`);
     for (const file of vd.files) {
-      if (!listed.has(file) && !UNLISTED_OK.has(file)) problems.push(`${vd.dir}/${file}: not listed in UPSTREAM.json`);
+      if (listed.has(file) || UNLISTED_OK.has(file)) continue;
+      if (own(file)) {
+        // Own code must not pretend to be a copy (and copies must not hide among own files).
+        if (/^\/\/ Derived from /m.test(vd.contents[file] ?? '')) problems.push(`${vd.dir}/${file}: listed as own file but carries a "Derived from" header`);
+        continue;
+      }
+      problems.push(`${vd.dir}/${file}: not listed in UPSTREAM.json`);
     }
     for (const local of listed) {
       const content = vd.contents[local];
