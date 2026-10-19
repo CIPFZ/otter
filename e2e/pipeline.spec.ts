@@ -37,3 +37,16 @@ for (const [id, source] of [
     }
   });
 }
+
+test('the mpegts.js adapter (fallback target) still plays live FLV', async ({ page }) => {
+  await page.goto('/player.html?pipeline=mpegts');
+  await page.evaluate(async () => {
+    const o = (await window.otter) as OtterFixture;
+    o.dispatch('set-muted', { muted: true });
+    o.load({ src: '/live/stream.flv', live: true }, { autoplay: true });
+  });
+  await expect.poll(async () => (await state(page)).qoe.ttff, { timeout: 20_000 }).not.toBeNull();
+  const start = (await state(page)).currentTime;
+  await expect.poll(async () => (await state(page)).currentTime - start, { timeout: 15_000 }).toBeGreaterThan(2);
+});
+
