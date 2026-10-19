@@ -1,11 +1,11 @@
 // Derived from hls.js@e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de src/utils/mp4-tools.ts, Apache-2.0
 // Subset: box type table, track ids, uint read / write, appendUint8Array and the SEI parser used by
 // the video parsers. @svta/cml-id3's utf8ArrayToStr is replaced by TextDecoder.
+import { utf8Decode } from '../otter/env.js';
 import { logger } from '../otter/shims.js';
 import type { UserdataSample } from '../types/demuxer.js';
 
-let decoder: TextDecoder | undefined;
-const utf8 = (data: Uint8Array): string => (decoder ??= new TextDecoder('utf-8')).decode(data);
+const utf8 = (data: Uint8Array): string => utf8Decode(data);
 
 export const UINT32_MAX = Math.pow(2, 32) - 1;
 

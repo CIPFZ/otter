@@ -55,9 +55,9 @@
     "Codecs not supported by the Otter pipeline removed and reported as CODEC_UNSUPPORTED: Enhanced FLV Opus / FLAC / AV1, legacy MP3 and PCM (av1-parser.ts, mp3 parsing not copied). SEI parsing (sei.ts) not copied; _parseSEIPayload is a no-op.",
     "Imports of utils/logger.js and utils/exception.js point at Otter's src/otter/shims.ts (silent logger, same exception classes); '.js' extensions (NodeNext).",
     "Bug fix: AAC AudioSpecificConfig change detection compared number[] with buffersAreEqual (byteLength undefined on both sides, so configs of different lengths with an equal prefix compared equal); now compared as Uint8Array.",
-    "self.navigator replaced by a guarded navigator read (Node / SSR / Workers without self).",
     "Strict TypeScript: non-null assertions on index reads (scripts/vendor-strictify.ts), required callbacks asserted at call sites (upstream checks them at the top of parseChunks), meta objects typed as FlvTrackMeta when created empty, AAC packet as a discriminated union, keyframes removed with delete instead of = null, gb = null after destroy() dropped.",
-    "tsconfig: noUnusedLocals / noUnusedParameters off (bitstream parsers read syntax elements only to advance the reader); isolatedDeclarations off (never published)."
+    "tsconfig: noUnusedLocals / noUnusedParameters off (bitstream parsers read syntax elements only to advance the reader); isolatedDeclarations off (never published).",
+    "navigator.userAgent (AAC config workarounds) read through Otter's src/otter/env.ts via globalThis: DOM-free, works in Workers / Node (ADR-007 \u00a72)."
   ],
   "syncLog": []
 }

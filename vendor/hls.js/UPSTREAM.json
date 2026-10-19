@@ -88,8 +88,9 @@
     "SAMPLE-AES removed: sample-aes.ts not copied, demuxSampleAes/decrypt deleted, the three SAMPLE-AES stream types log and skip instead of falling through. AC-3 demuxer not copied; parseAC3PES is a stub (unreachable: typeSupported.ac3 is always false).",
     "utils/mp4-tools.ts: only the box type table, RemuxerTrackIdConfig, uint read/write, appendUint8Array, decodeUtf8UserData, parseSEIMessageFromNALu and discardEPB; utf8 via TextDecoder instead of @svta/cml-id3.",
     "types/demuxer.ts: enum MetadataSchema -> const object + type (erasableSyntaxOnly); fMP4 passthrough types (InitData, ParsedSampleData) replaced by unknown; demuxSampleAes removed from Demuxer.",
-    "utils/user-agent.ts: navigator read lazily (no top-level side effect).",
-    "Strict TypeScript: non-null assertions on index reads (scripts/vendor-strictify.ts, mechanical), optional members typed '| undefined' (exactOptionalPropertyTypes), explicit 'return undefined', override modifier, catch values cast to Error, MP4.box spread instead of apply. Behaviour unchanged; tests in vendor/hls.js/test."
+    "Strict TypeScript: non-null assertions on index reads (scripts/vendor-strictify.ts, mechanical), optional members typed '| undefined' (exactOptionalPropertyTypes), explicit 'return undefined', override modifier, catch values cast to Error, MP4.box spread instead of apply. Behaviour unchanged; tests in vendor/hls.js/test.",
+    "Host APIs (navigator in user-agent.ts, TextDecoder in mp4-tools.ts, atob in numeric-encoding-utils.ts) read through Otter's src/otter/env.ts via globalThis, so the package compiles without DOM types and runs in Workers / Node (ADR-007 \u00a72).",
+    "utils/user-agent.ts: navigator read lazily (no top-level side effect)."
   ],
   "syncLog": []
 }

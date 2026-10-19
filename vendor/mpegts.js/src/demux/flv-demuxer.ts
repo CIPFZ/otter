@@ -18,6 +18,7 @@
  */
 
 import Log from '../otter/shims.js';
+import { userAgent as readUserAgent } from '../otter/env.js';
 import AMF, { type AmfValue } from './amf-parser.js';
 import SPSParser from './sps-parser.js';
 import DemuxErrors from './demux-errors.js';
@@ -829,7 +830,7 @@ class FLVDemuxer {
 
         // workarounds for various browsers
         // Otter: no global `self` outside browsers / workers.
-        let userAgent = (typeof navigator !== 'undefined' ? navigator.userAgent : '').toLowerCase();
+        let userAgent = readUserAgent().toLowerCase();
 
         if (userAgent.indexOf('firefox') !== -1) {
             // firefox: use SBR (HE-AAC) if freq less than 24kHz

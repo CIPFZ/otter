@@ -1,4 +1,5 @@
 // Derived from hls.js@e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de src/utils/user-agent.ts, Apache-2.0
+import { navigatorVendor, userAgent } from '../otter/env.js';
 // Otter: read lazily (no navigator access at module load: top-level side effect, Workers).
 let uaCache: string | undefined;
 let vendorCache: string | undefined;
@@ -9,13 +10,9 @@ let chromeVersion: number | undefined;
 let firefoxVersion: number | undefined;
 let safariVersion: number | undefined;
 
+// Otter: navigator through otter/env (DOM-free).
 function getNavigator(field: 'userAgent' | 'vendor'): string {
-  try {
-    return navigator[field] || '';
-  } catch {
-    /* no-op */
-  }
-  return '';
+  return field === 'userAgent' ? userAgent() : navigatorVendor();
 }
 
 export function userAgentSafariVersion(): number {
