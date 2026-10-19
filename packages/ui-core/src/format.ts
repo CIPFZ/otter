@@ -26,14 +26,14 @@ export function speakTime(seconds: number): string {
 
 /** bits per second -> "4.2 Mbps". */
 export function formatBitrate(bps: number | null | undefined): string {
-  if (bps === null || bps === undefined || !Number.isFinite(bps) || bps <= 0) return '–';
+  if (bps === null || bps === undefined || !Number.isFinite(bps) || bps <= 0) return '—';
   return bps >= 1e6 ? `${(bps / 1e6).toFixed(1)} Mbps` : `${Math.round(bps / 1e3)} kbps`;
 }
 
 export function formatMs(ms: number | null | undefined): string {
-  return ms === null || ms === undefined || !Number.isFinite(ms) ? '–' : `${Math.round(ms)} ms`;
+  return ms === null || ms === undefined || !Number.isFinite(ms) ? '—' : `${Math.round(ms)} ms`;
 }
 
 export function formatSeconds(s: number | null | undefined): string {
-  return s === null || s === undefined || !Number.isFinite(s) ? '–' : `${s.toFixed(1)} s`;
+  return s === null || s === undefined || !Number.isFinite(s) ? '—' : `${s.toFixed(1)} s`;
 }

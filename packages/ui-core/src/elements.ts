@@ -441,13 +441,19 @@ const timeSliderClass = () =>
 .card { position: absolute; bottom: calc(100% + 10px); transform: translateX(-50%); display: grid; justify-items: center; gap: 4px;
   pointer-events: none; opacity: 0; transition: opacity ${T.fast} ${T.easeOut}; }
 .card[data-show] { opacity: 1; }
-.thumb { width: var(--otter-thumbnail-width, 160px); height: var(--otter-thumbnail-height, 90px); border-radius: ${T.radius};
-  border: 2px solid rgb(255 255 255 / 0.85); background: rgb(0 0 0 / 0.6) center / cover no-repeat; box-shadow: ${T.shadow}; }
-.thumb:not([style*="url"]) { display: none; }
-.time { padding: 3px 8px; border-radius: 999px; ${glass()} color: ${T.fg}; font: 600 12px/1.3 ${T.font}; font-variant-numeric: tabular-nums; }
+.card { display: block; }
+.thumb { position: relative; width: var(--otter-thumbnail-width, 160px); height: var(--otter-thumbnail-height, 90px); border-radius: ${T.radius};
+  border: 2px solid rgb(255 255 255 / 0.85); background: rgb(0 0 0 / 0.6) no-repeat; box-shadow: ${T.shadow}; overflow: hidden; }
+.card:not([data-thumb]) .thumb { width: auto; height: auto; border: none; background: none; box-shadow: none; overflow: visible; }
+/* Without a thumbnail the time is a small version of the card (same frame and corner). */
+.time { display: block; padding: 5px 10px; border-radius: ${T.radius}; border: 2px solid rgb(255 255 255 / 0.85); ${glass()}
+  color: ${T.fg}; font: 600 12px/1.2 ${T.font}; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* With a thumbnail it sits inside the card's bottom-right corner (mockup). */
+.card[data-thumb] .time { position: absolute; right: 6px; bottom: 6px; padding: 2px 6px; border: none; border-radius: ${T.radiusSm};
+  background: rgb(0 0 0 / 0.65); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 ${glassFallback('.time')}
 </style><div class="range" part="range"><div class="rail" part="rail"><i class="buffered"></i><i class="played"></i></div><input part="input" type="range" min="0" max="0" step="0.1" value="0"></div>
-<div class="card" part="preview" aria-hidden="true"><div class="thumb" part="thumbnail"></div><span class="time" part="preview-time"></span></div>`;
+<div class="card" part="preview" aria-hidden="true"><div class="thumb" part="thumbnail"><span class="time" part="preview-time"></span></div></div>`;
         const input = root.querySelector('input') as HTMLInputElement;
         const range = root.querySelector('.range') as HTMLElement;
         this.#input = input;
@@ -939,6 +945,7 @@ const menuCss = (): string => `
 .lb { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .lb small { font: 400 12px/1.2 ${T.font}; color: ${T.muted}; }
 .val { color: ${T.muted}; font: 400 13px/1 ${T.font}; white-space: nowrap; }
+.val[data-on] { color: ${T.accent}; }
 .chev { width: 18px; height: 18px; color: ${T.muted}; flex: none; }
 .chev svg, .back svg { width: 18px; height: 18px; }
 .back { min-height: 44px; border-bottom: 1px solid ${T.glassBorder}; margin-bottom: 4px; font-weight: 600; }
@@ -1419,7 +1426,10 @@ const settingsMenuClass = () =>
         }
         if (groups.some((g) => g.id === 'audio')) out.push(this.#row('row:audio', AudioLines, t.audio, checked('audio'), 'audio'));
         if (groups.some((g) => g.id === 'captions')) {
-          out.push(this.#row('row:captions', Captions, t.captions, checked('captions'), 'captions'));
+          const captionsRow = this.#row('row:captions', Captions, t.captions, checked('captions'), 'captions');
+          // An enabled track reads in the accent colour (UI-DESIGN §10 "selected").
+          captionsRow.querySelector('.val')?.toggleAttribute('data-on', (s.textTrack ?? null) !== null);
+          out.push(captionsRow);
           const custom = Object.keys(s.captionStyle ?? {}).length > 0;
           out.push(this.#row('row:caption-style', Type, t.captionStyle, custom ? '✓' : t.styleDefault, 'caption-style'));
         }
@@ -1571,29 +1581,30 @@ ${glassFallback(':host')}
             t.statsPlayback,
             [
               ['Status', s.error === null ? s.status : `${s.status} (${s.error.type}: ${s.error.details})`],
-              ['Format', s.format ?? '–'],
-              ['Backend', `${s.backend ?? '–'}${s.mms ? ' (MMS)' : ''}`],
-              ['Resolution', s.videoWidth > 0 ? `${s.videoWidth}×${s.videoHeight}` : '–'],
-              ['Codec', active?.codec ?? q?.codec ?? '–'],
+              ['Format', s.format ?? '—'],
+              ['Backend', `${s.backend ?? '—'}${s.mms ? ' (MMS)' : ''}`],
+              ['Resolution', s.videoWidth > 0 ? `${s.videoWidth}×${s.videoHeight}` : '—'],
+              ['Codec', active?.codec ?? q?.codec ?? '—'],
             ],
           ],
           [
             t.statsNetwork,
             [
-              ['Quality', `${s.activeQuality ?? '–'} (${s.quality})${active?.bitrate === undefined ? '' : ` · ${formatBitrate(active.bitrate)}`}`],
-              ['Bandwidth', formatBitrate(q?.bandwidth)],
+              ['Quality', `${s.activeQuality ?? '—'} (${s.quality})${active?.bitrate === undefined ? '' : ` · ${formatBitrate(active.bitrate)}`}`],
+              // Not measured yet: the engine's default is labelled, nothing is shown as a measurement.
+              ['Bandwidth', q?.bandwidth == null ? '—' : `${formatBitrate(q.bandwidth)}${q.bandwidthEstimated === true ? ' (est.)' : ''}`],
               ['Buffer', formatSeconds(buffer)],
-              ['Latency', s.live ? formatSeconds(s.latency ?? q?.latency) : '–'],
+              ['Latency', s.live ? formatSeconds(s.latency ?? q?.latency) : '—'],
             ],
           ],
           [
             t.statsQuality,
             [
-              ['TTFF', formatMs(q?.ttff)],
-              ['Rebuffers', q === undefined ? '–' : `${q.rebufferCount} (${formatMs(q.rebufferDuration)})`],
-              ['Switches', q === undefined ? '–' : String(q.qualitySwitches)],
-              ['Dropped', q === undefined ? '–' : `${q.droppedFrames} / ${q.totalFrames}`],
-              ['Errors', q === undefined ? '–' : `${q.errors}${q.lastError === null ? '' : ` (last: ${q.lastError.details})`}`],
+              ['TTFF', q?.ttff == null ? '—' : formatMs(q.ttff)],
+              ['Rebuffers', q === undefined ? '—' : `${q.rebufferCount} (${formatMs(q.rebufferDuration)})`],
+              ['Switches', q === undefined ? '—' : String(q.qualitySwitches)],
+              ['Dropped', q === undefined ? '—' : `${q.droppedFrames} / ${q.totalFrames}`],
+              ['Errors', q === undefined ? '—' : `${q.errors}${q.lastError === null ? '' : ` (last: ${q.lastError.details})`}`],
             ],
           ],
         ];

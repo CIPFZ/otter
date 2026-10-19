@@ -159,7 +159,7 @@ describe('hls.js adapter', () => {
     // No bandwidth sample yet: the switch came from hls.js' startup logic, and the reason says so.
     expect(events).toContainEqual(['quality-change', { id: 'level-1', auto: true, reason: 'abr (hls.js startup / emergency)' }]);
     expect(events.filter(([e]) => e === 'first-segment')).toHaveLength(1);
-    expect(events).toContainEqual(['bandwidth', { estimate: 3_000_000, fast: 3_000_000, slow: 3_000_000 }]);
+    expect(events).toContainEqual(['bandwidth', { estimate: 3_000_000, fast: 3_000_000, slow: 3_000_000, estimated: true }]);
     engine.selectQuality('level-1');
     expect(hls.currentLevel).toBe(1);
     engine.selectQuality('auto');

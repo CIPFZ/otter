@@ -111,7 +111,7 @@ describe('Shaka adapter', () => {
     // Otter ABR is installed through abrFactory (ADR-005 §1).
     const factory = p.configs[0]?.['abrFactory'] as (() => { chooseVariant: unknown }) | undefined;
     expect(typeof factory?.().chooseVariant).toBe('function');
-    expect(events).toContainEqual(['bandwidth', { estimate: 5_000_000, fast: 5_000_000, slow: 5_000_000 }]);
+    expect(events).toContainEqual(['bandwidth', { estimate: 5_000_000, fast: 5_000_000, slow: 5_000_000, estimated: true }]);
   });
 
   it('maps variants sharing the active audio to qualities', () => {

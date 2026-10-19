@@ -59,9 +59,9 @@
 | `--otter-fg-muted` | `rgba(255,255,255,0.64)` | 次要文字（时间、当前值） |
 | `--otter-fg-dim` | `rgba(255,255,255,0.40)` | 禁用、占位 |
 | `--otter-track` | `rgba(255,255,255,0.22)` | 进度条与滑块底轨 |
-| `--otter-buffered` | `rgba(255,255,255,0.45)` | 已缓冲区间 |
-| `--otter-scrim-bottom` | `linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.35) 45%, transparent 100%)` | 底部遮罩，高度 120px |
-| `--otter-scrim-top` | `linear-gradient(to bottom, rgba(0,0,0,0.55), transparent)` | 顶部遮罩，高度 88px |
+| `--otter-buffered-color` | `rgba(255,255,255,0.45)` | 已缓冲区间（`--otter-buffered` 是缓冲百分比，ADR-006 §3） |
+| `--otter-scrim-bottom` | `linear-gradient(to top, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.68) 45%, rgba(0,0,0,0.35) 70%, transparent 100%)` | 底部遮罩，高度 120px（2026-10-19 修订：为满足 §11.3 的 4.5:1 加深，见 ADR-006 §3） |
+| `--otter-scrim-top` | `linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.60) 45%, transparent 100%)` | 顶部遮罩，高度 88px（同上） |
 | `--otter-glass` | `rgba(18,22,30,0.88)` | 菜单、tooltip、stats 面板底 |
 | `--otter-glass-blur` | `16px` | `backdrop-filter`，不支持时 glass 透明度提到 0.96 |
 | `--otter-glass-border` | `rgba(255,255,255,0.08)` | 弹层 1px 内描边 |
@@ -193,7 +193,7 @@
 
 ## 9. 字幕
 
-- 默认样式：15px（按 `--otter-cue-scale` 与画面高度缩放，参考 1080p 画面 = 36px）、`--otter-font`、字重 500、白字、`text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9)`、底色 `rgba(0,0,0,0.55)`、内边距 `4px 10px`、圆角 4px、行高 1.35、字距 0.01em。
+- 默认样式：字号 `max(13px, 画面高度 × 3.6%)`（1080p 画面约 39px，360p 画面 13px；2026-10-19 修订，原为 15px 下限、1080p = 36px），CVAA 字号选项按倍数作用于这个基准、`--otter-font`、字重 500、白字、`text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.9)`、底色 `rgba(0,0,0,0.55)`、内边距 `4px 10px`、圆角 4px、行高 1.35、字距 0.01em。
 - 多行 cue 每行独立底色（YouTube 方式），不是整块。
 - 位置：底边距画面底 8%，控制栏显示时再上移控制栏高度 + 8px，过渡 150ms。
 - CVAA 用户设置优先于默认样式。

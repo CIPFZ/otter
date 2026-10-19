@@ -40,7 +40,7 @@ export interface BackendEvents {
   'first-frame': { readonly at: number };
   /** First media segment finished loading. */
   'first-segment': { readonly at: number };
-  bandwidth: { readonly estimate: number; readonly fast: number; readonly slow: number };
+  bandwidth: { readonly estimate: number; readonly fast: number; readonly slow: number; readonly estimated?: boolean };
   'dropped-frames': { readonly dropped: number; readonly total: number };
   /** MMS / AirPlay handling decided by the backend (ADR-003 §5); annotated onto the route. */
   'remote-playback': { readonly mms: boolean; readonly remotePlayback: 'enabled' | 'disabled'; readonly reason: string };

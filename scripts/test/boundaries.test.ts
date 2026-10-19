@@ -105,3 +105,15 @@ describe('scanImports', () => {
     expect(scanImports(src).sort()).toEqual(['./b', './c', '@otter-player/core', '@otter-player/media', 'hls.js', 'side-effect']);
   });
 });
+
+describe('banned third-party APIs (REUSE §4)', () => {
+  it('flags media-captions renderers, not its parser', async () => {
+    const { bannedApiUses } = await import('../lib/boundaries.ts');
+    expect(bannedApiUses("import { parseText, tokenizeVTTCue } from 'media-captions';")).toEqual([]);
+    expect(bannedApiUses("const { renderVTTCueString } = await import('media-captions');")).toEqual(['media-captions.renderVTTCueString']);
+    // Mentioned in a comment only: fine.
+    expect(bannedApiUses("import { parseText } from 'media-captions';\n// never renderVTTCueString")).toEqual([]);
+    // Same name without importing the module: not this rule's business.
+    expect(bannedApiUses('const CaptionsRenderer = 1;')).toEqual([]);
+  });
+});

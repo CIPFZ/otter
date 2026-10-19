@@ -172,7 +172,7 @@ for (const scenario of SCENARIOS) {
       await expect(stats).toBeVisible();
       await expect(stats.locator('[data-stat="Format"]')).toHaveText(scenario.format);
       await expect(stats.locator('[data-stat="Backend"]')).toContainText(`${state.backend}`);
-      await expect(stats.locator('[data-stat="TTFF"]')).not.toHaveText('–');
+      await expect(stats.locator('[data-stat="TTFF"]')).not.toHaveText('—');
     } finally {
       await testInfo.attach('state.json', { body: JSON.stringify(await snapshot(page), null, 2), contentType: 'application/json' });
       await testInfo.attach('player.png', { body: await page.locator('#player').screenshot(), contentType: 'image/png' });

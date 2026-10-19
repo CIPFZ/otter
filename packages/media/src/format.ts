@@ -29,7 +29,7 @@ export interface EngineEvents {
   'quality-change': { readonly id: string; readonly auto: boolean; readonly reason: string };
   'latency-change': { readonly latency: number; readonly target?: number };
   'first-segment': { readonly at: number };
-  bandwidth: { readonly estimate: number; readonly fast: number; readonly slow: number };
+  bandwidth: { readonly estimate: number; readonly fast: number; readonly slow: number; readonly estimated?: boolean };
   /** Cues of the selected in-band text track (ADR-005 §4). */
   'text-cues': InbandCues;
   /** `fatal` errors make the session fall back to the next backend. */

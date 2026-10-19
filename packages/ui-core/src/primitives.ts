@@ -70,7 +70,7 @@ button:active .icon > svg[data-on] { transform: scale(0.95); }
 button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; }
 button:disabled { opacity: 0.4; cursor: default; }
 button:disabled .icon > svg[data-on] { transform: none; }
-.text { padding: 0 8px; }
+.text { padding: 0 4px; }  /* text buttons keep the icon buttons' rhythm (40 px + gap) */
 button[aria-pressed="true"]::after { content: ''; position: absolute; left: 30%; right: 30%; bottom: 5px; height: 2px;
   border-radius: 1px; background: ${T.accent}; }
 .tip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); padding: 4px 8px;

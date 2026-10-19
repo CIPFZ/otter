@@ -314,7 +314,10 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
           bus.emit('bandwidth', driver.bandwidth);
         } else {
           const estimate = instance.bandwidthEstimate;
-          if (Number.isFinite(estimate) && estimate > 0) bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
+          // hls.js returns abrEwmaDefaultEstimate until it has samples; our stack without samples
+          // means the same.
+          const estimated = driver !== undefined || estimate === instance.config.abrEwmaDefaultEstimate;
+          if (Number.isFinite(estimate) && estimate > 0) bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate, estimated });
         }
         const latency = instance.latency;
         if (instance.latestLevelDetails?.live === true && latency > 0) {

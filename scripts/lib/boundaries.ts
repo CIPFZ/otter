@@ -135,3 +135,23 @@ export function scanImports(source: string): string[] {
   for (const re of patterns) for (const m of code.matchAll(re)) if (m[1] !== undefined) specs.add(m[1]);
   return [...specs];
 }
+
+/**
+ * Third-party APIs Otter must not call (REUSE §4): media-captions' renderers splice
+ * entity-decoded cue text into HTML (unfixed XSS upstream); only its parser and tokenizer are used.
+ */
+export const BANNED_APIS: Readonly<Record<string, readonly string[]>> = {
+  'media-captions': ['renderVTTCueString', 'renderVTTTokensString', 'createVTTCueTemplate', 'CaptionsRenderer', 'updateTimedVTTCueNodes'],
+};
+
+/** `module.api` uses of banned APIs in a file that imports that module. */
+export function bannedApiUses(source: string): string[] {
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  const specs = scanImports(source);
+  const hits: string[] = [];
+  for (const [mod, apis] of Object.entries(BANNED_APIS)) {
+    if (!specs.includes(mod)) continue;
+    for (const api of apis) if (new RegExp(`\\b${api}\\b`).test(code)) hits.push(`${mod}.${api}`);
+  }
+  return hits;
+}

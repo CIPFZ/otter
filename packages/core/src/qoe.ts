@@ -54,6 +54,8 @@ export interface QoeEventMap {
     readonly estimate: number;
     readonly fast: number;
     readonly slow: number;
+    /** The engine's configured default, not a measurement yet (shown as "(est.)"). */
+    readonly estimated?: boolean;
   };
   latency: {
     /** seconds behind live edge */

@@ -15,12 +15,12 @@ export interface CueRenderer {
   destroy(): void;
 }
 
-// Default look (UI-DESIGN §9): 36 px at a 1080p picture (never below 15 px), weight 500, soft
+// Default look (UI-DESIGN §9): 3.6% of the picture height (never below 13 px), weight 500, soft
 // shadow, translucent per-line background with rounded corners. CVAA user settings win.
 const CSS = `
 .otter-cues { position: absolute; pointer-events: none; overflow: hidden;
   font-family: var(--otter-cue-font-family, var(--otter-font, system-ui, sans-serif)); font-weight: 500; letter-spacing: 0.01em;
-  font-size: calc(max(15px, var(--otter-cue-picture-height, 360px) * 0.0333) * var(--otter-cue-user-scale, var(--otter-cue-scale, 1)));
+  font-size: calc(max(13px, var(--otter-cue-picture-height, 360px) * 0.036) * var(--otter-cue-user-scale, var(--otter-cue-scale, 1)));
   line-height: var(--otter-cue-line-height, 1.35);
   transition: height var(--otter-t-show, 150ms) var(--otter-ease-out, cubic-bezier(0.2, 0, 0, 1)); }
 .otter-cue { position: absolute; box-sizing: border-box; padding: 0 0.5em;
@@ -157,7 +157,7 @@ export function createCueRenderer(parent: HTMLElement): CueRenderer {
         if (el.parentNode !== element) element.appendChild(el);
         return el;
       });
-      const fontSize = parseFloat(doc.defaultView?.getComputedStyle(element).fontSize ?? '') || Math.max(15, pictureHeight * 0.0333);
+      const fontSize = parseFloat(doc.defaultView?.getComputedStyle(element).fontSize ?? '') || Math.max(13, pictureHeight * 0.036);
       const lineHeight = fontSize * 1.35;
       // Pass 2: place.
       const placed = layoutCues(

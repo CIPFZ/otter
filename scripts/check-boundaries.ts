@@ -5,7 +5,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { checkBoundaries, scanImports, type PackageInfo } from './lib/boundaries.ts';
+import { bannedApiUses, checkBoundaries, scanImports, type PackageInfo } from './lib/boundaries.ts';
 
 const root = join(import.meta.dirname, '..');
 const packagesDir = join(root, 'packages');
@@ -41,6 +41,14 @@ const packages: PackageInfo[] = readdirSync(packagesDir, { withFileTypes: true }
   });
 
 const problems = checkBoundaries(packages);
+// Banned third-party APIs (REUSE §4), in package sources.
+for (const e of readdirSync(packagesDir, { withFileTypes: true })) {
+  const srcDir = join(packagesDir, e.name, 'src');
+  if (!e.isDirectory() || !existsSync(srcDir)) continue;
+  for (const f of walk(srcDir)) {
+    for (const hit of bannedApiUses(readFileSync(f, 'utf8'))) problems.push(`${relative(root, f)} uses ${hit} (banned, REUSE §4)`);
+  }
+}
 if (problems.length > 0) {
   console.error(`✗ ${problems.length} boundary problem(s):`);
   for (const p of problems) console.error(`  ${p}`);

@@ -50,6 +50,8 @@ const CATEGORIES: Readonly<Record<number, OtterErrorType>> = {
   7: 'other', // PLAYER
 };
 const CRITICAL = 2; // shaka.util.Error.Severity.CRITICAL
+/** shaka.extern.AbrConfiguration defaultBandwidthEstimate (bits per second). */
+const SHAKA_DEFAULT_ESTIMATE = 1e6;
 const LICENSE_REQUEST = 2; // shaka.net.NetworkingEngine.RequestType.LICENSE
 
 export function mapShakaError(error: ShakaError): OtterError {
@@ -168,7 +170,9 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       bus.emit('bandwidth', driver.bandwidth);
     } else if (Number.isFinite(stats.estimatedBandwidth) && stats.estimatedBandwidth > 0) {
       const estimate = stats.estimatedBandwidth;
-      bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate });
+      // Before the first sample this is Shaka's abr.defaultBandwidthEstimate (or our stack has
+      // no samples yet): report it as an estimate, not a measurement.
+      bus.emit('bandwidth', { estimate, fast: estimate, slow: estimate, estimated: driver !== undefined || estimate === SHAKA_DEFAULT_ESTIMATE });
     }
     const latency = liveLatency();
     if (latency !== undefined) bus.emit('latency-change', { latency });

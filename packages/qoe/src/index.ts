@@ -29,6 +29,8 @@ export interface QoeSnapshot {
   readonly lastError: Pick<OtterError, 'type' | 'details' | 'fatal'> | null;
   /** bits per second */
   readonly bandwidth: number | null;
+  /** `bandwidth` is the engine's default estimate, nothing measured yet. */
+  readonly bandwidthEstimated: boolean;
   /** Seconds behind the live edge. */
   readonly latency: number | null;
   readonly targetLatency: number | null;
@@ -52,6 +54,7 @@ export const EMPTY_QOE: QoeSnapshot = {
   errors: 0,
   lastError: null,
   bandwidth: null,
+  bandwidthEstimated: false,
   latency: null,
   targetLatency: null,
   droppedFrames: 0,
@@ -100,7 +103,7 @@ export function createQoeCollector(hook: QoeHook): QoeCollector {
     hook.on('error', ({ error }) =>
       update({ errors: snap.errors + 1, lastError: { type: error.type, details: error.details, fatal: error.fatal } }),
     ),
-    hook.on('bandwidth', (b) => update({ bandwidth: b.estimate })),
+    hook.on('bandwidth', (b) => update({ bandwidth: b.estimate, bandwidthEstimated: b.estimated === true })),
     hook.on('latency', (l) => update({ latency: l.latency, targetLatency: l.target ?? snap.targetLatency })),
     hook.on('dropped-frames', (d) => update({ droppedFrames: d.dropped, totalFrames: d.total })),
     hook.on('exit', (e) => {
