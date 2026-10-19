@@ -21,6 +21,12 @@
       "upstream": "9e562a3423d5eabc15c7e38645c866e3b0a8d7fb",
       "decision": "not-merged",
       "reason": "Upstream added DD / MKV feature tags and an MSF catalog preprocessor (preferLocmafTracks); none of the three kept assets or their fields changed. Test assets only, nothing ships."
+    },
+    {
+      "date": "2026-10-20",
+      "upstream": "d5dec3c700c7dd7a1cfb8619c0fd619d85073dd2",
+      "decision": "not-merged",
+      "reason": "vendor-sync drift report, second review: still DD / MKV feature tags and MSF / CMSF catalog namespaces; the kept assets and their fields are unchanged. Test assets only."
     }
   ]
 }

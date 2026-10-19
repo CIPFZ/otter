@@ -1,4 +1,4 @@
-// Derived from hls.js@e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de src/remux/mp4-remuxer.ts, Apache-2.0
+// Derived from hls.js@b023c2908c53b8cbe25665de4df9713cd3bbfdbf src/remux/mp4-remuxer.ts, Apache-2.0
 import { USE_IFRAMES } from '../otter/shims.js';
 import AAC from './aac-helper.js';
 import MP4 from './mp4-generator.js';
@@ -488,7 +488,9 @@ export default class MP4Remuxer extends Logger implements Remuxer {
         ) {
           initDTS = Math.min(initDTS as number, videoInitDTS);
           // Bind initPTS to the lowest DTS across tracks to prevent negative timestamps
-          initPTS = Math.min(initPTS as number, videoInitDTS);
+          const videoInit =
+            !_initPTS && this.isVideoContiguous ? videoInitPTS : videoInitDTS;
+          initPTS = Math.min(initPTS as number, videoInit);
         }
       }
       this.videoTrackConfig = {

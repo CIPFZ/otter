@@ -6,12 +6,29 @@
   "license": "Apache-2.0",
   "level": "L3",
   "files": [
-    { "upstream": "src/player/live-latency-chaser.ts", "local": "live.ts" },
-    { "upstream": "src/player/live-latency-synchronizer.ts", "local": "live.ts" },
-    { "upstream": "src/player/startup-stall-jumper.ts", "local": "live.ts" }
+    {
+      "upstream": "src/player/live-latency-chaser.ts",
+      "local": "live.ts"
+    },
+    {
+      "upstream": "src/player/live-latency-synchronizer.ts",
+      "local": "live.ts"
+    },
+    {
+      "upstream": "src/player/startup-stall-jumper.ts",
+      "local": "live.ts"
+    }
   ],
   "localChanges": [
     "The three element-bound controllers became pure functions over a LiveSample (currentTime, paused, buffered ranges, playbackRate, readyState); the caller applies the seek / rate. Same conditions and thresholds as upstream (defaults from src/config.js).",
     "Logging dropped; config object replaced by the typed LatencyConfig."
+  ],
+  "syncLog": [
+    {
+      "date": "2026-10-20",
+      "upstream": "2e1bd5a94b22cd98795f97eb339f33d45dc98a2f",
+      "decision": "not-merged",
+      "reason": "vendor-sync drift report: live-latency-chaser, live-latency-synchronizer, startup-stall-jumper changed only in typing (= null -> definite assignment, null!) and let -> const. The L3 copy keeps the decision rules as pure functions, unaffected."
+    }
   ]
 }

@@ -1,4 +1,4 @@
-// Derived from hls.js@e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de src/types/demuxer.ts, Apache-2.0
+// Derived from hls.js@b023c2908c53b8cbe25665de4df9713cd3bbfdbf src/types/demuxer.ts, Apache-2.0
 import type { ChunkMetadata } from '../otter/shims.js';
 import type { DecryptData } from '../otter/shims.js';
 // Otter: fMP4 passthrough types (InitData, ParsedSampleData) are not copied.

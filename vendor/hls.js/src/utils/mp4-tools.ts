@@ -1,4 +1,4 @@
-// Derived from hls.js@e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de src/utils/mp4-tools.ts, Apache-2.0
+// Derived from hls.js@b023c2908c53b8cbe25665de4df9713cd3bbfdbf src/utils/mp4-tools.ts, Apache-2.0
 // Subset: box type table, track ids, uint read / write, appendUint8Array and the SEI parser used by
 // the video parsers. @svta/cml-id3's utf8ArrayToStr is replaced by TextDecoder.
 import { utf8Decode } from '../otter/env.js';

@@ -111,7 +111,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ### hls.js (Apache-2.0)
 
 - Repository: https://github.com/video-dev/hls.js
-- Commit: e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de (v1.7.3)
+- Commit: e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de (v1.7.3); `vendor/hls.js` synced to b023c2908c53b8cbe25665de4df9713cd3bbfdbf (main, 2026-10-20)
 - Copyright (c) 2017 Dailymotion (http://www.dailymotion.com)
 - Copies (L3):
   - `packages/backend-mse/src/vendor/hls.js`: `src/utils/mediasource-helper.ts` (getMediaSource,

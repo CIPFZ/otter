@@ -1,8 +1,8 @@
 {
   "project": "hls.js",
   "repo": "https://github.com/video-dev/hls.js",
-  "commit": "e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de",
-  "tag": "v1.7.3",
+  "commit": "b023c2908c53b8cbe25665de4df9713cd3bbfdbf",
+  "tag": "v1.7.3+b023c29 (main)",
   "license": "Apache-2.0",
   "level": "L2",
   "files": [
@@ -93,5 +93,12 @@
     "utils/user-agent.ts: navigator read lazily (no top-level side effect).",
     "src/demux/tsdemuxer.ts: remainderData = data.subarray(len) instead of new Uint8Array(data.buffer, len, data.buffer.byteLength - len). Upstream ignores the input view's byteOffset / byteLength, so a chunk that is a view into a larger buffer (Otter's streamed input) left garbage as the remainder: duplicated fragments and captions. Found in M3 (packages/pipeline/test/transmux.test.ts 'views'); candidate for an upstream fix."
   ],
-  "syncLog": []
+  "syncLog": [
+    {
+      "date": "2026-10-20",
+      "upstream": "b023c2908c53b8cbe25665de4df9713cd3bbfdbf",
+      "decision": "merged",
+      "reason": "vendor-sync drift report: 2 of 17 files changed upstream. efaa547d 'Fix parameter set truncation (regression introduced in a03d5b1)' (base-video-parser.ts: start-code zeros split across chunks trimmed SPS / PPS; Otter feeds streamed chunks, so it applies) and b023c290 'Anchor initPTS on video PTS at discontinuities reached in sequence' (mp4-remuxer.ts). Both merged as upstream wrote them; the other 15 files are identical at both commits, so the pin moves to b023c29. Upstream tsdemuxer.ts still has the remainder-view bug Otter fixes locally (localChanges)."
+    }
+  ]
 }

@@ -1,4 +1,4 @@
-// Derived from hls.js@e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de src/remux/mp4-generator.ts, Apache-2.0
+// Derived from hls.js@b023c2908c53b8cbe25665de4df9713cd3bbfdbf src/remux/mp4-generator.ts, Apache-2.0
 import { USE_M2TS_ADVANCED_CODECS } from '../otter/shims.js';
 /**
  * Generate MP4 Box

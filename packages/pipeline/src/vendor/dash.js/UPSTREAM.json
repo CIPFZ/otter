@@ -34,5 +34,13 @@
     "BolaRule: single media type (video) per rule instance; state keyed by the level ladder instead of streamId / mediaType. The steady-state download delay output (setTimeToLoadDelay) is dropped because hls.js / Shaka expose no hook for it; the placeholder buffer is still consumed exactly as upstream. Fragment-loaded / abandoned / min-max-bitrate / element-resize event handlers dropped. Math (utilities, Vp/gp, min/max buffer, BOLA-O) unchanged.",
     "Each derived file keeps its upstream BSD-3-Clause license header verbatim (copyright year differs per file).",
     "AbrController._updateDynamicAbrStrategy + ABRRulesCollection.getBestPossibleSwitchRequest reduced to createDynamicRule: one of throughput / BOLA votes, BOLA on at hybridSwitchBufferTime (12 s), off below half (hysteresis as upstream); the per-media-type state dictionary and logging dropped. The remaining combination (lowest level among highest-priority votes, caps first) is the Otter AbrController."
+  ],
+  "syncLog": [
+    {
+      "date": "2026-10-20",
+      "upstream": "4172bfa681bd243e4621fb290a1643c231404c2f",
+      "decision": "not-merged",
+      "reason": "vendor-sync drift report: AbrController.js gained excludedRepresentationIds (drop excluded Representations before the settings filters). AbrController.js is a reference for the rule order only; Otter's rule stack has no exclusion list. The copied rules (Throughput, InsufficientBuffer, BOLA, ABRRulesCollection) are unchanged."
+    }
   ]
 }

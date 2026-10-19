@@ -1,4 +1,4 @@
-// Derived from hls.js@e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de src/demux/video/avc-video-parser.ts, Apache-2.0
+// Derived from hls.js@b023c2908c53b8cbe25665de4df9713cd3bbfdbf src/demux/video/avc-video-parser.ts, Apache-2.0
 import BaseVideoParser from './base-video-parser.js';
 import ExpGolomb from './exp-golomb.js';
 import { parseSEIMessageFromNALu } from '../../utils/mp4-tools.js';
