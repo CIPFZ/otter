@@ -67,7 +67,8 @@ class FakePlayer {
   getStats = () => ({ estimatedBandwidth: 5_000_000, liveLatency: Number.NaN, droppedFrames: 0, decodedFrames: 10, streamBandwidth: 0 });
   isLive = () => false;
   seekRange = () => ({ start: 0, end: 10 });
-  getNetworkingEngine = () => null;
+  filters: ((type: number, request: { uris: string[]; headers: Record<string, string> }, context?: object) => void)[] = [];
+  getNetworkingEngine = () => ({ registerRequestFilter: (f: FakePlayer['filters'][number]) => this.filters.push(f) });
   destroy = async (): Promise<void> => {
     this.calls.push('destroy');
   };
@@ -78,6 +79,8 @@ const installAll = vi.fn();
 vi.mock('shaka-player', () => ({ default: { Player: FakePlayer, polyfill: { installAll } } }));
 
 const { createShakaEngine, mapShakaError, mapShakaTracks } = await import('@otter-player/engine-adapter-shaka');
+// Lazy glue module, imported by path (not re-exported from the package index).
+const { shakaCmcdRequest } = await import('../src/cmcd.js');
 
 const ctx = (overrides: Partial<EngineContext> = {}): EngineContext => ({
   source: { src: 'https://e.test/a.mpd', drm: { servers: { 'com.widevine.alpha': 'https://lic' }, clearKeys: { aa: 'bb' } } },
@@ -159,6 +162,32 @@ describe('Shaka adapter', () => {
     await createShakaEngine(ctx(), { abr: 'engine' }).load();
     const p = FakePlayer.instances.at(-1) as FakePlayer;
     expect(p.configs[0]?.['abrFactory']).toBeUndefined();
+  });
+
+  it('maps Shaka requests to CMCD and never decorates license requests', () => {
+    expect(shakaCmcdRequest(0, 'm.mpd')).toEqual({ url: 'm.mpd', kind: 'manifest' });
+    expect(shakaCmcdRequest(1, 'i.mp4', { type: 0 })).toEqual({ url: 'i.mp4', kind: 'init' });
+    expect(shakaCmcdRequest(1, 's.m4s', { type: 1, stream: { type: 'video', bandwidth: 2e6 }, segment: { startTime: 4, endTime: 8 } })).toEqual({
+      url: 's.m4s',
+      kind: 'video',
+      durationS: 4,
+      bitrateBps: 2e6,
+    });
+    expect(shakaCmcdRequest(1, 'a.m4s', { stream: { type: 'audio' } })).toMatchObject({ kind: 'audio' });
+    expect(shakaCmcdRequest(2, 'https://lic')).toBeUndefined();
+  });
+
+  it('request filter decorates every uri with CMCD', async () => {
+    const decorate = (r: { url: string; kind: string }) => ({ url: `${r.url}?CMCD=${r.kind}`, headers: { 'CMCD-Session': 'x' } });
+    await createShakaEngine(ctx({ cmcd: { mode: 'query', sessionId: 'x', decorate } })).load();
+    const p = FakePlayer.instances.at(-1) as FakePlayer;
+    const request = { uris: ['https://a/s.m4s', 'https://b/s.m4s'], headers: {} as Record<string, string> };
+    p.filters[0]?.(1, request, { type: 1, stream: { type: 'video' } });
+    expect(request.uris).toEqual(['https://a/s.m4s?CMCD=video', 'https://b/s.m4s?CMCD=video']);
+    expect(request.headers).toEqual({ 'CMCD-Session': 'x' });
+    const license = { uris: ['https://lic'], headers: {} as Record<string, string> };
+    p.filters[0]?.(2, license);
+    expect(license.uris).toEqual(['https://lic']);
   });
 
   it('reports unsupported browsers', async () => {

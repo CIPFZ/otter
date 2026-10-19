@@ -396,6 +396,15 @@ importers:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+      '@svta/cml-cmcd':
+        specifier: 2.8.2
+        version: 2.8.2(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)
+      '@svta/cml-structured-field-values':
+        specifier: 1.1.6
+        version: 1.1.6(@svta/cml-utils@1.6.1)
+      '@svta/cml-utils':
+        specifier: 1.6.1
+        version: 1.6.1
 
   packages/overlay-ads:
     dependencies:
@@ -828,6 +837,23 @@ packages:
     engines: {node: ^22.19.0 || ^24.5.0 || >=26.0.0}
     peerDependencies:
       size-limit: 14.2.0
+
+  '@svta/cml-cmcd@2.8.2':
+    resolution: {integrity: sha512-/safKRbApNeycQBJHdA6EgrPj+6vqsChRLX6oQr1//DKKfoyjed2Pn7oDUNxw17hTN+X02AvvOtKrg7niY4AQw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-structured-field-values': 1.1.6
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-structured-field-values@1.1.6':
+    resolution: {integrity: sha512-+aPvf3Ak9DdJZC+z5/R1A8Swq0AI4uoVD6QV5e8gM9W8im+LuzP69rPh7lrnA7RfANTPhSwd6zxTf/IXyPlY8A==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-utils@1.6.1':
+    resolution: {integrity: sha512-jPKb+it53Pi8rbO8fNX8qpbdE+JfDAeOXF7lcG+uVU5BCcR0wbMTT2VtFdMeVsUN57TFPAurRavE3aEUSzC+zw==}
+    engines: {node: '>=20'}
 
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
@@ -1467,6 +1493,17 @@ snapshots:
   '@size-limit/file@14.2.0(size-limit@14.2.0)':
     dependencies:
       size-limit: 14.2.0
+
+  '@svta/cml-cmcd@2.8.2(@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1))(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-structured-field-values': 1.1.6(@svta/cml-utils@1.6.1)
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-structured-field-values@1.1.6(@svta/cml-utils@1.6.1)':
+    dependencies:
+      '@svta/cml-utils': 1.6.1
+
+  '@svta/cml-utils@1.6.1': {}
 
   '@types/chai@5.2.3':
     dependencies:

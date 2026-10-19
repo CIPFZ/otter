@@ -20,12 +20,12 @@ import {
   type ShakaTextTrack,
   type ShakaTrack,
 } from './shaka-types.js';
-import { createAbrDriver, type AbrDriver } from '@otter-player/pipeline';
+import type { AbrDriver } from '@otter-player/pipeline';
 import { bufferedEndAt } from '@otter-player/media';
-import { createOtterShakaAbr, type OtterShakaAbr } from './abr.js';
+import type { OtterShakaAbr } from './abr.js';
 
 export type { ShakaError, ShakaTrack } from './shaka-types.js';
-export { allowedBy, createOtterShakaAbr, type OtterShakaAbr, type ShakaRestrictions, type ShakaVariant } from './abr.js';
+export type { OtterShakaAbr, ShakaRestrictions, ShakaVariant } from './abr.js';
 
 export interface ShakaEngineOptions {
   /** Format id reported by the engine (`dash` by default, `hls` when format-hls routes DRM here). */
@@ -131,8 +131,9 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
   let abr = true;
   let destroyed = false;
   let firstSegment = false;
-  const driver: AbrDriver | undefined = options.abr === 'engine' ? undefined : createAbrDriver();
-  const manager: OtterShakaAbr | undefined = driver === undefined ? undefined : createOtterShakaAbr(driver, { bufferAhead: ahead });
+  // Created in load(): the rule stack is imported next to Shaka so it stays out of the first screen.
+  let driver: AbrDriver | undefined;
+  let manager: OtterShakaAbr | undefined;
   const abrReason = (id: string): string => {
     if (manager === undefined) return 'abr (shaka)';
     const last = manager.lastChoice;
@@ -188,7 +189,16 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       if (typeof src !== 'string') {
         throw createError({ type: 'other', details: 'unsupportedSource', fatal: true, recoverable: false, message: 'Shaka needs a URL' });
       }
-      const shaka = resolveShakaNamespace(await import('shaka-player'));
+      // ABR rule stack and CMCD glue load together with Shaka (ADR-004 §2).
+      const [shakaModule, pipeline, abrGlue, cmcdGlue] = await Promise.all([
+        import('shaka-player'),
+        options.abr === 'engine' ? undefined : import('@otter-player/pipeline'),
+        options.abr === 'engine' ? undefined : import('./abr.js'),
+        ctx.cmcd === undefined ? undefined : import('./cmcd.js'),
+      ]);
+      const shaka = resolveShakaNamespace(shakaModule);
+      driver = pipeline?.createAbrDriver();
+      manager = driver === undefined || abrGlue === undefined ? undefined : abrGlue.createOtterShakaAbr(driver, { bufferAhead: ahead });
       if (destroyed) return;
       if (shaka === undefined) {
         throw createError({ type: 'other', details: 'engineLoadFailed', fatal: true, recoverable: false, message: 'shaka-player did not expose a Player' });
@@ -234,9 +244,19 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       if (options.config !== undefined) p.configure(options.config);
       const headers = ctx.source.headers;
       const licenseHeaders = drm?.headers;
-      if (headers !== undefined || licenseHeaders !== undefined) {
-        p.getNetworkingEngine()?.registerRequestFilter((type, request) => {
+      const cmcd = ctx.cmcd;
+      if (headers !== undefined || licenseHeaders !== undefined || cmcd !== undefined) {
+        p.getNetworkingEngine()?.registerRequestFilter((type, request, context) => {
           Object.assign(request.headers, headers, type === LICENSE_REQUEST ? licenseHeaders : undefined);
+          if (cmcd === undefined) return;
+          // Shaka retries across request.uris; decorate each one the same way.
+          request.uris = request.uris.map((uri) => {
+            const info = cmcdGlue?.shakaCmcdRequest(type, uri, context);
+            if (info === undefined) return uri;
+            const d = cmcd.decorate(info);
+            Object.assign(request.headers, d.headers);
+            return d.url;
+          });
         });
       }
 

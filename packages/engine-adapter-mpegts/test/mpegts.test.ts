@@ -94,6 +94,19 @@ describe('mpegts.js adapter', () => {
     expect(engine.formatId).toBe('ts');
   });
 
+  it('decorates the single FLV request with CMCD once', async () => {
+    const decorate = vi.fn((r: { url: string; kind: string }) => ({ url: `${r.url}&CMCD=${r.kind}`, headers: { 'CMCD-Session': 's' } }));
+    const engine = createMpegtsEngine({ ...ctx(true), cmcd: { mode: 'query', sessionId: 's', decorate } }, { type: 'flv' });
+    const loading = engine.load();
+    await flushImport();
+    const p = FakeMpegtsPlayer.last as FakeMpegtsPlayer;
+    expect(decorate).toHaveBeenCalledOnce();
+    expect(p.source['url']).toBe('https://e.test/live.flv&CMCD=muxed');
+    expect(p.config['headers']).toEqual({ 'x-token': 't', 'CMCD-Session': 's' });
+    p.fire(Events.MEDIA_INFO, {});
+    await loading;
+  });
+
   it('reports unsupported environments', async () => {
     supported = false;
     await expect(createMpegtsEngine(ctx(true), { type: 'flv' }).load()).rejects.toMatchObject({ details: 'engineUnsupported' });

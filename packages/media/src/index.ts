@@ -16,6 +16,16 @@ export {
   type CapabilityProbeOptions,
   type CodecDecodingInfo,
 } from './capabilities.js';
+// Types only: the CMCD implementation is an on-demand chunk loaded by the session (ADR-004 §2).
+export type {
+  CmcdConfig,
+  CmcdDecoration,
+  CmcdDecorator,
+  CmcdKeys,
+  CmcdObjectKind,
+  CmcdRequestInfo,
+  CmcdState,
+} from './cmcd.js';
 export type { Decoder, DecoderConfig, DecoderInstance, EncodedChunk } from './decoder.js';
 export {
   bufferedEndAt,

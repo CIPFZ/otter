@@ -135,15 +135,18 @@ export function createMpegtsEngine(ctx: EngineContext, options: MpegtsEngineOpti
       if (!mpegts.isSupported()) {
         throw createError({ type: 'media', details: 'engineUnsupported', fatal: true, recoverable: false, message: 'mpegts.js is not supported here' });
       }
+      // CMCD (ADR-005 §2): FLV / TS is one long request, decorated once with the muxed object type.
+      const cmcd = ctx.cmcd?.decorate({ url, kind: 'muxed' });
+      const headers = { ...ctx.source.headers, ...cmcd?.headers };
       const p = mpegts.createPlayer(
-        { type: options.type, isLive: live, url },
+        { type: options.type, isLive: live, url: cmcd?.url ?? url },
         {
           enableWorker: false,
           lazyLoad: !live,
           // Live latency control (SPEC §7 LiveController behaviour, provided by mpegts.js in M1).
           liveBufferLatencyChasing: live,
           liveSync: live,
-          ...(ctx.source.headers === undefined ? {} : { headers: { ...ctx.source.headers } }),
+          ...(Object.keys(headers).length === 0 ? {} : { headers }),
           ...options.config,
         },
       );

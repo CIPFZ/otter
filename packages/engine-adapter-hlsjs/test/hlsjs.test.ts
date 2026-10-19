@@ -9,6 +9,15 @@ class FakeHls {
   static instances: FakeHls[] = [];
   static supported = true;
   static isSupported = (): boolean => FakeHls.supported;
+  static DefaultConfig = {
+    loader: class {
+      loads: { url: string; headers?: Record<string, string> }[] = [];
+      load(context: { url: string; headers?: Record<string, string> }): void {
+        FakeHls.loaded.push({ url: context.url, ...(context.headers === undefined ? {} : { headers: context.headers }) });
+      }
+    },
+  };
+  static loaded: { url: string; headers?: Record<string, string> }[] = [];
   static Events = {
     MANIFEST_PARSED: 'hlsManifestParsed',
     ERROR: 'hlsError',
@@ -87,6 +96,8 @@ class FakeAbrController {
 vi.mock('hls.js', () => ({ default: FakeHls, AbrController: FakeAbrController }));
 
 const { createHlsJsEngine, mapHlsError } = await import('@otter-player/engine-adapter-hlsjs');
+// Lazy glue modules are not re-exported from the package index (they would reach the first screen).
+const { fragmentRequest } = await import('../src/cmcd.js');
 
 const ctx = (overrides: Partial<EngineContext> = {}): EngineContext => ({
   source: { src: 'https://e.test/a.m3u8' },
@@ -225,6 +236,35 @@ describe('hls.js adapter', () => {
     await vi.waitFor(() => expect(FakeHls.instances.length).toBeGreaterThan(before));
     const hls = FakeHls.instances.at(-1) as FakeHls;
     expect(hls.config['abrController']).toBeUndefined();
+    hls.fire(FakeHls.Events.MANIFEST_PARSED);
+    await loading;
+  });
+
+  it('maps fragment requests to CMCD object types, bitrate and duration', () => {
+    const hls = { levels: [{ bitrate: 800_000, audioCodec: 'mp4a.40.2', videoCodec: 'avc1' }, { bitrate: 2_000_000, videoCodec: 'avc1' }] } as never;
+    const frag = (over: Record<string, unknown>) => ({ url: 'u', part: null, frag: { sn: 1, type: 'main', level: 0, duration: 4, ...over } }) as never;
+    expect(fragmentRequest(frag({}), hls)).toEqual({ url: 'u', kind: 'muxed', durationS: 4, bitrateBps: 800_000 });
+    expect(fragmentRequest(frag({ level: 1 }), hls)).toMatchObject({ kind: 'video', bitrateBps: 2_000_000 });
+    expect(fragmentRequest(frag({ sn: 'initSegment' }), hls)).toEqual({ url: 'u', kind: 'init', bitrateBps: 800_000 });
+    expect(fragmentRequest(frag({ type: 'audio' }), hls)).toEqual({ url: 'u', kind: 'audio', durationS: 4 });
+    expect(fragmentRequest(frag({ type: 'subtitle' }), hls)).toMatchObject({ kind: 'caption' });
+  });
+
+  it('installs CMCD fLoader / pLoader that decorate every request', async () => {
+    const decorate = vi.fn((r: { url: string; kind: string }) => ({ url: `${r.url}?CMCD=${r.kind}`, headers: { 'CMCD-Session': 'sid' } }));
+    const engine = createHlsJsEngine(ctx({ cmcd: { mode: 'query', sessionId: 'sid', decorate } }));
+    const before = FakeHls.instances.length;
+    const loading = engine.load();
+    await vi.waitFor(() => expect(FakeHls.instances.length).toBeGreaterThan(before));
+    const hls = FakeHls.instances.at(-1) as FakeHls;
+    const P = hls.config['pLoader'] as new (c: unknown) => { load(c: object, cfg: object, cb: object): void };
+    const F = hls.config['fLoader'] as new (c: unknown) => { load(c: object, cfg: object, cb: object): void };
+    new P({}).load({ url: 'https://e.test/a.m3u8' }, {}, {});
+    new F({}).load({ url: 'https://e.test/1.ts', part: null, frag: { sn: 1, type: 'main', level: 0, duration: 4 } }, {}, {});
+    expect(FakeHls.loaded.slice(-2)).toEqual([
+      { url: 'https://e.test/a.m3u8?CMCD=manifest', headers: { 'CMCD-Session': 'sid' } },
+      { url: 'https://e.test/1.ts?CMCD=video', headers: { 'CMCD-Session': 'sid' } },
+    ]);
     hls.fire(FakeHls.Events.MANIFEST_PARSED);
     await loading;
   });

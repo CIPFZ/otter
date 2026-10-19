@@ -16,6 +16,7 @@ import {
 } from '@otter-player/core';
 import type { BackendEvents, BackendFactory, BackendKind, MediaBackend, PlaybackSnapshot } from './backend.js';
 import { detectCapabilities, type Capabilities, type CapabilityProbeOptions } from './capabilities.js';
+import type { CmcdConfig, CmcdDecorator } from './cmcd.js';
 import type { Decoder } from './decoder.js';
 import type { FormatPlugin } from './format.js';
 import { createRouter, stepLabel, type RouteDecision, type RoutePolicy, type Router } from './router.js';
@@ -110,6 +111,8 @@ export interface MediaPluginOptions {
   /** Injectable for tests; defaults to the shared detectCapabilities. */
   readonly detect?: (options: CapabilityProbeOptions) => Promise<Capabilities>;
   readonly now?: () => number;
+  /** CMCD request data (CTA-5004); off by default (ADR-005 §2). */
+  readonly cmcd?: CmcdConfig;
 }
 
 export interface MediaPlugin<S extends MediaState = MediaState, A extends MediaActionMap = MediaActionMap>
@@ -154,6 +157,11 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   let watched = 0;
   let lastTime = 0;
   let heldRate: number | undefined;
+  // CMCD state not otherwise kept in the store.
+  let lastThroughput = Number.NaN;
+  let starvedSinceRequest = false;
+  let firstFrameSeen = false;
+  let cmcd: CmcdDecorator | undefined;
 
   const state = (): Readonly<MediaState> => (store as Store<S, A>).getState();
   const set = (patch: Partial<MediaState>): void => store?.setState(patch as Partial<S>);
@@ -186,6 +194,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     }
     if (patch.waiting === true && !s.waiting && !s.seeking && s.readyState > 0 && rebufferStart === undefined) {
       rebufferStart = { at: now(), position: s.currentTime };
+      starvedSinceRequest = true;
     }
     if (patch.waiting === false && rebufferStart !== undefined) {
       const endedAt = now();
@@ -231,6 +240,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         firstSegmentAt ??= at;
       }),
       on('first-frame', ({ at }) => {
+        firstFrameSeen = true;
         const video = state().tracks.video.find((t) => t.id === state().activeQuality);
         qoe?.emit('startup', {
           ttff: at - loadStartedAt,
@@ -245,7 +255,10 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         router.annotate({ candidate: stepLabel(decision.step), outcome: 'selected', reason });
         publishRoute(router.explain());
       }),
-      on('bandwidth', (bw) => qoe?.emit('bandwidth', bw)),
+      on('bandwidth', (bw) => {
+        lastThroughput = bw.estimate;
+        qoe?.emit('bandwidth', bw);
+      }),
       on('dropped-frames', (df) => qoe?.emit('dropped-frames', df)),
       on('error', (error) => {
         if (error.fatal) {
@@ -263,7 +276,13 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     if (factory === undefined) return toError(new Error(`no factory for ${decision.step.backend}`), 'backendMissing');
     let backend: MediaBackend;
     try {
-      backend = factory.create({ format: decision.format, step: decision.step, caps, qoe: qoe as QoeHook });
+      backend = factory.create({
+        format: decision.format,
+        step: decision.step,
+        caps,
+        qoe: qoe as QoeHook,
+        ...(cmcd === undefined ? {} : { cmcd }),
+      });
     } catch (err) {
       return toError(err, 'backendCreateFailed');
     }
@@ -322,6 +341,25 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     await run(next, source, { ...lastOptions, startTime: resumeAt, autoplay: !state().paused }, lastCaps, loadToken);
   };
 
+  /** Read at request time by CMCD; `bs` is reported once per rebuffer. */
+  const cmcdState = () => {
+    const s = state();
+    const starved = starvedSinceRequest;
+    starvedSinceRequest = false;
+    const top = s.tracks.video.reduce((m, v) => Math.max(m, v.bitrate ?? 0), 0);
+    return {
+      format: s.format,
+      live: s.live,
+      lowLatency: s.live && s.latency !== null && s.latency < 5,
+      bufferS: Math.max(0, s.bufferedEnd - s.currentTime),
+      throughputBps: lastThroughput,
+      topBitrateBps: top > 0 ? top : Number.NaN,
+      playbackRate: s.playbackRate,
+      startup: !firstFrameSeen,
+      starved,
+    };
+  };
+
   const load = async (source: Source, opts: LoadOptions): Promise<void> => {
     emitExit();
     teardown();
@@ -354,6 +392,24 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     }
     if (loadToken !== token) return;
     lastCaps = caps;
+    firstFrameSeen = false;
+    starvedSinceRequest = false;
+    lastThroughput = Number.NaN;
+    cmcd = undefined;
+    if (options.cmcd?.enabled === true) {
+      try {
+        // Key derivation and encoder load on demand (ADR-004 §2): CMCD is opt-in telemetry.
+        const { createCmcdDecorator } = await import('./cmcd.js');
+        cmcd = await createCmcdDecorator(options.cmcd, cmcdState);
+      } catch (err) {
+        // CMCD is telemetry: report and play on without it.
+        qoe?.emit('error', {
+          error: createError({ type: 'other', details: 'cmcdUnavailable', fatal: false, recoverable: false, message: String(err), cause: err }),
+          fallback: [],
+        });
+      }
+      if (loadToken !== token) return;
+    }
     let decision: RouteDecision;
     try {
       decision = router.select(source, caps, options.policy);

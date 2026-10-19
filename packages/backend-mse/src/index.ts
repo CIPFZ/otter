@@ -91,6 +91,7 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         media: m,
         mms,
         allowCodecSwitch: options.allowCodecSwitch ?? false,
+        ...(ctx.cmcd === undefined ? {} : { cmcd: ctx.cmcd }),
       });
       engine = e;
       offs.push(

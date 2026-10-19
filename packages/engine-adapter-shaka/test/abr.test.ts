@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest';
 import { createAbrDriver } from '@otter-player/pipeline';
-import { allowedBy, createOtterShakaAbr, type ShakaVariant } from '@otter-player/engine-adapter-shaka';
+import { allowedBy, createOtterShakaAbr, type ShakaVariant } from '../src/abr.js';
 
 const v = (id: number, bandwidth: number, height: number): ShakaVariant => ({ id, bandwidth, video: { width: Math.round((height * 16) / 9), height } });
 const ladder = [v(10, 3_200_000, 1080), v(11, 300_000, 240), v(12, 1_600_000, 720), v(13, 800_000, 480)];

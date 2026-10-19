@@ -4,6 +4,7 @@
 import type { OtterError, QoeHook, Unsubscribe } from '@otter-player/core';
 import type { BackendKind } from './backend.js';
 import type { Capabilities } from './capabilities.js';
+import type { CmcdDecorator } from './cmcd.js';
 import type { LoadOptions, Source } from './source.js';
 import type { TrackList } from './tracks.js';
 
@@ -19,6 +20,8 @@ export interface EngineContext {
   readonly mms: boolean;
   /** Allow cross-codec quality switches through `changeType` (SPEC §6.2). */
   readonly allowCodecSwitch: boolean;
+  /** CMCD request decorator; engines apply it in their request hooks (ADR-005 §2). */
+  readonly cmcd?: CmcdDecorator;
 }
 
 export interface EngineEvents {

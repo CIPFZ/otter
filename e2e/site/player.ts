@@ -13,6 +13,7 @@ import { createTsFormat } from '@otter-player/format-ts';
 import {
   createMediaPlugin,
   MEDIA_SLICE,
+  type CmcdConfig,
   type LoadOptions,
   type MediaActionMap,
   type MediaState,
@@ -58,7 +59,12 @@ async function build(policy: RoutePolicy): Promise<{
   core: ReturnType<typeof createCore<State, MediaActionMap>>;
   media: ReturnType<typeof createMediaPlugin<State, MediaActionMap>>;
 }> {
-  const abr = new URLSearchParams(location.search).get('abr') === 'engine' ? 'engine' : 'otter';
+  const params = new URLSearchParams(location.search);
+  const abr = params.get('abr') === 'engine' ? 'engine' : 'otter';
+  // ?cmcd=query|headers enables CMCD (ADR-005 §2) with a fixed session id for assertions.
+  const cmcdMode = params.get('cmcd');
+  const cmcd: CmcdConfig | undefined =
+    cmcdMode === 'query' || cmcdMode === 'headers' ? { enabled: true, mode: cmcdMode, sessionId: 'otter-e2e', contentId: 'fixture' } : undefined;
   const root = document.getElementById('player') as HTMLElement;
   const video = root.querySelector('video') as HTMLVideoElement;
   createVideoSurface(video);
@@ -68,6 +74,7 @@ async function build(policy: RoutePolicy): Promise<{
     formats: [createHlsFormat({ abr }), createDashFormat({ abr }), createFlvFormat(), createTsFormat(), createMp4RangeFormat()],
     backends: [createMseBackendFactory(), createNativeBackendFactory(), createWebCodecsBackendFactory()],
     policy,
+    ...(cmcd === undefined ? {} : { cmcd }),
   });
   const core = createCore<State, MediaActionMap>({ slices: [MEDIA_SLICE, QOE_SLICE], plugins: [media, createQoePlugin()] });
   await core.start();

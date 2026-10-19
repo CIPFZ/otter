@@ -46,8 +46,21 @@ export interface ShakaError {
   readonly message?: string;
 }
 
+export interface ShakaRequest {
+  uris: string[];
+  headers: Record<string, string>;
+}
+
+/** shaka.extern.RequestContext subset. */
+export interface ShakaRequestContext {
+  /** shaka.net.NetworkingEngine.AdvancedRequestType */
+  readonly type?: number;
+  readonly stream?: { readonly type?: string; readonly bandwidth?: number } | null;
+  readonly segment?: { readonly startTime?: number; readonly endTime?: number } | null;
+}
+
 export interface ShakaNetworkingEngine {
-  registerRequestFilter(filter: (type: number, request: { headers: Record<string, string> }) => void): void;
+  registerRequestFilter(filter: (type: number, request: ShakaRequest, context?: ShakaRequestContext) => void): void;
 }
 
 export interface ShakaPlayer {

@@ -20,6 +20,9 @@ enforced by `scripts/license-gate.ts`.
 | `hls.js` | 1.7.3 | Apache-2.0 | `@otter-player/engine-adapter-hlsjs` |
 | `shaka-player` | 5.2.13 | Apache-2.0 | `@otter-player/engine-adapter-shaka` |
 | `mpegts.js` | 1.8.2 | Apache-2.0 | `@otter-player/engine-adapter-mpegts` |
+| `@svta/cml-cmcd` | 2.8.2 | Apache-2.0 | `@otter-player/media` (CMCD encoding, loaded on demand) |
+| `@svta/cml-structured-field-values` | 1.1.6 | Apache-2.0 | `@otter-player/media` (peer of `@svta/cml-cmcd`) |
+| `@svta/cml-utils` | 1.6.1 | Apache-2.0 | `@otter-player/media` (peer of `@svta/cml-cmcd`) |
 
 ## Vendored and copied code
 

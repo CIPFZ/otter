@@ -13,12 +13,11 @@ import {
   type TrackList,
   type VideoTrack,
 } from '@otter-player/media';
-import { createAbrDriver, type AbrDriver } from '@otter-player/pipeline';
+import type { AbrDriver } from '@otter-player/pipeline';
 import type Hls from 'hls.js';
 import type { ErrorData, HlsConfig, Level, MediaPlaylist } from 'hls.js';
-import { createOtterAbrController, levelsOf } from './abr.js';
+import type { createOtterAbrController } from './abr.js';
 
-export { bufferAhead } from './abr.js';
 
 export interface HlsJsEngineOptions {
   /** Extra hls.js configuration, applied over the adapter defaults. */
@@ -111,7 +110,8 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
   let destroyed = false;
   let firstSegment = false;
   let lastMediaRecovery = Number.NEGATIVE_INFINITY;
-  const driver: AbrDriver | undefined = options.abr === 'engine' ? undefined : createAbrDriver();
+  // Created in load(): the rule stack is imported next to hls.js so it stays out of the first screen.
+  let driver: AbrDriver | undefined;
   const onSeeking = (): void => driver?.reset();
 
   const refresh = (): void => {
@@ -137,7 +137,15 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
       if (typeof src !== 'string') {
         throw createError({ type: 'other', details: 'unsupportedSource', fatal: true, recoverable: false, message: 'hls.js needs a URL' });
       }
-      const mod = options.light === true ? await import('hls.js/light') : await import('hls.js');
+      // ABR rule stack and CMCD glue load together with hls.js (ADR-004 §2: nothing that only runs
+      // inside the engine belongs in the first screen).
+      const [mod, pipeline, abrGlue, cmcdGlue] = await Promise.all([
+        options.light === true ? import('hls.js/light') : import('hls.js'),
+        options.abr === 'engine' ? undefined : import('@otter-player/pipeline'),
+        options.abr === 'engine' ? undefined : import('./abr.js'),
+        ctx.cmcd === undefined ? undefined : import('./cmcd.js'),
+      ]);
+      driver = pipeline?.createAbrDriver();
       const HlsCtor = mod.default;
       if (destroyed) return;
       if (!HlsCtor.isSupported()) {
@@ -146,9 +154,12 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
       const headers = ctx.source.headers;
       // Builds without an exported AbrController fall back to hls.js' own ABR.
       const Base = (mod as { AbrController?: Parameters<typeof createOtterAbrController>[0] }).AbrController;
-      const abrController = driver === undefined || Base === undefined ? undefined : createOtterAbrController(Base, driver, ctx.media);
+      const abrController = driver === undefined || Base === undefined || abrGlue === undefined ? undefined : abrGlue.createOtterAbrController(Base, driver, ctx.media);
+      // CMCD through fLoader / pLoader (hls.js' own CMCD controller stays off, ADR-005 §2).
+      const loaders = ctx.cmcd === undefined || cmcdGlue === undefined ? undefined : cmcdGlue.cmcdLoaders(HlsCtor.DefaultConfig.loader, ctx.cmcd, () => hls);
       const instance = new HlsCtor({
         ...(abrController === undefined ? {} : { abrController }),
+        ...(loaders ?? {}),
         preferManagedMediaSource: ctx.mms,
         startPosition: ctx.options.startTime ?? -1,
         ...(headers === undefined
@@ -200,7 +211,7 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
 
       instance.on(Events.LEVEL_SWITCHED, (_e, { level }) => {
         refresh();
-        driver?.applied(level, levelsOf(instance));
+        if (abrGlue !== undefined) driver?.applied(level, abrGlue.levelsOf(instance));
         const auto = instance.autoLevelEnabled;
         const decided = driver?.lastDecision;
         const reason = !auto
