@@ -18,6 +18,19 @@ export interface DrmConfig {
   readonly serverCertificateUrl?: string;
 }
 
+/** Subtitle file next to the media; rendered by @otter-player/text, not by the engines. */
+export interface SidecarTextTrack {
+  readonly src: string;
+  /** Defaults from the file extension, then `vtt`. */
+  readonly format?: 'vtt' | 'srt' | 'ttml';
+  /** BCP 47 */
+  readonly language?: string;
+  readonly label?: string;
+  readonly role?: 'subtitles' | 'captions';
+  /** Selected on load. */
+  readonly default?: boolean;
+}
+
 export interface Source {
   readonly src: string | Blob;
   /** MIME hint: `application/vnd.apple.mpegurl`, `application/dash+xml`, `video/x-flv`, `video/mp4`, ... */
@@ -32,6 +45,7 @@ export interface Source {
    */
   readonly airplaySrc?: string;
   readonly headers?: Readonly<Record<string, string>>;
+  readonly textTracks?: readonly SidecarTextTrack[];
 }
 
 export interface LoadOptions {

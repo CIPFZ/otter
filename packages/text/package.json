@@ -21,6 +21,15 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*",
-    "@otter-player/surface": "workspace:*"
+    "@otter-player/media": "workspace:*",
+    "@otter-player/surface": "workspace:*",
+    "imsc": "1.1.5",
+    "media-captions": "1.0.4"
+  },
+  "otter": {
+    "bundle": [
+      "imsc",
+      "sax"
+    ]
   }
 }

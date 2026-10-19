@@ -67,7 +67,7 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | 手势识别 | xgplayer `mobile` 插件、ArtPlayer `gesture` | L3 | MIT |
 | 进度条缩略图（VTT sprite） | Vidstack `thumbnails` / `videojs-vtt-thumbnails` | L3 | |
 | 章节与 I-frame 预览 | Shaka `getThumbnails` | L3 | |
-| WebVTT 解析与渲染 | `vtt.js`（Mozilla，Apache）或 Vidstack `media-captions`（MIT，VTT/SRT/SSA 基础） | L1 | M2 选 `media-captions` 1.0.4 只做解析；渲染（region / line / position / 避让 / 安全区）自写（ADR-005 §4） |
+| WebVTT 解析与渲染 | `vtt.js`（Mozilla，Apache）或 Vidstack `media-captions`（MIT，VTT/SRT/SSA 基础） | L1 | M2 选 `media-captions` 1.0.4 只做解析；渲染（region / line / position / 避让 / 安全区）自写（ADR-005 §4）。注意：它的 `renderVTTCueString` 把实体解码后的文本直接拼进 HTML 字符串（`&lt;img onerror&gt;` 会变成真标签），不能配合 `innerHTML` 使用；Otter 只用 `tokenizeVTTCue`，用 `textContent` 建 DOM |
 | IMSC1 / TTML | imscJS（BSD-2，npm `imsc`） | L1 | 标准参考实现。M2 用 1.1.5（传递依赖 `sax` 为 ISC），动态加载 |
 | ASS 特效字幕 | `jassub` / `libass-wasm`（LGPL/MIT 包装） | L1 独立加载 | 可选插件 |
 | CEA-608/708 | hls.js `cea-608-parser.ts` + `output-filter.ts` | L3 | 引擎侧解析。M2 复制到 `packages/text/src/vendor/hls.js/`（hls.js@e5ff358），只做 608 |

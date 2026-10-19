@@ -55,7 +55,7 @@ export {
   type MediaPluginOptions,
   type MediaState,
 } from './session.js';
-export type { DrmConfig, KeySystem, LoadOptions, Source } from './source.js';
+export type { DrmConfig, KeySystem, LoadOptions, SidecarTextTrack, Source } from './source.js';
 export {
   EMPTY_TIME_RANGES,
   EMPTY_TRACKS,

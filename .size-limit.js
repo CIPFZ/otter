@@ -5,6 +5,24 @@ import { existsSync, readdirSync } from 'node:fs';
 
 const dist = (name) => `packages/${name}/dist/index.js`;
 
+/**
+ * First screen = everything except import() targets. Engines, the CMCD encoder and later text
+ * parsers load on demand (ADR-004 §2, ADR-005); esbuild would otherwise inline them, since
+ * size-limit bundles without code splitting.
+ */
+const firstScreenOnly = (config) => ({
+  ...config,
+  plugins: [
+    ...(config.plugins ?? []),
+    {
+      name: 'otter-first-screen',
+      setup(build) {
+        build.onResolve({ filter: /.*/ }, (args) => (args.kind === 'dynamic-import' ? { path: args.path, external: true } : undefined));
+      },
+    },
+  ],
+});
+
 const budgets = [
   { name: 'budget: core (SPEC §1.1, ≤ 15 KB)', path: dist('core'), import: '*', gzip: true, limit: '15 KB' },
   {
@@ -14,6 +32,8 @@ const budgets = [
     import: '*',
     gzip: true,
     limit: '30 KB',
+    // Caption parsers (media-captions, imscJS) load with the first subtitle file.
+    modifyEsbuildConfig: firstScreenOnly,
   },
   { name: 'budget: danmaku (SPEC §1.1, ≤ 10 KB)', path: dist('danmaku'), import: '*', gzip: true, limit: '10 KB' },
 ];
@@ -45,24 +65,6 @@ const SCENARIOS = [
   ['shorts', '沉浸竖屏信息流', '60 KB', []],
   ['tv', '电视遥控器', '90 KB', ['hls.js']],
 ];
-
-/**
- * First screen = everything except import() targets. Engines, the CMCD encoder and later text
- * parsers load on demand (ADR-004 §2, ADR-005); esbuild would otherwise inline them, since
- * size-limit bundles without code splitting.
- */
-const firstScreenOnly = (config) => ({
-  ...config,
-  plugins: [
-    ...(config.plugins ?? []),
-    {
-      name: 'otter-first-screen',
-      setup(build) {
-        build.onResolve({ filter: /.*/ }, (args) => (args.kind === 'dynamic-import' ? { path: args.path, external: true } : undefined));
-      },
-    },
-  ],
-});
 
 const scenarios = SCENARIOS.flatMap(([id, row, limit, engines, gatedFrom]) => {
   const own = {

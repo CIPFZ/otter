@@ -23,6 +23,9 @@ enforced by `scripts/license-gate.ts`.
 | `@svta/cml-cmcd` | 2.8.2 | Apache-2.0 | `@otter-player/media` (CMCD encoding, loaded on demand) |
 | `@svta/cml-structured-field-values` | 1.1.6 | Apache-2.0 | `@otter-player/media` (peer of `@svta/cml-cmcd`) |
 | `@svta/cml-utils` | 1.6.1 | Apache-2.0 | `@otter-player/media` (peer of `@svta/cml-cmcd`) |
+| `media-captions` | 1.0.4 | MIT | `@otter-player/text` (WebVTT / SRT parser, loaded on demand) |
+| `imsc` | 1.1.5 | BSD-2-Clause | `@otter-player/text` (IMSC1 / TTML, loaded on demand) |
+| `sax` | 1.2.1 | ISC | `@otter-player/text` (dependency of `imsc`) |
 
 ## Vendored and copied code
 
