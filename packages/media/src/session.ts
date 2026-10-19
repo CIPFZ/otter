@@ -290,11 +290,15 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     set({ backend: stepLabel(decision.step), format: decision.format.id });
     try {
       backend.attach(options.target);
+      // User preferences go to the element before loading: element events during load (e.g.
+      // loadedmetadata) mirror the element into the store, and muted autoplay needs the mute
+      // in place before the first play().
       const prefs = state();
-      await backend.load(source, opts);
-      if (loadToken !== token) return null;
       backend.setVolume(prefs.volume);
       backend.setMuted(prefs.muted);
+      backend.setPlaybackRate(prefs.playbackRate);
+      await backend.load(source, opts);
+      if (loadToken !== token) return null;
       if (prefs.quality !== 'auto') backend.selectQuality(prefs.quality);
       set({ status: 'ready', tracks: backend.tracks, error: null });
       if (opts.autoplay === true) play();

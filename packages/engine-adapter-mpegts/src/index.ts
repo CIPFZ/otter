@@ -155,18 +155,36 @@ export function createMpegtsEngine(ctx: EngineContext, options: MpegtsEngineOpti
 
       await new Promise<void>((resolve, reject) => {
         let settled = false;
-        p.on(Events.MEDIA_INFO, (info) => {
-          tracks = mapMpegtsTracks(info as MpegtsMediaInfo);
-          bus.emit('tracks-change', tracks);
+        const media = ctx.media;
+        const done = (): void => {
+          media.removeEventListener('loadedmetadata', onMetadata);
           if (!settled) {
             settled = true;
             resolve();
           }
+        };
+        // mpegts.js emits MEDIA_INFO only once its media info is "complete"; for TS without an
+        // audio track hasAudio is never set, so it never fires (video-only cameras). The element's
+        // metadata is the fallback signal that playback is set up.
+        const onMetadata = (): void => {
+          if (tracks.video.length === 0) {
+            const v = media as HTMLVideoElement;
+            tracks = mapMpegtsTracks(v.videoWidth > 0 ? { width: v.videoWidth, height: v.videoHeight } : {});
+            bus.emit('tracks-change', tracks);
+          }
+          done();
+        };
+        media.addEventListener('loadedmetadata', onMetadata);
+        p.on(Events.MEDIA_INFO, (info) => {
+          tracks = mapMpegtsTracks(info as MpegtsMediaInfo);
+          bus.emit('tracks-change', tracks);
+          done();
         });
         p.on(Events.ERROR, (type, details, info) => {
           const error = mapMpegtsError(type, details, info);
           if (!settled) {
             settled = true;
+            media.removeEventListener('loadedmetadata', onMetadata);
             reject(error);
             return;
           }

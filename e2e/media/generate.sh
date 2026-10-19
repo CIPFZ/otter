@@ -114,5 +114,7 @@ JSON
 # FLV (VOD file and source of the paced local live stream) and MPEG-TS.
 "${FF[@]}" -f lavfi -i "$SRC_V" -f lavfi -i "$SRC_A" -t 10 "${V360[@]}" "${AAC[@]}" -f flv flv/clip.flv
 "${FF[@]}" -f lavfi -i "$SRC_V" -f lavfi -i "$SRC_A" -t $DUR "${V360[@]}" "${AAC[@]}" -f mpegts ts/clip.ts
+# Video-only TS (cameras): mpegts.js never reports complete media info without an audio track.
+"${FF[@]}" -f lavfi -i "$SRC_V" -t $DUR "${V360[@]}" -an -f mpegts ts/clip-video-only.ts
 
 du -sh . && find . -type f | sort | sed 's/^/  /' | head -80

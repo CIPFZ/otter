@@ -107,7 +107,8 @@ describe('media plugin', () => {
     expect(view.getState().status).toBe('loading');
     await flush();
     expect(view.getState()).toMatchObject({ status: 'ready', backend: 'mse', format: 'hls' });
-    expect(created[0]?.calls.slice(0, 2)).toEqual(['attach', 'load']);
+    // Preferences reach the element before load (muted autoplay, no store overwrite during load).
+    expect(created[0]?.calls.slice(0, 5)).toEqual(['attach', 'volume:1', 'muted:false', 'rate:1', 'load']);
     expect(view.getState().route).toEqual(plugin.router.explain());
     expect(qoe.find((e) => e.type === 'route')?.payload).toMatchObject({ backend: 'mse' });
   });
@@ -207,6 +208,18 @@ describe('media plugin', () => {
     b.emit('tracks-change', { ...b.tracks });
     expect(view.getState().activeQuality).toBe('v1');
     expect(qoe.some((e) => e.type === 'quality-switch')).toBe(false);
+  });
+
+  it('applies a mute chosen before load to the element before loading (muted autoplay)', async () => {
+    const { view, created } = await setup();
+    view.dispatch('set-muted', { muted: true });
+    view.dispatch('set-playback-rate', { rate: 1.5 });
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' }, options: { autoplay: true } });
+    await flush();
+    const calls = created[0]?.calls ?? [];
+    expect(calls.indexOf('muted:true')).toBeLessThan(calls.indexOf('load'));
+    expect(calls.indexOf('rate:1.5')).toBeLessThan(calls.indexOf('load'));
+    expect(calls.indexOf('load')).toBeLessThan(calls.indexOf('play'));
   });
 
   it('ignores events from a superseded load', async () => {

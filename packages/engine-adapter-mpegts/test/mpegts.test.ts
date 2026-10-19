@@ -41,7 +41,12 @@ vi.mock('mpegts.js', () => ({
 
 const { createMpegtsEngine, mapMpegtsError } = await import('@otter-player/engine-adapter-mpegts');
 
-const media = { buffered: { length: 1, start: () => 0, end: () => 10 }, currentTime: 8.5 } as unknown as HTMLMediaElement;
+const media = Object.assign(new EventTarget(), {
+  buffered: { length: 1, start: () => 0, end: () => 10 },
+  currentTime: 8.5,
+  videoWidth: 640,
+  videoHeight: 360,
+}) as unknown as HTMLMediaElement;
 const ctx = (live: boolean): EngineContext => ({
   source: { src: 'https://e.test/live.flv', live, headers: { 'x-token': 't' } },
   options: {},
@@ -105,6 +110,16 @@ describe('mpegts.js adapter', () => {
     expect(p.config['headers']).toEqual({ 'x-token': 't', 'CMCD-Session': 's' });
     p.fire(Events.MEDIA_INFO, {});
     await loading;
+  });
+
+  it('resolves load from the element when mpegts.js never reports media info (video-only TS)', async () => {
+    const engine = createMpegtsEngine({ ...ctx(false), source: { src: 'https://e.test/cam.ts' } }, { type: 'mpegts' });
+    const loading = engine.load();
+    await flushImport();
+    media.dispatchEvent(new Event('loadedmetadata'));
+    await loading;
+    expect(engine.tracks.video[0]).toMatchObject({ id: 'main', width: 640, height: 360 });
+    expect(engine.tracks.audio).toEqual([]);
   });
 
   it('reports unsupported environments', async () => {
