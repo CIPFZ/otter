@@ -1,4 +1,5 @@
 export type { Insets, Overlay, OverlayHost } from './overlay.js';
+export { createOverlayLayer, type OverlayLayer, type OverlayLayerOptions } from './overlay-layer.js';
 export {
   computeContentRect,
   createVideoSurface,

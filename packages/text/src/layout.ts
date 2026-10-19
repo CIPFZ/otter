@@ -93,8 +93,14 @@ export interface PlacedCue extends Box {
   readonly hidden: boolean;
 }
 
+// Half a pixel of slack: measured boxes are rounded (offsetHeight) while the line step is not,
+// and a 0.25 px "overlap" must not push a cue up a whole extra line.
+const EPS = 0.5;
 const overlaps = (a: Box, b: Box): boolean =>
-  a.left < b.left + b.width && b.left < a.left + a.width && a.top < b.top + b.height && b.top < a.top + a.height;
+  a.left < b.left + b.width - EPS &&
+  b.left < a.left + a.width - EPS &&
+  a.top < b.top + b.height - EPS &&
+  b.top < a.top + a.height - EPS;
 
 const inside = (b: Box, area: Area): boolean => b.top >= -0.5 && b.top + b.height <= area.height + 0.5;
 

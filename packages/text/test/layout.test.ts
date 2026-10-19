@@ -32,6 +32,12 @@ describe('layoutCues', () => {
     expect((b?.top ?? 0) + 25).toBeLessThanOrEqual(450);
   });
 
+  it('a rounded box height a fraction above the line step still stacks one line up', () => {
+    const [a, b] = layoutCues([{ settings: s(), height: 34 }, { settings: s(), height: 34 }], AREA, 33.75);
+    expect(a?.top).toBe(466);
+    expect(b?.top).toBe(432.25);
+  });
+
   it('counts non-negative lines from the top and negative lines from the bottom', () => {
     const [top, second, bottom] = layoutCues(
       [

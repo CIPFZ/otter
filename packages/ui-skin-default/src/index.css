@@ -35,6 +35,9 @@
   padding: 4px 8px;
   background: linear-gradient(to top, color-mix(in srgb, var(--otter-bg-deep) 90%, transparent), transparent);
 }
+:where([data-otter-controls][hidden]) {
+  display: none;
+}
 :where([data-otter-player]) otter-stats {
   position: absolute;
   inset: 8px auto auto 8px;

@@ -20,7 +20,7 @@ const CSS = `
 .otter-cue { position: absolute; box-sizing: border-box; padding: 0 0.5em;
   white-space: pre-line; overflow-wrap: break-word; transition: top 0.433s; }
 .otter-cue-text { color: var(--otter-cue-color, #fff); background: var(--otter-cue-background, rgb(0 0 0 / 0.8));
-  text-shadow: var(--otter-cue-text-shadow, none); padding: 0.1em 0.3em;
+  text-shadow: var(--otter-cue-text-shadow, none); padding: 0 0.3em;
   box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .otter-cue [data-future] { color: var(--otter-cue-future-color, inherit); }
 @media (prefers-reduced-motion: reduce) { .otter-cue { transition: none; } }
