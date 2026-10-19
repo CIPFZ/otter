@@ -25,6 +25,11 @@ export interface UiStrings {
   readonly exitFullscreen: string;
   readonly pip: string;
   readonly exitPip: string;
+  readonly theater: string;
+  readonly exitTheater: string;
+  readonly cast: string;
+  readonly stopCast: string;
+  readonly airplay: string;
   readonly audio: string;
   // Caption display settings (CVAA).
   readonly captionSize: string;
@@ -109,6 +114,11 @@ export const STRINGS_EN: UiStrings = {
   exitFullscreen: 'Exit fullscreen',
   pip: 'Picture in picture',
   exitPip: 'Exit picture in picture',
+  theater: 'Theater mode',
+  exitTheater: 'Default view',
+  cast: 'Cast',
+  stopCast: 'Casting',
+  airplay: 'AirPlay',
   audio: 'Audio',
   captionSize: 'Caption size',
   captionColor: 'Caption color',
@@ -184,6 +194,11 @@ export const STRINGS_ZH: UiStrings = {
   exitFullscreen: '退出全屏',
   pip: '画中画',
   exitPip: '退出画中画',
+  theater: '剧场模式',
+  exitTheater: '默认视图',
+  cast: '投屏',
+  stopCast: '投屏中',
+  airplay: 'AirPlay',
   audio: '音轨',
   captionSize: '字幕大小',
   captionColor: '字幕颜色',

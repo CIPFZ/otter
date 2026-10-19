@@ -81,6 +81,38 @@
   container-type: size;
   --otter-menu-max-height: calc(100cqh - var(--otter-bar-height) - 64px);
 }
+/* Presentation modes (SPEC §15, ADR-007 §5). Pseudo-fullscreen (iPhone): covers the viewport,
+   the presentation controller locks page scrolling. */
+:where([data-otter-player][data-otter-presentation='fullscreen'][data-otter-emulated]) {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  touch-action: none;
+  aspect-ratio: auto;
+  container-type: size;
+  --otter-menu-max-height: calc(100cqh - var(--otter-bar-height) - 64px);
+}
+/* Page mini window: corner of the viewport; a placeholder keeps the page layout. */
+:where([data-otter-player][data-otter-presentation='mini']) {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483000;
+  width: min(400px, calc(100vw - 32px));
+  border-radius: var(--otter-radius-lg);
+  box-shadow: var(--otter-shadow-pop);
+}
+/* Document PiP window: the player fills it. */
+:where([data-otter-player][data-otter-presentation='docpip']) {
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: auto;
+  container-type: size;
+  --otter-menu-max-height: calc(100cqh - var(--otter-bar-height) - 64px);
+}
 :where([data-otter-player]) > video {
   display: block;
   width: 100%;
@@ -263,7 +295,7 @@
   }
 }
 @container (max-width: 420px) {
-  :where([data-otter-controls]) :is(otter-pip-button, otter-volume-slider) {
+  :where([data-otter-controls]) :is(otter-pip-button, otter-theater-button, otter-volume-slider) {
     display: none;
   }
   :where([data-otter-title]) {

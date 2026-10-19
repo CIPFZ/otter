@@ -9,9 +9,11 @@
 
 import {
   Activity,
+  Airplay,
   AudioLines,
   Captions,
   CaptionsOff,
+  Cast,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -35,7 +37,7 @@ import {
 import type { CaptionStyle } from '@otter-player/text';
 import type { UiState } from './context.js';
 import { formatBitrate, formatMs, formatSeconds, formatTime } from './format.js';
-import { icon, LiveDot, SpinnerRing, type IconNode } from './icons.js';
+import { icon, LiveDot, SpinnerRing, Theater, type IconNode } from './icons.js';
 import { buttonCss, createBase, glass, glassFallback, rangeCss, REDUCED_MOTION, speakTime, speakVolume, T, unsupported, type OtterBase } from './primitives.js';
 import { fill, type UiStrings } from './strings.js';
 
@@ -71,6 +73,13 @@ export const M25_ELEMENTS = {
   BigPlay: 'otter-big-play',
   Feedback: 'otter-feedback',
   ErrorCard: 'otter-error',
+} as const;
+
+/** M3 presentation controls (ADR-007 §5). */
+export const M3_ELEMENTS = {
+  TheaterButton: 'otter-theater-button',
+  CastButton: 'otter-cast-button',
+  AirPlayButton: 'otter-airplay-button',
 } as const;
 
 export interface DefineOptions {
@@ -306,13 +315,14 @@ const fullscreenButtonClass = () =>
         this.ui?.dispatch('toggle-fullscreen', {}, { type: e.type, source: 'otter-fullscreen-button' });
       }
       protected render(s: Readonly<UiState>): void {
-        const on = s.fullscreen === true;
+        const on = s.presentation?.mode === 'fullscreen';
         this.show(on ? this.strings.exitFullscreen : this.strings.fullscreen, on ? 'exit' : 'enter');
-        unsupported(this, s.fullscreenAvailable === false);
+        unsupported(this, s.presentation?.capabilities.fullscreen === false);
       }
     };
   });
 
+/** Video PiP, or Document PiP where only that exists (the presentation plugin picks). */
 const pipButtonClass = () =>
   once('PipButton', () => {
     const ButtonElement = buttonElementClass();
@@ -324,10 +334,53 @@ const pipButtonClass = () =>
         this.ui?.dispatch('toggle-pip', {}, { type: e.type, source: 'otter-pip-button' });
       }
       protected render(s: Readonly<UiState>): void {
-        const on = s.pip === true;
+        const p = s.presentation;
+        const on = p?.mode === 'pip' || p?.mode === 'docpip';
         this.show(on ? this.strings.exitPip : this.strings.pip, 'pip');
         this.button?.setAttribute('aria-pressed', String(on));
-        unsupported(this, s.pipAvailable !== true);
+        unsupported(this, p === undefined || (p.capabilities.pip === false && p.capabilities.docpip === false));
+      }
+    };
+  });
+
+/** Theater mode: layout only, the host resizes on `data-otter-theater` (SPEC §15). */
+const theaterButtonClass = () =>
+  once('TheaterButton', () => {
+    const ButtonElement = buttonElementClass();
+    return class TheaterButton extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { theater: Theater };
+      }
+      protected activate(e: Event): void {
+        this.ui?.dispatch('toggle-theater', {}, { type: e.type, source: 'otter-theater-button' });
+      }
+      protected render(s: Readonly<UiState>): void {
+        const on = s.presentation?.mode === 'theater';
+        this.show(on ? this.strings.exitTheater : this.strings.theater, 'theater');
+        this.button?.setAttribute('aria-pressed', String(on));
+        unsupported(this, s.presentation?.capabilities.theater !== 'emulated');
+      }
+    };
+  });
+
+/** Cast (Remote Playback API) and AirPlay: shown while a receiver is available, opens the picker. */
+const remoteButtonClass = (target: 'cast' | 'airplay') =>
+  once(target === 'cast' ? 'CastButton' : 'AirPlayButton', () => {
+    const ButtonElement = buttonElementClass();
+    return class RemoteButton extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { remote: target === 'cast' ? Cast : Airplay };
+      }
+      protected activate(e: Event): void {
+        this.ui?.dispatch(target === 'cast' ? 'open-cast-picker' : 'open-airplay-picker', {}, { type: e.type, source: `otter-${target}-button` });
+      }
+      protected render(s: Readonly<UiState>): void {
+        const state = s[target] ?? 'unavailable';
+        const on = state === 'connected';
+        this.show(target === 'airplay' ? this.strings.airplay : on ? this.strings.stopCast : this.strings.cast, 'remote');
+        this.button?.setAttribute('aria-pressed', String(on));
+        this.toggleAttribute('data-connecting', state === 'connecting');
+        unsupported(this, state === 'unavailable');
       }
     };
   });
@@ -912,7 +965,8 @@ const announcerClass = () =>
         }
         if (s.quality !== p.quality) this.say(fill(t.announceQuality, { label: s.quality === 'auto' ? t.qualityAuto : qualityLabel(s, s.quality) ?? s.quality }));
         if (s.playbackRate !== p.playbackRate) this.say(fill(t.announceSpeed, { n: s.playbackRate }));
-        if (s.fullscreen !== p.fullscreen && s.fullscreen !== undefined) this.say(s.fullscreen ? t.announceFullscreen : t.announceExitFullscreen);
+        const fs = s.presentation?.mode === 'fullscreen';
+        if (fs !== (p.presentation?.mode === 'fullscreen') && s.presentation !== undefined) this.say(fs ? t.announceFullscreen : t.announceExitFullscreen);
         if (s.error !== null && s.error !== p.error && s.error.fatal) this.say(fill(t.announceError, { label: s.error.details }));
       }
     };
@@ -1686,6 +1740,12 @@ export const otterBigPlay = (): Ctor => bigPlayClass();
 export const otterFeedback = (): Ctor => feedbackClass();
 /** `M25_ELEMENTS.ErrorCard` element class. */
 export const otterErrorCard = (): Ctor => errorCardClass();
+/** `M3_ELEMENTS.TheaterButton` element class. */
+export const otterTheaterButton = (): Ctor => theaterButtonClass();
+/** `M3_ELEMENTS.CastButton` element class. */
+export const otterCastButton = (): Ctor => remoteButtonClass('cast');
+/** `M3_ELEMENTS.AirPlayButton` element class. */
+export const otterAirPlayButton = (): Ctor => remoteButtonClass('airplay');
 
 /** Registers the given elements (tag -> factory) once per registry; returns the constructors. */
 export function defineElements(elements: Readonly<Record<string, () => Ctor>>, options: DefineOptions = {}): Record<string, Ctor> {
@@ -1728,6 +1788,9 @@ export function defineOtterElements(options: DefineOptions = {}): Record<string,
       [M25_ELEMENTS.BigPlay]: otterBigPlay,
       [M25_ELEMENTS.Feedback]: otterFeedback,
       [M25_ELEMENTS.ErrorCard]: otterErrorCard,
+      [M3_ELEMENTS.TheaterButton]: otterTheaterButton,
+      [M3_ELEMENTS.CastButton]: otterCastButton,
+      [M3_ELEMENTS.AirPlayButton]: otterAirPlayButton,
     },
     options,
   );

@@ -12,7 +12,6 @@ import {
 import { createAdsOverlay } from '@otter-player/overlay-ads';
 import { createThumbnailsOverlay } from '@otter-player/overlay-thumbnails';
 import { createWatermarkOverlay } from '@otter-player/overlay-watermark';
-import { createPresentationController } from '@otter-player/presentation';
 import { createCanvasSurface, createGPUSurface, ZERO_RECT } from '@otter-player/surface';
 import { createTextOverlay } from '@otter-player/text';
 import { createAssOverlay } from '@otter-player/text-ass';
@@ -63,20 +62,6 @@ describe('overlays', () => {
     ];
     expect(new Set(all.map((o) => o.id)).size).toBe(all.length);
     expect(new Set(all.map((o) => o.zIndex)).size).toBe(all.length);
-  });
-});
-
-describe('presentation', () => {
-  it('starts inline and rejects every request', async () => {
-    const core = createCore();
-    const controller = createPresentationController({
-      container: fakeElement<HTMLElement>(),
-      surface: createCanvasSurface(fakeElement<HTMLCanvasElement>()),
-      store: core.store.view(),
-    });
-    expect(controller.mode).toBe('inline');
-    expect(controller.capabilities.inline).toBe('native');
-    await expect(controller.request('fullscreen')).rejects.toMatchObject(notImplemented);
   });
 });
 

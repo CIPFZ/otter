@@ -6,7 +6,7 @@
 
 - Otter（工作代号）：100% TypeScript 的通用 Web 播放器，引擎可插拔、可组合、取百家之长。
 - 文档：`RESEARCH.md`（生态调研与事实依据）、`SPEC.md`（架构与里程碑）、`REUSE.md`（复用来源、等级、许可证）、`docs/decisions/`（ADR）。
-- 当前阶段：M0、M1 已完成（M1 报告见 `docs/reports/M1.md`）；M2 已验收（`docs/reports/M2.md`，ADR-005）；M2.5 视觉系统已交付、待目视验收（`docs/reports/M2.5.md`，ADR-006）；之后进入 M3。工程基线见 ADR-002，引擎契约见 ADR-003，真机与体积口径见 ADR-004。
+- 当前阶段：M0、M1 已完成（M1 报告见 `docs/reports/M1.md`）；M2 已验收（`docs/reports/M2.md`，ADR-005）；M2.5 视觉系统已验收（`docs/reports/M2.5.md`，ADR-006）；M3 进行中（契约见 ADR-007）。工程基线见 ADR-002，引擎契约见 ADR-003，真机与体积口径见 ADR-004。
 
 ## 2. 不可违背的约束
 

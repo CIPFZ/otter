@@ -77,9 +77,12 @@ M3 是第一次做 L2 vendoring（REUSE §5），也是第一次用自研代码�
 ### 5. presentation 全模式状态机（替换 M2 过渡插件）
 
 - 用 `createPresentationController(options)` 实现 SPEC §15，并以插件形式接入 store：
-  - store 中保存 `presentation: { mode, capabilities, pending }`；
-  - action 有 `request-presentation { mode }`、`exit-presentation`，以及兼容的 `toggle-fullscreen`、`toggle-pip`、`toggle-theater`、`toggle-mini`；
+  - store 中保存 `presentation: { mode, capabilities, pending, videoOnly }`，以及投屏状态 `cast`、`airplay`（`unavailable` / `available` / `connecting` / `connected`）和 `wakeLocked`；
+  - action 有 `request-presentation { mode, system? }`、`exit-presentation`，以及兼容的 `toggle-fullscreen`、`toggle-pip`、`toggle-theater`、`toggle-mini`；另有 `exit-fullscreen`（没有打开的菜单时，Esc 经 chrome 插件派发它，用来退出伪全屏），以及 `open-cast-picker`、`open-airplay-picker`；
   - QoE 事件：`presentation-change`、`presentation-denied { from, to, reason }`。
+- 首屏只放状态机本身。自动小窗（`autoMini`）、WakeLock、MediaSession 和投屏在插件安装时作为一个按需块加载：它们在媒体播放后才有意义。投屏按钮在接收端可用之后才出现，那时这个块早已加载完，所以点击时仍是同步调用 API。
+- 只用无前缀的 Fullscreen / PiP API（Safari 16.4+ / 13.1+，RESEARCH §1）。更旧的引擎上 `fullscreen` 报告 `emulated`（伪全屏），`pip` 报告 `false`。iPhone 的 `webkitEnterFullscreen` 是唯一保留的前缀 API。
+- 退出全屏、PiP、Document PiP 后回到下面的布局模式：从剧场进入的，回到剧场。
 - 每次迁移都是：同步调用浏览器 API → 等待结果 → 确认或回滚。等待期间 `pending` 是目标模式，store 里的 `mode` 不先改，拒绝时发出 `denied` 和原因（`notAllowed`、`unsupported`、`noUserGesture`、`busy`、`dismissed`）。
 - 能力探测，每个环境按实际报告 `native` / `emulated` / `false`：
   - `fullscreen`：支持元素全屏为 `native`；iPhone 为 `emulated`（伪全屏：容器 `position: fixed`、`100dvh`、锁定 body 滚动，保住自定义 UI、字幕和弹幕）；

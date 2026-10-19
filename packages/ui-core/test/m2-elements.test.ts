@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCore, createStore } from '@otter-player/core';
 import { MEDIA_SLICE, type MediaActionMap, type MediaState } from '@otter-player/media';
-import { PRESENTATION_SLICE } from '@otter-player/presentation';
+import { INITIAL_PRESENTATION_STATE, PRESENTATION_SLICE } from '@otter-player/presentation';
 import { TEXT_SLICE } from '@otter-player/text';
 import {
   CHROME_SLICE,
@@ -35,6 +35,9 @@ function mount(html: string, lang?: string) {
     'select-text-track',
     'select-audio-track',
     'set-caption-style',
+    'toggle-theater',
+    'open-cast-picker',
+    'open-airplay-picker',
   ] as const) {
     store.handle(type, (payload) => void calls.push([type, payload]));
   }
@@ -69,7 +72,7 @@ describe('M2 primitives', () => {
     const { store, calls, shadow, root } = mount('<otter-captions-button></otter-captions-button><otter-fullscreen-button></otter-fullscreen-button><otter-pip-button></otter-pip-button>');
     const cc = shadow('otter-captions-button').querySelector('button') as HTMLButtonElement;
     expect(root.querySelector('otter-captions-button')?.hasAttribute('data-otter-unsupported')).toBe(true);
-    store.setState({ ...READY, fullscreenAvailable: true });
+    store.setState({ ...READY, presentation: { ...INITIAL_PRESENTATION_STATE.presentation, capabilities: { ...INITIAL_PRESENTATION_STATE.presentation.capabilities, fullscreen: 'native' } } });
     expect(root.querySelector('otter-captions-button')?.hasAttribute('data-otter-unsupported')).toBe(false);
     expect(cc.getAttribute('aria-label')).toBe('Captions');
     expect(cc.getAttribute('aria-pressed')).toBe('false');
@@ -78,13 +81,39 @@ describe('M2 primitives', () => {
     expect(cc.getAttribute('aria-pressed')).toBe('true');
     const fs = shadow('otter-fullscreen-button').querySelector('button') as HTMLButtonElement;
     fs.click();
-    store.setState({ fullscreen: true });
+    store.setState({ presentation: { ...(store.getState().presentation ?? INITIAL_PRESENTATION_STATE.presentation), mode: 'fullscreen' } });
     expect(fs.getAttribute('aria-label')).toBe('Exit fullscreen');
     // No PiP support: the button is hidden, not just disabled.
     expect(root.querySelector('otter-pip-button')?.hasAttribute('data-otter-unsupported')).toBe(true);
     expect(calls).toEqual([
       ['toggle-captions', {}],
       ['toggle-fullscreen', {}],
+    ]);
+  });
+
+  it('theater, Cast and AirPlay buttons: shown by capability / availability, dispatch synchronously', () => {
+    const { store, calls, shadow, root } = mount('<otter-theater-button></otter-theater-button><otter-cast-button></otter-cast-button><otter-airplay-button></otter-airplay-button>');
+    const caps = { ...INITIAL_PRESENTATION_STATE.presentation.capabilities, theater: 'emulated' as const };
+    store.setState({ presentation: { ...INITIAL_PRESENTATION_STATE.presentation, capabilities: caps } });
+    expect(root.querySelector('otter-theater-button')?.hasAttribute('data-otter-unsupported')).toBe(false);
+    expect(root.querySelector('otter-cast-button')?.hasAttribute('data-otter-unsupported')).toBe(true);
+    expect(root.querySelector('otter-airplay-button')?.hasAttribute('data-otter-unsupported')).toBe(true);
+    const theater = shadow('otter-theater-button').querySelector('button') as HTMLButtonElement;
+    theater.click();
+    store.setState({ presentation: { ...INITIAL_PRESENTATION_STATE.presentation, capabilities: caps, mode: 'theater' } });
+    expect(theater.getAttribute('aria-pressed')).toBe('true');
+    expect(theater.getAttribute('aria-label')).toBe('Default view');
+    store.setState({ cast: 'available', airplay: 'available' });
+    const cast = shadow('otter-cast-button').querySelector('button') as HTMLButtonElement;
+    expect(root.querySelector('otter-cast-button')?.hasAttribute('data-otter-unsupported')).toBe(false);
+    cast.click();
+    store.setState({ cast: 'connected' });
+    expect(cast.getAttribute('aria-pressed')).toBe('true');
+    (shadow('otter-airplay-button').querySelector('button') as HTMLButtonElement).click();
+    expect(calls).toEqual([
+      ['toggle-theater', {}],
+      ['open-cast-picker', {}],
+      ['open-airplay-picker', {}],
     ]);
   });
 

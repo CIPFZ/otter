@@ -72,6 +72,18 @@ export interface QoeEventMap {
     readonly watched: number;
   };
   route: RouteExplanation;
+  /** Window mode changed (SPEC §15); modes are PresentationMode names. */
+  'presentation-change': {
+    readonly from: string;
+    readonly to: string;
+    readonly reason?: string;
+  };
+  /** A mode request was refused or rolled back (ADR-007 §5). */
+  'presentation-denied': {
+    readonly from: string;
+    readonly to: string;
+    readonly reason: string;
+  };
 }
 
 export type QoeEventType = keyof QoeEventMap;

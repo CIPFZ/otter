@@ -69,6 +69,8 @@ const QOE_TYPES: readonly (keyof QoeEventMap)[] = [
   'dropped-frames',
   'exit',
   'route',
+  'presentation-change',
+  'presentation-denied',
 ];
 
 async function build(policy: RoutePolicy): Promise<{
@@ -87,6 +89,7 @@ async function build(policy: RoutePolicy): Promise<{
   const cmcd: CmcdConfig | undefined =
     cmcdMode === 'query' || cmcdMode === 'headers' ? { enabled: true, mode: cmcdMode, sessionId: 'otter-e2e', contentId: 'fixture' } : undefined;
   const root = document.getElementById('player') as HTMLElement;
+  document.body.toggleAttribute('data-scroll', params.get('scroll') === '1');
   const video = root.querySelector('video') as HTMLVideoElement;
   // One surface per page: rebuilding the core (setPolicy) reuses it.
   const surface = (video as HTMLVideoElement & { otterSurface?: Surface }).otterSurface ?? createVideoSurface(video);
@@ -104,7 +107,20 @@ async function build(policy: RoutePolicy): Promise<{
   const idleMs = Number(params.get('idle') ?? 3000);
   const core = createCore<State, Actions>({
     slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE],
-    plugins: [media, createQoePlugin(), text.plugin, createChromePlugin({ idleMs }), createPresentationPlugin({ container: root, surface })],
+    plugins: [
+      media,
+      createQoePlugin(),
+      text.plugin,
+      createChromePlugin({ idleMs }),
+      // ?mini=auto: corner window when scrolled out while playing; ?pip=document: Document PiP.
+      createPresentationPlugin({
+        container: root,
+        surface,
+        autoMini: params.get('mini') === 'auto',
+        preferDocumentPip: params.get('pip') === 'document',
+        mediaSession: { metadata: { title: 'Otter Player Demo', artist: 'Otter' } },
+      }),
+    ],
   });
   await core.start();
   root.querySelector('[data-otter-overlays]')?.remove();

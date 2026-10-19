@@ -9,13 +9,15 @@
     <style>
       body { margin: 0; padding: 16px; background: #10161e; color: #fff; font: 14px system-ui, sans-serif; }
       main { max-width: 960px; margin: 0 auto; }
+      /* Theater mode is the host's layout (SPEC §15): the player widens to the page. */
+      main:has([data-otter-theater]) { max-width: none; }
+      /* ?scroll=1: room to scroll the player out of view (mini window). */
+      body[data-scroll] main::after { content: ''; display: block; height: 200vh; }
     </style>
   </head>
   <body>
     <main>
       <h1>Otter player fixture</h1>
-      <!-- tabindex=-1: the player root takes keyboard focus for hotkeys; the picture itself is not a
-           control (Firefox would otherwise put the bare <video> in the tab order). -->
       <!-- tabindex=-1: the player root takes keyboard focus for hotkeys; the picture itself is not a
            control (Firefox would otherwise put the bare <video> in the tab order). -->
       <div id="player" data-otter-player role="region" aria-label="Video player" tabindex="-1">
@@ -50,7 +52,10 @@
             <otter-speed-menu></otter-speed-menu>
             <otter-captions-button></otter-captions-button>
             <otter-settings-menu></otter-settings-menu>
+            <otter-cast-button></otter-cast-button>
+            <otter-airplay-button></otter-airplay-button>
             <otter-pip-button></otter-pip-button>
+            <otter-theater-button></otter-theater-button>
             <otter-fullscreen-button data-tip-align="end"></otter-fullscreen-button>
           </div>
         </div>

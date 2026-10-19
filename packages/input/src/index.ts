@@ -126,7 +126,8 @@ export interface InputControllerOptions<S extends object = object> {
 
 const isFullscreen = (target: HTMLElement): boolean => {
   const fs = target.ownerDocument.fullscreenElement;
-  return fs != null && (fs === target || fs.contains(target) || target.contains(fs));
+  // Pseudo-fullscreen (presentation, iPhone) is modal too.
+  return (fs != null && (fs === target || fs.contains(target) || target.contains(fs))) || target.closest('[data-otter-presentation="fullscreen"]') !== null;
 };
 
 export function createInputController<S extends object>(options: InputControllerOptions<S>): InputController {

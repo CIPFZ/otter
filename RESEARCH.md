@@ -41,6 +41,13 @@ M1 实测发现的坑（2026-10，Otter 真实浏览器矩阵与 Windows Edge �
 - Web Component 的 shadow 样式写了 `:host { display: ... }` 就会覆盖 UA 对 `[hidden]` 的规则，必须同时写 `:host([hidden]) { display: none }`。
 - Playwright WebKit（macOS 15 CI，desktop-safari 项目）MSE 起播卡死：MPEG-TS 里音频 PTS 比首个视频帧早 21 ms（AAC 编码器 priming，`start_pts` 音频 1.400、视频 1.421）时，`currentTime` 停在 0.021（首个视频帧）再也不动，`readyState=4`、已解码数帧、`buffered` 覆盖整段。hls.js 的转封装把两条轨道对齐到同一时刻所以不触发；mpegts.js 直传 TS 时 8 次里约 2–5 次触发，对齐时间戳（裸 H.264 + AAC 重新复用，`start_time` 都是 1.400）后 0/8。Chrome / Firefox 不受影响。（2026-10-19，分支 `feat/ci-webkit-diag2` 实验）因此 `media` 的卡顿恢复对"起播后播放头从未移动"用更短的阈值（`startupStallMs`，1.5 s）先 nudge 一次，再按常规 8 s 卡顿处理；测试样本保持不变，作为回归用例。
 
+M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5）：
+- Playwright 在 Chromium 里的 `page.evaluate` 自带用户激活（CDP `userGesture: true`），在 evaluate 里直接调用全屏、PiP 都会成功；要测"无手势被拒"，必须在页面里先等待瞬时激活过期（Chromium 和 Firefox 都是 5 s），再从定时器里发起请求。
+- 无头 Firefox 的元素全屏铺满的是屏幕尺寸（1366×768），不是 viewport；断言全屏尺寸要和全屏后的 `innerWidth` / `innerHeight` 比较。
+- Playwright 的 Firefox 构建提供 `documentPictureInPicture` 和 `requestPictureInPicture`，无头模式下两者都能真正进入；能力只能靠特性探测，不能按浏览器写死。
+- Document PiP 把整个播放器根节点（含已升级的自定义元素、shadow DOM、`<video>`）移进 PiP 窗口：Chrome 和 Firefox 实测播放不中断，`paused` 保持 false，播放头没有超过 0.5 s 的跳变；保险起见，移动前仍记录 `currentTime`、是否暂停和倍速，移动后按需恢复。
+- Safari 16.4 起有无前缀的元素全屏，13.1 / iOS 14 起有标准 `requestPictureInPicture`；Otter 只用无前缀 API，更旧的引擎走伪全屏、不提供 PiP。iPhone 的 `webkitEnterFullscreen`（系统播放器）是唯一保留的前缀 API。
+
 ## 2. 格式 / 协议 / 编码全景
 
 ### 2.1 传输与封装

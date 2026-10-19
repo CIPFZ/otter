@@ -5,6 +5,7 @@
 import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@otter-player/core';
 import type { InputActionMap } from '@otter-player/input';
 import type { MediaActionMap, MediaState } from '@otter-player/media';
+import type { PresentationActionMap } from '@otter-player/presentation';
 
 export interface ChromeState {
   readonly controlsVisible: boolean;
@@ -62,7 +63,8 @@ export function createChromePlugin<S extends ChromeState & Pick<MediaState, 'pau
     id: 'chrome',
     install(ctx: PluginContext<S, ChromeActionMap & MediaActionMap>) {
       store = ctx.store;
-      const s = ctx.store as unknown as Store<ChromeState, ChromeActionMap & MediaActionMap>;
+      // exit-fullscreen belongs to presentation; dispatching it without that plugin is a no-op.
+      const s = ctx.store as unknown as Store<ChromeState, ChromeActionMap & MediaActionMap & Pick<PresentationActionMap, 'exit-fullscreen'>>;
       offs = [
         s.handle('toggle-controls', () => {
           const visible = !(store?.getState().controlsVisible ?? true);
@@ -92,6 +94,8 @@ export function createChromePlugin<S extends ChromeState & Pick<MediaState, 'pau
         }),
         s.handle('escape', () => {
           if (store?.getState().menu !== null) patch({ menu: null });
+          // No menu to close: leave fullscreen (the browser only does that for the native one).
+          else s.dispatch('exit-fullscreen', {});
           schedule();
         }),
         // Any interaction keeps the controls up; playback state changes re-arm the timer.
