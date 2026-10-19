@@ -54,6 +54,28 @@ const snapshot = (page: Page) =>
 
 type Snapshot = Awaited<ReturnType<typeof snapshot>>;
 
+/** Raw <video> state and the last QoE events, for failure messages. */
+const elementDiagnostics = (page: Page) =>
+  page.evaluate(async () => {
+    const v = document.querySelector('video') as HTMLVideoElement;
+    const ranges = (r: TimeRanges): string[] => Array.from({ length: r.length }, (_, i) => `${r.start(i).toFixed(2)}-${r.end(i).toFixed(2)}`);
+    const o = (await window.otter) as OtterFixture;
+    return {
+      t: v.currentTime,
+      paused: v.paused,
+      readyState: v.readyState,
+      networkState: v.networkState,
+      seeking: v.seeking,
+      muted: v.muted,
+      rate: v.playbackRate,
+      buffered: ranges(v.buffered),
+      error: v.error?.code ?? null,
+      dropped: v.getVideoPlaybackQuality?.().droppedVideoFrames ?? null,
+      decoded: v.getVideoPlaybackQuality?.().totalVideoFrames ?? null,
+      events: o.events.slice(-8).map((e) => (e.type === 'error' ? `error:${(e.payload as { error: { details: string } }).error.details}` : e.type)),
+    };
+  });
+
 /** OTTER_E2E_ABR=engine runs the matrix with the engines' own ABR, for A/B comparison. */
 const PLAYER_URL = process.env['OTTER_E2E_ABR'] === 'engine' ? '/player.html?abr=engine' : '/player.html';
 
@@ -113,7 +135,12 @@ for (const scenario of SCENARIOS) {
       // streams jump the playhead to the live position on loadedmetadata, before any frame.
       await expect.poll(async () => (await snapshot(page)).qoe.ttff, { timeout: 30_000 }).not.toBeNull();
       const start = (await snapshot(page)).currentTime;
-      await expect.poll(async () => (await snapshot(page)).currentTime - start, { timeout: 20_000 }).toBeGreaterThan(1.5);
+      try {
+        await expect.poll(async () => (await snapshot(page)).currentTime - start, { timeout: 20_000 }).toBeGreaterThan(1.5);
+      } catch (err) {
+        // Say what the element was doing at the moment of failure (WebKit stalls in CI, M2).
+        throw new Error(`playhead did not advance from ${start}: ${JSON.stringify(await elementDiagnostics(page))}`, { cause: err });
+      }
       state = await snapshot(page);
       expect(state.paused).toBe(false);
       expect(state.videoWidth).toBeGreaterThan(0);
