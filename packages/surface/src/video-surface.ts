@@ -89,6 +89,40 @@ const round = (n: number): number => Math.round(n * 1e6) / 1e6;
 /** CSS filter string for the shorthand-capable filters (temperature / sharpen need the SVG filter). */
 export const filterCss: (f: SurfaceFilters) => string = shorthandCss;
 
+export interface ElementFilter {
+  set(filters: SurfaceFilters): void;
+  destroy(): void;
+}
+
+/**
+ * Filters through the element's CSS `filter` (VideoSurface, CanvasSurface): shorthand functions
+ * when they suffice, else the SVG filter, loaded on the first temperature / sharpen (on-demand
+ * chunk). A later change wins over a pending load.
+ */
+export function createElementFilter(element: HTMLElement): ElementFilter {
+  let svgFilter: Promise<SvgFilter> | undefined;
+  let destroyed = false;
+  let current: SurfaceFilters | undefined;
+  return {
+    set(filters) {
+      current = filters;
+      if (cssOnly(filters)) {
+        element.style.filter = shorthandCss(filters);
+        return;
+      }
+      // Temperature and sharpen go through an SVG filter, with the same numbers as GPUSurface.
+      svgFilter ??= import('./svg-filter.js').then((m) => m.createSvgFilter(element));
+      void svgFilter.then((svg) => {
+        if (!destroyed && current === filters) element.style.filter = svg.css(filters);
+      });
+    },
+    destroy() {
+      destroyed = true;
+      void svgFilter?.then((svg) => svg.destroy());
+    },
+  };
+}
+
 const toDomRect = (r: PictureRect): DOMRectReadOnly =>
   typeof DOMRectReadOnly === 'function'
     ? new DOMRectReadOnly(r.x, r.y, r.width, r.height)
@@ -112,9 +146,7 @@ export function createVideoSurface(element: HTMLVideoElement): Surface {
   let fit: SurfaceFit = 'contain';
   let transform: SurfaceTransform = IDENTITY_TRANSFORM;
   let filters: SurfaceFilters = NEUTRAL_FILTERS;
-  // Loaded on the first temperature / sharpen (on-demand chunk).
-  let svgFilter: Promise<SvgFilter> | undefined;
-  let destroyed = false;
+  const filter = createElementFilter(element);
   let rect: PictureRect = { x: 0, y: 0, width: 0, height: 0 };
 
   const box = (): Size => ({ width: element.clientWidth, height: element.clientHeight });
@@ -154,16 +186,7 @@ export function createVideoSurface(element: HTMLVideoElement): Surface {
     },
     setFilters(patch) {
       filters = { ...filters, ...patch };
-      if (cssOnly(filters)) {
-        element.style.filter = shorthandCss(filters);
-        return;
-      }
-      // Temperature and sharpen go through an SVG filter, with the same numbers as GPUSurface.
-      const wanted = filters;
-      svgFilter ??= import('./svg-filter.js').then((m) => m.createSvgFilter(element));
-      void svgFilter.then((svg) => {
-        if (!destroyed && filters === wanted) element.style.filter = svg.css(wanted);
-      });
+      filter.set(filters);
     },
     snapshot(opts: SnapshotOptions = {}) {
       return new Promise<Blob>((resolve, reject) => {
@@ -194,8 +217,7 @@ export function createVideoSurface(element: HTMLVideoElement): Surface {
     destroy() {
       observer?.disconnect();
       for (const type of ['loadedmetadata', 'resize']) element.removeEventListener(type, apply);
-      destroyed = true;
-      void svgFilter?.then((svg) => svg.destroy());
+      filter.destroy();
       bus.clear();
     },
   };

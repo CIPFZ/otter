@@ -6,11 +6,10 @@
 // renders nothing (background mode). Fit, transform and filters follow VideoSurface exactly.
 
 import { createError, createEventBus, type Unsubscribe } from '@otter-player/core';
-import { cssOnly, NEUTRAL_FILTERS, shorthandCss } from './filter-css.js';
+import { NEUTRAL_FILTERS } from './filter-css.js';
 import { createGlRenderer, frameSize, isI420, type GlRenderer, type I420Frame, type PixelRect, type SurfaceFrame, type ViewDraw } from './gl-renderer.js';
 import type { GPUSurfaceOptions, SnapshotOptions, Surface, SurfaceColorInfo, SurfaceFilters, SurfaceFit, SurfaceTransform } from './surface.js';
-import type { SvgFilter } from './svg-filter.js';
-import { computeContentRect, IDENTITY_TRANSFORM, type PictureRect } from './video-surface.js';
+import { computeContentRect, createElementFilter, IDENTITY_TRANSFORM, type PictureRect } from './video-surface.js';
 
 /** A Surface that draws decoded frames. `draw` takes ownership of VideoFrames (closes them). */
 export interface FrameSurface extends Surface {
@@ -314,14 +313,16 @@ export function createGPUSurface(canvas: HTMLCanvasElement, options: GPUGridOpti
   return view;
 }
 
-/** Canvas 2D sink: the WebCodecs fallback where WebGL2 is unavailable (e.g. headless Firefox). */
+/**
+ * Canvas 2D sink: the WebCodecs fallback where WebGL2 is unavailable (e.g. headless Firefox).
+ * One picture per canvas, so filters go on the canvas element itself, exactly like VideoSurface
+ * (WebKit ignores url() filters in ctx.filter); the letterbox stays transparent for that.
+ */
 export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
   const ctx = canvas.getContext('2d');
   if (ctx === null) throw createError({ type: 'other', details: 'canvas2dUnavailable', fatal: false, recoverable: false, message: 'no 2D context on this canvas' });
   const state = createViewState(canvas, () => FULL_REGION);
-  // Temperature / sharpen need the SVG filter chunk; loaded on first use.
-  let svg: SvgFilter | undefined;
-  let svgLoading = false;
+  const filter = createElementFilter(canvas);
   let pending: SurfaceFrame | undefined;
   let last: CanvasImageSource | undefined;
   let scheduled = false;
@@ -335,19 +336,6 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
   };
   const render = (): void => {
     if (destroyed) return;
-    const f = state.filters;
-    if (!cssOnly(f) && svg === undefined) {
-      // Draw nothing until the filter is there (no frame with the wrong colours).
-      if (!svgLoading) {
-        svgLoading = true;
-        void import('./svg-filter.js').then((m) => {
-          svg = m.createSvgFilter(canvas);
-          if (destroyed) svg.destroy();
-          else request();
-        });
-      }
-      return;
-    }
     if (pending !== undefined) {
       if (last !== undefined && typeof (last as VideoFrame).close === 'function') (last as VideoFrame).close();
       last = source(pending);
@@ -355,15 +343,12 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
       pending = undefined;
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.filter = 'none';
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (last === undefined) return;
     const c = devicePx(canvas, state.rect);
     const t = state.transform;
     const turned = t.rotate === 90 || t.rotate === 270;
     const [w, h] = turned ? [c.height, c.width] : [c.width, c.height];
-    ctx.filter = (svg === undefined ? shorthandCss(f) : svg.css(f)) || 'none';
     ctx.translate(c.x + c.width / 2, c.y + c.height / 2);
     ctx.rotate((t.rotate * Math.PI) / 180);
     if (t.mirror) ctx.scale(-1, 1);
@@ -400,7 +385,7 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
     },
     setFilters(f) {
       state.filters = { ...state.filters, ...f };
-      request();
+      filter.set(state.filters);
     },
     draw(frame) {
       if (destroyed) return closeFrame(frame);
@@ -424,7 +409,7 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
       closeFrame(pending);
       if (last !== undefined && typeof (last as VideoFrame).close === 'function') (last as VideoFrame).close();
       stopSize();
-      svg?.destroy();
+      filter.destroy();
       state.bus.clear();
     },
   };

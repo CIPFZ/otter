@@ -81,7 +81,13 @@ describe('createVideoSurface', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(video.style.filter).toBe('contrast(1.5)');
     surface.setFilters({ sharpen: 0.4, temperature: 0.5 });
-    await vi.waitFor(() => expect(video.style.filter).toMatch(/^url\("?#otter-filter-\d+"?\)$/));
+    await vi.waitFor(() => expect(video.style.filter).toMatch(/^url\("?#otter-filter-\d+-\d+"?\)$/));
+    // Every change gets a new id (WebKit keeps a filter it resolved for an unchanged url()).
+    const first = video.style.filter;
+    surface.setFilters({ sharpen: 0.5 });
+    await vi.waitFor(() => expect(video.style.filter).not.toBe(first));
+    surface.setFilters({ sharpen: 0.4 });
+    await vi.waitFor(() => expect(video.nextElementSibling?.querySelector('feConvolveMatrix')?.getAttribute('kernelMatrix')).toBe('0 -0.4 0 -0.4 2.6 -0.4 0 -0.4 0'));
     const filter = video.nextElementSibling?.querySelector('filter');
     expect(filter?.getAttribute('color-interpolation-filters')).toBe('sRGB');
     expect(filter?.querySelector('feConvolveMatrix')?.getAttribute('kernelMatrix')).toBe('0 -0.4 0 -0.4 2.6 -0.4 0 -0.4 0');

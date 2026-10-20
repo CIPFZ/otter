@@ -16,8 +16,10 @@ export interface SvgFilter {
 }
 
 export function createSvgFilter(next: Element): SvgFilter {
-  const id = `otter-filter-${++ids}`;
+  const base = `otter-filter-${++ids}`;
   let svg: SVGSVGElement | undefined;
+  let markup = '';
+  let rev = 0;
   return {
     css(f) {
       if (svg === undefined) {
@@ -29,9 +31,16 @@ export function createSvgFilter(next: Element): SvgFilter {
         svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
         next.after(svg);
       }
-      // innerHTML on an SVG element parses SVG; the markup is generated from numbers only.
-      svg.innerHTML = svgFilterMarkup(id, f);
-      return `url(#${id})`;
+      // A new id for every change: WebKit keeps using a filter it resolved for a url() even after
+      // the <filter> content behind that id changed (RESEARCH §1).
+      const wanted = svgFilterMarkup('', f);
+      if (wanted !== markup) {
+        markup = wanted;
+        rev++;
+        // innerHTML on an SVG element parses SVG; the markup is generated from numbers only.
+        svg.innerHTML = svgFilterMarkup(`${base}-${rev}`, f);
+      }
+      return `url(#${base}-${rev})`;
     },
     destroy() {
       svg?.remove();
