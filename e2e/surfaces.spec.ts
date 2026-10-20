@@ -126,6 +126,30 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
       expect.soft(diff.outliers, `${name}: ${box} vs video`).toBeLessThan(MAX_OUTLIERS);
     }
   }
+  if (!Object.values(results).every(within)) {
+    // Diagnostics for engines we cannot run locally (WebKit): sampled bar colours per box and
+    // what the browser supports, on the CI run page.
+    await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).apply({ zoom: 1, pan: [0, 0], rotate: 0, mirror: false }, { brightness: 1, contrast: 1, saturate: 1, temperature: 0, sharpen: 0 }));
+    const png = (await page.screenshot()).toString('base64');
+    const diag = await page.evaluate(async (b64) => {
+      const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+      const c = new OffscreenCanvas(img.width, img.height);
+      const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      ctx.drawImage(img, 0, 0);
+      const sample = (id: string): number[][] => {
+        const r = (document.getElementById(id) as HTMLElement).getBoundingClientRect();
+        return [0.08, 0.22, 0.4, 0.55, 0.72, 0.9].map((fx) => Array.from(ctx.getImageData(Math.round((r.x + fx * r.width) * devicePixelRatio), Math.round((r.y + 0.6 * r.height) * devicePixelRatio), 1, 1).data.slice(0, 3)));
+      };
+      const probe = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
+      probe.filter = 'brightness(2)';
+      const video = document.querySelector('video') as HTMLVideoElement;
+      const frame = new VideoFrame(video);
+      const info = { format: frame.format, colorSpace: frame.colorSpace.toJSON() };
+      frame.close();
+      return { video: sample('video-box'), gpu: sample('gpu-box'), canvas2d: sample('canvas2d-box'), ctxFilter: probe.filter, frame: info };
+    }, png);
+    ciNotice(`surfaces diagnostics ${JSON.stringify(diag)}`);
+  }
   const worst = Object.values(results).reduce((w, d) => ({ mean: Math.max(w.mean, d.mean), outliers: Math.max(w.outliers, d.outliers) }), { mean: 0, outliers: 0 });
   ciNotice(`surfaces: worst mean ${worst.mean.toFixed(2)}, outliers ${(worst.outliers * 100).toFixed(2)}%${Object.values(results).every(within) ? '' : ` FAILED ${JSON.stringify(results)}`}`);
   info.annotations.push({ type: 'surface-diff', description: JSON.stringify(results) });
