@@ -39,7 +39,7 @@
 - 所有能力都是插件：Loader、Demuxer、Remuxer、ABR、DRM、Decoder、Renderer、文本轨、UI 功能。核心只认接口。
 - 每种格式一个独立包，按需 `import()`。
 - 每个典型场景一个 preset（预组合）。
-- 复用等级 L1–L4 与许可证红线见 `REUSE.md` 与 `AGENT.md`。
+- 复用等级 L1–L4 见 `REUSE.md` 与 `AGENT.md`；不设许可证限制（ADR-008）。
 
 ## 3. 总体架构
 
@@ -218,8 +218,8 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
 ## 9. decoders（可选插件，独立加载）
 
 - `decoder-webcodecs`：默认。
-- `decoder-wasm-hevc`：libde265 构建（LGPL，独立 WASM 加载，不进核心）。
-- `decoder-wasm-ffmpeg`：定制 ffmpeg.wasm（LGPL，同上）。
+- `decoder-wasm-hevc`：HEVC 软解 WASM（独立加载，不进核心，ADR-008）。
+- `decoder-wasm-ffmpeg`：定制 ffmpeg.wasm（同上）。
 - 多线程需 COOP/COEP，提供 `crossOriginIsolated` 检测与单线程回退。
 
 ## 10. QoE 事件集

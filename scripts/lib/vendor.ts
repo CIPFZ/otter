@@ -1,4 +1,6 @@
-// Vendoring gate logic (REUSE §5, ADR-003 §7). Pure: the CLI collects the inputs.
+// Vendoring source-record checks (REUSE §5, ADR-008 §1): every copied file says where it came
+// from, so vendor-sync can diff it against upstream. No license rules (ADR-008). Pure: the CLI
+// collects the inputs.
 
 export interface UpstreamFile {
   readonly upstream: string;
@@ -9,7 +11,8 @@ export interface Upstream {
   readonly project: string;
   readonly repo: string;
   readonly commit: string;
-  readonly license: string;
+  /** Informational only (ADR-008): the project's license at the pinned commit. */
+  readonly license?: string;
   readonly level: 'L2' | 'L3';
   readonly files: readonly UpstreamFile[];
   readonly localChanges: readonly string[];
@@ -33,27 +36,16 @@ export interface VendorDir {
   readonly contents: Readonly<Record<string, string>>;
 }
 
-export interface RuntimeDependency {
-  /** Workspace package that declares it. */
-  readonly pkg: string;
-  readonly name: string;
-}
-
 export interface VendorInput {
   readonly vendorDirs: readonly VendorDir[];
-  readonly notices: string;
   readonly reuse: string;
-  readonly runtimeDependencies: readonly RuntimeDependency[];
 }
-
-/** REUSE §2: only these licenses may be copied (L2 / L3); LGPL / GPL never. */
-export const COPYABLE_LICENSES: readonly string[] = ['Apache-2.0', 'MIT', 'BSD-2-Clause', 'BSD-3-Clause'];
 
 /** Files that may live in a vendor directory without being listed. */
 const UNLISTED_OK = new Set(['README.md']);
 
-export const headerLine = (u: Pick<Upstream, 'project' | 'commit' | 'license'>, upstreamPath: string): string =>
-  `// Derived from ${u.project}@${u.commit} ${upstreamPath}, ${u.license}`;
+/** The source header every copied file starts with; a trailing `, <license>` is allowed. */
+export const headerLine = (u: Pick<Upstream, 'project' | 'commit'>, upstreamPath: string): string => `// Derived from ${u.project}@${u.commit} ${upstreamPath}`;
 
 /** Leading comment block of a file: the header must sit before any code. */
 function leadingComments(content: string): string[] {
@@ -74,7 +66,7 @@ function validate(raw: unknown, dir: string, problems: string[]): Upstream | und
     return undefined;
   }
   const u = raw as Partial<Record<keyof Upstream, unknown>>;
-  for (const key of ['project', 'repo', 'commit', 'license'] as const) {
+  for (const key of ['project', 'repo', 'commit'] as const) {
     if (typeof u[key] !== 'string' || u[key] === '') report(`"${key}" must be a non-empty string`);
   }
   if (typeof u.commit === 'string' && !/^[0-9a-f]{40}$/.test(u.commit)) report('"commit" must be a full 40-character SHA');
@@ -96,10 +88,6 @@ export function checkVendor(input: VendorInput): string[] {
   for (const vd of input.vendorDirs) {
     const u = validate(vd.upstream, vd.dir, problems);
     if (u === undefined) continue;
-
-    if (!COPYABLE_LICENSES.includes(u.license)) {
-      problems.push(`${vd.dir}: ${u.project} is ${u.license}; only ${COPYABLE_LICENSES.join(' / ')} may be copied (REUSE §2)`);
-    }
 
     const listed = new Set(u.files.map((f) => f.local));
     const own = (file: string): boolean =>
@@ -124,27 +112,11 @@ export function checkVendor(input: VendorInput): string[] {
       const header = leadingComments(content);
       for (const f of u.files.filter((x) => x.local === local)) {
         const expected = headerLine(u, f.upstream);
-        if (!header.includes(expected)) problems.push(`${vd.dir}/${local}: missing header "${expected}"`);
+        if (!header.some((line) => line === expected || line.startsWith(`${expected},`))) problems.push(`${vd.dir}/${local}: missing header "${expected}"`);
       }
     }
 
-    if (!input.notices.includes(`### ${u.project} (${u.license})`)) {
-      problems.push(`THIRD_PARTY_NOTICES.md: missing "### ${u.project} (${u.license})" for ${vd.dir}`);
-    } else if (!input.notices.includes(u.commit)) {
-      problems.push(`THIRD_PARTY_NOTICES.md: ${u.project} entry does not mention commit ${u.commit}`);
-    }
-    if (!input.notices.includes(vd.dir)) problems.push(`THIRD_PARTY_NOTICES.md: does not list ${vd.dir}`);
     if (!input.reuse.includes(u.project)) problems.push(`REUSE.md: ${u.project} is copied (${vd.dir}) but not listed`);
-  }
-
-  const seen = new Set<string>();
-  for (const dep of input.runtimeDependencies) {
-    if (seen.has(dep.name)) continue;
-    seen.add(dep.name);
-    if (!input.notices.includes(`| \`${dep.name}\` |`)) {
-      problems.push(`THIRD_PARTY_NOTICES.md: runtime dependency ${dep.name} (${dep.pkg}) missing from the L1 table`);
-    }
-    if (!input.reuse.includes(dep.name)) problems.push(`REUSE.md: runtime dependency ${dep.name} (${dep.pkg}) is not listed`);
   }
 
   return problems;

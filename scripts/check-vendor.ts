@@ -1,12 +1,12 @@
-// Vendoring gate (REUSE §5, ADR-003 §7): every copied file carries its source header and is
-// listed in UPSTREAM.json; only Apache / MIT / BSD code is copied; every copied project and every
-// third-party runtime dependency (L1) is recorded in REUSE.md and THIRD_PARTY_NOTICES.md.
+// Vendoring source records (REUSE §5, ADR-008 §1): every copied file carries its source header and
+// is listed in UPSTREAM.json, and every copied project is in REUSE.md, so vendor-sync can follow
+// upstream fixes. No license checks (ADR-008).
 //
 //   node scripts/check-vendor.ts
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { checkVendor, type RuntimeDependency, type VendorDir } from './lib/vendor.ts';
+import { checkVendor, type VendorDir } from './lib/vendor.ts';
 
 const root = join(import.meta.dirname, '..');
 
@@ -48,30 +48,9 @@ for (const parent of candidateParents) {
   }
 }
 
-interface Manifest {
-  readonly name: string;
-  readonly dependencies?: Record<string, string>;
-  readonly peerDependencies?: Record<string, string>;
-}
-const runtimeDependencies: RuntimeDependency[] = readdirSync(join(root, 'packages')).flatMap((p) => {
-  const file = join(root, 'packages', p, 'package.json');
-  if (!existsSync(file)) return [];
-  const m = JSON.parse(readFileSync(file, 'utf8')) as Manifest;
-  return Object.keys({ ...m.dependencies, ...m.peerDependencies })
-    // Workspace packages are not third-party: @otter-player/* is ours, and @otter-vendor/* are the L2
-    // copies, which this script checks as vendor dirs (UPSTREAM.json, headers, notices) above.
-    .filter((name) => !name.startsWith('@otter-player/') && !(name.startsWith('@otter-vendor/') && m.dependencies?.[name] === 'workspace:*'))
-    .map((name) => ({ pkg: m.name, name }));
-});
-
 const problems = [
   ...strays.map((s) => `${s}: vendor directories may only contain per-project folders`),
-  ...checkVendor({
-    vendorDirs,
-    notices: readFileSync(join(root, 'THIRD_PARTY_NOTICES.md'), 'utf8'),
-    reuse: readFileSync(join(root, 'REUSE.md'), 'utf8'),
-    runtimeDependencies,
-  }),
+  ...checkVendor({ vendorDirs, reuse: readFileSync(join(root, 'REUSE.md'), 'utf8') }),
 ];
 
 if (problems.length > 0) {
@@ -80,6 +59,4 @@ if (problems.length > 0) {
   process.exit(1);
 }
 const copied = vendorDirs.reduce((n, d) => n + d.files.length, 0);
-console.log(
-  `✓ vendor: ${vendorDirs.length} vendored project dir(s), ${copied} file(s); ${new Set(runtimeDependencies.map((d) => d.name)).size} L1 runtime dependencies recorded`,
-);
+console.log(`✓ vendor: ${vendorDirs.length} vendored project dir(s), ${copied} file(s) with source records`);

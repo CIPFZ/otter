@@ -22,7 +22,7 @@ env:
 
 jobs:
   verify:
-    name: typecheck · build · test · license · boundaries · size
+    name: typecheck · build · test · vendor records · boundaries · size
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -41,9 +41,7 @@ jobs:
           restore-keys: pnpm-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
 
-      - name: License gate
-        run: pnpm license:gate --json license-report.json
-      - name: Vendoring and notices
+      - name: Vendored source records
         run: pnpm check:vendor
       - name: Package boundaries
         run: pnpm check:boundaries
@@ -86,7 +84,6 @@ jobs:
         with:
           name: reports
           path: |
-            license-report.json
             size-report.json
           if-no-files-found: ignore
 

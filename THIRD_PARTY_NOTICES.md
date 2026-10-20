@@ -1,19 +1,13 @@
 # Third-Party Notices
 
-Otter is licensed under Apache-2.0 (see `LICENSE`). This file lists third-party code that is
-vendored (REUSE L2) or copied at file level (REUSE L3) into this repository, and the third-party
-runtime dependencies (REUSE L1) of the published packages. Each vendored entry must match a
-`UPSTREAM.json` and the `// Derived from <project>@<commit> <path>, <license>` header of every
-derived file; `scripts/check-vendor.ts` enforces this in CI.
-
-Unless noted otherwise, the projects below are licensed under the Apache License, Version 2.0,
-whose full text is identical to this repository's `LICENSE`; none of them ships a `NOTICE` file at
-the referenced version. BSD-licensed projects carry their full license text in their entry.
+Source index (ADR-008): the third-party projects Otter depends on (L1) or copies code from (L2 /
+L3), with the pinned commits. Otter is not distributed, so this file carries no license
+obligations and is not a CI gate; the per-directory `UPSTREAM.json` files and the
+`// Derived from` headers are the records `scripts/vendor-sync.ts` uses to follow upstream.
 
 ## Runtime dependencies (L1)
 
-Installed from npm, never copied into the repository; licenses of their whole dependency trees are
-enforced by `scripts/license-gate.ts`.
+Installed from npm, never copied into the repository.
 
 | Package | Version | License | Used by |
 |---|---|---|---|

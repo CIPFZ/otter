@@ -33,7 +33,6 @@ pnpm install
 pnpm build                 # Vite 产出 JS，tsc -b 产出 d.ts，输出到 packages/*/dist
 pnpm typecheck             # strict TS（包源码 + 测试 / 脚本）
 pnpm test                  # Vitest
-pnpm license:gate          # 许可证门禁（REUSE §2）
 pnpm check:boundaries      # 包约定与分层依赖方向
 pnpm check:side-effects    # 无顶层副作用（需先 build）
 pnpm size                  # 体积预算（需先 build）

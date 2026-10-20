@@ -1,35 +1,18 @@
-# Otter REUSE：复用来源、等级与许可证
+# Otter REUSE：复用来源与等级
 
 - 日期：2026-10-15
-- 原则：不从零开始，集百家之长；好的代码能 copy 就 copy，但分级、留痕、合规。
-- 关联：`SPEC.md` §20、`AGENT.md` 许可证规则
+- 原则：不从零开始，集百家之长；好的代码能 copy 就 copy，分级、留痕，便于日后跟进上游。
+- 2026-10-20：许可证策略全部取消（ADR-008）。Otter 是自用项目，不对外分发、不发布 npm 包，没有许可证义务；任何开源项目的代码都可以直接引入、拷贝、修改。下面的等级只表示「从哪拿、怎么拿」的工程含义。
+- 关联：`SPEC.md` §20、`AGENT.md` §3、ADR-008
 
 ## 1. 复用四级
 
 | 等级 | 做法 | 适用 | 成本 |
 |---|---|---|---|
 | L1 依赖 | npm 直接装，用适配器包一层 | 成熟且体积可接受的整块：hls.js、Shaka、mpegts.js、imscJS、mp4box.js、mediabunny | 最低，升级跟社区 |
-| L2 子包 vendoring | 把对方 monorepo 里独立子包整体拷进 `vendor/`，保留 LICENSE 头，自行维护 | 对方不单独发布但独立性强的部分：hls.js 的 `demux/` 与 `remux/`、xgplayer 的 transmuxer、video.js v10 的 UI 原语、Media Chrome 元素 | 低，但要定期 diff 上游 |
+| L2 子包 vendoring | 把对方 monorepo 里独立子包整体拷进 `vendor/`，保留来源头，自行维护 | 对方不单独发布但独立性强的部分：hls.js 的 `demux/` 与 `remux/`、xgplayer 的 transmuxer、video.js v10 的 UI 原语、Media Chrome 元素 | 低，但要定期 diff 上游 |
 | L3 文件级复制 | 拷单个文件或函数，改命名空间与类型 | 工具函数、算法：EWMA 带宽估计、BOLA、codec 解析、VTT 解析、手势识别、伪全屏特判 | 低 |
-| L4 只借设计 | 读源码，按自己接口重写 | 架构与状态机：video.js v10 三层、Shaka DRM 抽象、mpegts.js 看门狗、Jessibuca 降级链、B 站蒙版弹幕 | 中，无许可证包袱 |
-
-## 2. 许可证红线
-
-| 许可证 | 代表项目 | 允许等级 |
-|---|---|---|
-| Apache-2.0 | hls.js、Shaka、video.js、flv.js、mpegts.js、Vidstack、RxPlayer、imscJS、media-chrome、vtt.js、`@svta/common-media-library` | L1–L4，保留 NOTICE 与头部声明 |
-| MIT | xgplayer、ArtPlayer、DPlayer、Plyr、mediabunny、CommentCoreLibrary、`danmaku`（weizhenye）、`media-captions`、yuv-canvas、webcodecsfundamentals 示例 | L1–L4 |
-| BSD-3 / BSD-2 | dash.js、imscJS、mp4box.js | L1–L4，保留声明 |
-| ISC | Lucide（图标，含源自 Feather 的 MIT 部分）、sax | L1–L4，保留声明 |
-| LGPL | libmedia、FFmpeg 构建、libass、libde265 | 仅 L1，且以独立 WASM / 动态模块加载，源码不进核心 |
-| GPLv3 | Jessibuca 开源版、EasyPlayer 部分组件 | 仅 L4，禁止看完照抄，相似结构也不行 |
-| 闭源 | B 站 nano、腾讯 TCPlayer、阿里 Aliplayer、THEO、Bitmovin、JW、IVS | 只观察行为与 API 形状，不反编译 |
-
-CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`，两处同步修改）的判定：
-
-- 运行时依赖只允许 Apache-2.0、MIT、BSD-2-Clause、BSD-3-Clause，以及与 MIT 等价的 ISC、0BSD。
-- 仅限开发工具链（devDependencies 依赖树，不随产物发布）：MPL-2.0、CC0-1.0、CC-BY-3.0/4.0、BlueOak-1.0.0、Python-2.0、Unlicense、MIT-0、Zlib。
-- LGPL 只允许出现在 `decoder-*` 与 `text-ass` 的运行时依赖中；GPL / AGPL / SSPL 等在任何位置都失败；缺失或不符合 SPDX 的许可证必须在策略表中显式 override 并写明理由。
+| L4 只借设计 | 读源码，按自己接口重写 | 架构与状态机：video.js v10 三层、Shaka DRM 抽象、mpegts.js 看门狗、B 站蒙版弹幕；拷贝不如重写省力时才用 | 中 |
 
 ## 3. 引擎层来源清单
 
@@ -40,7 +23,7 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | FLV / TS 直播引擎 | mpegts.js | L1 起步，后期 L2 `demux/flv-demuxer`、`demux/ts-demuxer`、`remux/mp4-remuxer` | 自研管线时拷 demuxer 改成 `Demuxer` 接口。M1 接入：`engine-adapter-mpegts` 依赖 `mpegts.js@1.8.2`。M3：FLV demuxer 以 L2 拷入 `vendor/mpegts.js/`（mpegts.js@791bac8，JS 移植为严格 TS；只保留 FLV 容器、AMF、H.264 / H.265、AAC；修正了上游 AAC config 比较的 bug，ADR-007 §1）。TS demux 与 remux 用 hls.js 的拷贝 |
 | TS → fMP4 转封装 | hls.js `src/demux/tsdemuxer.ts` + `src/remux/mp4-remuxer.ts` + `mp4-generator.ts` | L2 | 去掉事件总线耦合，改纯函数。M3 已复制到 `vendor/hls.js/`（私有 workspace 包 `@otter-vendor/hls.js`，hls.js@e5ff358，ADR-007 §1）；事件总线、config、logger 换成 `src/otter/shims.ts`；SAMPLE-AES 与 AC-3 未复制；严格 TS 由 `scripts/vendor-strictify.ts` 机械处理加人工收尾 |
 | MP4 分段加载（Range + moov） | xgplayer `xgplayer-mp4` + mp4box.js | L3 / L1 | M3：mp4box.js 2.4.1（BSD-3）解析 moov、切关键帧对齐的 fMP4；分段与 Range 读取策略参照 xgplayer-mp4 自写（只读不拷，因此是 L3 参考而非 L2）。mp4box 2.x 的坑：所有轨道必须用同一个 `nbSamples`，否则静默跳过该轨；`appendBuffer(…, last=true)` 会把剩余样本逐个切成单帧分段，文件末尾只用 `flush()` |
-| 通用 demux（MP4/WebM/MKV）给 WebCodecs | mediabunny（MIT，TS，无依赖） | L1 | 直接出 `EncodedVideoChunk` |
+| 通用 demux（MP4/WebM/MKV、HLS）给 WebCodecs | mediabunny（MPL-2.0，TS，无依赖） | L1 | 直接出 `EncodedPacket`；1.61 起也能读 HLS（ADR-008） |
 | ABR 带宽估计 | hls.js `src/utils/ewma-bandwidth-estimator.ts` + `src/utils/ewma.ts` | L3 | 几十行直接拿。M2 复制到 `packages/pipeline/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3） |
 | ABR 规则 | dash.js `BolaRule`、`ThroughputRule`、`InsufficientBufferRule` | L3 | 改成规则叠加接口。M2 复制到 `packages/pipeline/src/vendor/dash.js/`（dash.js@a9a8542 = v5.2.1，BSD-3，保留许可证全文） |
 | Codec 字符串解析与 MediaCapabilities | hls.js `src/utils/codecs.ts` + `mediacapabilities-helper.ts` | L3 | 直接拿 |
@@ -52,8 +35,8 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 | HLS 清单解析（自研轻引擎用） | hls.js `m3u8-parser.ts` 或 `m3u8-parser`（video.js 系） | L3 | 均 Apache |
 | DASH MPD 解析 | `mpd-parser`（video.js 系） | L1 | 独立 npm 包 |
 | WHEP 客户端 | `@eyevinn/whep-video-component` 或 Cloudflare WHEP 示例（MIT） | L3 | 约百行 |
-| WebCodecs 播放循环 | webcodecsfundamentals.org 示例（MIT）+ libmedia 架构 | L3 / L4 | 示例可拷，libmedia 只看设计 |
-| HEVC WASM 软解 | libde265.js 构建产物 / ffmpeg.wasm 定制（LGPL） | L1 独立加载 | 可选 Decoder 插件，不进核心 |
+| WebCodecs 播放循环 | webcodecsfundamentals.org 示例 + libmedia | L3 | 示例与 libmedia 都可以直接拷（ADR-008） |
+| HEVC WASM 软解 | libde265 / ffmpeg 的 WASM 构建，或 Jessibuca 的解码器产物 | L1 / L2，独立加载 | 可选 Decoder 插件，不进核心；按需加载是为了体积与线程，与许可证无关（ADR-008） |
 | EME 流程 | Shaka `drm_engine` | L4 | 仍建议 L1 用 Shaka |
 | 测试流清单 | hls.js `tests/test-streams.js`、Shaka `demo/common/assets.js`、DASH-IF 参考流 | L3 | 省下搭测试源。M1 已复制子集到 `e2e/vendor/hls.js/`、`e2e/vendor/shaka-player/` |
 
@@ -88,11 +71,10 @@ CI 门禁（`scripts/license-gate.ts`，策略表在 `scripts/license-policy.ts`
 
 ## 5. 工程流程
 
-- L2（整个子包）放 `vendor/<project>/`；L3（文件级）放使用它的包内 `packages/<pkg>/src/vendor/<project>/`，测试资产放 `e2e/vendor/<project>/`（ADR-003 第 7 条）。每个目录一个 `UPSTREAM.json`：`{ project, repo, commit, license, level, files: [{ upstream, local }], localChanges }`。
-- `scripts/check-vendor.ts`（CI 阻断）检查：头部与 `UPSTREAM.json` 一致；目录中没有未登记的文件；只有 Apache-2.0 / MIT / BSD 允许 L2 / L3；来源已列在本文件与 `THIRD_PARTY_NOTICES.md` 中；每个 L1 运行时依赖都已列在两处。
-- 每个 vendored 文件头部：`// Derived from <project>@<commit> <path>, <license>`。
-- 根目录维护 `THIRD_PARTY_NOTICES.md`。
+- L2（整个子包）放 `vendor/<project>/`；L3（文件级）放使用它的包内 `packages/<pkg>/src/vendor/<project>/`，测试资产放 `e2e/vendor/<project>/`（ADR-003 第 7 条）。每个目录一个 `UPSTREAM.json`：`{ project, repo, commit, level, files: [{ upstream, local }], localChanges }`，`license` 字段可选，仅作记录。
+- `scripts/check-vendor.ts`（CI 阻断）只检查来源记录：头部与 `UPSTREAM.json` 一致；目录中没有未登记的文件；拷贝的项目已列在本文件中。目的是让 vendor-sync 能对比上游，与许可证无关。
+- 每个 vendored 文件头部：`// Derived from <project>@<commit> <path>`（后面可以带 `, <license>`）。
+- 根目录的 `THIRD_PARTY_NOTICES.md` 保留为来源索引，不是门禁。
 - `scripts/vendor-sync.ts`：联网对比 `UPSTREAM.json` 固定的 commit 与上游默认分支，输出漂移报告（CI 定时任务中运行，不阻断）；上游修了 MSE / iOS bug 要在一周内跟上。
-- CI 门禁：`license-checker` 或自写脚本，禁止 GPL 进入依赖树，LGPL 仅允许在 `decoders/*` 与 `text-ass` 以独立产物形式出现。
 - 所有 L2/L3 代码过 strict TS 与项目 ESLint 再入库。
 - 顺序：先 L1 把 hls.js、Shaka、mpegts.js 接上跑通全场景，QoE 面板有数据后，再按"哪个场景体积或行为不满意"决定降到 L2/L3 替换。先有可用的全场景产品，再做替换。

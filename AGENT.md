@@ -5,7 +5,7 @@
 ## 1. 项目速览
 
 - Otter（工作代号）：100% TypeScript 的通用 Web 播放器，引擎可插拔、可组合、取百家之长。
-- 文档：`RESEARCH.md`（生态调研与事实依据）、`SPEC.md`（架构与里程碑）、`REUSE.md`（复用来源、等级、许可证）、`docs/decisions/`（ADR）。
+- 文档：`RESEARCH.md`（生态调研与事实依据）、`SPEC.md`（架构与里程碑）、`REUSE.md`（复用来源与等级）、`docs/decisions/`（ADR）。
 - 当前阶段：M0、M1 已完成（M1 报告见 `docs/reports/M1.md`）；M2 已验收（`docs/reports/M2.md`，ADR-005）；M2.5 视觉系统已验收（`docs/reports/M2.5.md`，ADR-006）；M3 已交付、待验收（`docs/reports/M3.md`，ADR-007）。工程基线见 ADR-002，引擎契约见 ADR-003，真机与体积口径见 ADR-004。
 
 ## 2. 不可违背的约束
@@ -18,17 +18,11 @@
 6. 真机矩阵：iPhone Safari、Android Chrome、桌面 Chrome/Firefox/Safari、至少一台 Tizen 或 webOS。只在桌面 Chrome 测过的播放器功能视为未完成。M1–M5 阶段以桌面三大浏览器真机 + CI 上的 WebKit 与模拟移动端为准，手机与 TV 真机在 M5.5「移动端真机回归」一次性补跑（ADR-004）。
 7. 引擎库（hls.js / Shaka / mpegts.js / WASM 解码器）只能按需以 chunk 加载，不得进入首屏；SPEC §19 的「自有代码」体积是 M1–M5 门禁（ADR-004）。
 
-## 3. 复用与许可证规则
+## 3. 复用规则
 
 - 复用前先在 `REUSE.md` 查来源与等级；没列出的来源先补表再用。
-- 四级：L1 依赖 / L2 子包 vendoring / L3 文件级复制 / L4 只借设计。
-- 许可证：
-  - Apache-2.0、MIT、BSD：L1–L4 全部允许，保留声明。
-  - LGPL（libmedia、FFmpeg、libass、libde265）：仅 L1，独立 WASM / 动态模块，源码不进核心。
-  - GPLv3（Jessibuca 开源版、EasyPlayer 部分组件）：仅 L4。禁止读源码后照抄，禁止相似结构。
-  - 闭源（B 站 nano、TCPlayer、Aliplayer、THEO、Bitmovin、JW、IVS）：只观察行为与 API 形状，不反编译、不抓包还原协议。
-- vendored 文件必须有头部来源标记 `// Derived from <project>@<commit> <path>, <license>`，目录下有 `UPSTREAM.json`，根目录 `THIRD_PARTY_NOTICES.md` 同步更新。
-- CI 的 license 门禁失败即阻断。
+- 四级：L1 依赖 / L2 子包 vendoring / L3 文件级复制 / L4 只借设计（工程含义，ADR-008）。
+- 任何开源项目的代码都可以直接引入、拷贝、修改，只需在 vendored 文件头和 UPSTREAM.json 里记录来源，便于日后 diff 上游。
 
 ## 4. 工程约定
 
@@ -43,13 +37,13 @@
 - 命名：包名 `@otter-player/<name>`，Web Components 前缀 `otter-`，CSS 变量前缀 `--otter-`，事件前缀无（用类型约束）。
 - 新包一律用 `node scripts/new-package.ts` 生成；包内相对导入带 `.js` 扩展名（NodeNext）。
 - 未实现的能力统一抛出 / reject `notImplemented`（非 fatal），不得静默 no-op（ADR-002）。
-- 提交前跑 `pnpm check`：license 门禁、边界、strict TS、Vitest、无顶层副作用、体积预算，任何一项失败都阻断。
+- 提交前跑 `pnpm check`：来源记录、边界、strict TS、Vitest、无顶层副作用、体积预算，任何一项失败都阻断。
 
 ## 5. 工作流程
 
 1. 任何新能力先问三件事：属于哪个包；接口是否已在 `SPEC.md`；来源与等级是否已在 `REUSE.md`。缺一项先补文档再写代码。
 2. 先适配后替换：HLS/DASH/DRM 先走 hls.js / Shaka / mpegts.js 适配器，QoE 有数据后再决定替换。
-3. 直接在 `main` 上小步提交并推送，保持 CI 绿；每个里程碑在 `docs/reports/Mx.md` 附：体积报告（size-limit）、真机矩阵结果、axe 结果、license 门禁结果。
+3. 直接在 `main` 上小步提交并推送，保持 CI 绿；每个里程碑在 `docs/reports/Mx.md` 附：体积报告（size-limit）、真机矩阵结果、axe 结果。
 4. 遇到浏览器差异先查 `RESEARCH.md` §1 与 `SPEC.md` §15 的坑表；新发现的坑追加到表里。
 5. 决策变更写 ADR（`docs/decisions/ADR-xxx.md`），格式参照 ADR-001。
 
