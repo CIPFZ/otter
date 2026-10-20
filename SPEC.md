@@ -206,7 +206,7 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
 
 | 包 | 职责 | 阶段 |
 |---|---|---|
-| `format-hls` | 先 hls.js 适配器；后期自研轻量 CMAF-HLS（对标 SPF 12KB） | M1 适配，M6 自研 |
+| `format-hls` | 先 hls.js 适配器；后期自研轻量 CMAF-HLS（对标 SPF 12KB） | M1 适配，M5 自研（ADR-009） |
 | `format-dash` | Shaka 适配器；自研轻量 CMAF-DASH 可选 | M1 适配 |
 | `format-flv` | 自研（demuxer 取自 mpegts.js） | M3 |
 | `format-ts` | 自研（demuxer 取自 hls.js） | M3 |
@@ -434,7 +434,7 @@ M0 接口落点（ADR-002）：
 
 ## 19. 场景覆盖矩阵
 
-| 场景 | backend | 格式包 | 必带模块 | 体积目标：自有代码 (gzip，M1–M5 门禁) | 含第三方引擎 (gzip，M6 前只记录) |
+| 场景 | backend | 格式包 | 必带模块 | 体积目标：自有代码 (gzip，M1–M6 门禁) | 含第三方引擎 (gzip，M5 起逐步门禁) |
 |---|---|---|---|---|---|
 | 短视频 / 简单点播 | native 或 mse | mp4-range 或 hls | core + ui 最小皮肤 | < 30KB | 记录 |
 | 长视频点播 + 多清晰度 + 字幕 | mse | hls / dash | abr + text + thumbnails | < 80KB | 记录 |
@@ -448,7 +448,7 @@ M0 接口落点（ADR-002）：
 | 沉浸竖屏信息流 | mse | hls / mp4-range | preset shorts | < 60KB | 记录 |
 | 电视遥控器 | mse | hls / dash | ui-skin-tv | < 90KB | 记录 |
 
-体积口径（ADR-004）：「自有代码」指 Otter 各包及其非引擎 L1 依赖，不含 hls.js / Shaka / mpegts.js / WASM 解码器；「含第三方引擎」在此基础上加上该场景首次播放必须加载的引擎块。M6 的「简单点播 < 30KB」按含引擎口径。引擎库只能在 `Engine.load()` / `Decoder.create()` 中以 `import()` 按需加载，不得进入首屏 chunk。
+体积口径（ADR-004、ADR-009）：「自有代码」指 Otter 各包及其非引擎 L1 依赖，不含 hls.js / Shaka / mpegts.js / WASM 解码器；「含第三方引擎」在此基础上加上该场景首次播放必须加载的引擎块。自有代码列为 M1–M6 门禁；含引擎列在自研 CMAF-HLS 引擎落地（M5）前只记录，M5 起对短视频 / 长视频点播场景门禁，M6 全部门禁。引擎库只能在 `Engine.load()` / `Decoder.create()` 中以 `import()` 按需加载，不得进入首屏 chunk。
 
 ## 20. 自研与复用的边界
 
@@ -463,16 +463,16 @@ M0 接口落点（ADR-002）：
 | 里程碑 | 引擎侧 | 渲染侧 | 验收 |
 |---|---|---|---|
 | M0 | monorepo 骨架、接口定义、CI（license 门禁、strict TS、Vitest、Playwright 矩阵、axe） | 同左 | 所有接口有类型与空实现；`pnpm build` 产出各包；license 门禁跑通 |
-| M1 | `backend-native` + `backend-mse` + hls.js / Shaka / mpegts.js 适配器；选路与降级链；QoE 面板 | `VideoSurface` + 最小控件 | 全场景矩阵能播；iPhone MMS 条件自动处理；stats 面板有数据；`router.explain()` 可导出选路决策（真 iPhone / Android 延后到 M5.5，ADR-004） |
+| M1 | `backend-native` + `backend-mse` + hls.js / Shaka / mpegts.js 适配器；选路与降级链；QoE 面板 | `VideoSurface` + 最小控件 | 全场景矩阵能播；iPhone MMS 条件自动处理；stats 面板有数据；`router.explain()` 可导出选路决策（真 iPhone / Android 延后到 M7，ADR-004 / ADR-009） |
 | M2 | ABR 规则叠加、CMCD、错误恢复 | `ui-core` 原语、默认皮肤、字幕（VTT/IMSC/608）、`InputController`、无障碍 | axe 零严重问题；键盘全覆盖；Vidstack CVAA 清单通过 |
 | M2.5 | — | 视觉系统：设计令牌、Lucide 图标集（ADR-006）、控制栏 / 进度条 / 顶部栏 / 中央反馈 / 移动端布局、设置菜单二级结构、stats 面板、字幕默认样式（`docs/design/UI-DESIGN.md`） | UI-DESIGN §11 七条（截图由用户目视）；M2 的 a11y、CVAA、体积门禁保持 |
 | M3 | 自研 FLV/TS/fMP4 管线（含 SEI 中的 CEA-608）、`LiveController`（回到直播）、`format-mp4-range`（多档位无缝切换） | `presentation` 全模式（重点 iPhone 伪全屏与 Document PiP）、MediaSession、WakeLock、投屏（Remote Playback / AirPlay）、剧场；原生 TextTrack 回退；预览卡缩略图（VTT sprite / I-frame）；CVAA 字幕窗口（ADR-007） | 桌面真机 + CI WebKit / 模拟移动端全模式通过，capabilities 按环境如实报告，拒绝有 denied + reason；Document PiP 不中断；FLV 直播延迟 ≤ 2s 且 TTFF 不劣于 mpegts.js；mp4-range 切档无 `waiting`；回到直播 / 剧场 / AirPlay / Cast 有 e2e；首次 L2 vendoring 走完 vendor-sync 评审（`docs/reports/M3.md`） |
 | M4 | `backend-webcodecs`、WASM 解码插件、`format-whep`、`format-file` | `GPUSurface`、多宫格、电子放大、滤镜 | 16 路 720p HEVC 可播；三级降级可观测 |
-| M5 | 音视频分离 DASH 优化、多编码探测与偏好持久化 | `danmaku`（Canvas + WebGL + 蒙版）、水印 | 5000 条/分钟弹幕 60fps；蒙版弹幕对齐 |
-| M5.5 | 移动端真机回归：M1–M5 全部场景与模式 | 同左 | 真 iPhone Safari、真 Android Chrome、至少一台 Tizen 或 webOS 全部场景通过并有报告；问题在本里程碑内修完 |
-| M6 | 自研轻量 CMAF-HLS 引擎替换简单场景；presets 发布 | `ui-skin-tv`、shorts preset、React/Vue/Svelte 绑定、SSR | 简单点播产物 < 30KB；体积预算全部达标；文档站上线 |
+| M5 | 自研轻量 CMAF-HLS 引擎替换简单场景（原 M6，ADR-009 提前）；音视频分离 DASH 优化、多编码探测与偏好持久化 | `danmaku`（Canvas + WebGL + 蒙版）、水印 | 自研引擎在 §19 短视频 / 长视频点播场景替换 hls.js 后 TTFF 与 rebuffer 不劣于适配器，含引擎口径简单点播 < 30KB；5000 条/分钟弹幕 60fps；蒙版弹幕对齐 |
+| M6 | presets 发布；体积收口 | `ui-skin-tv`、shorts preset、React/Vue/Svelte 绑定、SSR、文档站 | 体积预算全部达标（含 Hero < 5KB）；文档站上线 |
+| M7 | 移动端与 TV 真机回归：M1–M6 全部场景与模式（原 M5.5，ADR-009 移至最后） | 同左 | 真 iPhone Safari、真 Android Chrome、至少一台 Tizen 或 webOS 全部场景通过并有报告；问题在本里程碑内修完 |
 
-每个里程碑结束都跑同一份 Playwright 矩阵和 axe 扫描。M1–M5 的真机要求为桌面 Chrome / Firefox / Safari 真机加 CI 上的 WebKit 与模拟移动端（`emulated-*` 不计为真机）；真 iPhone / Android / TV 在 M5.5 一次性补跑（ADR-004）。
+每个里程碑结束都跑同一份 Playwright 矩阵和 axe 扫描。M1–M6 的真机要求为桌面 Chrome / Firefox / Safari 真机加 CI 上的 WebKit 与模拟移动端（`emulated-*` 不计为真机）；真 iPhone / Android / TV 在 M7 对最终代码一次性补跑（ADR-004、ADR-009）。
 
 ## 22. 品牌与图标资产
 

@@ -15,8 +15,8 @@
 3. 分层纪律：UI / Overlay / Presentation 只读 store、只派发 action，禁止直接操作引擎或 `<video>`。
 4. 用户手势：全屏、PiP、横屏锁、带声自动播放必须在同一事件回调内同步调用。
 5. 体积预算是验收项（见 `SPEC.md` §1.1、§19），超预算的提交不算完成。
-6. 真机矩阵：iPhone Safari、Android Chrome、桌面 Chrome/Firefox/Safari、至少一台 Tizen 或 webOS。只在桌面 Chrome 测过的播放器功能视为未完成。M1–M5 阶段以桌面三大浏览器真机 + CI 上的 WebKit 与模拟移动端为准，手机与 TV 真机在 M5.5「移动端真机回归」一次性补跑（ADR-004）。
-7. 引擎库（hls.js / Shaka / mpegts.js / WASM 解码器）只能按需以 chunk 加载，不得进入首屏；SPEC §19 的「自有代码」体积是 M1–M5 门禁（ADR-004）。
+6. 真机矩阵：iPhone Safari、Android Chrome、桌面 Chrome/Firefox/Safari、至少一台 Tizen 或 webOS。只在桌面 Chrome 测过的播放器功能视为未完成。M1–M6 阶段以桌面三大浏览器真机 + CI 上的 WebKit 与模拟移动端为准，手机与 TV 真机在 M7「移动端与 TV 真机回归」对最终代码一次性补跑（ADR-004、ADR-009）。
+7. 引擎库（hls.js / Shaka / mpegts.js / WASM 解码器）只能按需以 chunk 加载，不得进入首屏；SPEC §19 的「自有代码」体积是 M1–M6 门禁，「含引擎」体积自 M5 自研引擎落地起逐步门禁（ADR-004、ADR-009）。
 
 ## 3. 复用规则
 

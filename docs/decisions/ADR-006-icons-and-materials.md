@@ -36,7 +36,7 @@ M2.5 按 UI-DESIGN v1 重做 `ui-core` 与 `ui-skin-default` 的视觉层，stor
 - **不支持 `backdrop-filter`**（`@supports not (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: …)`）：底色换成 `--otter-glass-solid`，不透明度 0.96。这条规则写在每个用到玻璃的原语的 shadow CSS 里，不依赖皮肤。
 - **`prefers-contrast: more`**：`--otter-glass-blur: 0px`，底色纯黑，描边白色，scrim 改为 0.85 纯黑，强调色换成 `#FFD60A`（UI-DESIGN §10）。
 - **`forced-colors: active`**：用系统色（`Canvas` / `CanvasText` / `Highlight`），边框显式 1 px。
-- 弱机器上的模糊开销：宿主可以把 `--otter-glass-blur` 设为 `0px`，此时与「不支持」一样走 0.96 底色。当前没有自动探测设备性能，留到 M5.5 真机回归时，按实测帧率再决定。
+- 弱机器上的模糊开销：宿主可以把 `--otter-glass-blur` 设为 `0px`，此时与「不支持」一样走 0.96 底色。当前没有自动探测设备性能，留到 M5.5（ADR-009 起为 M7）真机回归时，按实测帧率再决定。
 
 ### 3. scrim 与对比度验收（对 UI-DESIGN §4.1 的偏离）
 
