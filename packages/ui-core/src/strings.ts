@@ -30,6 +30,7 @@ export interface UiStrings {
   readonly cast: string;
   readonly stopCast: string;
   readonly airplay: string;
+  readonly closeMini: string;
   readonly audio: string;
   // Caption display settings (CVAA).
   readonly captionSize: string;
@@ -120,6 +121,7 @@ export const STRINGS_EN: UiStrings = {
   cast: 'Cast',
   stopCast: 'Casting',
   airplay: 'AirPlay',
+  closeMini: 'Close mini player',
   audio: 'Audio',
   captionSize: 'Caption size',
   captionColor: 'Caption color',
@@ -201,6 +203,7 @@ export const STRINGS_ZH: UiStrings = {
   cast: '投屏',
   stopCast: '投屏中',
   airplay: 'AirPlay',
+  closeMini: '关闭小窗',
   audio: '音轨',
   captionSize: '字幕大小',
   captionColor: '字幕颜色',

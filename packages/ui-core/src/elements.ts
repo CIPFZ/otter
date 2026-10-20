@@ -79,6 +79,7 @@ export const M3_ELEMENTS = {
   TheaterButton: 'otter-theater-button',
   CastButton: 'otter-cast-button',
   AirPlayButton: 'otter-airplay-button',
+  MiniClose: 'otter-mini-close',
 } as const;
 
 export interface DefineOptions {
@@ -343,6 +344,24 @@ const theaterButtonClass = () =>
         this.show(on ? this.strings.exitTheater : this.strings.theater, 'theater');
         this.button?.setAttribute('aria-pressed', String(on));
         unsupported(this, s.presentation?.capabilities.theater !== 'emulated');
+      }
+    };
+  });
+
+/** Page mini window close (SPEC §15): only in mini mode; the skin shows it on hover. */
+const miniCloseClass = () =>
+  once('MiniClose', () => {
+    const ButtonElement = buttonElementClass();
+    return class MiniClose extends ButtonElement {
+      protected icons(): Record<string, IconNode> {
+        return { close: X };
+      }
+      protected activate(e: Event): void {
+        this.ui?.dispatch('exit-presentation', {}, { type: e.type, source: 'otter-mini-close' });
+      }
+      protected render(s: Readonly<UiState>): void {
+        this.show(this.strings.closeMini, 'close');
+        unsupported(this, s.presentation?.mode !== 'mini');
       }
     };
   });
@@ -640,49 +659,28 @@ const volumeSliderClass = () =>
  * Live badge (UI-DESIGN §6.1 / §10): at the live edge a status "● Live"; more than 3 s behind it
  * becomes a "Back to live" button (seek-to-live, then play if paused, in the same click).
  */
+/**
+ * Live badge / Back to live capsule. Only live sources show it, so its view loads when the source
+ * is live (live-view.ts); until then the element is hidden as unsupported.
+ */
 const liveIndicatorClass = () =>
   once('LiveIndicator', () => {
     const Base = base();
     return class LiveIndicator extends Base {
-      #badge: HTMLElement | undefined;
-      #button: HTMLButtonElement | undefined;
+      #view: Promise<(s: Readonly<UiState>) => void> | undefined;
       protected setup(): void {
-        if (this.#badge !== undefined) return;
-        const root = this.attachShadow({ mode: 'open' });
-        root.innerHTML = `<style>
-:host { display: inline-flex; align-items: center; }
-:host([hidden]), :host([data-otter-unsupported]) { display: none; }
-.badge, button { display: inline-flex; align-items: center; gap: 6px; height: 24px; font: 600 13px/1 ${T.font}; color: ${T.fg};
-  text-shadow: ${T.textShadow}; white-space: nowrap; }
-.badge svg, button svg { width: 8px; height: 8px; color: ${T.live}; }
-.badge[hidden], button[hidden] { display: none; }
-button { all: unset; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px;
-  border: 1px solid ${T.accent}; cursor: pointer; font: 600 13px/1 ${T.font}; color: ${T.fg}; }
-button svg { color: ${T.dim}; }
-button:hover { background: ${T.hover}; }
-button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; }
-</style><span class="badge" part="badge" role="status">${icon(LiveDot)}<b part="label" style="font-weight:inherit"></b></span><button part="back-to-live" type="button" hidden>${icon(LiveDot)}<span></span></button>`;
-        this.#badge = root.querySelector('.badge') as HTMLElement;
-        this.#button = root.querySelector('button') as HTMLButtonElement;
-        this.#button.addEventListener('click', (e) => {
-          const trigger = { type: e.type, source: 'otter-live-indicator' };
-          this.ui?.dispatch('seek-to-live', {}, trigger);
-          if (this.ui?.getState().paused === true) this.ui.dispatch('play', undefined, trigger);
-        });
+        // Built by the view when the source is live.
       }
       protected render(s: Readonly<UiState>): void {
-        const badge = this.#badge;
-        const button = this.#button;
-        if (badge === undefined || button === undefined) return;
         unsupported(this, !s.live);
-        const behind = s.live && s.latency !== null && s.latency > 3;
-        this.toggleAttribute('behind', behind);
-        badge.hidden = behind;
-        button.hidden = !behind;
-        const label = badge.querySelector('b') as HTMLElement;
-        if (label.textContent !== this.strings.live) label.textContent = this.strings.live;
-        const text = button.querySelector('span') as HTMLElement;
-        if (text.textContent !== this.strings.backToLive) text.textContent = this.strings.backToLive;
+        if (!s.live) return;
+        this.#view ??= import('./live-view.js').then(({ mountLiveIndicator }) =>
+          mountLiveIndicator(this, this.shadowRoot ?? this.attachShadow({ mode: 'open' }), () => this.ui, () => this.strings, { T, icon, LiveDot }),
+        );
+        void this.#view.then((view) => {
+          const now = this.ui?.getState();
+          if (now !== undefined) view(now);
+        });
       }
     };
   });
@@ -1642,6 +1640,8 @@ export const otterTheaterButton = (): Ctor => theaterButtonClass();
 export const otterCastButton = (): Ctor => remoteButtonClass('cast');
 /** `M3_ELEMENTS.AirPlayButton` element class. */
 export const otterAirPlayButton = (): Ctor => remoteButtonClass('airplay');
+/** `M3_ELEMENTS.MiniClose` element class. */
+export const otterMiniClose = (): Ctor => miniCloseClass();
 
 /** Registers the given elements (tag -> factory) once per registry; returns the constructors. */
 export function defineElements(elements: Readonly<Record<string, () => Ctor>>, options: DefineOptions = {}): Record<string, Ctor> {
@@ -1687,6 +1687,7 @@ export function defineOtterElements(options: DefineOptions = {}): Record<string,
       [M3_ELEMENTS.TheaterButton]: otterTheaterButton,
       [M3_ELEMENTS.CastButton]: otterCastButton,
       [M3_ELEMENTS.AirPlayButton]: otterAirPlayButton,
+      [M3_ELEMENTS.MiniClose]: otterMiniClose,
     },
     options,
   );

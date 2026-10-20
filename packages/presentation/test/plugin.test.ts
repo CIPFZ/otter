@@ -197,6 +197,53 @@ describe('presentation controller', () => {
     expect(document.querySelector('[data-otter-placeholder]')).toBeNull();
   });
 
+  it('mini window drags, remembers where it was left, and lets clicks through', async () => {
+    localStorage.removeItem('otter:mini-position');
+    const { core, container, mode } = await setup();
+    // A 320x180 window in a 1024x768 viewport, at the default 16 px corner.
+    container.getBoundingClientRect = () => {
+      const right = 1024 - (Number.parseFloat(container.style.right) || 16);
+      const bottom = 768 - (Number.parseFloat(container.style.bottom) || 16);
+      return new DOMRect(right - 320, bottom - 180, 320, 180);
+    };
+    const seen: string[] = [];
+    container.addEventListener('pointercancel', () => seen.push('cancel'));
+    container.addEventListener('click', () => seen.push('click'));
+    const pointer = (type: string, x: number, y: number) =>
+      container.dispatchEvent(new PointerEvent(type, { pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0, clientX: x, clientY: y, bubbles: true }));
+    core.store.dispatch('toggle-mini', {});
+    await vi.waitFor(() => expect(mode()).toBe('mini'));
+    // The drag behaviour loads with the mode.
+    await vi.waitFor(async () => {
+      pointer('pointerdown', 900, 700);
+      pointer('pointermove', 600, 500);
+      expect(container.style.right).toBe('316px');
+    });
+    expect(container.style.bottom).toBe('216px');
+    expect(container.hasAttribute('data-otter-dragging')).toBe(true);
+    pointer('pointerup', 600, 500);
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // The InputController got a pointercancel when the drag started; the closing click is swallowed.
+    expect(seen).toEqual(['cancel']);
+    expect(JSON.parse(localStorage.getItem('otter:mini-position') ?? 'null')).toEqual({ right: 316, bottom: 216 });
+    // A plain click (no movement) still reaches the player.
+    pointer('pointerdown', 700, 600);
+    pointer('pointerup', 700, 600);
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(seen).toEqual(['cancel', 'click']);
+    // Never dragged out of the viewport.
+    pointer('pointerdown', 700, 600);
+    pointer('pointermove', 5000, 5000);
+    expect([container.style.right, container.style.bottom]).toEqual(['8px', '8px']);
+    pointer('pointerup', 5000, 5000);
+    core.store.dispatch('toggle-mini', {});
+    await vi.waitFor(() => expect(mode()).toBe('inline'));
+    expect(container.style.right).toBe('');
+    // Next time it opens where it was left.
+    core.store.dispatch('toggle-mini', {});
+    await vi.waitFor(() => expect(container.style.right).toBe('8px'));
+  });
+
   it('Document PiP moves the whole player and puts it back when the window closes', async () => {
     const pipDoc = document.implementation.createHTMLDocument('pip');
     const pipWindow = Object.assign(new EventTarget(), {

@@ -62,6 +62,8 @@ export interface PresentationOptions {
   readonly lockOrientation?: boolean;
   /** Initial Document PiP window size; default: the player's size. */
   readonly docPipSize?: { readonly width: number; readonly height: number };
+  /** localStorage key for the mini window position (`otter:mini-position`); null: session only. */
+  readonly miniPositionKey?: string | null;
 }
 
 interface WebKitVideo {
@@ -116,6 +118,9 @@ export function createPresentationController(options: PresentationOptions): Pres
   let beforeBackground: PresentationMode = 'inline';
   let pipWindow: Window | undefined;
   let placeholder: HTMLElement | undefined;
+  /** Undoes the mini window drag behaviour (mini.ts, loaded on entering mini). */
+  let miniOff: (() => void) | undefined;
+  let miniEpoch = 0;
   let restoreScroll: (() => void) | undefined;
 
   const inFullscreen = (): boolean => {
@@ -177,6 +182,9 @@ export function createPresentationController(options: PresentationOptions): Pres
   const removePlaceholder = (): void => {
     placeholder?.remove();
     placeholder = undefined;
+    miniEpoch++;
+    miniOff?.();
+    miniOff = undefined;
   };
 
   // Leaves the current non-layout mode. Synchronous side effects only; the browser's own events
@@ -236,6 +244,10 @@ export function createPresentationController(options: PresentationOptions): Pres
     if (to === 'mini') {
       insertPlaceholder();
       set('mini');
+      const epoch = ++miniEpoch;
+      void import('./mini.js').then((m) => {
+        if (epoch === miniEpoch && mode === 'mini') miniOff = m.attachMini(container, { storageKey: options.miniPositionKey === undefined ? 'otter:mini-position' : options.miniPositionKey });
+      });
       return Promise.resolve();
     }
     if (to === 'fullscreen') {

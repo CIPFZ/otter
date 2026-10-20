@@ -142,6 +142,12 @@ M3 结束时首屏（默认皮肤 + ui-core + presentation + text）是 29.74 / 
 - 预览卡缩略图绘制：`ui-core/thumb-view`，第一次拿到缩略图来源时加载。
 - 错误卡片视图：`ui-core/error-view`，第一次致命错误时加载。
 - cue 渲染器与 WebVTT 排版：新入口 `@otter-player/text/render`（`createCueRenderer`、`layoutCues`、`horizontalLayout`、`cueArea`），text overlay 在第一个要画的 cue 出现时加载。`DEFAULT_CUE_SETTINGS` 和布局类型仍在 text 主入口。
+- 直播指示器视图：`ui-core/live-view`，源为直播时加载（为下面的小窗关闭按钮腾出空间，首屏保持 ≤ 26 KB）。
+
+页面小窗补全（同日）：
+- `otter-mini-close`：只在 `mini` 模式下出现；有指针悬停能力的设备在 hover 或焦点进入播放器时显示，触屏设备一直显示；点击派发 `exit-presentation`，算作用户关闭，滚回原位前不会再自动打开。
+- 拖拽：`presentation/mini`（进入小窗时加载）。移动超过 5 px 才算拖拽，单击、双击仍交给 InputController；拖拽开始时给它一个 `pointercancel`，收掉长按 2 倍速和横向滑动拖进度，结束拖拽的那次 click 被吞掉。窗口始终留在视口内（8 px 边距）。
+- 位置以距视口右下角的偏移存进 localStorage（`otter:mini-position`，控制器选项 `miniPositionKey`，null 表示只在本次会话内记住），窗口尺寸变化时仍贴着同一个角。
 
 ## 代价
 

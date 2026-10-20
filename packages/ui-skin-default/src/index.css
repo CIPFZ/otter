@@ -105,6 +105,31 @@
   border-radius: var(--otter-radius-lg);
   box-shadow: var(--otter-shadow-pop);
 }
+/* Mini window chrome: the close button shows on hover (always on touch); dragging shows a move cursor. */
+:where([data-otter-player]) > otter-mini-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 30;
+  opacity: 0;
+  transition: opacity var(--otter-t-fast) var(--otter-ease-out);
+}
+:where([data-otter-player]:hover, [data-otter-player]:focus-within) > otter-mini-close {
+  opacity: 1;
+}
+@media (hover: none) {
+  :where([data-otter-player]) > otter-mini-close {
+    opacity: 1;
+  }
+}
+:where([data-otter-player][data-otter-presentation='mini']) {
+  cursor: grab;
+  touch-action: none;
+}
+:where([data-otter-player][data-otter-dragging]) {
+  cursor: grabbing;
+  user-select: none;
+}
 /* Document PiP window: the player fills it. */
 :where([data-otter-player][data-otter-presentation='docpip']) {
   width: 100vw;

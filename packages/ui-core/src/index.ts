@@ -48,6 +48,7 @@ export {
   otterAirPlayButton,
   otterCastButton,
   otterErrorCard,
+  otterMiniClose,
   otterTheaterButton,
   otterFeedback,
   otterQualityMenu,

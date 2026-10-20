@@ -184,28 +184,30 @@ describe('M2 primitives', () => {
     expect(calls.at(-1)).toEqual(['load', { source: { src: '/a.m3u8' }, options: { autoplay: true } }]);
   });
 
-  it('live indicator only for live, marks being behind the edge', () => {
+  it('live indicator only for live, marks being behind the edge', async () => {
     const { store, root } = mount('<otter-live-indicator></otter-live-indicator>');
     const el = root.querySelector('otter-live-indicator') as HTMLElement;
     expect(el.hasAttribute('data-otter-unsupported')).toBe(true);
     store.setState({ live: true, latency: 3 });
     expect(el.hasAttribute('data-otter-unsupported')).toBe(false);
-    expect(el.shadowRoot?.querySelector('[part="badge"]')?.textContent).toBe('Live');
+    // The view loads once the source is live.
+    await vi.waitFor(() => expect(el.shadowRoot?.querySelector('[part="badge"]')?.textContent).toBe('Live'));
     store.setState({ latency: 30 });
-    expect(el.hasAttribute('behind')).toBe(true);
+    await vi.waitFor(() => expect(el.hasAttribute('behind')).toBe(true));
   });
 
-  it('behind the live edge the badge becomes a "Back to live" button: seek-to-live, then play', () => {
+  it('behind the live edge the badge becomes a "Back to live" button: seek-to-live, then play', async () => {
     const { store, root } = mount('<otter-live-indicator></otter-live-indicator>');
     const got: string[] = [];
     store.handle('seek-to-live', () => void got.push('seek-to-live'));
     store.handle('play', () => void got.push('play'));
     const el = root.querySelector('otter-live-indicator') as HTMLElement;
-    const button = el.shadowRoot?.querySelector('button') as HTMLButtonElement;
     store.setState({ live: true, latency: 1, paused: false });
-    expect(button.hidden).toBe(true);
+    await vi.waitFor(() => expect(el.shadowRoot?.querySelector('button')).toBeTruthy());
+    const button = el.shadowRoot?.querySelector('button') as HTMLButtonElement;
+    await vi.waitFor(() => expect(button.hidden).toBe(true));
     store.setState({ latency: 12, paused: true });
-    expect(button.hidden).toBe(false);
+    await vi.waitFor(() => expect(button.hidden).toBe(false));
     expect(button.textContent).toBe('Back to live');
     button.click();
     expect(got).toEqual(['seek-to-live', 'play']);

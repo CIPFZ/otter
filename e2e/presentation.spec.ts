@@ -273,6 +273,52 @@ test.describe('presentation modes', () => {
     await expect.poll(() => mode(page)).toBe('inline');
   });
 
+  test('mini window: close button on hover, drag moves it without pausing, position remembered', async ({ page, isMobile }) => {
+    await open(page, '', true);
+    await page.evaluate(() => localStorage.removeItem('otter:mini-position'));
+    await page.locator('#player').press('i');
+    await expect.poll(() => mode(page)).toBe('mini');
+    const player = page.locator('#player');
+    const close = page.locator('otter-mini-close');
+    const opacity = () => close.evaluate((el) => getComputedStyle(el).opacity);
+    if (isMobile) {
+      // No hover on touch: the close button is always there.
+      await expect.poll(opacity).toBe('1');
+    } else {
+      // Focus inside the player shows it too (keyboard users): take focus away, then hover.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.mouse.move(2, 2);
+      await expect.poll(opacity).toBe('0');
+      const box = (await player.boundingBox()) as { x: number; y: number; width: number; height: number };
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await expect.poll(opacity).toBe('1');
+      // Drag by (-300, -150): the window follows, playback is not toggled.
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 - 300, box.y + box.height / 2 - 150, { steps: 8 });
+      await page.mouse.up();
+      const moved = (await player.boundingBox()) as { x: number; y: number };
+      expect(moved.x).toBeCloseTo(box.x - 300, -1);
+      expect(moved.y).toBeCloseTo(box.y - 150, -1);
+      expect((await page.evaluate(async () => ((await window.otter) as OtterFixture).state())).paused).toBe(false);
+      await close.getByRole('button', { name: 'Close mini player' }).click();
+      await expect.poll(() => mode(page)).toBe('inline');
+      // A new visit opens it where it was left.
+      await page.reload();
+      await page.evaluate(async () => {
+        const o = (await window.otter) as OtterFixture;
+        o.dispatch('set-muted', { muted: true });
+        o.load({ src: '/hls-fmp4/master.m3u8' }, { autoplay: true });
+      });
+      await page.locator('#player').press('i');
+      await expect.poll(() => mode(page)).toBe('mini');
+      await expect.poll(async () => (await player.boundingBox())?.x ?? 0).toBeCloseTo(moved.x, -1);
+      expect((await player.boundingBox())?.y).toBeCloseTo(moved.y, -1);
+      return;
+    }
+    await close.getByRole('button', { name: 'Close mini player' }).click();
+    await expect.poll(() => mode(page)).toBe('inline');
+  });
+
   test('background: entered when the page is hidden, left when visible; never by request', async ({ page }) => {
     await open(page);
     await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('request-presentation', { mode: 'background' }));
