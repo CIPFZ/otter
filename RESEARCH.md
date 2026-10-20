@@ -53,6 +53,9 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - hls.js 1.7 的 TS demuxer 用 `new Uint8Array(data.buffer, len, data.buffer.byteLength - len)` 保存剩余字节，没有考虑传入视图的 `byteOffset`。如果输入是大缓冲区上的一个视图，剩余部分就成了整个底层缓冲区，导致分片和字幕重复。vendored 副本改成了 `data.subarray(len)`，可以考虑提交到上游。
 - mp4box.js 2.4：所有轨道的 `setSegmentOptions` 必须用同一个 `nbSamples`，否则该轨道会被静默跳过（音频不出 SourceBuffer）；`appendBuffer(…, true)` 会把剩余样本全部切成单帧分段；`rapAlignement` 判断的是分段最后一个样本，所以视频分段以下一个关键帧结尾。
 - ffmpeg 7：HLS fMP4 muxer 在帧间隔很大时（每 2 s 一个 I 帧）第二个分片的 `tfdt` 写错；原始 H.264 用 `-c copy` 封装时 `-framerate` 不起作用，要用输入侧的 `-r`，否则时间戳会在第 50 帧附近挤在一起。
+- 无头 Firefox（Playwright 构建，Linux）拿不到 WebGL2 上下文，`getContext('webgl2')` 返回 null；WebCodecs 路径要有 Canvas 2D 兜底（`ctx.filter` 接受 `url(#svg-filter)`，Chrome 和 Firefox 都支持）。无头 Chrome 有 WebGL2 和 WebCodecs，但 `VideoDecoder.isConfigSupported` 对 HEVC 返回 false，`crossOriginIsolated` 为 false。
+- SVG `<filter>` 要写 `color-interpolation-filters="sRGB"`，否则默认在 linearRGB 里计算，和 CSS 的 `brightness()` / `contrast()` / `saturate()` 以及 shader 的结果对不上。
+- 页面没有 `<meta name="viewport" content="width=device-width">` 时，移动端仿真（Pixel 7，DPR 2.625）按 980 px 布局再整体缩小，`<video>`、Canvas 和 WebGL 的缩放滤波不同，像素比较会出现系统性差异。另外截图宽度是取整后的设备像素（1081 = round(412 × 2.625)），用 `截图宽度 / clientWidth` 推算比例会偏差约 1 px，应直接用 `devicePixelRatio`。
 
 ## 2. 格式 / 协议 / 编码全景
 

@@ -1,10 +1,13 @@
 // VideoSurface (SPEC §12): the <video> element as the picture layer for the native and MSE
-// backends. Fit / transform / filters are CSS on the element; contentRect is the actual picture
+// backends. Fit / transform / filters are CSS on the element (filters CSS can't express use an SVG
+// filter with GPUSurface's numbers, filters.ts); contentRect is the actual picture
 // rectangle (letterbox excluded) relative to the element box, which overlays use to stay on the
 // picture. Sizes come from ResizeObserver and media events, never window.resize.
 
 import { createError, createEventBus, type Unsubscribe } from '@otter-player/core';
+import { cssOnly, NEUTRAL_FILTERS, shorthandCss } from './filter-css.js';
 import type { SnapshotOptions, Surface, SurfaceColorInfo, SurfaceFilters, SurfaceFit, SurfaceTransform } from './surface.js';
+import type { SvgFilter } from './svg-filter.js';
 
 export interface Size {
   readonly width: number;
@@ -83,18 +86,8 @@ export function surfaceCss(box: Size, video: Size, fit: SurfaceFit, t: SurfaceTr
 
 const round = (n: number): number => Math.round(n * 1e6) / 1e6;
 
-const NEUTRAL: SurfaceFilters = { brightness: 1, contrast: 1, saturate: 1, temperature: 0, sharpen: 0 };
-
-/** CSS filter string; temperature and sharpen have no CSS equivalent on a <video>. */
-export function filterCss(f: SurfaceFilters): string {
-  return [
-    f.brightness !== 1 ? `brightness(${f.brightness})` : '',
-    f.contrast !== 1 ? `contrast(${f.contrast})` : '',
-    f.saturate !== 1 ? `saturate(${f.saturate})` : '',
-  ]
-    .filter((p) => p !== '')
-    .join(' ');
-}
+/** CSS filter string for the shorthand-capable filters (temperature / sharpen need the SVG filter). */
+export const filterCss: (f: SurfaceFilters) => string = shorthandCss;
 
 const toDomRect = (r: PictureRect): DOMRectReadOnly =>
   typeof DOMRectReadOnly === 'function'
@@ -118,7 +111,10 @@ export function createVideoSurface(element: HTMLVideoElement): Surface {
   const bus = createEventBus<SurfaceEvents>();
   let fit: SurfaceFit = 'contain';
   let transform: SurfaceTransform = IDENTITY_TRANSFORM;
-  let filters: SurfaceFilters = NEUTRAL;
+  let filters: SurfaceFilters = NEUTRAL_FILTERS;
+  // Loaded on the first temperature / sharpen (on-demand chunk).
+  let svgFilter: Promise<SvgFilter> | undefined;
+  let destroyed = false;
   let rect: PictureRect = { x: 0, y: 0, width: 0, height: 0 };
 
   const box = (): Size => ({ width: element.clientWidth, height: element.clientHeight });
@@ -158,17 +154,16 @@ export function createVideoSurface(element: HTMLVideoElement): Surface {
     },
     setFilters(patch) {
       filters = { ...filters, ...patch };
-      element.style.filter = filterCss(filters);
-      const unsupported = (['temperature', 'sharpen'] as const).filter((k) => patch[k] !== undefined && patch[k] !== 0);
-      if (unsupported.length > 0) {
-        throw createError({
-          type: 'other',
-          details: 'filterUnsupported',
-          fatal: false,
-          recoverable: true,
-          message: `${unsupported.join(', ')} need a canvas or GPU surface; VideoSurface only has CSS filters`,
-        });
+      if (cssOnly(filters)) {
+        element.style.filter = shorthandCss(filters);
+        return;
       }
+      // Temperature and sharpen go through an SVG filter, with the same numbers as GPUSurface.
+      const wanted = filters;
+      svgFilter ??= import('./svg-filter.js').then((m) => m.createSvgFilter(element));
+      void svgFilter.then((svg) => {
+        if (!destroyed && filters === wanted) element.style.filter = svg.css(wanted);
+      });
     },
     snapshot(opts: SnapshotOptions = {}) {
       return new Promise<Blob>((resolve, reject) => {
@@ -199,6 +194,8 @@ export function createVideoSurface(element: HTMLVideoElement): Surface {
     destroy() {
       observer?.disconnect();
       for (const type of ['loadedmetadata', 'resize']) element.removeEventListener(type, apply);
+      destroyed = true;
+      void svgFilter?.then((svg) => svg.destroy());
       bus.clear();
     },
   };

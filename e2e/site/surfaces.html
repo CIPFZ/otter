@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Otter surfaces fixture</title>
+    <link rel="icon" href="data:," />
+    <style>
+      body { margin: 0; padding: 8px; background: #222; display: flex; gap: 8px; flex-wrap: wrap; }
+      .box { position: relative; width: 320px; height: 240px; background: #000; overflow: hidden; }
+      .box > video, .box > canvas { display: block; width: 100%; height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="box" id="video-box"><video muted playsinline crossorigin="anonymous" src="/vod/progressive.mp4"></video></div>
+    <div class="box" id="gpu-box"><canvas id="gpu"></canvas></div>
+    <div class="box" id="canvas2d-box"><canvas id="canvas2d"></canvas></div>
+    <script type="module" src="./surfaces.ts"></script>
+  </body>
+</html>

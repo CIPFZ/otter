@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   computeContentRect,
   createVideoSurface,
@@ -69,12 +69,25 @@ describe('createVideoSurface', () => {
     surface.destroy();
   });
 
-  it('applies CSS filters and refuses filters a <video> cannot do', () => {
+  it('uses CSS shorthand filters when they suffice, an SVG filter (same matrix as GPUSurface) otherwise', async () => {
     const video = document.createElement('video');
+    document.body.append(video);
     const surface = createVideoSurface(video);
     surface.setFilters({ contrast: 1.5 });
     expect(video.style.filter).toBe('contrast(1.5)');
-    expect(() => surface.setFilters({ sharpen: 0.4 })).toThrow(expect.objectContaining({ details: 'filterUnsupported', fatal: false }));
+    // The SVG filter is an on-demand chunk: a later shorthand-only change wins over a pending load.
+    surface.setFilters({ sharpen: 0.4 });
+    surface.setFilters({ sharpen: 0 });
+    await new Promise((r) => setTimeout(r, 20));
     expect(video.style.filter).toBe('contrast(1.5)');
+    surface.setFilters({ sharpen: 0.4, temperature: 0.5 });
+    await vi.waitFor(() => expect(video.style.filter).toMatch(/^url\("?#otter-filter-\d+"?\)$/));
+    const filter = video.nextElementSibling?.querySelector('filter');
+    expect(filter?.getAttribute('color-interpolation-filters')).toBe('sRGB');
+    expect(filter?.querySelector('feConvolveMatrix')?.getAttribute('kernelMatrix')).toBe('0 -0.4 0 -0.4 2.6 -0.4 0 -0.4 0');
+    surface.setFilters({ sharpen: 0, temperature: 0, contrast: 1 });
+    expect(video.style.filter).toBe('');
+    surface.destroy();
+    await vi.waitFor(() => expect(video.nextElementSibling).toBeNull());
   });
 });

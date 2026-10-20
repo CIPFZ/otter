@@ -10,6 +10,11 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./gpu": {
+      "@otter-player/source": "./src/gpu.ts",
+      "types": "./dist/gpu.d.ts",
+      "default": "./dist/gpu.js"
     }
   },
   "files": [
@@ -21,5 +26,10 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*"
+  },
+  "otter": {
+    "entries": {
+      "gpu": "src/gpu.ts"
+    }
   }
 }

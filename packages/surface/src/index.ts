@@ -10,8 +10,6 @@ export {
   type Size,
 } from './video-surface.js';
 export {
-  createCanvasSurface,
-  createGPUSurface,
   ZERO_RECT,
   type GPUSurfaceOptions,
   type SnapshotOptions,
@@ -22,3 +20,4 @@ export {
   type SurfaceKind,
   type SurfaceTransform,
 } from './surface.js';
+export { NEUTRAL_FILTERS } from './filter-css.js';

@@ -34,6 +34,7 @@ export default defineConfig({
         index: fileURLToPath(new URL('./site/index.html', import.meta.url)),
         player: fileURLToPath(new URL('./site/player.html', import.meta.url)),
         transmux: fileURLToPath(new URL('./site/transmux.html', import.meta.url)),
+        surfaces: fileURLToPath(new URL('./site/surfaces.html', import.meta.url)),
       },
     },
   },

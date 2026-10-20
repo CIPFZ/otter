@@ -11,29 +11,10 @@ import {
 } from '@otter-player/input';
 import { createAdsOverlay } from '@otter-player/overlay-ads';
 import { createWatermarkOverlay } from '@otter-player/overlay-watermark';
-import { createCanvasSurface, createGPUSurface, ZERO_RECT } from '@otter-player/surface';
 import { createTextOverlay } from '@otter-player/text';
 import { createAssOverlay } from '@otter-player/text-ass';
 import { defineUIFeature, OTTER_ELEMENTS } from '@otter-player/ui-core';
 
-const notImplemented = { type: 'other', details: 'notImplemented', fatal: false };
-// Stubs never touch the element, so a placeholder object is enough without a DOM.
-const fakeElement = <T>(): T => ({}) as T;
-
-describe('surface', () => {
-  it.each([
-    ['canvas2d', () => createCanvasSurface(fakeElement<HTMLCanvasElement>())],
-    ['gpu', () => createGPUSurface(fakeElement<HTMLCanvasElement>())],
-  ] as const)('%s surface', async (kind, create) => {
-    const surface = create();
-    expect(surface.kind).toBe(kind);
-    expect(surface.contentRect).toBe(ZERO_RECT);
-    expect(surface.colorInfo).toEqual({ range: 'sdr', gamut: 'srgb' });
-    expect(() => surface.setFit('contain')).toThrow(expect.objectContaining(notImplemented));
-    await expect(surface.snapshot()).rejects.toMatchObject(notImplemented);
-    surface.onContentRectChange(() => undefined)();
-  });
-});
 
 describe('overlays', () => {
   it.each([

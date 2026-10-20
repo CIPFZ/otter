@@ -1,9 +1,9 @@
 // Surface (SPEC §12): the pixel layer. VideoSurface for native / MSE (./video-surface.ts),
-// CanvasSurface (2D) as the WebCodecs fallback and snapshot path, GPUSurface (WebGL2 / WebGPU) for
-// the WebCodecs main path, multi-view grids and HDR; the latter two are empty implementations
-// until M4. Sizing is ResizeObserver + CSS aspect-ratio only, never window.resize.
+// CanvasSurface (2D) as the WebCodecs fallback and snapshot path, GPUSurface (WebGL2) for the
+// WebCodecs main path and multi-view grids (./gpu-surface.ts, ADR-008 §6). Sizing is
+// ResizeObserver + CSS aspect-ratio only, never window.resize.
 
-import { notImplemented, type Unsubscribe } from '@otter-player/core';
+import type { Unsubscribe } from '@otter-player/core';
 
 export type SurfaceKind = 'video' | 'canvas2d' | 'gpu';
 
@@ -50,8 +50,8 @@ export interface Surface {
 }
 
 export interface GPUSurfaceOptions {
-  /** Defaults to WebGPU when available, else WebGL2. */
-  readonly api?: 'webgl2' | 'webgpu';
+  /** WebGL2 (the only API so far; WebGPU is optional per SPEC §12 and not implemented). */
+  readonly api?: 'webgl2';
 }
 
 /** Zero rectangle that does not need the DOMRectReadOnly constructor (SSR / Worker safe). */
@@ -66,40 +66,3 @@ export const ZERO_RECT: DOMRectReadOnly = {
   left: 0,
   toJSON: () => ({ x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }),
 };
-
-const SDR_SRGB: SurfaceColorInfo = { range: 'sdr', gamut: 'srgb' };
-const noop: Unsubscribe = () => undefined;
-
-function createStubSurface(
-  kind: SurfaceKind,
-  element: HTMLVideoElement | HTMLCanvasElement,
-  factory: string,
-): Surface {
-  const fail = (method: string): Error => notImplemented(`@otter-player/surface ${factory}().${method}`);
-  return {
-    kind,
-    element,
-    contentRect: ZERO_RECT,
-    colorInfo: SDR_SRGB,
-    setFit() {
-      throw fail('setFit');
-    },
-    setTransform() {
-      throw fail('setTransform');
-    },
-    setFilters() {
-      throw fail('setFilters');
-    },
-    snapshot: () => Promise.reject(fail('snapshot')),
-    onContentRectChange: () => noop,
-    destroy: () => undefined,
-  };
-}
-
-export function createCanvasSurface(element: HTMLCanvasElement): Surface {
-  return createStubSurface('canvas2d', element, 'createCanvasSurface');
-}
-
-export function createGPUSurface(element: HTMLCanvasElement, _options: GPUSurfaceOptions = {}): Surface {
-  return createStubSurface('gpu', element, 'createGPUSurface');
-}
