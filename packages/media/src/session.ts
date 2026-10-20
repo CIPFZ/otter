@@ -315,6 +315,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         caps,
         qoe: qoe as QoeHook,
         ...(cmcd === undefined ? {} : { cmcd }),
+        ...(options.decoders === undefined ? {} : { decoders: options.decoders }),
       });
     } catch (err) {
       return toError(err, 'backendCreateFailed');

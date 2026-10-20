@@ -27,6 +27,8 @@ export type {
   CmcdState,
 } from './cmcd.js';
 export type { Decoder, DecoderConfig, DecoderInstance, EncodedChunk } from './decoder.js';
+export type { DemuxAudioTrack, DemuxInfo, DemuxTrack, DemuxVideoTrack, DecodeSetup, PacketStream } from './demux.js';
+export { closeFrame, frameTransferables, i420Size, isI420, type DecodedFrame, type FrameSink, type I420Frame } from './frames.js';
 export {
   bufferedEndAt,
   mediaElementError,
@@ -35,7 +37,7 @@ export {
   type MediaElementObserver,
   type ObserveOptions,
 } from './element.js';
-export type { Engine, EngineContext, EngineEvents, FormatPlugin } from './format.js';
+export type { DemuxContext, Demuxer, Engine, EngineContext, EngineEvents, FormatPlugin } from './format.js';
 export {
   createRouter,
   FALLBACK_CHAIN,

@@ -5,6 +5,7 @@ import type { OtterError, QoeHook, Unsubscribe } from '@otter-player/core';
 import type { BackendKind } from './backend.js';
 import type { Capabilities } from './capabilities.js';
 import type { CmcdDecorator } from './cmcd.js';
+import type { DemuxInfo, PacketStream } from './demux.js';
 import type { LoadOptions, Source } from './source.js';
 import type { ThumbnailProvider } from './thumbnails.js';
 import type { InbandCues, TrackList } from './tracks.js';
@@ -58,6 +59,29 @@ export interface Engine {
   destroy(): void;
 }
 
+/** Everything a format needs to demux a source for the WebCodecs backend (ADR-008 §2). */
+export interface DemuxContext {
+  readonly source: Source;
+  readonly options: LoadOptions;
+  readonly caps: Capabilities;
+  readonly qoe: QoeHook;
+  /** Aborted when the backend is torn down; implementations stop reading. */
+  readonly signal: AbortSignal;
+}
+
+/**
+ * A source opened for the WebCodecs path: tracks in, encoded packets out. `seek` restarts a
+ * track at the last keyframe at or before the requested time, in decode order.
+ */
+export interface Demuxer {
+  readonly info: DemuxInfo;
+  /** Packets from the start (time 0), in decode order. */
+  packets(track: 'video' | 'audio'): PacketStream;
+  /** Packets from the last keyframe at or before `time`, in decode order. */
+  seek(track: 'video' | 'audio', time: number): Promise<PacketStream>;
+  destroy(): void;
+}
+
 export interface FormatPlugin {
   readonly id: string;
   /** Confidence 0..1 that this plugin can play `source`. */
@@ -65,4 +89,9 @@ export interface FormatPlugin {
   /** Backends this format can feed for `source`, in no particular order. */
   backends(source: Source, caps: Capabilities): readonly BackendKind[];
   createEngine(ctx: EngineContext): Engine;
+  /**
+   * Demuxer for the WebCodecs backend (ADR-008 §2), when `backends()` lists `webcodecs`. Called
+   * instead of `createEngine` for that backend; the module it needs loads inside it.
+   */
+  createDemuxer?(ctx: DemuxContext): Promise<Demuxer>;
 }

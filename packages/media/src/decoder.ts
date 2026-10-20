@@ -3,6 +3,7 @@
 
 import type { OtterError } from '@otter-player/core';
 import type { Capabilities } from './capabilities.js';
+import type { DecodedFrame } from './frames.js';
 
 export interface EncodedChunk {
   readonly type: 'key' | 'delta';
@@ -21,8 +22,11 @@ export interface DecoderConfig {
   readonly numberOfChannels?: number;
   /** avcC / hvcC / esds payload. */
   readonly description?: ArrayBuffer;
+  /** Video: ITU-T H.273 colour space; passed to VideoDecoder.configure. */
+  readonly colorSpace?: VideoColorSpaceInit;
   readonly hardwareAcceleration?: 'no-preference' | 'prefer-hardware' | 'prefer-software';
-  readonly output: (frame: VideoFrame | AudioData) => void;
+  /** Called for every decoded frame; the callee takes ownership (closeFrame when done). */
+  readonly output: (frame: DecodedFrame) => void;
   readonly error: (error: OtterError) => void;
 }
 

@@ -5,6 +5,7 @@
 import type { OtterError, QoeHook, Unsubscribe } from '@otter-player/core';
 import type { Capabilities } from './capabilities.js';
 import type { CmcdDecorator } from './cmcd.js';
+import type { Decoder } from './decoder.js';
 import type { FormatPlugin } from './format.js';
 import type { FallbackStep } from './router.js';
 import type { LoadOptions, Source } from './source.js';
@@ -88,6 +89,8 @@ export interface BackendContext {
   readonly qoe: QoeHook;
   /** Present when CMCD is enabled (ADR-005 §2); element-only backends (native) cannot use it. */
   readonly cmcd?: CmcdDecorator;
+  /** Decoder plugins the host registered; the WebCodecs backend picks one by `step.decoder`. */
+  readonly decoders?: readonly Decoder[];
 }
 
 export interface BackendFactory {

@@ -69,6 +69,11 @@ function initialOrder(format: FormatPlugin, source: Source, caps: Capabilities, 
     !Object.entries(caps.codecs).some(([type, info]) => HEVC.test(type) && info.supported);
   if (hevcUnsupported) return { order: FALLBACK_CHAIN, reason: 'HEVC source without HEVC decoding support' };
 
+  // A format that cannot feed MSE or native (format-file: local files) gets the WebCodecs steps
+  // first, on every platform.
+  const fed = new Set(format.backends(source, caps));
+  if (!fed.has('mse') && !fed.has('native')) return { order: FALLBACK_CHAIN, reason: 'format only feeds WebCodecs' };
+
   // iPhone: no MediaSource; ManagedMediaSource on iOS 17.1+, only native HLS before that.
   const iPhone = !caps.mediaSource && (caps.managedMediaSource || caps.nativeHls);
   if (iPhone && format.id === 'hls' && source.drm === undefined && policy.needsQualitySwitch !== true) {
