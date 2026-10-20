@@ -2,6 +2,7 @@
 // same paused frame on VideoSurface (CSS transform + CSS / SVG filter), GPUSurface (WebGL2 shader)
 // and CanvasSurface (2D), compared pixel by pixel from screenshots.
 
+import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { SurfacesFixture } from './site/surfaces.ts';
@@ -56,6 +57,18 @@ async function compareBoxes(page: Page, others: readonly string[]): Promise<Reco
   );
 }
 
+// Resampling and YUV conversion differ slightly between paths; edges of a sharpened, zoomed test
+// pattern are the worst case.
+const MAX_MEAN = 6;
+const MAX_OUTLIERS = 0.03;
+const within = (d: Diff): boolean => d.mean < MAX_MEAN && d.outliers < MAX_OUTLIERS;
+
+/** One line for the CI run page (the workflow turns test-results/ci-notices.txt into notices). */
+const ciNotice = (text: string): void => {
+  mkdirSync('test-results', { recursive: true });
+  appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
+};
+
 const CASES: [string, Parameters<SurfacesFixture['apply']>[0], Parameters<SurfacesFixture['apply']>[1]][] = [
   ['identity', {}, {}],
   ['zoom 2x + pan', { zoom: 2, pan: [30, -20] }, {}],
@@ -71,7 +84,7 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
   await page.goto('/surfaces.html');
   const gpu = await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).gpu);
   await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).frame(2.3));
-  const results: Record<string, unknown> = {};
+  const results: Record<string, Diff> = {};
   // Controls, so a black or frozen picture cannot pass: the frame has content, and a different
   // frame on the frame surfaces is clearly different from the video.
   const control = await page.evaluate(async () => {
@@ -89,10 +102,7 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
     const s = await (window.surfaces as Promise<SurfacesFixture>);
     await s.frame(6.1);
     // Put the video back on the 2.3 s frame without redrawing the frame surfaces.
-    const v = document.querySelector('video') as HTMLVideoElement;
-    v.currentTime = 2.3;
-    await new Promise((r) => v.addEventListener('seeked', r, { once: true }));
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await s.seekVideo(2.3);
   });
   for (const [box, diff] of Object.entries(await compareBoxes(page, gpu ? ['gpu-box', 'canvas2d-box'] : ['canvas2d-box']))) {
     expect(diff.mean, `control: another frame on ${box} must differ`).toBeGreaterThan(10);
@@ -103,16 +113,21 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
     const rects = await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).rects());
     // The picture rectangle (what overlays use) is the same on every surface.
     for (const r of Object.values(rects)) expect(r).toEqual(rects['video']);
-    const diffs = await compareBoxes(page, gpu ? ['gpu-box', 'canvas2d-box'] : ['canvas2d-box']);
+    // Compositors may show a new transform / filter a few frames late (WebKit): compare the
+    // settled picture, up to 2 s.
+    let diffs = await compareBoxes(page, gpu ? ['gpu-box', 'canvas2d-box'] : ['canvas2d-box']);
+    for (let i = 0; i < 10 && !Object.values(diffs).every(within); i++) {
+      await page.waitForTimeout(200);
+      diffs = await compareBoxes(page, gpu ? ['gpu-box', 'canvas2d-box'] : ['canvas2d-box']);
+    }
     for (const [box, diff] of Object.entries(diffs)) {
       results[`${name} ${box}`] = diff;
-      // Resampling and YUV conversion differ slightly between paths; edges of a sharpened,
-      // zoomed test pattern are the worst case.
-      expect.soft(diff.mean, `${name}: ${box} vs video`).toBeLessThan(6);
-      expect.soft(diff.outliers, `${name}: ${box} vs video`).toBeLessThan(0.03);
+      expect.soft(diff.mean, `${name}: ${box} vs video`).toBeLessThan(MAX_MEAN);
+      expect.soft(diff.outliers, `${name}: ${box} vs video`).toBeLessThan(MAX_OUTLIERS);
     }
   }
-  console.log(`SURFACES ${info.project.name} ${JSON.stringify(results)}`);
+  const worst = Object.values(results).reduce((w, d) => ({ mean: Math.max(w.mean, d.mean), outliers: Math.max(w.outliers, d.outliers) }), { mean: 0, outliers: 0 });
+  ciNotice(`surfaces: worst mean ${worst.mean.toFixed(2)}, outliers ${(worst.outliers * 100).toFixed(2)}%${Object.values(results).every(within) ? '' : ` FAILED ${JSON.stringify(results)}`}`);
   info.annotations.push({ type: 'surface-diff', description: JSON.stringify(results) });
   test.info().attach('surface-diff.json', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
 });
