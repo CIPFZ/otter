@@ -13,7 +13,7 @@ const RENDITIONS = [
 const state = (page: Page) => page.evaluate(async () => ((await window.otter) as OtterFixture).state());
 
 async function open(page: Page, start: string): Promise<void> {
-  // A 4 s buffer goal keeps most of the 12 s clip unbuffered, so switches have something to apply to.
+  // A 4 s buffer goal keeps most of the 30 s clip unbuffered, so switches have something to apply to.
   await page.goto('/player.html?idle=0&ahead=4');
   await page.evaluate(async ([src, renditions]) => {
     const o = (await window.otter) as OtterFixture;
@@ -57,7 +57,7 @@ test.describe('mp4-range', () => {
     expect(await width(page)).toBe(640);
     const quality = async () => (await state(page)).activeQuality;
     // Each switch applies to what is not buffered yet, so ask for the next one as soon as the
-    // previous one is applied (the 12 s clip must still have unbuffered media left).
+    // previous one is applied (the clip must still have unbuffered media left).
     await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('select-quality', { id: 'rendition-1' }));
     await expect.poll(quality, { timeout: 10_000 }).toBe('rendition-1');
     await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('select-quality', { id: 'rendition-0' }));
