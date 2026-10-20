@@ -5,6 +5,11 @@
 export interface UpstreamFile {
   readonly upstream: string;
   readonly local: string;
+  /**
+   * Build artefacts copied byte for byte (WASM binaries, generated glue) cannot carry a header:
+   * their SHA-256 at the pinned commit is recorded instead and checked.
+   */
+  readonly sha256?: string;
 }
 
 export interface Upstream {
@@ -34,6 +39,8 @@ export interface VendorDir {
   readonly files: readonly string[];
   /** Contents of every file in `files`. */
   readonly contents: Readonly<Record<string, string>>;
+  /** SHA-256 (hex) of every file in `files`. */
+  readonly hashes?: Readonly<Record<string, string>>;
 }
 
 export interface VendorInput {
@@ -77,6 +84,11 @@ function validate(raw: unknown, dir: string, problems: string[]): Upstream | und
     (f) => typeof f === 'object' && f !== null && typeof (f as UpstreamFile).upstream === 'string' && typeof (f as UpstreamFile).local === 'string',
   );
   if (!okFiles) report('every "files" entry needs string "upstream" and "local"');
+  const badHash = (files ?? []).some((f) => {
+    const h = (f as UpstreamFile | null)?.sha256;
+    return h !== undefined && !/^[0-9a-f]{64}$/.test(h);
+  });
+  if (badHash) report('"sha256" must be 64 lowercase hex characters');
   const changes = Array.isArray(u.localChanges) ? u.localChanges : undefined;
   if (changes === undefined || changes.length === 0) report('"localChanges" must describe what was changed');
   return problems.some((p) => p.startsWith(`${dir}/UPSTREAM.json`)) ? undefined : (raw as Upstream);
@@ -109,6 +121,11 @@ export function checkVendor(input: VendorInput): string[] {
         continue;
       }
       if (local.endsWith('.json')) continue; // data files cannot carry comments
+      const pinned = u.files.find((x) => x.local === local && x.sha256 !== undefined);
+      if (pinned !== undefined) {
+        if (vd.hashes?.[local] !== pinned.sha256) problems.push(`${vd.dir}/${local}: SHA-256 ${vd.hashes?.[local] ?? '?'} differs from the pinned ${pinned.sha256}`);
+        continue;
+      }
       const header = leadingComments(content);
       for (const f of u.files.filter((x) => x.local === local)) {
         const expected = headerLine(u, f.upstream);

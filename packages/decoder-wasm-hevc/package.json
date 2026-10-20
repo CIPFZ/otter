@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/decoder-wasm-hevc",
   "version": "0.0.0",
-  "description": "Optional HEVC software decoder (third-party libde265 WASM, LGPL, loaded as a separate module).",
+  "description": "WASM HEVC / H.264 software decoder: Jessibuca 4 jv4-decoder (L2, prebuilt), in the shared decode pool, loaded on demand.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -21,6 +21,12 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*",
-    "@otter-player/media": "workspace:*"
+    "@otter-player/media": "workspace:*",
+    "@otter-player/decoder-pool": "workspace:*"
+  },
+  "otter": {
+    "assets": [
+      "src/vendor/jessibuca"
+    ]
   }
 }

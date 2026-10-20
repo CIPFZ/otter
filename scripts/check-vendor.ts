@@ -4,6 +4,7 @@
 //
 //   node scripts/check-vendor.ts
 
+import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { checkVendor, type VendorDir } from './lib/vendor.ts';
@@ -44,6 +45,7 @@ for (const parent of candidateParents) {
       upstream,
       files,
       contents: Object.fromEntries(files.map((f) => [f, readFileSync(join(dir, f), 'utf8')])),
+      hashes: Object.fromEntries(files.map((f) => [f, createHash('sha256').update(readFileSync(join(dir, f))).digest('hex')])),
     });
   }
 }

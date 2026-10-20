@@ -1,6 +1,6 @@
 // Shared Vite library build for every @otter-player/* JS package.
 // Invoked from a package directory: `vite build --config ../../tooling/vite.lib.config.ts`.
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
@@ -13,7 +13,7 @@ const shims = resolve(import.meta.dirname, 'shims');
 // break browser bundlers (imscJS -> sax -> stream / string_decoder). They are bundled into the
 // package's lazy chunk, with the Node builtins replaced by stubs (tooling/shims).
 const manifest = JSON.parse(readFileSync(resolve(pkgDir, 'package.json'), 'utf8')) as {
-  otter?: { bundle?: string[]; entries?: Record<string, string> };
+  otter?: { bundle?: string[]; entries?: Record<string, string>; assets?: string[] };
 };
 // Extra entry points (package.json otter.entries: { name: src path }), built next to index, for
 // sub-path exports that must not ride along with the main entry (ADR-007 §2).
@@ -39,9 +39,23 @@ const cleanJs = {
   },
 };
 
+/**
+ * `otter.assets` in package.json: directories under src/ copied as they are to the same place
+ * under dist/ (WASM modules and their glue, loaded at runtime next to the code that uses them).
+ */
+const copyAssets = {
+  name: 'otter-copy-assets',
+  closeBundle(): void {
+    for (const dir of manifest.otter?.assets ?? []) {
+      if (!dir.startsWith('src/')) throw new Error(`otter.assets entries live under src/: ${dir}`);
+      cpSync(resolve(pkgDir, dir), resolve(pkgDir, 'dist', dir.slice(4)), { recursive: true });
+    }
+  },
+};
+
 export default defineConfig({
   root: pkgDir,
-  plugins: [cleanJs],
+  plugins: [cleanJs, copyAssets],
   ...(bundled.length > 0
     ? { resolve: { alias: { stream: resolve(shims, 'stream.js'), string_decoder: resolve(shims, 'string_decoder.js') } } }
     : {}),

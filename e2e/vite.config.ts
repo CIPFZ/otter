@@ -1,6 +1,7 @@
 // Dev server for the Playwright fixture site. Packages resolve to their sources (same alias as
 // Vitest); local test media (e2e/media) is served from the root; /live/stream.flv is a paced
 // local HTTP-FLV live stream.
+import { cpSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { liveFlvPlugin } from './live-flv.ts';
@@ -12,7 +13,17 @@ export default defineConfig({
   root: fileURLToPath(new URL('./site/', import.meta.url)),
   publicDir: mediaDir,
   logLevel: 'warn',
-  plugins: [liveFlvPlugin(`${mediaDir}flv/clip.flv`)],
+  plugins: [
+    liveFlvPlugin(`${mediaDir}flv/clip.flv`),
+    // decoder-wasm-hevc loads its WASM next to its own module (otter.assets): in the built site
+    // that module lives in assets/.
+    {
+      name: 'otter-wasm-assets',
+      writeBundle(options) {
+        cpSync(`${packagesDir}decoder-wasm-hevc/src/vendor/jessibuca`, `${options.dir as string}/assets/vendor/jessibuca`, { recursive: true });
+      },
+    },
+  ],
   resolve: {
     alias: [
       { find: /^\/@otter-skin\/(.*)$/, replacement: `${packagesDir}ui-skin-default/src/$1` },

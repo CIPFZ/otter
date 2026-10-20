@@ -36,7 +36,7 @@
 | DASH MPD 解析 | `mpd-parser`（video.js 系） | L1 | 独立 npm 包 |
 | WHEP 客户端 | `@eyevinn/whep-video-component` 或 Cloudflare WHEP 示例（MIT） | L3 | 约百行 |
 | WebCodecs 播放循环 | webcodecsfundamentals.org 示例 + libmedia | L3 | 示例与 libmedia 都可以直接拷（ADR-008） |
-| HEVC WASM 软解 | libde265 / ffmpeg 的 WASM 构建，或 Jessibuca 的解码器产物 | L1 / L2，独立加载 | 可选 Decoder 插件，不进核心；按需加载是为了体积与线程，与许可证无关（ADR-008） |
+| HEVC WASM 软解 | Jessibuca 4 的 `jv4-decoder` 产物（jessibuca@e5405ba，v4 分支：`videodec[_simd].{js,wasm}`，HEVC + H.264） | L2，独立加载 | M4：原样拷入 `packages/decoder-wasm-hevc/src/vendor/jessibuca/`，按 sha256 固定（构建产物不能加来源头）。**不可重建**：仓库里有 C++ 胶水和 emcc 链接脚本，但 FFmpeg（commit d7cf115，configure 行可从 .a 里读出）、libhevc、libavc 都只有预编译的静态库，没有构建脚本，emscripten 版本也未记录。备选：emscripten 从源码编 libde265，或按同一 configure 行编 FFmpeg 的 hevc 解码器（ADR-008 §4）。胶水的两个缺陷（extradata 悬空指针、32 位时间戳）在 Otter 的 Worker 里绕开，不改二进制 |
 | EME 流程 | Shaka `drm_engine` | L4 | 仍建议 L1 用 Shaka |
 | 测试流清单 | hls.js `tests/test-streams.js`、Shaka `demo/common/assets.js`、DASH-IF 参考流 | L3 | 省下搭测试源。M1 已复制子集到 `e2e/vendor/hls.js/`、`e2e/vendor/shaka-player/` |
 

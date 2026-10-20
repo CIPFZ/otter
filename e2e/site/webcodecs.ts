@@ -4,6 +4,8 @@
 
 import { createCore, type QoeEventMap, type RouteExplanation } from '@otter-player/core';
 import { createWebCodecsBackendFactory } from '@otter-player/backend-webcodecs';
+import { sharedDecodePool, type PoolStats } from '@otter-player/decoder-pool';
+import { createWasmHevcDecoder, type WasmHevcInfo } from '@otter-player/decoder-wasm-hevc';
 import { createWebCodecsDecoder } from '@otter-player/decoder-webcodecs';
 import { createFileFormat } from '@otter-player/format-file';
 import { createMediaPlugin, MEDIA_SLICE, type MediaActionMap, type MediaState } from '@otter-player/media';
@@ -20,6 +22,9 @@ export interface WebCodecsFixture {
   seek(time: number): Promise<number>;
   state(): MediaState;
   readonly surface: 'gpu' | 'canvas2d';
+  /** The shared decode pool (ADR-008 §3): which Worker decodes what. */
+  pool(): PoolStats;
+  readonly wasm: WasmHevcInfo;
   readonly events: { type: string; payload: unknown }[];
 }
 
@@ -34,11 +39,14 @@ const QOE_TYPES: (keyof QoeEventMap)[] = ['startup', 'rebuffer', 'error', 'dropp
 async function start(): Promise<WebCodecsFixture> {
   const canvas = document.getElementById('canvas') as HTMLCanvasElement;
   const surface = createFrameSurface(canvas);
+  // ?simd=0 forces the plain (FFmpeg) build of the WASM decoder.
+  const wasm = createWasmHevcDecoder(new URLSearchParams(location.search).get('simd') === '0' ? { simd: false } : {});
   const media = createMediaPlugin<State, MediaActionMap>({
     target: document.querySelector('video') as HTMLVideoElement,
     formats: [createFileFormat()],
     backends: [createWebCodecsBackendFactory({ sink: surface })],
-    decoders: [createWebCodecsDecoder()],
+    // WebCodecs first; the WASM decoder takes the route's wasm step (HEVC without hardware).
+    decoders: [createWebCodecsDecoder(), wasm],
   });
   const core = createCore<State, MediaActionMap>({ slices: [MEDIA_SLICE, QOE_SLICE], plugins: [media, createQoePlugin()] });
   await core.start();
@@ -60,6 +68,8 @@ async function start(): Promise<WebCodecsFixture> {
   return {
     surface: surface.kind,
     events,
+    pool: () => sharedDecodePool().stats(),
+    wasm: wasm.info(),
     async load(name, startTime) {
       const blob = await (await fetch(`/frames/${name}`)).blob();
       store.dispatch('load', { source: { src: blob }, options: startTime === undefined ? {} : { startTime } });

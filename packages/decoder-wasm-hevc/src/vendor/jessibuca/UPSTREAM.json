@@ -1,0 +1,20 @@
+{
+  "project": "jessibuca",
+  "repo": "https://github.com/langhuihui/jessibuca",
+  "commit": "e5405ba8f161d127a040eb9e405e4faa3ad3da39",
+  "tag": "v4 branch (2026-01-06)",
+  "license": "GPL-3.0 (repository LICENSE)",
+  "level": "L2",
+  "files": [
+    { "upstream": "packages/decoder/wasm/types/videodec.js", "local": "videodec.js", "sha256": "f7c2723649f50188c6b6b4c95e067381c9b3e887adbcb199903642ba616a60c2" },
+    { "upstream": "packages/decoder/wasm/types/videodec.wasm", "local": "videodec.wasm", "sha256": "91f76ef33da61f40438133c8d768d7400e083035ab4139d16cfd4ad2bf697a16" },
+    { "upstream": "packages/decoder/wasm/types/videodec_simd.js", "local": "videodec_simd.js", "sha256": "7c567d292282197be5234c15f13332070bb541331629a66f1b57e0764399c02c" },
+    { "upstream": "packages/decoder/wasm/types/videodec_simd.wasm", "local": "videodec_simd.wasm", "sha256": "99b8fe483c44e79813982c0f2169bc5682cb6d211e06d8b976cc40b633095a9c" }
+  ],
+  "localChanges": [
+    "None to the files: byte for byte, pinned by sha256 (build artefacts cannot carry a source header).",
+    "Not rebuildable from the repository: the C++ glue (packages/decoder/wasm/src) and emcc scripts (make_videodec*.py) are there, but FFmpeg (commit d7cf115, libavcodec 58.134, configure line in the .a), libhevc and libavc are prebuilt static libraries with no build scripts, and the emscripten version is not recorded (ADR-008 §4, REUSE).",
+    "Worked around in Otter's worker (src/worker.ts), not patched: setCodec keeps a pointer into its extradata string after it is freed, so parameter sets are passed in-band (Annex B) with empty extradata; the timestamp is an unsigned int, so frames are numbered and mapped back to microseconds.",
+    "Loading: the ES-module glue's 'export default Module;' is replaced at load time (in the Worker) to run it as a classic script; wasmBinary is fetched and passed in."
+  ]
+}

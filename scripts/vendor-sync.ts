@@ -54,6 +54,8 @@ async function compare(slug: string, pinned: string, branch: string): Promise<Up
 }
 
 function unifiedDiff(a: string, b: string, path: string): string {
+  // Build artefacts (WASM, generated glue) are pinned by hash: report the change, not a diff.
+  if (/\.wasm$/.test(path) || a.includes('\0') || b.includes('\0')) return `(binary ${path} changed upstream: rebuild or re-copy, then update its sha256)`;
   const dir = mkdtempSync(join(tmpdir(), 'vendor-sync-'));
   try {
     writeFileSync(join(dir, 'pinned'), a);

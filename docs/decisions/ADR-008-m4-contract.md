@@ -41,15 +41,22 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 - seek：从目标时间之前（含）的最后一个关键帧开始解码，丢掉被目标之后的帧覆盖的帧，显示覆盖目标时刻的那一帧，即「时间戳 ≤ 目标的最后一帧」，帧序号 `floor(t × fps + ε)`，与 `<video>` 和播放时的规则一致：t 落在一帧的后半段时显示的仍是当前帧，不是下一帧。判断时有 0.5 ms 容差：WebM 以毫秒存时间戳（第 32 帧存为 1.067，晚于 32/30），没有容差会落到前一帧。新的 seek 立即作废进行中的 seek（generation 计数，`reset()` 解码器），旧 seek 的帧不会画出来。e2e 对 30 fps、GOP 90 的样本从画面像素读出帧序号，断言等于 `floor(t × fps + ε)`；目标有帧起点、帧前半段和帧后半段（每个样本至少 3 个后半段），按 round 取帧的实现会失败。
 - load 在第一帧画到 FrameSink 上之后才 resolve（`first-frame` 发出、`readyState` 4）；`buffered` 是整个文件。
 
-### 3. 解码池
+### 3. 解码池（`@otter-player/decoder-pool`）
 
-- 解码在 Worker 里进行，主线程只做 UI。多个实例共享一个 Worker 池，池的大小默认为 `min(硬件并发数, 4)`，同时解码的路数上限默认 16（`maxConcurrentDecoders`）。超过上限的实例排队，并报告原因。
-- WebCodecs 解出的 `VideoFrame` 可转移，通过 postMessage 交给渲染端，不复制像素。WASM 解出的 I420 平面同样以可转移的 ArrayBuffer 交出。
+- 解码在 Worker 里进行，主线程只做 UI 和渲染。整页共用一个池（`sharedDecodePool()`），池的大小默认 `min(hardwareConcurrency, 4)`，Worker 按需创建，新解码器放到负载最少的 Worker 上。同时解码的路数上限默认 16（`maxDecoders`）；超过上限的解码器不报错，进 FIFO 队列，`queued` 回调给出原因（「16 decoders busy (pool limit); waiting, n in line」），有路关闭时按顺序开始；排队期间送来的数据包先缓存在主线程，并计入 `decodeQueueSize`，所以后端的预读上限照常起作用。
+- 池与解码器插件的约定（`WorkerCodec`）：插件提供一段自包含的函数源码 `(env) => ({ create(config, out) })`，不能 import、不能引用外部变量；池把它作为脚本载入 Worker（Blob URL + `importScripts`，不用 eval），每个 Worker 每种实现只载入一次。`create` 返回 `decode / flush / reset / close`，通过 `out.frame / out.error / out.queue` 回报。WebCodecs 解码器（视频）和 WASM 解码器都按这个约定运行；WebCodecs 的音频留在主线程（开销小，输出本来就要进 AudioWorklet）。
+- 帧以可转移对象交回：`VideoFrame` 直接转移，WASM 的 I420 转移其 `ArrayBuffer`，都不复制像素。`reset()` 使代数加一，之前的帧到达后直接丢弃；挂起的 `flush()` 在 reset 时结算。
+- 统计：每路的帧数、Worker 编号、在 `decode()` 里花的时间（`stats()`），用于多宫格的每路 CPU 报告。
 
-### 4. WASM 加载边界
+### 4. WASM 加载边界（`decoder-wasm-hevc`）
 
-- `decoder-wasm-hevc` 只在硬解不可用（`VideoDecoder.isConfigSupported` 为 false，或配置、解码失败）时才加载，在自己的 Worker 中实例化。
-- 检测 `crossOriginIsolated`：只有为 true 时才可能使用多线程构建。目前拷贝的 Jessibuca 构建是单线程的（`USE_PTHREADS=0`），所以总是走单线程；检测结果写进路由说明。SIMD 版本在 `WebAssembly.validate` 通过 SIMD 探测时使用，否则用非 SIMD 版本。
+- 来源：Jessibuca 4 的 `jv4-decoder` 产物（jessibuca@e5405ba，v4 分支），`videodec.{js,wasm}`（FFmpeg 的 h264 / hevc 解码器，无 SIMD）与 `videodec_simd.{js,wasm}`（Android libhevc / libavc，SIMD），L2 原样拷贝，按 sha256 固定（`check-vendor` 校验，构建产物不能加来源头）。
+- **不可重建**：仓库里有 C++ 胶水（`packages/decoder/wasm/src`）和 emcc 链接脚本（`make_videodec*.py`），但 FFmpeg（commit d7cf115，libavcodec 58.134；configure 行可从 .a 里读出）、libhevc、libavc 都只有预编译的静态库，没有构建脚本，emscripten 版本也没有记录。备选：用 emscripten 从源码编 libde265，或按同一 configure 行（`--disable-everything --enable-decoder=hevc,h264 --enable-parser=hevc,h264 --disable-asm …`）编 FFmpeg 的解码器，配本仓库自己的胶水；在需要修补解码器本身、或需要多线程构建时启用。
+- 胶水的两个缺陷不改二进制，在 Otter 的 Worker 代码里绕开：`setCodec` 把 extradata 指向一个函数返回后就释放的字符串，下次 `clear()` 时 FFmpeg 会释放这个悬空指针，所以总是以 Annex B 配置（extradata 为空），参数集在关键帧前带内送入；时间戳参数是 `unsigned int`，微秒在 71 分钟后溢出，所以传帧序号，Worker 里映射回时间戳。
+- 只在硬解不可用时加载：路由的 `wasm` 步骤（WebCodecs 步骤失败后，例如 `codecUnsupported`）才会创建它；它在池的 Worker 里运行，Worker 在第一个解码器时 fetch 胶水与 WASM（约 1 MB）。每个 Worker 一个模块实例（固定 128 MB 堆），每路一个 embind `VideoDecoder`。
+- 资源位置：默认在本模块旁边的 `vendor/jessibuca/`（包构建按 `otter.assets` 拷到 `dist/vendor/jessibuca/`），宿主可用 `baseUrl` 指定。
+- 检测：`WebAssembly.validate` 一个 SIMD 探测模块，通过则用 SIMD 版本，否则用无 SIMD 版本；`crossOriginIsolated` 检测并报告。两个拷贝的构建都是单线程（`USE_PTHREADS=0`），所以 COOP/COEP 与否都走单线程。检测结果由后端的 `route-detail` 事件写进 `router.explain()`，例如「hvc1.1.6.L93.90 on wasm-hevc (software): jv4-decoder libhevc/libavc (SIMD), single-threaded (crossOriginIsolated false; the copied builds have no threads), in the decode pool」。
+- 实测（无头，720p HEVC，单路）：SIMD 版每帧约 5 ms，无 SIMD 版约 9 ms；Chrome、Firefox、Android 仿真上 seek 都逐帧准确。
 
 ### 5. 三级降级
 

@@ -146,3 +146,41 @@ for (const clip of CLIPS) {
     expect(await frameOnCanvas(page)).toBe(covering(s.currentTime));
   });
 }
+
+for (const build of ['simd', 'plain'] as const) {
+test(`hevc-720p.mp4 (${build} WASM build): no HEVC in WebCodecs here, so the route falls back to the WASM decoder in the pool`, async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto(build === 'plain' ? '/webcodecs.html?simd=0' : '/webcodecs.html');
+  const simdHere = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).wasm.simd);
+  if (build === 'simd' && !simdHere) ciNotice('no WebAssembly SIMD here: the SIMD case runs the plain build');
+  const loaded = (await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).load('hevc-720p.mp4'))) as Loaded;
+  expect(loaded.status, JSON.stringify(loaded.error)).toBe('ready');
+  const steps = loaded.route?.steps ?? [];
+  if (loaded.route?.backend === 'webcodecs') {
+    // A browser with HEVC in WebCodecs (hardware) needs no fallback.
+    ciNotice('hevc-720p.mp4: WebCodecs decodes HEVC here, no WASM fallback');
+  } else {
+    expect(loaded.route?.backend).toBe('wasm');
+    expect(steps).toContainEqual({ candidate: 'webcodecs', outcome: 'failed', reason: 'codecUnsupported' });
+    expect(steps).toContainEqual({ candidate: 'wasm', outcome: 'selected', reason: 'fallback after webcodecs' });
+    // How the WASM step runs is part of router.explain().
+    const detail = steps.find((s) => s.candidate === 'wasm' && /jv4-decoder/.test(s.reason));
+    expect(detail?.reason).toMatch(build === 'plain' || !simdHere ? /FFmpeg \(no SIMD\)/ : /libhevc\/libavc \(SIMD\)/);
+    expect(detail?.reason).toMatch(/crossOriginIsolated (true|false)/);
+  }
+  expect(await frameOnCanvas(page), 'first picture').toBe(0);
+  const times: number[] = [];
+  // GOP 60, no B-frames: targets off keyframes, both halves of frames.
+  for (const t of [(97 + 0.3) / FPS, 4.9, (61 + 0.8) / FPS, (179 + 0.6) / FPS, 1 / FPS]) {
+    times.push(await page.evaluate(async (time) => (await (window.wc as Promise<WebCodecsFixture>)).seek(time), t));
+    expect({ t, frame: await frameOnCanvas(page) }).toEqual({ t, frame: covering(t) });
+  }
+  const pool = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).pool());
+  const wasm = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).wasm);
+  const video = pool.slots.find((s) => s.frames > 0);
+  // Decoded in a pool Worker, not on the main thread.
+  expect(video?.worker).toBeGreaterThanOrEqual(0);
+  if (loaded.route?.backend === 'wasm') expect(video?.kind).toMatch(/^jv4-decoder/);
+  ciNotice(`hevc-720p.mp4 via ${loaded.route?.backend} (${wasm.build}, crossOriginIsolated ${wasm.crossOriginIsolated}): 5 seeks frame-exact, slowest ${Math.round(Math.max(...times))} ms, ${video?.frames} frames in worker ${video?.worker}, ${Math.round(video?.busyMs ?? 0)} ms decoding`);
+});
+}
