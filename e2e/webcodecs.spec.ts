@@ -1,7 +1,7 @@
 // format-file + backend-webcodecs + decoder-webcodecs (ADR-008 §2, M4): the fixture clips paint
 // their own frame number as ten 48 px blocks (generate-frames.sh), so every check reads the
-// picture itself. The frame shown at t is the last one starting at or before t (frame k for
-// t in [k/30, (k+1)/30), like <video>), decoded from the keyframe before it (every 90 frames).
+// picture itself. The frame shown at t is the one covering t: floor(t × fps), the last frame
+// starting at or before t (like <video>), decoded from the keyframe before it (every 90 frames).
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
@@ -43,15 +43,21 @@ interface Loaded {
   readonly error: unknown;
 }
 
-// Targets: frame starts and points inside frames (below half a frame, where round(t × fps) is the
-// frame), all off keyframes and most far from the keyframe before them, out of order.
+/** The frame covering t: the last one starting at or before it (ε absorbs float error). */
+const covering = (t: number): number => Math.floor(t * FPS + 1e-6);
+
+// Targets, out of order and all off keyframes (most far from the keyframe before them): frame
+// starts, points in the first half of a frame, and points in its second half, where the frame
+// covering t is still the current one, not the next (round(t × fps) would be the next). WebM
+// stores milliseconds (frame 32 starts at 1.067, after 32 / 30), so no target sits within 1 ms
+// of the next frame's start.
 const CLIPS = [
   // H.264 in MP4 with AAC: audio on the AudioWorklet, video aligned to the same clock.
-  { name: 'h264.mp4', seeks: [129 / FPS, 4.3, 139 / FPS, (170 + 0.4) / FPS, (59 + 0.15) / FPS, 1 / FPS, 359 / FPS] },
+  { name: 'h264.mp4', seeks: [129 / FPS, 4.3, (139 + 0.75) / FPS, (170 + 0.4) / FPS, (59 + 0.6) / FPS, 1 / FPS, (200 + 0.95) / FPS, 359 / FPS, (88 + 0.85) / FPS] },
   // No audio track: still the AudioContext clock.
-  { name: 'h264-video-only.mp4', seeks: [2.2, 91 / FPS, (89 + 0.3) / FPS, 7.01, 268 / FPS] },
-  // VP9 in WebM with Opus. WebM stores milliseconds: frame 32 starts at 1.067, after 32 / 30.
-  { name: 'vp9.webm', seeks: [1.04, (179 + 0.2) / FPS, 32 / FPS, 5.5, (269 + 0.4) / FPS, 47 / FPS] },
+  { name: 'h264-video-only.mp4', seeks: [2.2, (91 + 0.7) / FPS, (89 + 0.3) / FPS, 7.01, (268 + 0.9) / FPS, (100 + 0.55) / FPS] },
+  // VP9 in WebM with Opus.
+  { name: 'vp9.webm', seeks: [1.04, (179 + 0.2) / FPS, 32 / FPS, (45 + 0.8) / FPS, 5.5, (269 + 0.4) / FPS, (150 + 0.65) / FPS, 47 / FPS, (230 + 0.75) / FPS] },
 ];
 
 for (const clip of CLIPS) {
@@ -67,8 +73,7 @@ for (const clip of CLIPS) {
 
     const times: number[] = [];
     for (const t of clip.seeks) {
-      const expected = Math.round(t * FPS);
-      expect(t * FPS - Math.floor(t * FPS + 1e-9), `fixture: ${t} is in the first half of its frame`).toBeLessThan(0.5);
+      const expected = covering(t);
       // Off keyframes: the decoder had to start earlier and drop frames.
       expect(expected % GOP, `fixture: ${t} is not on a keyframe`).not.toBe(0);
       times.push(await page.evaluate(async (time) => (await (window.wc as Promise<WebCodecsFixture>)).seek(time), t));
@@ -81,7 +86,9 @@ for (const clip of CLIPS) {
     expect(s).toMatchObject({ backend: 'webcodecs', format: 'file' });
     expect(s.duration).toBeCloseTo(12, 1);
     const surface = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).surface);
-    ciNotice(`${clip.name} on ${surface}: ${clip.seeks.length} seeks frame-exact, slowest ${Math.round(Math.max(...times))} ms`);
+    const late = clip.seeks.filter((t) => t * FPS - covering(t) >= 0.5).length;
+    expect(late, 'fixture: some targets in the second half of a frame').toBeGreaterThanOrEqual(3);
+    ciNotice(`${clip.name} on ${surface}: ${clip.seeks.length} seeks frame-exact (${late} in a frame's second half), slowest ${Math.round(Math.max(...times))} ms`);
   });
 
   test(`${clip.name}: plays on the AudioContext clock, the picture follows it`, async ({ page }) => {
@@ -136,6 +143,6 @@ for (const clip of CLIPS) {
     await page.waitForTimeout(100);
     const s = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).state());
     expect(s.paused).toBe(true);
-    expect(await frameOnCanvas(page)).toBe(Math.floor(s.currentTime * FPS + 1e-6));
+    expect(await frameOnCanvas(page)).toBe(covering(s.currentTime));
   });
 }

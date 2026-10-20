@@ -147,4 +147,29 @@ describe('backend-webcodecs', () => {
     await expect(backend.load({ src: new Blob() }, {})).rejects.toMatchObject({ details: 'codecUnsupported', fatal: true });
     backend.destroy();
   });
+
+  it('plays on performance.now() when the shared context will not resume, and says so once', async () => {
+    class Suspended extends EventTarget {
+      state = 'suspended';
+      currentTime = 0;
+      resume = () => Promise.reject(new DOMException('not allowed', 'NotAllowedError'));
+      suspend = () => Promise.resolve();
+      close = () => Promise.resolve();
+    }
+    vi.stubGlobal('AudioContext', Suspended);
+    try {
+      const { backend, state } = setup();
+      const errors: string[] = [];
+      backend.on('error', (e) => errors.push(e.details));
+      await backend.load({ src: new Blob() }, { startTime: 2 });
+      await backend.play();
+      await new Promise((r) => setTimeout(r, 1300));
+      expect(errors).toEqual(['audioClockUnavailable']);
+      // Time still advanced with the fallback clock.
+      expect(state['currentTime'] as number).toBeGreaterThan(2.9);
+      backend.destroy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

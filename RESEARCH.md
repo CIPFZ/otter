@@ -59,7 +59,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - WebCodecs `reset()` 之后解码器回到 `unconfigured`，必须再 `configure()` 才能继续 `decode()`；seek 时用 reset 丢弃排队的工作，之后从关键帧开始送。Chrome 的 `VideoDecoder.isConfigSupported({ hardwareAcceleration: 'prefer-hardware' })` 在没有硬件解码器时返回 false（当作要求而不是偏好），可以借此区分硬解和软解。
 - WebM（Matroska）的时间戳精度通常是 1 ms：30 fps 的第 32 帧存为 1.067 s，比 32/30 = 1.0667 s 晚，按「时间戳 ≤ t」找帧时要留约 0.5 ms 容差，否则 seek 到帧的起点会落到前一帧。
 - Linux 上的无头 Firefox（Playwright 构建）可以创建 AudioContext 并加载 AudioWorklet 模块，但 `resume()` 永远不 settle，即使在真实点击里调用，state 一直是 suspended；无头 Chrome 不需要手势就是 running，currentTime 正常前进。依赖 AudioContext 计时的代码必须给 `resume()` 加超时并有备用时钟。
-- WebKit（CI macOS）对 `<video>` 和 2D canvas 的 `drawImage` 做色彩管理：未打色彩标签的 SD H.264 按 SMPTE 170M 原色转换到显示色域，红色彩条显示为 (248, 36, 0)；WebGL 的 `texImage2D(VideoFrame)` 不做这一步，得到 (254, 0, 0)，与 Chrome 在所有路径上的结果相同。GPUSurface 与 VideoSurface 在 WebKit 上因此有一个固定的颜色映射差，e2e 先在未加滤镜的画面上拟合这个映射再比较。
+- WebKit（CI macOS）对 `<video>` 和 2D canvas 的 `drawImage` 做色彩管理：未打色彩标签的 SD H.264 按 SMPTE 170M 原色转换到显示色域，红色彩条显示为 (248, 36, 0)；WebGL 的 `texImage2D(VideoFrame)` 不做这一步，得到 (254, 0, 0)，与 Chrome 在所有路径上的结果相同。GPUSurface 与 VideoSurface 在 WebKit 上因此有一个固定的颜色映射差。e2e 在页面里探测（同一帧经 2D canvas 与经 WebGL 纹理读回比较），只对探测到差异的路径拟合映射并放宽平均差；彻底消除要在 shader 里按 `VideoFrame.colorSpace` 做色彩管理（ADR-008 §6 已知限制，放到 HDR / 色彩管理批次）。
 - WebKit 按 `url(#id)` 缓存已解析的 SVG 滤镜：只替换 `<filter>` 的内容、id 不变时，元素继续用旧滤镜（变换等其他属性变化触发重绘时才更新）。每次滤镜参数变化都要换一个新 id。
 - WebKit 的 `CanvasRenderingContext2D.filter` 接受滤镜函数（`brightness()` 等），但 `url(#svg-filter)` 不生效。单画面的 CanvasSurface 因此把滤镜加在 canvas 元素的 CSS `filter` 上（与 VideoSurface 相同），黑边留透明。
 

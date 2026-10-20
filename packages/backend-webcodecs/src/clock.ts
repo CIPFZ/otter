@@ -144,14 +144,19 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
 }
 
 // One AudioContext per page, shared by every WebCodecs instance (one timeline, one output);
-// closed when the last instance lets go.
-let shared: { ctx: AudioContext; users: number } | undefined;
+// closed when the last instance lets go. While no instance plays it is suspended after
+// IDLE_SUSPEND_MS (no audio thread running for a paused page); the next play resumes it (clock
+// start), and a resume that fails or hangs leaves that clock on performance.now(), reported as
+// audioClockUnavailable by the backend.
+export const IDLE_SUSPEND_MS = 5000;
+
+let shared: { ctx: AudioContext; users: number; playing: Set<object>; idle: ReturnType<typeof setTimeout> | undefined } | undefined;
 
 export function acquireAudioContext(): AudioContext | undefined {
   if (shared === undefined) {
     if (typeof AudioContext !== 'function') return undefined;
     try {
-      shared = { ctx: new AudioContext({ latencyHint: 'playback' }), users: 0 };
+      shared = { ctx: new AudioContext({ latencyHint: 'playback' }), users: 0, playing: new Set(), idle: undefined };
     } catch {
       return undefined;
     }
@@ -160,9 +165,34 @@ export function acquireAudioContext(): AudioContext | undefined {
   return shared.ctx;
 }
 
-export function releaseAudioContext(ctx: AudioContext | undefined): void {
+/** Instances currently playing on the shared context. */
+export const playingOnSharedContext = (): number => shared?.playing.size ?? 0;
+
+/**
+ * Marks `owner` as playing or not on `ctx`. The context is suspended IDLE_SUSPEND_MS after the
+ * last player stops, unless one starts again before.
+ */
+export function setPlaying(ctx: AudioContext | undefined, owner: object, playing: boolean): void {
+  const s = shared;
+  if (ctx === undefined || s?.ctx !== ctx) return;
+  if (playing) {
+    s.playing.add(owner);
+    if (s.idle !== undefined) clearTimeout(s.idle);
+    s.idle = undefined;
+    return;
+  }
+  if (!s.playing.delete(owner) || s.playing.size > 0 || s.idle !== undefined) return;
+  s.idle = setTimeout(() => {
+    s.idle = undefined;
+    if (shared === s && s.playing.size === 0 && s.ctx.state === 'running') void s.ctx.suspend().catch(() => undefined);
+  }, IDLE_SUSPEND_MS);
+}
+
+export function releaseAudioContext(ctx: AudioContext | undefined, owner?: object): void {
   if (ctx === undefined || shared?.ctx !== ctx) return;
+  if (owner !== undefined) setPlaying(ctx, owner, false);
   if (--shared.users > 0) return;
+  if (shared.idle !== undefined) clearTimeout(shared.idle);
   shared = undefined;
   void ctx.close().catch(() => undefined);
 }

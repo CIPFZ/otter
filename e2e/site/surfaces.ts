@@ -10,6 +10,11 @@ export interface SurfacesFixture {
   apply(transform: Partial<SurfaceTransform>, filters: Partial<SurfaceFilters>): Promise<void>;
   /** Seeks the video only (the frame surfaces keep their frame). */
   seekVideo(time: number): Promise<void>;
+  /**
+   * Whether the platform colour-manages <video> / 2D canvas drawing but not WebGL texture uploads
+   * of the same frame (WebKit): the same pixels through both paths, compared.
+   */
+  colourManaged(): { managed: boolean; canvas2d: number[]; webgl: number[] };
   rects(): Record<string, { x: number; y: number; width: number; height: number }>;
   readonly gpu: boolean;
 }
@@ -37,6 +42,55 @@ export async function seekPresented(video: HTMLVideoElement, time: number): Prom
   // A paused element presents one frame after a seek; do not hang if a browser skips the callback.
   await Promise.race([presented, new Promise((r) => setTimeout(r, 1000))]);
   await nextFrames();
+}
+
+/** Mean RGB of the frame through a 2D canvas and through a WebGL2 texture (no shader maths). */
+function colourManaged(video: HTMLVideoElement): { managed: boolean; canvas2d: number[]; webgl: number[] } {
+  const W = 64;
+  const H = 36;
+  const c2 = document.createElement('canvas');
+  c2.width = W;
+  c2.height = H;
+  const ctx = c2.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
+  ctx.drawImage(video, 0, 0, W, H);
+  const a = ctx.getImageData(0, 0, W, H).data;
+  const cg = document.createElement('canvas');
+  cg.width = W;
+  cg.height = H;
+  const gl = cg.getContext('webgl2');
+  if (gl === null) return { managed: false, canvas2d: [], webgl: [] };
+  // Upload, attach to a framebuffer and read back: the texture's own values.
+  const frame = new VideoFrame(video);
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+  frame.close();
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  const b = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, b);
+  gl.getExtension('WEBGL_lose_context')?.loseContext();
+  // Compare the saturated colour bars: mean of the top-left-to-right row band, as RGB.
+  const meanOf = (d: Uint8Array | Uint8ClampedArray, width: number, height: number, flipY: boolean): number[] => {
+    const sum = [0, 0, 0];
+    let n = 0;
+    for (let x = 0; x < width; x += Math.max(1, Math.floor(width / 64))) {
+      const y = Math.floor(height * 0.6);
+      const row = flipY ? height - 1 - y : y;
+      for (let ch = 0; ch < 3; ch++) sum[ch] = (sum[ch] as number) + (d[(row * width + x) * 4 + ch] as number);
+      n++;
+    }
+    return sum.map((v) => v / n);
+  };
+  const canvas2d = meanOf(a, W, H, false);
+  // A framebuffer-attached texture uploaded from a frame is read bottom-up relative to the image
+  // only when UNPACK_FLIP_Y is set; it is not, so rows match the image.
+  const webgl = meanOf(b, w, h, false);
+  const managed = canvas2d.some((v, i) => Math.abs(v - (webgl[i] as number)) > 4);
+  return { managed, canvas2d, webgl };
 }
 
 async function start(): Promise<SurfacesFixture> {
@@ -77,6 +131,7 @@ async function start(): Promise<SurfacesFixture> {
       await nextFrames();
     },
     seekVideo: (time) => seekPresented(video, time),
+    colourManaged: () => colourManaged(video),
     rects: () => Object.fromEntries(Object.entries(surfaces).map(([k, s]) => [k, { x: s.contentRect.x, y: s.contentRect.y, width: s.contentRect.width, height: s.contentRect.height }])),
   };
 }

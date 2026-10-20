@@ -120,9 +120,10 @@ const MAX_MEAN = 6;
  */
 const MAX_MEAN_MANAGED = 12;
 const MAX_OUTLIERS = 0.03;
-let maxMean = MAX_MEAN;
-const within = (d: Diff): boolean => d.mean < maxMean && d.outliers < MAX_OUTLIERS;
-const isIdentityFit = (m: ColorFit): boolean => m.every((v, i) => Math.abs(v - (i % 5 === 0 && i !== 15 ? 1 : 0)) < (i % 4 === 3 ? 2 : 0.02));
+/** Per box: the mean limit (MAX_MEAN_MANAGED only for a path the platform colour-manages differently). */
+const limits: Record<string, number> = {};
+const within = (box: string, d: Diff): boolean => d.mean < (limits[box] ?? MAX_MEAN) && d.outliers < MAX_OUTLIERS;
+const IDENTITY_FIT: ColorFit = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 
 /** One line for the CI run page (the workflow turns test-results/ci-notices.txt into notices). */
 const ciNotice = (text: string): void => {
@@ -170,15 +171,27 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
   }
   await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).frame(2.3));
   const boxes = gpu ? ['gpu-box', 'canvas2d-box'] : ['canvas2d-box'];
-  // The platform's colour handling per surface, from the unfiltered frame.
+  // Platform colour management, probed directly: the same frame through a 2D canvas and through
+  // a WebGL texture. Only where they differ (WebKit) does the GPU path get a colour map, fitted
+  // on the unfiltered frame, and the wider mean limit; every other path (and every path on
+  // Chrome / Firefox) is compared as is, with the original limits.
+  const probe = await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).colourManaged());
   const fits: Record<string, ColorFit> = {};
-  for (const [box, d] of Object.entries(await compareBoxes(page, boxes, {}, true))) {
-    if (!plausibleFit(d.fit)) ciNotice(`surfaces: implausible colour map for ${box}, samples ${JSON.stringify(d.samples)}`);
-    expect(plausibleFit(d.fit), `${box}: colour map ${JSON.stringify(d.fit.map((v) => Math.round(v * 1000) / 1000))} is colour management, not another picture`).toBe(true);
-    fits[box] = d.fit;
+  const fitted = await compareBoxes(page, boxes, {}, true);
+  for (const box of boxes) {
+    const d = fitted[box] as (typeof fitted)[string];
+    if (box === 'gpu-box' && probe.managed) {
+      if (!plausibleFit(d.fit)) ciNotice(`surfaces: implausible colour map for ${box}, samples ${JSON.stringify(d.samples)}`);
+      expect(plausibleFit(d.fit), `${box}: colour map ${JSON.stringify(d.fit.map((v) => Math.round(v * 1000) / 1000))} is colour management, not another picture`).toBe(true);
+      fits[box] = d.fit;
+      limits[box] = MAX_MEAN_MANAGED;
+    } else {
+      fits[box] = IDENTITY_FIT;
+      limits[box] = MAX_MEAN;
+    }
   }
-  maxMean = Object.values(fits).every(isIdentityFit) ? MAX_MEAN : MAX_MEAN_MANAGED;
   const samples: Record<string, number[][]> = {};
+  const passed: Record<string, boolean> = {};
   for (const [name, t, f] of CASES) {
     await page.evaluate(async ([tt, ff]) => (await (window.surfaces as Promise<SurfacesFixture>)).apply(tt, ff), [t, f] as const);
     const rects = await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).rects());
@@ -187,25 +200,28 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
     // Compositors may show a new transform / filter a few frames late (WebKit): compare the
     // settled picture, up to 2 s.
     let diffs = await compareBoxes(page, boxes, fits);
-    for (let i = 0; i < 10 && !Object.values(diffs).every(within); i++) {
+    for (let i = 0; i < 10 && !Object.entries(diffs).every(([box, d]) => within(box, d)); i++) {
       await page.waitForTimeout(200);
       diffs = await compareBoxes(page, boxes, fits);
     }
     for (const [box, diff] of Object.entries(diffs)) {
       results[`${name} ${box}`] = { mean: diff.mean, outliers: diff.outliers };
+      passed[`${name} ${box}`] = within(box, diff);
       samples[`${name} ${box}`] = diff.samples;
-      expect.soft(diff.mean, `${name}: ${box} vs video`).toBeLessThan(maxMean);
+      expect.soft(diff.mean, `${name}: ${box} vs video`).toBeLessThan(limits[box] ?? MAX_MEAN);
       expect.soft(diff.outliers, `${name}: ${box} vs video`).toBeLessThan(MAX_OUTLIERS);
     }
   }
-  if (!Object.values(results).every(within)) {
+  const ok = Object.values(passed).every(Boolean);
+  if (!ok) {
     // For engines we cannot run locally (WebKit): bar colours (video box first, then the
     // surface) per case and the colour maps, on the CI run page.
     ciNotice(`surfaces diagnostics ${JSON.stringify({ fits: Object.fromEntries(Object.entries(fits).map(([k, v]) => [k, v.map((x) => Math.round(x * 1000) / 1000)])), samples })}`);
   }
   const worst = Object.values(results).reduce((w, d) => ({ mean: Math.max(w.mean, d.mean), outliers: Math.max(w.outliers, d.outliers) }), { mean: 0, outliers: 0 });
   const maps = Object.entries(fits).map(([k, v]) => `${k} ${v.map((x) => Math.round(x * 100) / 100).join(' ')}`).join('; ');
-  ciNotice(`surfaces: worst mean ${worst.mean.toFixed(2)} (limit ${maxMean}), outliers ${(worst.outliers * 100).toFixed(2)}% (colour maps: ${maps})${Object.values(results).every(within) ? '' : ` FAILED ${JSON.stringify(results)}`}`);
+  const managed = probe.managed ? `platform colour-manages <video> but not WebGL (2D ${probe.canvas2d.map(Math.round).join(',')} vs WebGL ${probe.webgl.map(Math.round).join(',')}): gpu-box fitted, mean limit ${MAX_MEAN_MANAGED}` : 'no colour management difference: no fit, mean limit 6';
+  ciNotice(`surfaces: worst mean ${worst.mean.toFixed(2)}, outliers ${(worst.outliers * 100).toFixed(2)}%; ${managed} (maps: ${maps})${ok ? '' : ` FAILED ${JSON.stringify(results)}`}`);
   info.annotations.push({ type: 'surface-diff', description: JSON.stringify(results) });
   test.info().attach('surface-diff.json', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
 });

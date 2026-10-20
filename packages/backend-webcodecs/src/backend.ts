@@ -30,7 +30,7 @@ import {
   type TrackList,
 } from '@otter-player/media';
 import { createAudioSink, type AudioSink } from './audio.js';
-import { acquireAudioContext, createClock, releaseAudioContext, type MediaClock } from './clock.js';
+import { acquireAudioContext, createClock, releaseAudioContext, setPlaying, type MediaClock } from './clock.js';
 
 export interface WebCodecsBackendOptions {
   /** Upper bound on concurrently decoding instances sharing the Worker pool (SPEC §6.3). */
@@ -98,6 +98,8 @@ const schedule = (cb: () => void): (() => void) => {
 export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBackendOptions): MediaBackend {
   const bus = createEventBus<BackendEvents>();
   const abort = new AbortController();
+  /** This instance, as a player of the shared AudioContext. */
+  const owner = {};
   const signal = createSignal();
   let destroyed = false;
   const sinkOut = options.sink;
@@ -139,6 +141,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       }
     }
     if (Object.keys(changed).length > 0) bus.emit('playback-change', changed);
+    // The shared AudioContext idles (suspends) while no instance plays.
+    if (changed.paused !== undefined) setPlaying(audioCtx, owner, !changed.paused);
   };
 
   // Decoding state. `gen` changes on every seek; work of an older generation stops.
@@ -480,7 +484,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       audio?.close();
       sink?.destroy();
       clock?.destroy();
-      releaseAudioContext(audioCtx);
+      releaseAudioContext(audioCtx, owner);
       demuxer?.destroy();
       sinkOut.clear();
       bus.clear();
