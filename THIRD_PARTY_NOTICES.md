@@ -21,6 +21,7 @@ Installed from npm, never copied into the repository.
 | `imsc` | 1.1.5 | BSD-2-Clause | `@otter-player/text` (IMSC1 / TTML, loaded on demand) |
 | `sax` | 1.2.1 | ISC | `@otter-player/text` (dependency of `imsc`) |
 | `mp4box` | 2.4.1 | BSD-3-Clause | `@otter-player/format-mp4-range` (moov parsing and fMP4 segmentation, loaded on demand; license text below) |
+| `mediabunny` | 1.61.6 | MPL-2.0 | `@otter-player/format-file` (MP4 / WebM / MKV demuxing for the WebCodecs backend, loaded on demand) |
 | `lucide` | 1.59.0 | ISC (part of the icons MIT, from Feather) | `@otter-player/ui-core` (icon set, pre-bundled into the dist; license text below) |
 
 ### Lucide license (ISC; Feather-derived icons MIT)

@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*",
-    "@otter-player/media": "workspace:*"
+    "@otter-player/media": "workspace:*",
+    "mediabunny": "1.61.6"
   }
 }

@@ -12,7 +12,7 @@ const root = join(import.meta.dirname, '..');
 const sizeDir = join(root, 'tooling', 'size');
 
 /** node_modules path fragments of engine libraries. */
-const ENGINE_PATHS = ['/hls.js/', '/shaka-player/', '/mpegts.js/'];
+const ENGINE_PATHS = ['/hls.js/', '/shaka-player/', '/mpegts.js/', '/mediabunny/'];
 const isEngine = (input: string): boolean => ENGINE_PATHS.some((p) => input.replace(/\\/g, '/').includes(`/node_modules${p}`));
 
 const entries = readdirSync(sizeDir)
