@@ -1,14 +1,137 @@
-// Default decoder over WebCodecs VideoDecoder / AudioDecoder (SPEC §9). M0 empty implementation: supports() answers false for every codec.
+// Default decoder over WebCodecs VideoDecoder / AudioDecoder (SPEC §9, ADR-008 §2). One Decoder
+// instance per track; frames go out as VideoFrame / AudioData (transferable). The browser picks
+// hardware or software decoding; `supports` reports which one is available.
 
-import { notImplemented } from '@otter-player/core';
-import type { Decoder } from '@otter-player/media';
+import { createError, type OtterError } from '@otter-player/core';
+import type { Decoder, DecoderConfig, DecoderInstance, EncodedChunk } from '@otter-player/media';
 
-export function createWebCodecsDecoder(): Decoder {
+export interface WebCodecsDecoderOptions {
+  /**
+   * Only accept hardware decoding (supports() answers false otherwise). Lets hosts and tests
+   * force the WASM / MSE fallback steps.
+   */
+  readonly requireHardware?: boolean;
+}
+
+const AUDIO = /^(mp4a|opus|vorbis|flac|mp3|ac-3|ec-3|alaw|ulaw|pcm-)/i;
+
+/** Audio codec strings (RFC 6381 / WebCodecs registry). */
+export const isAudioCodec = (codec: string): boolean => AUDIO.test(codec);
+
+const decodeError = (details: string, cause: unknown): OtterError =>
+  createError({
+    type: 'media',
+    details,
+    fatal: true,
+    recoverable: true,
+    message: cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause),
+    cause,
+  });
+
+async function videoSupport(codec: string, requireHardware: boolean): Promise<'hardware' | 'software' | false> {
+  const any = await VideoDecoder.isConfigSupported({ codec }).catch(() => ({ supported: false }));
+  // Chrome treats prefer-hardware as a requirement in isConfigSupported, which tells them apart.
+  const hw = await VideoDecoder.isConfigSupported({ codec, hardwareAcceleration: 'prefer-hardware' }).catch(() => ({ supported: false }));
+  if (hw.supported === true) return 'hardware';
+  if (requireHardware) return false;
+  return any.supported === true ? 'software' : false;
+}
+
+export function createWebCodecsDecoder(options: WebCodecsDecoderOptions = {}): Decoder {
+  const requireHardware = options.requireHardware === true;
   return {
     id: 'webcodecs',
-    supports: () => Promise.resolve(false),
-    create() {
-      throw notImplemented('@otter-player/decoder-webcodecs create');
+    async supports(codec) {
+      if (isAudioCodec(codec)) {
+        if (typeof AudioDecoder !== 'function') return false;
+        // Audio is never hardware decoded in browsers; requireHardware is about video.
+        const s = await AudioDecoder.isConfigSupported({ codec, sampleRate: 48000, numberOfChannels: 2 }).catch(() => ({ supported: false }));
+        return s.supported === true ? 'software' : false;
+      }
+      if (typeof VideoDecoder !== 'function') return false;
+      return videoSupport(codec, requireHardware);
+    },
+    create(config) {
+      return config.sampleRate === undefined ? createVideo(config, requireHardware) : createAudio(config);
+    },
+  };
+}
+
+function createVideo(config: DecoderConfig, requireHardware: boolean): DecoderInstance {
+  let failed = false;
+  const decoder = new VideoDecoder({
+    output: (frame) => config.output(frame),
+    error: (e) => {
+      if (failed) return;
+      failed = true;
+      config.error(decodeError(e.name === 'NotSupportedError' ? 'decoderUnsupported' : 'decodeError', e));
+    },
+  });
+  const configure = (): void =>
+    decoder.configure({
+      codec: config.codec,
+      ...(config.codedWidth === undefined ? {} : { codedWidth: config.codedWidth }),
+      ...(config.codedHeight === undefined ? {} : { codedHeight: config.codedHeight }),
+      ...(config.description === undefined ? {} : { description: config.description }),
+      ...(config.colorSpace === undefined ? {} : { colorSpace: config.colorSpace }),
+      hardwareAcceleration: requireHardware ? 'prefer-hardware' : (config.hardwareAcceleration ?? 'no-preference'),
+    });
+  configure();
+  return wrap(decoder, configure, (chunk) => new EncodedVideoChunk(init(chunk)));
+}
+
+function createAudio(config: DecoderConfig): DecoderInstance {
+  let failed = false;
+  const decoder = new AudioDecoder({
+    output: (data) => config.output(data),
+    error: (e) => {
+      if (failed) return;
+      failed = true;
+      config.error(decodeError(e.name === 'NotSupportedError' ? 'decoderUnsupported' : 'decodeError', e));
+    },
+  });
+  const configure = (): void =>
+    decoder.configure({
+      codec: config.codec,
+      sampleRate: config.sampleRate as number,
+      numberOfChannels: config.numberOfChannels ?? 2,
+      ...(config.description === undefined ? {} : { description: config.description }),
+    });
+  configure();
+  return wrap(decoder, configure, (chunk) => new EncodedAudioChunk(init(chunk)));
+}
+
+const init = (chunk: EncodedChunk): EncodedVideoChunkInit => ({
+  type: chunk.type,
+  timestamp: chunk.timestamp,
+  ...(chunk.duration === undefined ? {} : { duration: chunk.duration }),
+  data: chunk.data,
+});
+
+/** WebCodecs reset() also drops the configuration: configure again so the instance stays usable. */
+function wrap<C>(decoder: VideoDecoder | AudioDecoder, configure: () => void, chunk: (c: EncodedChunk) => C): DecoderInstance {
+  return {
+    get state() {
+      return decoder.state === 'closed' ? 'closed' : 'configured';
+    },
+    get decodeQueueSize() {
+      return decoder.decodeQueueSize;
+    },
+    decode(c) {
+      if (decoder.state !== 'configured') return;
+      (decoder as { decode(c: C): void }).decode(chunk(c));
+    },
+    async flush() {
+      if (decoder.state !== 'configured') return;
+      await decoder.flush();
+    },
+    reset() {
+      if (decoder.state === 'closed') return;
+      decoder.reset();
+      configure();
+    },
+    close() {
+      if (decoder.state !== 'closed') decoder.close();
     },
   };
 }
