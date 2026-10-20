@@ -33,12 +33,16 @@ export const FULL_REGION: Region = { x: 0, y: 0, width: 1, height: 1 };
 export interface GPUView extends FrameSurface {
   readonly kind: 'gpu';
   readonly region: Region;
+  /** Frames handed to draw() that a newer one replaced before the renderer took them. */
+  readonly framesReplaced: number;
   setRegion(region: Region): void;
 }
 
 export interface GPUGrid {
   readonly element: HTMLCanvasElement;
   readonly api: 'webgl2';
+  /** Where uploads and draws run. */
+  readonly renderer: 'main' | 'worker';
   readonly views: readonly GPUView[];
   createView(region?: Region): GPUView;
   destroy(): void;
@@ -126,15 +130,21 @@ type ViewState = ReturnType<typeof createViewState>;
 /** Device-pixel ratio of the canvas' window. */
 const dpr = (canvas: HTMLCanvasElement): number => canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1;
 
-/** Keeps the canvas backing store at its CSS size times the device-pixel ratio. */
-function trackSize(canvas: HTMLCanvasElement, changed: () => void): () => void {
+/** Backing-store size of a canvas (the canvas itself, or the one a render Worker holds). */
+interface PixelSize {
+  width: number;
+  height: number;
+}
+
+/** Keeps the backing store at the canvas' CSS size times the device-pixel ratio. */
+function trackSize(canvas: HTMLCanvasElement, changed: () => void, size: PixelSize = canvas): () => void {
   const fit = (): void => {
     const ratio = dpr(canvas);
     const w = Math.max(1, Math.round(canvas.clientWidth * ratio));
     const h = Math.max(1, Math.round(canvas.clientHeight * ratio));
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
+    if (size.width !== w || size.height !== h) {
+      size.width = w;
+      size.height = h;
     }
     changed();
   };
@@ -144,36 +154,147 @@ function trackSize(canvas: HTMLCanvasElement, changed: () => void): () => void {
   return () => observer?.disconnect();
 }
 
-const devicePx = (canvas: HTMLCanvasElement, r: PictureRect): PixelRect => {
-  const sx = canvas.width / Math.max(1, canvas.clientWidth);
-  const sy = canvas.height / Math.max(1, canvas.clientHeight);
+const devicePx = (canvas: HTMLCanvasElement, r: PictureRect, size: PixelSize = canvas): PixelRect => {
+  const sx = size.width / Math.max(1, canvas.clientWidth);
+  const sy = size.height / Math.max(1, canvas.clientHeight);
   return { x: r.x * sx, y: r.y * sy, width: r.width * sx, height: r.height * sy };
 };
 
-function snapshotRegion(canvas: HTMLCanvasElement, region: PictureRect, render: () => void, opts: SnapshotOptions): Promise<Blob> {
+function snapshotPixels(canvas: HTMLCanvasElement, px: PixelRect, render: () => void, opts: SnapshotOptions): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    const fail = (details: string, cause?: unknown): void =>
-      reject(createError({ type: 'other', details, fatal: false, recoverable: false, message: details, ...(cause === undefined ? {} : { cause }) }));
-    const px = devicePx(canvas, region);
     const out = canvas.ownerDocument.createElement('canvas');
     out.width = Math.max(1, Math.round(px.width));
     out.height = Math.max(1, Math.round(px.height));
     const ctx = out.getContext('2d');
-    if (ctx === null) return fail('snapshotUnavailable');
+    if (ctx === null) return reject(snapshotError('snapshotUnavailable'));
     try {
       // The WebGL drawing buffer is only defined right after drawing: render, then copy.
       render();
       ctx.drawImage(canvas, px.x, px.y, px.width, px.height, 0, 0, out.width, out.height);
     } catch (err) {
-      return fail('snapshotFailed', err);
+      return reject(snapshotError('snapshotFailed', err));
     }
-    out.toBlob((blob) => (blob === null ? fail('snapshotFailed') : resolve(blob)), `image/${opts.type ?? 'png'}`, opts.quality);
+    out.toBlob((blob) => (blob === null ? reject(snapshotError('snapshotFailed')) : resolve(blob)), `image/${opts.type ?? 'png'}`, opts.quality);
   });
 }
+
+const snapshotRegion = (canvas: HTMLCanvasElement, region: PictureRect, render: () => void, opts: SnapshotOptions): Promise<Blob> =>
+  snapshotPixels(canvas, devicePx(canvas, region), render, opts);
 
 export interface GPUGridOptions extends GPUSurfaceOptions {
   /** Contexts Otter may hold before refusing a new grid (browsers drop the oldest past ~16). */
   readonly maxContexts?: number;
+  /**
+   * Render in a Worker (OffscreenCanvas) where WebGL2 works there: uploads and draws of many views
+   * stay off the main thread. Layout, contentRect and the frame cadence stay on the main thread.
+   */
+  readonly worker?: boolean;
+}
+
+/** What a grid draws with: the WebGL2 renderer here, or the one in a render Worker. */
+interface GridRenderer {
+  readonly where: 'main' | 'worker';
+  /** A render is still being drawn elsewhere (Worker): wait for `onIdle` before the next. */
+  readonly busy: boolean;
+  onIdle(cb: () => void): void;
+  /** Takes ownership of `frame`. */
+  upload(id: number, frame: SurfaceFrame): void;
+  forget(id: number): void;
+  render(width: number, height: number, views: ReadonlyMap<number, ViewDraw>): void;
+  snapshot(region: PixelRect, opts: SnapshotOptions): Promise<Blob>;
+  destroy(): void;
+}
+
+/** WebGL2 in an OffscreenCanvas, which is where a render Worker would draw. */
+export const workerRenderingSupported = (): boolean => {
+  if (typeof OffscreenCanvas !== 'function' || typeof Worker !== 'function') return false;
+  if (typeof HTMLCanvasElement !== 'function' || !('transferControlToOffscreen' in HTMLCanvasElement.prototype)) return false;
+  try {
+    const gl = new OffscreenCanvas(1, 1).getContext('webgl2');
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    return gl !== null;
+  } catch {
+    return false;
+  }
+};
+
+const snapshotError = (details: string, cause?: unknown): Error =>
+  createError({ type: 'other', details, fatal: false, recoverable: false, message: details, ...(cause === undefined ? {} : { cause }) });
+
+function localRenderer(canvas: HTMLCanvasElement, renderer: GlRenderer, last: { draw: () => void }): GridRenderer {
+  return {
+    where: 'main',
+    busy: false,
+    onIdle: () => undefined,
+    upload(id, frame) {
+      renderer.upload(id, frame);
+      closeFrame(frame);
+    },
+    forget: (id) => renderer.forget(id),
+    render: (w, h, views) => renderer.render(w, h, views),
+    snapshot: (region, opts) => snapshotPixels(canvas, region, last.draw, opts),
+    destroy: () => renderer.destroy(),
+  };
+}
+
+function workerRenderer(canvas: HTMLCanvasElement): GridRenderer {
+  const worker = new Worker(new URL('./render-worker.ts', import.meta.url), { type: 'module' });
+  const offscreen = canvas.transferControlToOffscreen();
+  worker.postMessage({ t: 'init', canvas: offscreen }, [offscreen]);
+  const snapshots = new Map<number, { resolve: (b: Blob) => void; reject: (e: unknown) => void }>();
+  let n = 0;
+  /** Renders posted and not yet acknowledged; two may be in flight (absorbs latency spikes). */
+  let inFlight = 0;
+  const DEPTH = 3;
+  let idle: (() => void) | undefined;
+  worker.onmessage = (e: MessageEvent<{ t: string; n?: number; blob?: Blob; error?: string }>) => {
+    const m = e.data;
+    if (m.t === 'rendered') {
+      inFlight = Math.max(0, inFlight - 1);
+      idle?.();
+      return;
+    }
+    if (m.t !== 'snapshot' || m.n === undefined) return;
+    const p = snapshots.get(m.n);
+    snapshots.delete(m.n);
+    if (m.blob !== undefined) p?.resolve(m.blob);
+    else p?.reject(snapshotError('snapshotFailed', m.error));
+  };
+  const transferOf = (f: SurfaceFrame): Transferable[] => {
+    if (isI420(f)) return [f.data.buffer as ArrayBuffer];
+    if (typeof VideoFrame === 'function' && f instanceof VideoFrame) return [f];
+    if (typeof ImageBitmap === 'function' && f instanceof ImageBitmap) return [f];
+    return [];
+  };
+  return {
+    where: 'worker',
+    get busy() {
+      return inFlight >= DEPTH;
+    },
+    onIdle(cb) {
+      idle = cb;
+    },
+    upload(id, frame) {
+      // Elements cannot cross to a Worker: those go as a VideoFrame / bitmap copy.
+      const sendable = typeof HTMLVideoElement === 'function' && frame instanceof HTMLVideoElement ? new VideoFrame(frame) : frame;
+      worker.postMessage({ t: 'frame', id, frame: sendable }, transferOf(sendable));
+    },
+    forget: (id) => worker.postMessage({ t: 'forget', id }),
+    render(width, height, views) {
+      inFlight++;
+      worker.postMessage({ t: 'render', width, height, views: [...views] });
+    },
+    snapshot: (region, opts) =>
+      new Promise<Blob>((resolve, reject) => {
+        const k = ++n;
+        snapshots.set(k, { resolve, reject });
+        worker.postMessage({ t: 'snapshot', n: k, rect: region, type: `image/${opts.type ?? 'png'}`, ...(opts.quality === undefined ? {} : { quality: opts.quality }) });
+      }),
+    destroy() {
+      for (const p of snapshots.values()) p.reject(snapshotError('snapshotFailed', 'grid destroyed'));
+      worker.terminate();
+    },
+  };
 }
 
 /** One WebGL2 context on `canvas`, drawing any number of views. Throws when WebGL2 is unavailable. */
@@ -182,13 +303,23 @@ export function createGPUGrid(canvas: HTMLCanvasElement, options: GPUGridOptions
   if (liveContexts >= max) {
     throw createError({ type: 'other', details: 'gpuContextLimit', fatal: false, recoverable: true, message: `${liveContexts} WebGL contexts in use (limit ${max}); share a GPU grid between views` });
   }
-  const renderer: GlRenderer | undefined = createGlRenderer(canvas);
-  if (renderer === undefined) throw createError({ type: 'other', details: 'webgl2Unavailable', fatal: false, recoverable: true, message: 'no WebGL2 context on this canvas' });
+  const size: PixelSize = { width: Math.max(1, canvas.width), height: Math.max(1, canvas.height) };
+  const drawNow = { draw: (): void => undefined };
+  let renderer: GridRenderer;
+  if (options.worker === true && workerRenderingSupported()) {
+    renderer = workerRenderer(canvas);
+  } else {
+    const gl: GlRenderer | undefined = createGlRenderer(canvas);
+    if (gl === undefined) throw createError({ type: 'other', details: 'webgl2Unavailable', fatal: false, recoverable: true, message: 'no WebGL2 context on this canvas' });
+    renderer = localRenderer(canvas, gl, drawNow);
+  }
+  // The local renderer draws into the canvas itself: its size is the canvas' size.
+  const target: PixelSize = renderer.where === 'main' ? canvas : size;
   liveContexts++;
   let ids = 0;
   let scheduled = false;
   let destroyed = false;
-  type Internal = GPUView & { readonly id: number; state: ViewState; pending: SurfaceFrame | undefined; destroyed: boolean };
+  type Internal = GPUView & { readonly id: number; state: ViewState; pending: SurfaceFrame | undefined; destroyed: boolean; replaced: number };
   const views: Internal[] = [];
   const destroyView = (view: Internal): void => {
     if (view.destroyed) return;
@@ -205,31 +336,50 @@ export function createGPUGrid(canvas: HTMLCanvasElement, options: GPUGridOptions
     if (destroyed) return;
     const draws = new Map<number, ViewDraw>();
     for (const v of views) {
-      if (v.pending !== undefined) {
+      // A hidden view (zero region: another view expanded) keeps only its latest frame, unuploaded.
+      const visible = v.region.width > 0 && v.region.height > 0;
+      if (v.pending !== undefined && visible) {
         renderer.upload(v.id, v.pending);
-        closeFrame(v.pending);
         v.pending = undefined;
       }
-      draws.set(v.id, { region: devicePx(canvas, v.state.regionCss()), content: devicePx(canvas, v.state.rect), transform: v.state.transform, filters: v.state.filters });
+      draws.set(v.id, { region: devicePx(canvas, v.state.regionCss(), target), content: devicePx(canvas, v.state.rect, target), transform: v.state.transform, filters: v.state.filters });
     }
-    renderer.render(canvas.width, canvas.height, draws);
+    renderer.render(target.width, target.height, draws);
   };
+  drawNow.draw = render;
   const request = (): void => {
     if (scheduled || destroyed) return;
     scheduled = true;
     schedule(() => {
       scheduled = false;
+      // A render Worker still drawing the last one: newer frames wait (latest per view).
+      if (renderer.busy) {
+        waiting = true;
+        return;
+      }
       render();
     });
   };
-  const stopSize = trackSize(canvas, () => {
-    for (const v of views) v.state.update();
-    request();
+  let waiting = false;
+  renderer.onIdle(() => {
+    if (!waiting) return;
+    waiting = false;
+    // Straight away, not on the next animation frame: waiting for both would halve the rate.
+    render();
   });
+  const stopSize = trackSize(
+    canvas,
+    () => {
+      for (const v of views) v.state.update();
+      request();
+    },
+    target,
+  );
 
   const grid: GPUGrid = {
     element: canvas,
     api: 'webgl2',
+    renderer: renderer.where,
     get views() {
       return views.filter((v) => !v.destroyed);
     },
@@ -244,6 +394,10 @@ export function createGPUGrid(canvas: HTMLCanvasElement, options: GPUGridOptions
         state,
         pending: undefined as SurfaceFrame | undefined,
         destroyed: false,
+        replaced: 0,
+        get framesReplaced() {
+          return view.replaced;
+        },
         colorInfo: SDR_SRGB,
         get region() {
           return region;
@@ -270,7 +424,11 @@ export function createGPUGrid(canvas: HTMLCanvasElement, options: GPUGridOptions
         },
         draw(frame: SurfaceFrame) {
           if (view.destroyed) return closeFrame(frame);
-          closeFrame(view.pending);
+          if (view.pending !== undefined) {
+            // Never shown: a newer frame came before the renderer took this one.
+            view.replaced++;
+            closeFrame(view.pending);
+          }
           view.pending = frame;
           state.setPicture(frameSize(frame));
           request();
@@ -282,7 +440,7 @@ export function createGPUGrid(canvas: HTMLCanvasElement, options: GPUGridOptions
           state.setPicture({ width: 0, height: 0 });
           request();
         },
-        snapshot: (opts: SnapshotOptions = {}) => snapshotRegion(canvas, state.rect, render, opts),
+        snapshot: (opts: SnapshotOptions = {}) => renderer.snapshot(devicePx(canvas, state.rect, target), opts),
         onContentRectChange: (h: (r: DOMRectReadOnly) => void): Unsubscribe => state.bus.on('rect', (r) => h(r)),
         destroy() {
           destroyView(view);

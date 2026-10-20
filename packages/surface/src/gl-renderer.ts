@@ -207,10 +207,14 @@ export function createGlRenderer(canvas: HTMLCanvasElement | OffscreenCanvas): G
           [w * h, cw, ch],
           [w * h + cw * ch, cw, ch],
         ];
+        // Same size as the last picture: update the textures in place (no reallocation).
+        const same = p.width === w && p.height === h;
         planes.forEach(([offset, pw, ph], i) => {
           gl.activeTexture(gl.TEXTURE0 + i);
           gl.bindTexture(gl.TEXTURE_2D, p.tex[i] as WebGLTexture);
-          gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, pw, ph, 0, gl.RED, gl.UNSIGNED_BYTE, data.subarray(offset, offset + pw * ph));
+          const plane = data.subarray(offset, offset + pw * ph);
+          if (same) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, pw, ph, gl.RED, gl.UNSIGNED_BYTE, plane);
+          else gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, pw, ph, 0, gl.RED, gl.UNSIGNED_BYTE, plane);
         });
         p.width = w;
         p.height = h;

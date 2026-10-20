@@ -55,6 +55,8 @@ const copyAssets = {
 
 export default defineConfig({
   root: pkgDir,
+  // Worker / asset URLs relative to the module (new URL('./x', import.meta.url)), not to a site root.
+  base: './',
   plugins: [cleanJs, copyAssets],
   ...(bundled.length > 0
     ? { resolve: { alias: { stream: resolve(shims, 'stream.js'), string_decoder: resolve(shims, 'string_decoder.js') } } }
