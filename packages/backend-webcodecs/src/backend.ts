@@ -372,6 +372,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         if (decoder === undefined) throw fatal('media', 'noDecoder', `no ${ctx.step.decoder ?? 'webcodecs'} decoder registered`);
         const support = await decoder.supports(v.codec, ctx.caps);
         if (support === false) throw fatal('media', 'codecUnsupported', `${decoder.id} cannot decode ${v.codec}`);
+        bus.emit('route-detail', { reason: `${v.codec} on ${decoder.id} (${support})${decoder.describe === undefined ? '' : `: ${decoder.describe()}`}` });
         video = decoder.create({ ...v.setup, output: onVideoFrame, error: fail });
       }
       if (a !== null) {

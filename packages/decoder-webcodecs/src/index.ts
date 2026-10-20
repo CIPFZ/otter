@@ -1,9 +1,13 @@
 // Default decoder over WebCodecs VideoDecoder / AudioDecoder (SPEC §9, ADR-008 §2). One Decoder
 // instance per track; frames go out as VideoFrame / AudioData (transferable). The browser picks
-// hardware or software decoding; `supports` reports which one is available.
+// hardware or software decoding; `supports` reports which one is available. Video decodes in the
+// shared Worker pool (ADR-008 §3) by default; audio stays on the main thread (cheap, and its
+// output goes to the AudioWorklet from there).
 
 import { createError, type OtterError } from '@otter-player/core';
+import { sharedDecodePool, type DecodePool, type WorkerCodec } from '@otter-player/decoder-pool';
 import type { Decoder, DecoderConfig, DecoderInstance, EncodedChunk } from '@otter-player/media';
+import { webCodecsWorker } from './worker.js';
 
 export interface WebCodecsDecoderOptions {
   /**
@@ -11,7 +15,16 @@ export interface WebCodecsDecoderOptions {
    * force the WASM / MSE fallback steps.
    */
   readonly requireHardware?: boolean;
+  /**
+   * Where video decodes: a pool (default: the page's shared pool), or false for the main thread
+   * (also the fallback where Workers or WebCodecs in Workers are missing).
+   */
+  readonly pool?: DecodePool | false;
 }
+
+let codec: WorkerCodec | undefined;
+/** The pool kind for this decoder (worker source built once). */
+const workerCodec = (): WorkerCodec => (codec ??= { kind: 'webcodecs', source: webCodecsWorker.toString() });
 
 const AUDIO = /^(mp4a|opus|vorbis|flac|mp3|ac-3|ec-3|alaw|ulaw|pcm-)/i;
 
@@ -41,6 +54,7 @@ export function createWebCodecsDecoder(options: WebCodecsDecoderOptions = {}): D
   const requireHardware = options.requireHardware === true;
   return {
     id: 'webcodecs',
+    describe: () => (options.pool === false || typeof Worker !== 'function' ? 'WebCodecs on the main thread' : 'WebCodecs video in the decode pool, audio on the main thread'),
     async supports(codec) {
       if (isAudioCodec(codec)) {
         if (typeof AudioDecoder !== 'function') return false;
@@ -52,7 +66,10 @@ export function createWebCodecsDecoder(options: WebCodecsDecoderOptions = {}): D
       return videoSupport(codec, requireHardware);
     },
     create(config) {
-      return config.sampleRate === undefined ? createVideo(config, requireHardware) : createAudio(config);
+      if (config.sampleRate !== undefined) return createAudio(config);
+      const pool = options.pool === false || typeof Worker !== 'function' ? undefined : (options.pool ?? sharedDecodePool());
+      if (pool === undefined) return createVideo(config, requireHardware);
+      return pool.open(workerCodec(), requireHardware ? { ...config, hardwareAcceleration: 'prefer-hardware' } : config, { label: config.codec });
     },
   };
 }

@@ -43,4 +43,6 @@ export interface Decoder {
   readonly id: string;
   supports(codec: string, caps: Capabilities): Promise<'hardware' | 'software' | false>;
   create(config: DecoderConfig): DecoderInstance;
+  /** How this decoder runs here (build, SIMD, threads, Worker), for the route explanation. */
+  describe?(): string;
 }

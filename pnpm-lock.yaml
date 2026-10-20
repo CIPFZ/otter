@@ -241,6 +241,15 @@ importers:
         specifier: workspace:*
         version: link:../surface
 
+  packages/decoder-pool:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+
   packages/decoder-wasm-ffmpeg:
     dependencies:
       '@otter-player/core':
@@ -255,6 +264,9 @@ importers:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+      '@otter-player/decoder-pool':
+        specifier: workspace:*
+        version: link:../decoder-pool
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
@@ -264,6 +276,9 @@ importers:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+      '@otter-player/decoder-pool':
+        specifier: workspace:*
+        version: link:../decoder-pool
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media

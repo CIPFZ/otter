@@ -46,6 +46,8 @@ export interface BackendEvents {
   'dropped-frames': { readonly dropped: number; readonly total: number };
   /** MMS / AirPlay handling decided by the backend (ADR-003 §5); annotated onto the route. */
   'remote-playback': { readonly mms: boolean; readonly remotePlayback: 'enabled' | 'disabled'; readonly reason: string };
+  /** A detail of how the backend runs this route (decoder build, SIMD, threads); annotated onto it. */
+  'route-detail': { readonly reason: string };
   waiting: { readonly position: number };
   stalled: { readonly position: number };
   ended: { readonly position: number };

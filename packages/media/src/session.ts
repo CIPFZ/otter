@@ -280,6 +280,10 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
           ...(video?.codec === undefined ? {} : { codec: video.codec }),
         });
       }),
+      on('route-detail', ({ reason }) => {
+        router.annotate({ candidate: stepLabel(decision.step), outcome: 'selected', reason });
+        publishRoute(router.explain());
+      }),
       on('remote-playback', ({ mms, remotePlayback, reason }) => {
         set({ mms, remotePlayback });
         router.annotate({ candidate: stepLabel(decision.step), outcome: 'selected', reason });

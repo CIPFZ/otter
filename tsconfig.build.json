@@ -2,12 +2,6 @@
   "files": [],
   "references": [
     {
-      "path": "vendor/hls.js"
-    },
-    {
-      "path": "vendor/mpegts.js"
-    },
-    {
       "path": "packages/backend-mse"
     },
     {
@@ -21,6 +15,9 @@
     },
     {
       "path": "packages/danmaku"
+    },
+    {
+      "path": "packages/decoder-pool"
     },
     {
       "path": "packages/decoder-wasm-ffmpeg"
@@ -38,10 +35,10 @@
       "path": "packages/engine-adapter-mpegts"
     },
     {
-      "path": "packages/engine-pipeline"
+      "path": "packages/engine-adapter-shaka"
     },
     {
-      "path": "packages/engine-adapter-shaka"
+      "path": "packages/engine-pipeline"
     },
     {
       "path": "packages/format-dash"
@@ -126,6 +123,12 @@
     },
     {
       "path": "packages/vue"
+    },
+    {
+      "path": "vendor/hls.js"
+    },
+    {
+      "path": "vendor/mpegts.js"
     }
   ]
 }

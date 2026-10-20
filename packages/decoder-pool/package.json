@@ -1,0 +1,26 @@
+{
+  "name": "@otter-player/decoder-pool",
+  "version": "0.0.0",
+  "description": "Shared Worker decode pool (ADR-008 §3): decoder plugins run in pooled Workers, at most 16 at once, frames come back transferred.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@otter-player/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  },
+  "dependencies": {
+    "@otter-player/core": "workspace:*",
+    "@otter-player/media": "workspace:*"
+  }
+}
