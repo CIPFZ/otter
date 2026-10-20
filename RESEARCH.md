@@ -56,6 +56,9 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - 无头 Firefox（Playwright 构建，Linux）拿不到 WebGL2 上下文，`getContext('webgl2')` 返回 null；WebCodecs 路径要有 Canvas 2D 兜底（`ctx.filter` 接受 `url(#svg-filter)`，Chrome 和 Firefox 都支持）。无头 Chrome 有 WebGL2 和 WebCodecs，但 `VideoDecoder.isConfigSupported` 对 HEVC 返回 false，`crossOriginIsolated` 为 false。
 - SVG `<filter>` 要写 `color-interpolation-filters="sRGB"`，否则默认在 linearRGB 里计算，和 CSS 的 `brightness()` / `contrast()` / `saturate()` 以及 shader 的结果对不上。
 - 页面没有 `<meta name="viewport" content="width=device-width">` 时，移动端仿真（Pixel 7，DPR 2.625）按 980 px 布局再整体缩小，`<video>`、Canvas 和 WebGL 的缩放滤波不同，像素比较会出现系统性差异。另外截图宽度是取整后的设备像素（1081 = round(412 × 2.625)），用 `截图宽度 / clientWidth` 推算比例会偏差约 1 px，应直接用 `devicePixelRatio`。
+- WebCodecs `reset()` 之后解码器回到 `unconfigured`，必须再 `configure()` 才能继续 `decode()`；seek 时用 reset 丢弃排队的工作，之后从关键帧开始送。Chrome 的 `VideoDecoder.isConfigSupported({ hardwareAcceleration: 'prefer-hardware' })` 在没有硬件解码器时返回 false（当作要求而不是偏好），可以借此区分硬解和软解。
+- WebM（Matroska）的时间戳精度通常是 1 ms：30 fps 的第 32 帧存为 1.067 s，比 32/30 = 1.0667 s 晚，按「时间戳 ≤ t」找帧时要留约 0.5 ms 容差，否则 seek 到帧的起点会落到前一帧。
+- Linux 上的无头 Firefox（Playwright 构建）可以创建 AudioContext 并加载 AudioWorklet 模块，但 `resume()` 永远不 settle，即使在真实点击里调用，state 一直是 suspended；无头 Chrome 不需要手势就是 running，currentTime 正常前进。依赖 AudioContext 计时的代码必须给 `resume()` 加超时并有备用时钟。
 
 ## 2. 格式 / 协议 / 编码全景
 

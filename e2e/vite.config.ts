@@ -19,6 +19,7 @@ export default defineConfig({
       { find: /^@otter-player\/pipeline\/transmux$/, replacement: `${packagesDir}pipeline/src/transmux/index.ts` },
       { find: /^@otter-player\/pipeline\/captions$/, replacement: `${packagesDir}pipeline/src/captions/cea608.ts` },
       { find: /^@otter-player\/text\/render$/, replacement: `${packagesDir}text/src/render.ts` },
+      { find: /^@otter-player\/surface\/gpu$/, replacement: `${packagesDir}surface/src/gpu.ts` },
       { find: /^@otter-player\/([a-z0-9-]+)$/, replacement: `${packagesDir}$1/src/index.ts` },
       { find: /^@otter-vendor\/([a-z0-9.-]+)$/, replacement: fileURLToPath(new URL('../vendor/$1/src/index.ts', import.meta.url)) },
       // imscJS -> sax requires Node builtins; the package build bundles stubs (tooling/shims).
@@ -35,6 +36,7 @@ export default defineConfig({
         player: fileURLToPath(new URL('./site/player.html', import.meta.url)),
         transmux: fileURLToPath(new URL('./site/transmux.html', import.meta.url)),
         surfaces: fileURLToPath(new URL('./site/surfaces.html', import.meta.url)),
+        webcodecs: fileURLToPath(new URL('./site/webcodecs.html', import.meta.url)),
       },
     },
   },

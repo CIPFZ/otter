@@ -1,7 +1,7 @@
 # ADR-008：取消许可证策略；M4 契约（WebCodecs、解码池、WASM 边界、GPUSurface、多宫格）
 
 - 日期：2026-10-20
-- 状态：已采纳（§1 已生效；§2 起随 M4 实现补充细节）
+- 状态：已采纳（§1 已生效；§2、§6 已实现；其余随 M4 实现补充细节）
 - 关联：SPEC §6.3、§9、§12、§15、§21；REUSE；AGENT §3；ADR-003、ADR-007
 
 ## 背景
@@ -31,10 +31,14 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 
 ### 2. WebCodecs 后端（`backend-webcodecs`，SPEC §6.3）
 
-- 数据流：demuxer 产出 `EncodedPacket`，交给 `Decoder` 实例（WebCodecs 硬解或 WASM 软解），解出的帧进入渲染缓冲，最后画到 `GPUSurface`。
-- format 插件对 `webcodecs` 后端提供 demuxer，而不是 MSE 引擎：`format-file`（File / Blob）和 `format-hls`（MSE 不支持该编码时，例如 HEVC）都用 mediabunny。
-- 时钟：音频解码后经 `AudioWorklet` 播放，`AudioContext.currentTime` 是主时钟；视频被动对齐，取「时间戳 ≤ 当前时间」的最新一帧，落后的帧直接丢弃并计入 `dropped-frames`。没有音轨时仍然用 AudioContext 的时钟，暂停用 `suspend()`，倍速只调整视频对齐的时钟比例（音频倍速留给后续）。
-- seek：从目标时间之前的关键帧开始解码，丢掉时间戳早于目标的帧，显示第一个 ≥ 目标的帧（format-file 帧精确 seek，误差 ≤ 1 帧）。
+- 数据流：format 插件的 `createDemuxer()` 打开源，交出 `Demuxer`（`info` 带每条轨道可直接配置解码器的 `setup`，`packets()` / `seek()` 按解码顺序交出 `EncodedChunk`）；backend 按 `FallbackStep.decoder` 从 `BackendContext.decoders` 里选 `Decoder`（硬解步骤选 `webcodecs`，软解步骤选 `wasm*`，音频总是 `webcodecs`），解出的帧进入帧队列，交给宿主提供的 `FrameSink`（`@otter-player/surface/gpu` 的 FrameSurface 满足它；引擎层不依赖渲染层）。
+- format 插件对 `webcodecs` 后端提供 demuxer，而不是 MSE 引擎：`format-file`（File / Blob，mediabunny）现在可用，`format-hls`（MSE 不支持该编码时，例如 HEVC）下一批接入。只能喂 WebCodecs 的格式，选路直接从 `webcodecs → wasm` 开始（reason `format only feeds WebCodecs`），否则默认顺序里没有它，所有源都会 `noRoute`。`format-file` 只在有 WebCodecs 时对 Blob 打分（0.9，高于 mp4-range 的 0.8），没有时打 0，Blob 仍走 `<video>`。
+- 帧：`DecoderConfig.output` 交出 `DecodedFrame`（`VideoFrame` / `AudioData` / `I420Frame`），三者都可转移（`frameTransferables()`），解码挪进 Worker 池时只是 Decoder 换个地方运行，backend 不变。
+- 时钟：媒体时间由 `AudioContext.currentTime` 推导（锚点 + 倍率），有没有音轨都一样；页面里所有 WebCodecs 实例共用一个 AudioContext。音频解码后进 `AudioWorklet`，worklet 自己不计时，只按收到的锚点把「此刻对应的媒体时间」的样本取出来播放，所以 seek、暂停、时钟源切换都不需要额外同步。视频被动对齐：每个渲染帧取「时间戳 ≤ 当前时间」的最新一帧，跳过的帧计入 `dropped-frames`；解码跟不上时时钟停住（`waiting`），攒够 3 帧再走。
+- 暂停只冻结锚点，不 `suspend()` 共享的 AudioContext（其他实例还在用；恢复也可能需要再次用户手势）。倍速只改时钟倍率，倍率 ≠ 1 时音频静音（音频变速留给后续）。
+- AudioContext 跑不起来时（手势之前被自动播放策略挂起；或者没有音频设备，例如 Linux 上的无头 Firefox：`resume()` 永不返回），时钟改用 `performance.now()`，AudioContext 开始运行后重新锚定；「state 是 running 但时间不走」由看门狗识别。播放超过 1 秒仍不在 AudioContext 时钟上时，发一次非致命的 `audioClockUnavailable`。worklet 模块加载与 `resume()` 都有超时；音频输出不可用时发 `audioOutputUnavailable`，画面照常播放。
+- seek：从目标时间之前（含）的最后一个关键帧开始解码，丢掉被目标之后的帧覆盖的帧，显示覆盖目标时刻的那一帧，即「时间戳 ≤ 目标的最后一帧」，与 `<video>` 和播放时的规则一致。判断时有 0.5 ms 容差：WebM 以毫秒存时间戳（第 32 帧存为 1.067，晚于 32/30），没有容差会落到前一帧。新的 seek 立即作废进行中的 seek（generation 计数，`reset()` 解码器），旧 seek 的帧不会画出来。对 30 fps、GOP 90 的样本，e2e 从画面像素读出帧序号，与 `round(t × fps)` 完全相等（目标取在帧的前半段，那里 round 与「覆盖 t 的帧」一致）。
+- load 在第一帧画到 FrameSink 上之后才 resolve（`first-frame` 发出、`readyState` 4）；`buffered` 是整个文件。
 
 ### 3. 解码池
 

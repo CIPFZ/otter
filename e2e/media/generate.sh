@@ -149,4 +149,7 @@ printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:12\n#EXT-X-PLAYLIST-TYP
 # CEA-608 captions in H.264 SEI (own TS / FLV pipeline).
 ./generate-cc.sh
 
+# Frame-numbered clips for frame-accurate seek on the WebCodecs path (format-file).
+./generate-frames.sh
+
 du -sh . && find . -type f | sort | sed 's/^/  /' | head -80

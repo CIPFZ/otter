@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Otter WebCodecs fixture</title>
+    <link rel="icon" href="data:," />
+    <style>
+      body { margin: 0; padding: 8px; background: #222; color: #ddd; font: 14px system-ui; }
+      #box { position: relative; width: 320px; height: 180px; background: #000; }
+      #box > canvas { display: block; width: 100%; height: 100%; }
+      video { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="box"><canvas id="canvas"></canvas></div>
+    <video muted playsinline></video>
+    <button id="play" type="button">Play</button>
+    <script type="module" src="./webcodecs.ts"></script>
+  </body>
+</html>
