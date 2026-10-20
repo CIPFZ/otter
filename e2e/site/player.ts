@@ -4,7 +4,6 @@
 import { createCore, type QoeEventMap, type RouteExplanation } from '@otter-player/core';
 import { createMseBackendFactory } from '@otter-player/backend-mse';
 import { createNativeBackendFactory } from '@otter-player/backend-native';
-import { createWebCodecsBackendFactory } from '@otter-player/backend-webcodecs';
 import { createDashFormat } from '@otter-player/format-dash';
 import { createFlvFormat } from '@otter-player/format-flv';
 import { createHlsFormat } from '@otter-player/format-hls';
@@ -102,7 +101,9 @@ async function build(policy: RoutePolicy): Promise<{
     target: video,
     // ?abr=engine: the engines' own ABR instead of the Otter rule stack, for A/B runs (ADR-005 §1).
     formats: [createHlsFormat({ abr }), createDashFormat({ abr }), createFlvFormat(pipeline === undefined ? {} : { engine: pipeline }), createTsFormat(pipeline === undefined ? {} : { engine: pipeline }), createMp4RangeFormat(ahead === undefined ? {} : { maxBufferAheadS: ahead })],
-    backends: [createMseBackendFactory(), createNativeBackendFactory(), createWebCodecsBackendFactory()],
+    // The WebCodecs backend needs a canvas FrameSink; the shell gets one with multi-view (M4), until
+    // then it runs on webcodecs.html.
+    backends: [createMseBackendFactory(), createNativeBackendFactory()],
     policy,
     ...(cmcd === undefined ? {} : { cmcd }),
   });
