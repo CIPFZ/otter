@@ -143,7 +143,9 @@ for (const clip of CLIPS) {
     await page.waitForTimeout(100);
     const s = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).state());
     expect(s.paused).toBe(true);
-    expect(await frameOnCanvas(page)).toBe(covering(s.currentTime));
+    // Same rule as seeking, including the backend's 0.5 ms tolerance at frame starts (WebM
+    // stores milliseconds; Firefox's clock moves in whole milliseconds, so a pause can land there).
+    expect(await frameOnCanvas(page)).toBe(covering(s.currentTime + 0.0005));
   });
 }
 
