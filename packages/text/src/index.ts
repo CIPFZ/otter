@@ -6,10 +6,9 @@
 import { createError, type Plugin, type PluginContext, type QoeHook, type Store, type StoreSlice, type Unsubscribe } from '@otter-player/core';
 import type { InbandCues, SidecarTextTrack, Source, TextTrackInfo } from '@otter-player/media';
 import type { Insets, Overlay, OverlayHost } from '@otter-player/surface';
-import { activeCues, plainCue, type TextCue } from './cue.js';
-import { cueArea, DEFAULT_CUE_SETTINGS } from './layout.js';
+import { activeCues, DEFAULT_CUE_SETTINGS, plainCue, type TextCue } from './cue.js';
 import type { NativeMirror, NativeTextSink } from './native.js';
-import { createCueRenderer, type CueRenderer } from './renderer.js';
+import type { CueRenderer } from './renderer.js';
 
 export interface TextTrackEntry {
   readonly id: string;
@@ -362,16 +361,30 @@ export function createText(options: TextOptions = {}): TextController {
 
   let host: OverlayHost | undefined;
   let renderer: CueRenderer | undefined;
+  /** The renderer and layout are their own entry, loaded with the first cue to draw. */
+  let render: typeof import('./render.js') | undefined;
+  let renderLoading = false;
   let safe: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
   let mediaTime = 0;
   let hostOffs: Unsubscribe[] = [];
 
   const draw = (): void => {
-    if (host === undefined || renderer === undefined) return;
+    if (host === undefined) return;
     const view = host.store.getState() as Partial<TextState>;
     const id = view.textTrack ?? null;
     // On the native path the system draws the cues.
     const cues = id === null || nativeActive() ? [] : activeCues(cueStore.get(id) ?? [], mediaTime);
+    if (render === undefined || renderer === undefined) {
+      if (cues.length === 0 || renderLoading) return;
+      renderLoading = true;
+      void import('./render.js').then((m) => {
+        render = m;
+        if (host !== undefined) renderer = m.createCueRenderer(host.root);
+        draw();
+      });
+      return;
+    }
+    const { cueArea } = render;
     const rect = host.contentRect;
     // UI-DESIGN §9: cues sit 8% of the picture height above its bottom edge; a bar that covers
     // the picture pushes them up by what it covers plus 8 px.
@@ -393,7 +406,7 @@ export function createText(options: TextOptions = {}): TextController {
     zIndex: 200,
     mount(h) {
       host = h;
-      renderer = createCueRenderer(h.root);
+      if (render !== undefined) renderer = render.createCueRenderer(h.root);
       hostOffs = [h.onContentRectChange(draw), h.store.subscribe(draw)];
       draw();
     },
@@ -422,22 +435,9 @@ export function createTextOverlay(options: TextOptions = {}): Overlay {
   return createText(options).overlay;
 }
 
-export { activeCues, cueText, plainCue, type CueNode, type CueNodeType, type TextCue } from './cue.js';
-export {
-  cueArea,
-  DEFAULT_CUE_SETTINGS,
-  horizontalLayout,
-  layoutCues,
-  type Area,
-  type Box,
-  type CueAlign,
-  type CueSettings,
-  type HorizontalLayout,
-  type LayoutItem,
-  type PlacedCue,
-  type PositionAlign,
-  type RegionSettings,
-} from './layout.js';
-export { createCueRenderer, type CueRenderer } from './renderer.js';
+export { activeCues, cueText, DEFAULT_CUE_SETTINGS, plainCue, type CueNode, type CueNodeType, type TextCue } from './cue.js';
+// Layout types; the renderer and the layout functions are the `@otter-player/text/render` entry.
+export type { CueAlign, CueSettings, PositionAlign, RegionSettings } from './layout.js';
+export type { CueRenderer } from './renderer.js';
 export type { NativeTextSink } from './native.js';
 export type { ParsedCaptions, SidecarFormat } from './vtt.js';

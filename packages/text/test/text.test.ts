@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { createCore, type StoreSlice } from '@otter-player/core';
 import type { InbandCues, Source, TextTrackInfo } from '@otter-player/media';
 import type { OverlayHost } from '@otter-player/surface';
-import { createCueRenderer, createText, TEXT_SLICE, type TextActionMap, type TextState } from '@otter-player/text';
+import { createText, TEXT_SLICE, type TextActionMap, type TextState } from '@otter-player/text';
+import { createCueRenderer } from '@otter-player/text/render';
 import { parseCaptions } from '../src/vtt.js';
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -108,8 +109,11 @@ describe('text plugin', () => {
     text.overlay.mount(host);
     text.overlay.tick?.(0, 0.5);
     expect(root.querySelector('[data-cue-id]')).toBeNull();
+    // Nothing to draw yet: the renderer entry is not even loaded.
+    expect(root.querySelector('[data-otter-cues]')).toBeNull();
     text.overlay.tick?.(0, 2);
-    expect(root.querySelector('[data-cue-id]')?.textContent).toBe('Hello');
+    // The first active cue loads the renderer (@otter-player/text/render), then draws.
+    await vi.waitFor(() => expect(root.querySelector('[data-cue-id]')?.textContent).toBe('Hello'));
     const layer = root.querySelector<HTMLElement>('[data-otter-cues]');
     // 8% of the picture stays free at the bottom (UI-DESIGN §9).
     expect(layer?.style.height).toBe('441.6px');
@@ -149,7 +153,7 @@ describe('text plugin', () => {
     document.body.appendChild(root);
     text.overlay.mount({ root, contentRect: new DOMRect(0, 0, 640, 360), safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, store: core.store.view(), onContentRectChange: () => () => undefined });
     text.overlay.tick?.(0, 2);
-    expect(root.querySelector('[data-cue-id]')?.textContent).toBe('Hello');
+    await vi.waitFor(() => expect(root.querySelector('[data-cue-id]')?.textContent).toBe('Hello'));
     expect(addTextTrack).not.toHaveBeenCalled();
     // Video PiP / iPhone system fullscreen: the system draws the captions.
     core.store.setState({ presentation: { videoOnly: true } });
@@ -212,6 +216,10 @@ describe('text plugin', () => {
     const root = document.createElement('div');
     document.body.appendChild(root);
     first.text.overlay.mount({ root, contentRect: new DOMRect(0, 0, 640, 360), safeArea: { top: 0, right: 0, bottom: 0, left: 0 }, store: first.core.store.view(), onContentRectChange: () => () => undefined });
+    // The cue layer exists once a cue is on screen (the renderer loads with it).
+    await vi.waitFor(() => expect(first.text.cues('sidecar:1')).toHaveLength(1));
+    first.text.overlay.tick?.(0, 2);
+    await vi.waitFor(() => expect(root.querySelector('[data-otter-cues]')).not.toBeNull());
     const layer = root.querySelector<HTMLElement>('[data-otter-cues]');
     expect(layer?.style.getPropertyValue('--otter-cue-user-scale')).toBe('2');
     expect(layer?.style.getPropertyValue('--otter-cue-user-shadow')).toContain('#000');

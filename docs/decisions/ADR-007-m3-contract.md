@@ -134,6 +134,15 @@ M3 是第一次做 L2 vendoring（REUSE §5），也是第一次用自研代码�
   - **I-frame playlist**：HLS 清单里有 `EXT-X-I-FRAME-STREAM-INF` 时，用 hls.js 的 `createIFramePlayer()`（L1）挂到一个离屏 `<video>`，`loadMediaAt(t)` 后把帧画到 canvas，输出 `bitmap`。这条路径只在主引擎是 hls.js 时可用，通过 `MediaPlugin.thumbnails()` 暴露；节流为每 200 ms 最多一次请求。
 - e2e：两种来源各一个用例，断言悬停时预览卡出现缩略图（sprite 断言 `background-position`，I-frame 断言 canvas 有非空像素）。
 
+## 后续：首屏瘦身（2026-10-20，M4 前置）
+
+M3 结束时首屏（默认皮肤 + ui-core + presentation + text）是 29.74 / 30 KB。M4 开始前把不在首屏用到的部分改为按需块，首屏降到 25.86 KB，预算上限仍为 30 KB：
+
+- 设置菜单二级页面（列表页、字幕样式页及其预览、`captionStyleGroups`）：`ui-core/settings-level`，菜单打开时预取，进入二级时如果还没到就等它加载完再渲染。`settingsGroups()` 只返回一级分组，字幕样式分组不再从 ui-core 主入口导出。
+- 预览卡缩略图绘制：`ui-core/thumb-view`，第一次拿到缩略图来源时加载。
+- 错误卡片视图：`ui-core/error-view`，第一次致命错误时加载。
+- cue 渲染器与 WebVTT 排版：新入口 `@otter-player/text/render`（`createCueRenderer`、`layoutCues`、`horizontalLayout`、`cueArea`），text overlay 在第一个要画的 cue 出现时加载。`DEFAULT_CUE_SETTINGS` 和布局类型仍在 text 主入口。
+
 ## 代价
 
 - 两套 demuxer 来源（hls.js、mpegts.js）同时维护。FLV 映射到 hls.js 的样本模型多了一层转换，但只维护一个 remuxer。

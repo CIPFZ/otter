@@ -9,6 +9,7 @@ export default defineConfig({
     alias: [
       { find: /^@otter-player\/pipeline\/transmux$/, replacement: `${packagesDir}pipeline/src/transmux/index.ts` },
       { find: /^@otter-player\/pipeline\/captions$/, replacement: `${packagesDir}pipeline/src/captions/cea608.ts` },
+      { find: /^@otter-player\/text\/render$/, replacement: `${packagesDir}text/src/render.ts` },
       { find: /^@otter-player\/([a-z0-9-]+)$/, replacement: `${packagesDir}$1/src/index.ts` },
     ],
   },

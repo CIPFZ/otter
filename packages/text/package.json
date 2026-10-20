@@ -10,6 +10,11 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./render": {
+      "@otter-player/source": "./src/render.ts",
+      "types": "./dist/render.d.ts",
+      "default": "./dist/render.js"
     }
   },
   "files": [
@@ -30,6 +35,9 @@
     "bundle": [
       "imsc",
       "sax"
-    ]
+    ],
+    "entries": {
+      "render": "src/render.ts"
+    }
   }
 }

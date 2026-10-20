@@ -74,7 +74,6 @@ export {
   M2_ELEMENTS,
   M25_ELEMENTS,
   M3_ELEMENTS,
-  captionStyleGroups,
   settingsGroups,
   type DefineOptions,
   type MenuGroup,

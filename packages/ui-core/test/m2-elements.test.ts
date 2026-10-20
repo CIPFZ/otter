@@ -166,7 +166,7 @@ describe('M2 primitives', () => {
     vi.useRealTimers();
   });
 
-  it('big play shows in the poster state only; error card offers a retry of the source', () => {
+  it('big play shows in the poster state only; error card offers a retry of the source', async () => {
     const { store, calls, root } = mount('<otter-big-play></otter-big-play><otter-error></otter-error>');
     store.handle('load', (p) => void calls.push(['load', p]));
     const big = root.querySelector('otter-big-play') as HTMLElement;
@@ -178,7 +178,8 @@ describe('M2 primitives', () => {
     expect(err.hidden).toBe(true);
     store.setState({ status: 'error', source: { src: '/a.m3u8' }, error: { type: 'network', details: 'manifestLoadError', fatal: true, recoverable: false } });
     expect(err.hidden).toBe(false);
-    expect(err.shadowRoot?.querySelector('[role="alert"]')?.textContent).toContain('manifestLoadError');
+    // The card's view loads with the first error.
+    await vi.waitFor(() => expect(err.shadowRoot?.querySelector('[role="alert"]')?.textContent).toContain('manifestLoadError'));
     (err.shadowRoot?.querySelector('button') as HTMLButtonElement).click();
     expect(calls.at(-1)).toEqual(['load', { source: { src: '/a.m3u8' }, options: { autoplay: true } }]);
   });
@@ -266,9 +267,12 @@ describe('announcer', () => {
 });
 
 describe('settings menu (APG menu button, two levels)', () => {
-  it('groups quality (Auto shows the playing rendition), speed, captions and caption style', () => {
-    const groups = settingsGroups({ ...(MEDIA_SLICE.initialState as UiState), ...READY } as UiState, STRINGS_EN);
-    expect(groups.map((g) => g.id)).toEqual(['quality', 'speed', 'captions', 'caption-size', 'caption-color', 'caption-background', 'caption-window', 'caption-edge', 'caption-font']);
+  it('groups quality (Auto shows the playing rendition), speed, captions; caption style comes with level two', async () => {
+    const state = { ...(MEDIA_SLICE.initialState as UiState), ...READY } as UiState;
+    const groups = settingsGroups(state, STRINGS_EN);
+    expect(groups.map((g) => g.id)).toEqual(['quality', 'speed', 'captions']);
+    const { captionStyleGroups } = await import('../src/settings-level.js');
+    expect(captionStyleGroups(state, STRINGS_EN).map((g) => g.id)).toEqual(['caption-size', 'caption-color', 'caption-background', 'caption-window', 'caption-edge', 'caption-font']);
     expect(groups[0]?.options.map((o) => `${o.label}${o.checked ? '*' : ''}`)).toEqual(['Auto (720P)*', '720P', '360P']);
     expect(groups[0]?.options[1]?.detail).toBe('2.5 Mbps');
     expect(groups[1]?.options.find((o) => o.checked)?.label).toBe('Normal');
@@ -289,6 +293,12 @@ describe('settings menu (APG menu button, two levels)', () => {
     return { ...m, sr, trigger, focused, key, menu: sr.querySelector('[role="menu"]') as HTMLElement };
   }
 
+  /** Level two is an on-demand chunk the menu requests when it opens. */
+  const levelsLoaded = async (): Promise<void> => {
+    await import('../src/settings-level.js');
+    await new Promise((r) => setTimeout(r, 0));
+  };
+
   it('level one: value rows, speed segments, focus starts at the checked speed', () => {
     const { trigger, focused, key, menu, store, sr } = open();
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
@@ -308,9 +318,10 @@ describe('settings menu (APG menu button, two levels)', () => {
     expect(focused().getAttribute('aria-label')).toBe('Quality, Auto (720P)');
   });
 
-  it('opens a level with Enter / ArrowRight, chooses, returns to the row; ArrowLeft goes back', () => {
+  it('opens a level with Enter / ArrowRight, chooses, returns to the row; ArrowLeft goes back', async () => {
     const { trigger, focused, key, calls, menu, sr } = open();
     trigger.click();
+    await levelsLoaded();
     key('Home');
     key('Enter');
     // Level two: back row + options, focus on the checked option.
@@ -334,13 +345,14 @@ describe('settings menu (APG menu button, two levels)', () => {
     expect(sr.activeElement).toBe(trigger);
   });
 
-  it('speed segments and caption style (CVAA) dispatch without leaving their view; audio level with several tracks', () => {
+  it('speed segments and caption style (CVAA) dispatch without leaving their view; audio level with several tracks', async () => {
     const { store, calls, trigger, sr } = open();
     store.setState({
       captionStyle: { scale: 2 },
       tracks: { ...(READY.tracks as UiState['tracks']), audio: [{ kind: 'audio', id: 'audio-0', selected: true, language: 'en' }, { kind: 'audio', id: 'audio-1', selected: false, language: 'en', label: 'Audio description' }] },
     });
     trigger.click();
+    await levelsLoaded();
     (sr.querySelector('[data-key="speed:1.5"]') as HTMLElement).click();
     expect(calls.at(-1)).toEqual(['set-playback-rate', { rate: 1.5 }]);
     expect(sr.querySelector('.back')).toBeNull();
@@ -356,9 +368,10 @@ describe('settings menu (APG menu button, two levels)', () => {
     expect(calls.at(-1)).toEqual(['select-audio-track', { id: 'audio-1' }]);
   });
 
-  it('roles: rows are menuitem with aria-haspopup, options menuitemradio with aria-checked, groups are labelled', () => {
+  it('roles: rows are menuitem with aria-haspopup, options menuitemradio with aria-checked, groups are labelled', async () => {
     const { trigger, sr } = open();
     trigger.click();
+    await levelsLoaded();
     for (const g of sr.querySelectorAll('[role="group"]')) {
       const label = g.getAttribute('aria-label') ?? sr.getElementById(g.getAttribute('aria-labelledby') ?? '')?.textContent ?? '';
       expect(label).not.toBe('');

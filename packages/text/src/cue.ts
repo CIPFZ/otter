@@ -2,7 +2,19 @@
 // becomes TextCue; the renderer only knows this shape. Cue text is a node tree, never an HTML
 // string: subtitle files are untrusted input.
 
-import { DEFAULT_CUE_SETTINGS, type CueSettings } from './layout.js';
+import type { CueSettings } from './layout.js';
+
+/** WebVTT defaults (§3.1); here rather than in layout.ts, which loads with the first cue drawn. */
+export const DEFAULT_CUE_SETTINGS: CueSettings = {
+  line: 'auto',
+  snapToLines: true,
+  lineAlign: 'start',
+  position: 'auto',
+  positionAlign: 'auto',
+  size: 100,
+  align: 'center',
+  region: null,
+};
 
 export type CueNodeType = 'b' | 'i' | 'u' | 'ruby' | 'rt' | 'c' | 'v' | 'lang' | 'timestamp';
 

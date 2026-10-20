@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cueArea, DEFAULT_CUE_SETTINGS, horizontalLayout, layoutCues, type CueSettings, type RegionSettings } from '@otter-player/text';
+import { DEFAULT_CUE_SETTINGS, type CueSettings, type RegionSettings } from '@otter-player/text';
+import { cueArea, horizontalLayout, layoutCues } from '@otter-player/text/render';
 
 const s = (over: Partial<CueSettings> = {}): CueSettings => ({ ...DEFAULT_CUE_SETTINGS, ...over });
 const AREA = { width: 1000, height: 500 };

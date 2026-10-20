@@ -33,16 +33,6 @@ export interface CueSettings {
   readonly region: RegionSettings | null;
 }
 
-export const DEFAULT_CUE_SETTINGS: CueSettings = {
-  line: 'auto',
-  snapToLines: true,
-  lineAlign: 'start',
-  position: 'auto',
-  positionAlign: 'auto',
-  size: 100,
-  align: 'center',
-  region: null,
-};
 
 /** Display area in px: the picture rectangle minus the part the chrome covers. */
 export interface Area {

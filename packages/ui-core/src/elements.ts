@@ -17,7 +17,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   Copy,
   Maximize,
   Minimize,
@@ -35,7 +34,6 @@ import {
   X,
 } from 'lucide';
 import type { Thumbnail } from '@otter-player/media';
-import type { CaptionStyle } from '@otter-player/text';
 import { findThumbnails, type UiState } from './context.js';
 import { formatBitrate, formatMs, formatSeconds, formatTime } from './format.js';
 import { icon, LiveDot, SpinnerRing, Theater, type IconNode } from './icons.js';
@@ -114,7 +112,10 @@ const trackLabel = (t: { readonly label?: string; readonly language?: string; re
 
 const rateLabel = (r: number): string => `${r.toFixed(r * 100 % 10 === 0 ? 1 : 2)}x`;
 
-/** Groups of the settings menu from state: quality (when selectable), speed, audio, captions, caption style. */
+/**
+ * Level-one groups of the settings menu from state: quality (when selectable), speed, audio,
+ * captions. The caption style groups come with the level-two views (settings-level.ts).
+ */
 export function settingsGroups(s: Readonly<UiState>, strings: UiStrings): MenuGroup[] {
   const groups: MenuGroup[] = [];
   if (s.tracks.quality === 'selectable' && s.tracks.video.length > 1) groups.push(qualityGroup(s, strings));
@@ -136,7 +137,6 @@ export function settingsGroups(s: Readonly<UiState>, strings: UiStrings): MenuGr
         ...tracks.map((t) => ({ value: t.id, label: trackLabel(t), checked: s.textTrack === t.id })),
       ],
     });
-    groups.push(...captionStyleGroups(s, strings));
   }
   return groups;
 }
@@ -167,24 +167,6 @@ function speedGroup(s: Readonly<UiState>, strings: UiStrings): MenuGroup {
     label: strings.speed,
     options: PLAYBACK_RATES.map((r) => ({ value: String(r), label: r === 1 ? strings.speedNormal : `${r}x`, checked: s.playbackRate === r })),
   };
-}
-
-/** CVAA caption display settings (47 CFR §79.103(c)); `value` is the JSON style patch. */
-export function captionStyleGroups(s: Readonly<UiState>, strings: UiStrings): MenuGroup[] {
-  const style: CaptionStyle = s.captionStyle ?? {};
-  const group = <K extends keyof CaptionStyle>(id: string, label: string, key: K, values: readonly [CaptionStyle[K] | null, string][]): MenuGroup => ({
-    id,
-    label,
-    options: values.map(([v, text]) => ({ value: JSON.stringify({ [key]: v }), label: text, checked: (style[key] ?? null) === v })),
-  });
-  return [
-    group('caption-size', strings.captionSize, 'scale', [[null, strings.styleDefault], [0.75, '75%'], [1.5, '150%'], [2, '200%']]),
-    group('caption-color', strings.captionColor, 'color', [[null, strings.styleDefault], ['#ffffff', strings.colorWhite], ['#ffff00', strings.colorYellow], ['#00ffff', strings.colorCyan], ['#00ff00', strings.colorGreen]]),
-    group('caption-background', strings.captionBackground, 'backgroundOpacity', [[null, strings.styleDefault], [0, strings.backgroundNone], [0.5, strings.backgroundSemi], [1, strings.backgroundOpaque]]),
-    group('caption-window', strings.captionWindow, 'windowOpacity', [[null, strings.styleDefault], [0.5, strings.backgroundSemi], [1, strings.backgroundOpaque]]),
-    group('caption-edge', strings.captionEdge, 'edge', [[null, strings.styleDefault], ['none', strings.edgeNone], ['shadow', strings.edgeShadow], ['outline', strings.edgeOutline], ['raised', strings.edgeRaised], ['depressed', strings.edgeDepressed]]),
-    group('caption-font', strings.captionFont, 'font', [[null, strings.styleDefault], ['serif', strings.fontSerif], ['monospace', strings.fontMonospace], ['casual', strings.fontCasual]]),
-  ];
 }
 
 let menuIds = 0;
@@ -488,6 +470,7 @@ const timeSliderClass = () =>
       #last: Readonly<UiState> | undefined;
       /** Latest thumbnail request; older answers are dropped. */
       #thumbSeq = 0;
+      #thumbView: Promise<(t: Thumbnail | null) => void> | undefined;
       protected setup(): void {
         if (this.#input !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
@@ -502,9 +485,6 @@ const timeSliderClass = () =>
 .thumb { position: relative; width: var(--otter-thumbnail-width, 160px); height: var(--otter-thumbnail-height, 90px); border-radius: ${T.radius};
   border: 2px solid rgb(255 255 255 / 0.85); background: rgb(0 0 0 / 0.6) no-repeat; box-shadow: ${T.shadow}; overflow: hidden; }
 .card:not([data-thumb]) .thumb { width: auto; height: auto; border: none; background: none; box-shadow: none; overflow: visible; }
-.thumb > i, .thumb > canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.thumb > canvas { width: 100%; height: 100%; }
-.thumb > [hidden] { display: none; }
 /* Without a thumbnail the time is a small version of the card (same frame and corner). */
 .time { display: block; padding: 5px 10px; border-radius: ${T.radius}; border: 2px solid rgb(255 255 255 / 0.85); ${glass()}
   color: ${T.fg}; font: 600 12px/1.2 ${T.font}; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -587,37 +567,10 @@ ${glassFallback('.time')}
         card.setAttribute('data-show', '');
         const seq = ++this.#thumbSeq;
         const provider = findThumbnails(this);
-        if (provider === undefined) card.removeAttribute('data-thumb');
-        else void provider.at(time).then((t) => seq === this.#thumbSeq && this.#thumb(t));
-      }
-      /** Sprite tile (scaled into the card) or decoded frame; null shows the time only. */
-      #thumb(t: Thumbnail | null): void {
-        const card = this.#card as HTMLElement;
-        const box = card.querySelector('.thumb') as HTMLElement;
-        card.toggleAttribute('data-thumb', t !== null);
-        if (t === null) return;
-        const doc = this.ownerDocument;
-        const tile = box.querySelector('i') ?? box.insertBefore(doc.createElement('i'), box.firstChild);
-        const canvas = box.querySelector('canvas') ?? box.insertBefore(doc.createElement('canvas'), box.firstChild);
-        tile.hidden = !('url' in t);
-        canvas.hidden = 'url' in t;
-        if ('bitmap' in t) {
-          canvas.width = t.bitmap.width;
-          canvas.height = t.bitmap.height;
-          canvas.getContext('2d')?.drawImage(t.bitmap, 0, 0);
-          return;
-        }
-        const s = tile.style;
-        const W = box.clientWidth;
-        const H = box.clientHeight;
-        // Escaped for a quoted CSS url(): provider URLs come from untrusted track files.
-        s.backgroundImage = `url("${t.url.replace(/["\\\n\r]/g, (c) => `\\${c.charCodeAt(0).toString(16)} `)}")`;
-        s.backgroundRepeat = 'no-repeat';
-        s.width = `${t.w || W}px`;
-        s.height = `${t.h || H}px`;
-        s.backgroundPosition = `${-t.x}px ${-t.y}px`;
-        s.backgroundSize = t.w > 0 ? '' : 'cover';
-        s.transform = t.w > 0 ? `scale(${W / t.w}, ${H / t.h})` : '';
+        if (provider === undefined) return card.removeAttribute('data-thumb');
+        // The drawing code is an on-demand chunk, loaded with the first thumbnail source.
+        this.#thumbView ??= import('./thumb-view.js').then((m) => m.createThumbView(card));
+        void Promise.all([provider.at(time), this.#thumbView]).then(([t, show]) => seq === this.#thumbSeq && show(t));
       }
       protected render(s: Readonly<UiState>): void {
         this.#last = s;
@@ -925,42 +878,37 @@ ${REDUCED_MOTION}</style><div class="b" part="badge" aria-hidden="true"></div>`;
   });
 
 /** Fatal error card with retry (reloads the current source). */
+/**
+ * Error card: shown only when playback fails, so its view loads then (error-view.ts). Until the
+ * view is in, the element is just hidden.
+ */
 const errorCardClass = () =>
   once('ErrorCard', () => {
     const Base = base();
     return class ErrorCard extends Base {
-      #title: HTMLElement | undefined;
-      #detail: HTMLElement | undefined;
-      #retry: HTMLButtonElement | undefined;
+      #view: Promise<(s: Readonly<UiState>) => void> | undefined;
       protected setup(): void {
-        if (this.#title !== undefined) return;
-        const root = this.attachShadow({ mode: 'open' });
-        root.innerHTML = `<style>:host { position: absolute; inset: 0; display: grid; place-items: center; }
-:host([hidden]) { display: none; }
-.card { display: grid; justify-items: center; gap: 8px; max-width: min(360px, 80%); padding: 20px 24px; border-radius: ${T.radiusLg};
-  ${glass()} color: ${T.fg}; font: 500 14px/1.4 ${T.font}; text-align: center; }
-svg { width: 32px; height: 32px; color: ${T.danger}; }
-.detail { color: ${T.muted}; font-size: 12px; font-family: ${T.mono}; }
-button { all: unset; cursor: pointer; margin-top: 4px; padding: 8px 16px; border-radius: 999px; background: ${T.fg}; color: #10161e;
-  font: 600 13px/1 ${T.font}; }
-button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; }
-${glassFallback('.card')}</style><div class="card" part="card" role="alert">${icon(CircleAlert)}<span class="t" part="title"></span><span class="detail" part="detail"></span><button part="retry" type="button"></button></div>`;
-        this.#title = root.querySelector('.t') as HTMLElement;
-        this.#detail = root.querySelector('.detail') as HTMLElement;
-        this.#retry = root.querySelector('button') as HTMLButtonElement;
-        this.#retry.addEventListener('click', (e) => {
-          const s = this.ui?.getState();
-          if (s?.source != null) this.ui?.dispatch('load', { source: s.source, options: { autoplay: true } }, { type: e.type, source: 'otter-error' });
-        });
         this.hidden = true;
       }
       protected render(s: Readonly<UiState>): void {
         const fatal = s.status === 'error' && s.error !== null;
         this.hidden = !fatal;
-        if (!fatal || this.#title === undefined || this.#detail === undefined || this.#retry === undefined) return;
-        this.#title.textContent = this.strings.errorTitle;
-        this.#detail.textContent = `${s.error?.type ?? ''} · ${s.error?.details ?? ''}`;
-        this.#retry.textContent = this.strings.retry;
+        if (!fatal) return;
+        this.#view ??= import('./error-view.js').then(({ mountErrorCard }) =>
+          mountErrorCard(
+            this.shadowRoot ?? this.attachShadow({ mode: 'open' }),
+            () => this.strings,
+            (e) => {
+              const now = this.ui?.getState();
+              if (now?.source != null) this.ui?.dispatch('load', { source: now.source, options: { autoplay: true } }, { type: e.type, source: 'otter-error' });
+            },
+            { T, glass, glassFallback, icon },
+          ),
+        );
+        void this.#view.then((view) => {
+          const now = this.ui?.getState();
+          if (now !== undefined) view(now);
+        });
       }
     };
   });
@@ -1361,7 +1309,7 @@ const speedMenuClass = () =>
     };
   });
 
-type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style';
+export type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style';
 
 /**
  * Settings (UI-DESIGN §7): a two-level menu. Level one: rows "icon + label + current value +
@@ -1376,6 +1324,15 @@ const settingsMenuClass = () =>
       #view: SettingsView = 'root';
       #signature = '';
       #returnTo: string | undefined;
+      /** Level-two views: an on-demand chunk, requested when the menu opens. */
+      #levels: typeof import('./settings-level.js') | undefined;
+      #loading: Promise<void> | undefined;
+      #loadLevels(): Promise<void> {
+        this.#loading ??= import('./settings-level.js').then((m) => {
+          this.#levels = m;
+        });
+        return this.#loading;
+      }
       constructor() {
         super();
         this.addEventListener('otter-select', (e) => {
@@ -1395,6 +1352,7 @@ const settingsMenuClass = () =>
         this.setTrigger(this.strings.settings, icon(Settings));
       }
       protected override beforeOpen(): void {
+        void this.#loadLevels();
         this.#view = 'root';
         this.#signature = '';
         const s = this.ui?.getState();
@@ -1414,11 +1372,18 @@ const settingsMenuClass = () =>
         const focusKey = back ? `row:${this.#view}` : undefined;
         this.#view = view;
         this.#signature = '';
-        this.#build(s, back ? 'back' : 'forward');
-        const list = this.list;
-        const target = focusKey === undefined ? undefined : byKey(list, focusKey);
-        if (target !== null && target !== undefined) this.focusItem(target);
-        else this.focusIn('checked');
+        const show = (): void => {
+          this.#build(s, back ? 'back' : 'forward');
+          const list = this.list;
+          const target = focusKey === undefined ? undefined : byKey(list, focusKey);
+          if (target !== null && target !== undefined) this.focusItem(target);
+          else this.focusIn('checked');
+        };
+        // Usually loaded since the menu opened; otherwise the level appears when it arrives.
+        if (back || this.#levels !== undefined) return show();
+        void this.#loadLevels().then(() => {
+          if (this.#view === view && this.open) show();
+        });
       }
       protected override activateItem(item: HTMLElement): void {
         const action = item.dataset['action'];
@@ -1473,15 +1438,33 @@ const settingsMenuClass = () =>
       #build(s: Readonly<UiState>, enter: 'forward' | 'back' | undefined): void {
         const list = this.list;
         if (list === undefined) return;
+        const levels = this.#levels;
+        if (this.#view !== 'root' && levels === undefined) return;
         const groups = settingsGroups(s, this.strings);
-        const signature = JSON.stringify([this.#view, groups, this.#stats()?.hidden ?? null]);
+        const signature = JSON.stringify([this.#view, groups, s.captionStyle ?? null, this.#stats()?.hidden ?? null]);
         if (signature === this.#signature) return;
         this.#signature = signature;
         const focused = (this.shadowRoot?.activeElement as HTMLElement | null)?.dataset['key'];
         const view = this.ownerDocument.createElement('div');
         view.className = 'view';
         if (enter !== undefined) view.dataset['enter'] = enter;
-        view.append(...(this.#view === 'root' ? this.#root(s, groups) : this.#level(this.#view, groups)));
+        view.append(
+          ...(this.#view === 'root' || levels === undefined
+            ? this.#root(s, groups)
+            : levels.buildLevel(
+                {
+                  doc: this.ownerDocument,
+                  strings: this.strings,
+                  menuId: this.menuId,
+                  radioRow: (group, o) => this.radioRow(group, o),
+                  cueLayer: () => playerRoot(this)?.querySelector<HTMLElement>('[data-otter-cues]') ?? null,
+                },
+                this.#view,
+                s,
+                groups,
+                { icon, ChevronLeft },
+              )),
+        );
         const slot = list.querySelector('slot');
         list.replaceChildren(view, ...(slot === null ? [] : [slot]));
         const refocus = focused === undefined ? null : byKey(list, focused);
@@ -1560,75 +1543,6 @@ const settingsMenuClass = () =>
           out.push(item);
         }
         return out;
-      }
-      #level(view: Exclude<SettingsView, 'root'>, groups: MenuGroup[]): HTMLElement[] {
-        const doc = this.ownerDocument;
-        const t = this.strings;
-        const back = doc.createElement('div');
-        back.setAttribute('role', 'menuitem');
-        back.className = 'back';
-        back.dataset['action'] = 'back';
-        back.dataset['key'] = 'back';
-        back.tabIndex = -1;
-        const title = view === 'quality' ? t.quality : view === 'audio' ? t.audio : view === 'captions' ? t.captions : t.captionStyle;
-        back.innerHTML = `<span class="ic">${icon(ChevronLeft)}</span><span class="lb"></span>`;
-        (back.querySelector('.lb') as HTMLElement).textContent = title;
-        back.setAttribute('aria-label', `${t.back}: ${title}`);
-        const out: HTMLElement[] = [back];
-        if (view === 'caption-style') {
-          // Live preview of the current caption style (decorative; the cues themselves update too).
-          const preview = doc.createElement('div');
-          preview.className = 'preview';
-          preview.setAttribute('aria-hidden', 'true');
-          preview.append(Object.assign(doc.createElement('span'), { textContent: t.captionPreview }));
-          this.#applyPreview(preview);
-          out.push(preview);
-          for (const g of groups.filter((x) => x.id.startsWith('caption-'))) {
-            const group = doc.createElement('div');
-            group.setAttribute('role', 'group');
-            group.dataset['group'] = g.id;
-            const head = doc.createElement('div');
-            head.className = 'gh';
-            head.setAttribute('role', 'presentation');
-            head.id = `${this.menuId}-${g.id}`;
-            head.textContent = g.label;
-            group.setAttribute('aria-labelledby', head.id);
-            const seg = doc.createElement('div');
-            seg.className = 'seg';
-            for (const o of g.options) {
-              const b = doc.createElement('div');
-              b.setAttribute('role', 'menuitemradio');
-              b.setAttribute('aria-checked', String(o.checked));
-              b.setAttribute('value', o.value);
-              b.dataset['group'] = g.id;
-              b.dataset['key'] = `${g.id}:${o.value}`;
-              b.tabIndex = -1;
-              b.textContent = o.label;
-              seg.append(b);
-            }
-            group.append(head, seg);
-            out.push(group);
-          }
-          return out;
-        }
-        const g = groups.find((x) => x.id === view);
-        if (g !== undefined) {
-          const group = doc.createElement('div');
-          group.setAttribute('role', 'group');
-          group.setAttribute('aria-label', g.label);
-          group.dataset['group'] = g.id;
-          group.append(...g.options.map((o) => this.radioRow(g.id, o)));
-          out.push(group);
-        }
-        return out;
-      }
-      #applyPreview(preview: HTMLElement): void {
-        // Mirror the cue layer's user variables (set by the text renderer on its layer element).
-        const layer = playerRoot(this)?.querySelector<HTMLElement>('[data-otter-cues]');
-        for (const v of ['--otter-cue-user-scale', '--otter-cue-user-color', '--otter-cue-user-background', '--otter-cue-user-shadow', '--otter-cue-user-font']) {
-          const value = layer?.style.getPropertyValue(v) ?? '';
-          if (value !== '') preview.style.setProperty(v, value);
-        }
       }
       protected override render(s: Readonly<UiState>): void {
         super.render(s);
