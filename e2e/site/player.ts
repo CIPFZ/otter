@@ -220,4 +220,29 @@ async function start(): Promise<OtterFixture> {
   };
 }
 
+/**
+ * ?chunks=views (test only): response bodies arrive as Uint8Array views into larger buffers
+ * (byteOffset > 0), the way a re-chunking source (TransformStream, Service Worker, P2P) can hand
+ * them over. Browsers' own fetch chunks are standalone buffers. docs/reports/m3/hlsjs-byteoffset-evidence.md
+ */
+if (new URLSearchParams(location.search).get('chunks') === 'views') {
+  const original = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const res = await original(input, init);
+    if (res.body === null) return res;
+    const reader = res.body.getReader();
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (done) return controller.close();
+        const big = new Uint8Array(value.byteLength + 8192);
+        big.set(value, 4096);
+        controller.enqueue(big.subarray(4096, 4096 + value.byteLength));
+      },
+      cancel: (reason) => reader.cancel(reason),
+    });
+    return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+  };
+}
+
 window.otter = start();
