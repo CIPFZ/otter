@@ -100,7 +100,7 @@ let hostUrl: string | undefined;
 const workerUrl = (): string => (hostUrl ??= URL.createObjectURL(new Blob([`(${host.toString()})();`], { type: 'text/javascript' })));
 
 const configOnly = (c: DecoderConfig): Record<string, unknown> => {
-  const { output: _o, error: _e, ...rest } = c;
+  const { output: _o, error: _e, queued: _q, ...rest } = c;
   return rest;
 };
 
@@ -236,7 +236,9 @@ export function createDecodePool(options: DecodePoolOptions = {}): DecodePool {
       if (active() < maxDecoders) start(s);
       else {
         waiting.push(s);
-        opts.queued?.(`${maxDecoders} decoders busy (pool limit); waiting, ${waiting.length} in line`);
+        const reason = `${maxDecoders} decoders busy (pool limit); waiting, ${waiting.length} in line`;
+        opts.queued?.(reason);
+        config.queued?.(reason);
       }
       return {
         get state() {

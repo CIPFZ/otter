@@ -41,7 +41,8 @@ export const SCENARIOS: readonly Scenario[] = [
   { id: 'ott-clearkey-server', row: 'OTT 付费 + DRM + 离线', source: { src: SHAKA_ASSETS.angelOneClearKey.manifestUri, drm: { servers: SHAKA_ASSETS.angelOneClearKey.licenseServers } }, format: 'dash', network: true, requires: ['clearkey'] },
   { id: 'surveillance-hevc', row: '监控多路 + HEVC', source: { src: 'https://bitmovin-a.akamaihd.net/content/dataset/multi-codec/hevc/stream_fmp4.m3u8', codecs: 'hvc1.1.6.L93.90,mp4a.40.2' }, format: 'hls', network: true, requires: ['hevc'], later: 'WebCodecs / WASM HEVC, GPUSurface multi-view (M4)' },
   { id: 'danmaku-dash-av', row: 'B 站式弹幕站', source: { src: '/dash/manifest.mpd' }, format: 'dash', later: 'danmaku (M5), codec preference persistence (M5)' },
-  { id: 'edit-local-file', row: '剪辑 / 标注 / 逐帧', source: { src: '/vod/progressive.mp4' }, asBlob: true, format: 'mp4-range', later: 'frame-accurate seek over WebCodecs (M4)' },
+  // A local file goes to format-file on WebCodecs (frame-accurate seek, ADR-008 §2).
+  { id: 'edit-local-file', row: '剪辑 / 标注 / 逐帧', source: { src: '/vod/progressive.mp4' }, asBlob: true, format: 'file' },
   { id: 'background-hero', row: '背景视频 / Hero', source: { src: '/vod/progressive.mp4' }, format: 'mp4-range', later: 'no-UI preset (M6)' },
   { id: 'shorts-vertical', row: '沉浸竖屏信息流', source: { src: '/vod/vertical.mp4' }, format: 'mp4-range', later: 'shorts preset with preloaded neighbours (M6)' },
   { id: 'tv-hls', row: '电视遥控器', source: { src: '/hls-fmp4/master.m3u8' }, format: 'hls', later: 'ui-skin-tv (M6); real TV device required' },

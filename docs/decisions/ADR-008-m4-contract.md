@@ -70,13 +70,19 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 - `setTransform`（电子放大）与 `setFilters`（亮度、对比度、饱和度、色温、锐化）在 shader 中实现；`VideoSurface` 用 CSS `transform` 和 `filter` 实现同样的参数，两种 Surface 对同一组参数的结果要一致（e2e 比较像素）。
 - 滤镜统一为一个 3×4 颜色矩阵（亮度 → 对比度 → 饱和度按 Filter Effects 的矩阵，色温为 R×(1+0.2t)、B×(1−0.2t)）加一个 3×3 十字锐化核（中心 1+4a），数值只在 `filters.ts` 里定义一次。VideoSurface 只用到亮度、对比度、饱和度时走 CSS 简写函数；用到色温或锐化时按需加载 SVG 滤镜块（feConvolveMatrix → feColorMatrix，sRGB），GPUSurface 在 fragment shader 里用同样的数字；CanvasSurface 每张画布一个画面，滤镜加在 canvas 元素的 CSS `filter` 上，与 VideoSurface 同一机制（WebKit 的 `ctx.filter` 不认 `url()`）。SVG 滤镜每次参数变化换一个新 id（WebKit 按 url 缓存已解析的滤镜）。
 - 入口：`@otter-player/surface` 只含 VideoSurface 与 Overlay；GPUSurface、CanvasSurface、多视口网格、渲染器与滤镜矩阵在子路径 `@otter-player/surface/gpu`，只走 `<video>` 的页面不携带它们。§19 短视频场景 25.61 → 25.63 KB（按需加载分支），首屏 25.9 KB 不变。
+- 渲染 Worker（`createGPUGrid(canvas, { worker: true })`，多宫格默认开启）：画布 `transferControlToOffscreen` 交给一个模块 Worker，纹理上传和绘制在那里用同一个 WebGL2 渲染器完成；主线程保留布局（区域、fit、变换、`contentRect`）和帧节奏，只把帧（转移）和每个视口的绘制参数发过去。最多 3 次渲染在途（回执驱动，回执到达且有待画的帧时立即发下一次），新帧覆盖尚未取走的旧帧并计数（`framesReplaced`）；代价是负载高时显示延迟最多多出约 3 帧。只在主线程上 `OffscreenCanvas` 能拿到 WebGL2 时启用，否则留在主线程。被隐藏的视口（局部全屏时的其余各路）只保留最新一帧、不上传。截图由 Worker 渲染后截取区域返回。实测（无头 Chrome，SwiftShader）：16 路 720p 在主线程上画时 rAF 降到约 50 fps，移到 Worker 后主线程 600/600。
 - 无 WebGL2（例如无头 Firefox）时 `createFrameSurface` 退到 CanvasSurface；上下文计数达到 `maxContexts`（默认 16）时 `createGPUGrid` 抛出 `gpuContextLimit`，提示改用共享网格。
 - 已知限制（WebKit 色彩管理）：WebKit 对 `<video>` 和 2D canvas 做色彩管理（未打标签的 SD 视频按 SMPTE 170M 原色转到显示色域），对 WebGL 的 `texImage2D(VideoFrame)` 不做，GPUSurface 在 WebKit 上因此与 VideoSurface 有一个固定的颜色差（红色彩条 254,0,0 对 248,36,0）；Chrome、Firefox 两条路径一致。e2e 在页面里直接探测（同一帧经 2D canvas 与经 WebGL 纹理读回比较），只对探测到差异的路径（WebKit 的 GPU 盒子）先在未加滤镜的画面上拟合一个颜色映射、平均差上限放宽到 12，差值 > 40 的像素占比 < 3% 不变；其他路径和 Chrome / Firefox 不拟合、阈值不变。彻底消除需要 GPUSurface 按 `VideoFrame.colorSpace` 在 shader 里做色彩管理，放到后续 HDR / 色彩管理批次。
 - e2e（`e2e/surfaces.spec.ts`）在 Chrome、Firefox、Android 仿真上对 7 组参数（恒等、放大+平移、旋转 90°+镜像、亮度/对比度/饱和度、色温、锐化、3 倍放大+全部滤镜）逐像素比较三种 Surface：平均差 < 6/255，差值 > 40 的像素占比 < 3%（实测最大 1.8%），两种 Surface 的 `contentRect` 完全相等；另有对照确保画面不是空白、换帧后差异明显。
 
-### 7. 多宫格
+### 7. 多宫格（`@otter-player/presentation/multiview`，按需入口）
 
-- 多个播放器实例共享一个 GPUSurface 画布（每路一个视口）和一个解码池；同时只有焦点那一路出声；双击某一路时局部全屏（该视口铺满画布）。
+- `createMultiview({ container, columns?, label?, before? })`：一张画布、一个 WebGL2 上下文（渲染在 Worker 中），每路一个视口；没有 WebGL2 时每路一个 2D canvas。`add(label)` 返回该路的 `surface`（交给 WebCodecs 后端作 `sink`）和覆盖在视口上的按钮。默认列数为能放下所有路的最小正方形。
+- 焦点：单击或 Enter 聚焦一路（`aria-pressed`，描边）。宿主只让焦点那一路出声（其他路 `set-muted`），并用 `createFocusStore(shellStore, tileStore)` 把外壳的控件接到焦点那一路：状态是外壳状态（chrome、presentation）叠上该路状态，动作先交给该路（媒体动作），未处理的交给外壳（全屏等作用于整个墙）。控件只绑定一次，焦点切换时订阅者收到通知。
+- 局部全屏：双击或 Shift+Enter 让一路铺满整面墙，其余视口区域为零（不上传、不绘制），再次双击回到网格。
+- 每路是一个独立的 core（media + QoE），共享整页的解码池和一个 AudioContext；超过 16 路的那一路排队，`route-detail` 写进 `router.explain()`（「decoder queued: 16 decoders busy (pool limit) …」），并发出非致命 QoE 事件 `decoderQueued`，有路退出后自动开始。
+- 墙插在外壳指定元素之前（`before`，播放器外壳传顶部栏）：高于手势 / 海报层（单击、双击归墙），低于所有控件。
+- 验收（`e2e/multiview.spec.ts`）：功能用例在 Chrome、Firefox、Android 仿真上运行（每个视口显示自己那一路，从画面像素读帧号；焦点、出声、控件跟随；局部全屏；第 17 路排队）；16 路基准标记 `@bench`，只在 desktop Chrome、单 worker、8 核以上机器运行（CI 的 4 核 runner 上跳过并留 notice），要求每路 10 s 内播放 > 9 s、丢帧（时钟跳过 + 画布未显示）≤ 5%、主线程无长任务且没有超过两个 vsync 的帧间隔。数据见 `docs/reports/M4.md`。
 
 ### 8. 其余
 

@@ -114,7 +114,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps ${{ matrix.browsers }}
       # Public streams (@network) are not deterministic; they run in network-nightly.
-      - run: pnpm e2e ${{ matrix.projects }} --grep-invert @network
+      - run: pnpm e2e ${{ matrix.projects }} --grep-invert "@network|@bench"
+      # Benchmarks need the runner to themselves (one worker); they skip, with a notice, where the
+      # runner is too small (e2e/multiview.spec.ts: 8+ cores).
+      - if: matrix.name == 'chromium + firefox'
+        run: pnpm e2e --project=desktop-chrome --grep @bench --workers=1
       # Per-environment facts the tests record (capabilities, refusals) as run-page notices.
       - name: Test notices
         if: always()

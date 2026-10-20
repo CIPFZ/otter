@@ -10,6 +10,11 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./multiview": {
+      "@otter-player/source": "./src/multiview.ts",
+      "types": "./dist/multiview.d.ts",
+      "default": "./dist/multiview.js"
     }
   },
   "files": [
@@ -22,5 +27,10 @@
   "dependencies": {
     "@otter-player/core": "workspace:*",
     "@otter-player/surface": "workspace:*"
+  },
+  "otter": {
+    "entries": {
+      "multiview": "src/multiview.ts"
+    }
   }
 }

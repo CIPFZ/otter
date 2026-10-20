@@ -1,0 +1,194 @@
+{
+  "project": "desktop-chrome",
+  "cores": 16,
+  "kind": "gpu",
+  "mainThread": {
+    "frames": 601,
+    "over20": 0,
+    "over34": 0,
+    "over50": 0,
+    "longest": 16.80000000000109,
+    "longTasks": 0,
+    "longTaskMs": 0
+  },
+  "wallMs": 10063,
+  "workers": 4,
+  "streams": [
+    {
+      "tile": "Camera 1",
+      "backend": "wasm",
+      "worker": 0,
+      "advancedS": 10.12,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 18.7,
+      "droppedByClock": 1,
+      "replacedOnCanvas": 4,
+      "errors": []
+    },
+    {
+      "tile": "Camera 2",
+      "backend": "wasm",
+      "worker": 1,
+      "advancedS": 10.12,
+      "decodedFrames": 300,
+      "cpuPercentOfOneCore": 19.8,
+      "droppedByClock": 2,
+      "replacedOnCanvas": 4,
+      "errors": []
+    },
+    {
+      "tile": "Camera 3",
+      "backend": "wasm",
+      "worker": 2,
+      "advancedS": 10.05,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 19.2,
+      "droppedByClock": 4,
+      "replacedOnCanvas": 2,
+      "errors": []
+    },
+    {
+      "tile": "Camera 4",
+      "backend": "wasm",
+      "worker": 3,
+      "advancedS": 9.82,
+      "decodedFrames": 300,
+      "cpuPercentOfOneCore": 19.3,
+      "droppedByClock": 5,
+      "replacedOnCanvas": 3,
+      "errors": []
+    },
+    {
+      "tile": "Camera 5",
+      "backend": "wasm",
+      "worker": 0,
+      "advancedS": 10.08,
+      "decodedFrames": 300,
+      "cpuPercentOfOneCore": 18.8,
+      "droppedByClock": 5,
+      "replacedOnCanvas": 6,
+      "errors": []
+    },
+    {
+      "tile": "Camera 6",
+      "backend": "wasm",
+      "worker": 1,
+      "advancedS": 10.12,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 18.8,
+      "droppedByClock": 5,
+      "replacedOnCanvas": 4,
+      "errors": []
+    },
+    {
+      "tile": "Camera 7",
+      "backend": "wasm",
+      "worker": 2,
+      "advancedS": 10.03,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 18.8,
+      "droppedByClock": 6,
+      "replacedOnCanvas": 5,
+      "errors": []
+    },
+    {
+      "tile": "Camera 8",
+      "backend": "wasm",
+      "worker": 3,
+      "advancedS": 10.13,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 18.6,
+      "droppedByClock": 2,
+      "replacedOnCanvas": 4,
+      "errors": []
+    },
+    {
+      "tile": "Camera 9",
+      "backend": "wasm",
+      "worker": 0,
+      "advancedS": 10.15,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 19,
+      "droppedByClock": 5,
+      "replacedOnCanvas": 5,
+      "errors": []
+    },
+    {
+      "tile": "Camera 10",
+      "backend": "wasm",
+      "worker": 1,
+      "advancedS": 10.06,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 18.6,
+      "droppedByClock": 6,
+      "replacedOnCanvas": 3,
+      "errors": []
+    },
+    {
+      "tile": "Camera 11",
+      "backend": "wasm",
+      "worker": 2,
+      "advancedS": 9.83,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 18.3,
+      "droppedByClock": 4,
+      "replacedOnCanvas": 3,
+      "errors": []
+    },
+    {
+      "tile": "Camera 12",
+      "backend": "wasm",
+      "worker": 3,
+      "advancedS": 10.04,
+      "decodedFrames": 302,
+      "cpuPercentOfOneCore": 18.6,
+      "droppedByClock": 5,
+      "replacedOnCanvas": 2,
+      "errors": []
+    },
+    {
+      "tile": "Camera 13",
+      "backend": "wasm",
+      "worker": 0,
+      "advancedS": 9.83,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 18.8,
+      "droppedByClock": 3,
+      "replacedOnCanvas": 4,
+      "errors": []
+    },
+    {
+      "tile": "Camera 14",
+      "backend": "wasm",
+      "worker": 1,
+      "advancedS": 9.83,
+      "decodedFrames": 302,
+      "cpuPercentOfOneCore": 18.4,
+      "droppedByClock": 6,
+      "replacedOnCanvas": 4,
+      "errors": []
+    },
+    {
+      "tile": "Camera 15",
+      "backend": "wasm",
+      "worker": 2,
+      "advancedS": 10.11,
+      "decodedFrames": 300,
+      "cpuPercentOfOneCore": 18.1,
+      "droppedByClock": 6,
+      "replacedOnCanvas": 3,
+      "errors": []
+    },
+    {
+      "tile": "Camera 16",
+      "backend": "wasm",
+      "worker": 3,
+      "advancedS": 9.84,
+      "decodedFrames": 301,
+      "cpuPercentOfOneCore": 18.4,
+      "droppedByClock": 4,
+      "replacedOnCanvas": 4,
+      "errors": []
+    }
+  ]
+}

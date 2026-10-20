@@ -62,6 +62,10 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - WebKit（CI macOS）对 `<video>` 和 2D canvas 的 `drawImage` 做色彩管理：未打色彩标签的 SD H.264 按 SMPTE 170M 原色转换到显示色域，红色彩条显示为 (248, 36, 0)；WebGL 的 `texImage2D(VideoFrame)` 不做这一步，得到 (254, 0, 0)，与 Chrome 在所有路径上的结果相同。GPUSurface 与 VideoSurface 在 WebKit 上因此有一个固定的颜色映射差。e2e 在页面里探测（同一帧经 2D canvas 与经 WebGL 纹理读回比较），只对探测到差异的路径拟合映射并放宽平均差；彻底消除要在 shader 里按 `VideoFrame.colorSpace` 做色彩管理（ADR-008 §6 已知限制，放到 HDR / 色彩管理批次）。
 - WebKit 按 `url(#id)` 缓存已解析的 SVG 滤镜：只替换 `<filter>` 的内容、id 不变时，元素继续用旧滤镜（变换等其他属性变化触发重绘时才更新）。每次滤镜参数变化都要换一个新 id。
 - WebKit 的 `CanvasRenderingContext2D.filter` 接受滤镜函数（`brightness()` 等），但 `url(#svg-filter)` 不生效。单画面的 CanvasSurface 因此把滤镜加在 canvas 元素的 CSS `filter` 上（与 VideoSurface 相同），黑边留透明。
+- 无头 Chrome 的 WebGL 是 SwiftShader（CPU 模拟的 GPU，`ANGLE (… SwiftShader driver)`）：16 路 720p 的纹理上传与绘制在主线程的 WebGL 画布上时，主线程 JS 每帧只用约 3 ms，但 rAF 被画布的 GPU 工作拖到约 50 fps；把画布交给 Worker（OffscreenCanvas）后主线程恢复 60 fps。渲染 Worker 必须限制在途渲染数（回执），否则帧消息会无限堆积；回执后要立即发下一次而不是等下一个 rAF，否则渲染频率减半。
+- 无头 Firefox 没有 WebGL2，多宫格退到每路一个 2D canvas，16 路 720p 时主线程只有约 10 fps：这个兜底只适合少量路数。真实 Firefox 有 WebGL2，走 GPU 路径。
+- Vite 库模式下 `new Worker(new URL('./w.ts', import.meta.url))` 会把 Worker 单独打包，但默认生成以站点根为基准的绝对路径（`/assets/…`），库被别人引用时会 404；库构建要设 `base: './'`，路径才相对于模块。
+- Playwright 的 `page.waitForFunction` 传入 async 函数时，返回的 Promise 本身被当作真值，条件不会真正等待；需要等异步条件时用 `expect.poll`。
 
 ## 2. 格式 / 协议 / 编码全景
 

@@ -28,6 +28,8 @@ export interface DecoderConfig {
   /** Called for every decoded frame; the callee takes ownership (closeFrame when done). */
   readonly output: (frame: DecodedFrame) => void;
   readonly error: (error: OtterError) => void;
+  /** The decoder waits for a slot (shared decode pool full) and will start later; why. */
+  readonly queued?: (reason: string) => void;
 }
 
 export interface DecoderInstance {

@@ -373,7 +373,16 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         const support = await decoder.supports(v.codec, ctx.caps);
         if (support === false) throw fatal('media', 'codecUnsupported', `${decoder.id} cannot decode ${v.codec}`);
         bus.emit('route-detail', { reason: `${v.codec} on ${decoder.id} (${support})${decoder.describe === undefined ? '' : `: ${decoder.describe()}`}` });
-        video = decoder.create({ ...v.setup, output: onVideoFrame, error: fail });
+        video = decoder.create({
+          ...v.setup,
+          output: onVideoFrame,
+          error: fail,
+          // Over the decode pool's limit: playback starts when a slot frees; say why meanwhile.
+          queued: (reason) => {
+            bus.emit('route-detail', { reason: `decoder queued: ${reason}` });
+            bus.emit('error', createError({ type: 'media', details: 'decoderQueued', fatal: false, recoverable: true, message: reason }));
+          },
+        });
       }
       if (a !== null) {
         const decoder = pickDecoder('audio');
