@@ -92,6 +92,8 @@ export interface WallFixture {
   setControlsVisible(visible: boolean): void;
   /** Dispatches a media action to one tile (not through the focus). */
   dispatchTo(index: number, type: 'play' | 'pause'): void;
+  /** Seeks one tile; resolves when its seek finished. */
+  seekTile(index: number, time: number): Promise<void>;
   /** The shell's controls see this (shell state + the focused tile's media state). */
   shellState(): State;
   pool(): ReturnType<ReturnType<typeof sharedDecodePool>['stats']>;
@@ -376,6 +378,16 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
     focused: () => indexOf(wall.focused),
     setControlsVisible: (visible) => shell.core.store.setState({ controlsVisible: visible }),
     dispatchTo: (i, type) => void (tiles[i] as TileCore).core.store.dispatch(type, undefined),
+    seekTile: (i, time) =>
+      new Promise((resolve) => {
+        const store = (tiles[i] as TileCore).core.store;
+        store.dispatch('seek', { time });
+        const off = store.subscribe((s) => {
+          if (s.seeking || Math.abs(s.currentTime - time) > 1e-6) return;
+          off();
+          resolve();
+        });
+      }),
     async remove(i) {
       const t = tiles[i] as TileCore;
       tiles.splice(i, 1);

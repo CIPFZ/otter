@@ -128,9 +128,8 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
     const tiles = x.tiles();
     for (let i = 0; i < tiles.length; i++) x.dispatchTo(i, 'pause');
   });
-  await page.waitForTimeout(300);
   const times = await w.eval((x) => x.tiles().map((t) => t.currentTime));
-  expect(await framesOnWall(page, 4, 4)).toEqual(times.map(covering));
+  await expect.poll(() => framesOnWall(page, 4, 4), { timeout: 10_000 }).toEqual(times.map(covering));
 });
 
 test('focus: one tile has sound and the controls; double-click: local fullscreen and back', async ({ page }) => {
@@ -156,9 +155,9 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   // Double-click: it fills the wall (its picture at full size), the others are hidden.
   await tile.dblclick(at);
   expect(await w.eval((x) => x.expanded())).toBe(1);
-  await page.waitForTimeout(300);
   const t2 = await w.eval((x) => (x.tiles()[1] as { currentTime: number }).currentTime);
-  expect(await framesOnWall(page, 1, 1)).toEqual([covering(t2)]);
+  // The render Worker draws the new layout on its next render (later on a loaded machine).
+  await expect.poll(() => framesOnWall(page, 1, 1), { timeout: 10_000 }).toEqual([covering(t2)]);
   await expect(page.locator('[data-otter-multiview-tile="1"]')).toBeHidden();
   // And back to the grid.
   await tile.dblclick(at);
@@ -177,15 +176,15 @@ test('every viewport of the shared canvas shows its own stream', async ({ page }
   await open(page, 4);
   const w = wall(page);
   await page.waitForTimeout(1500);
+  // Paused at four different positions (off keyframes), each viewport must show its own.
   await page.evaluate(async () => {
     const x = await (window.wall as Promise<WallFixture>);
     x.tiles().forEach((_, i) => x.dispatchTo(i, 'pause'));
+    await Promise.all(x.tiles().map((_, i) => x.seekTile(i, 0.9 + i * 2.13)));
   });
-  await page.waitForTimeout(300);
   const times = await w.eval((x) => x.tiles().map((t) => t.currentTime));
-  // Staggered starts: four different frames, each where its own clock is.
   expect(new Set(times.map(covering)).size).toBe(4);
-  expect(await framesOnWall(page, 2, 2)).toEqual(times.map(covering));
+  await expect.poll(() => framesOnWall(page, 2, 2), { timeout: 10_000 }).toEqual(times.map(covering));
   ciNotice(`multiview 4 tiles on ${await w.eval((x) => x.kind)}: each viewport shows its own stream (${info.project.name})`);
 });
 
