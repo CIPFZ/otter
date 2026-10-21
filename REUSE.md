@@ -32,7 +32,7 @@
 | 直播追帧 / 动态倍速 / 看门狗 | mpegts.js `mse-controller.ts` + `player/mse-player.ts` stall 检测 | L3 | 抽成 `LiveController`。M3：`player/live-latency-chaser.ts`、`live-latency-synchronizer.ts`、`startup-stall-jumper.ts` 改写为纯函数，放在 `packages/pipeline/src/vendor/mpegts.js/`（mpegts.js@791bac8）；Otter 自己的策略（目标延迟、尊重用户倍速、回到直播）在 `pipeline/live` |
 | CMCD | `@svta/cml-cmcd`（SVTA common-media-library monorepo 的拆分包，Apache-2.0） | L1 | 直接用。伞包 `@svta/common-media-library` 停在 0.18.1（2025-10），改用拆分包 2.8.2（ADR-005 §2）；对等依赖 `@svta/cml-structured-field-values`、`@svta/cml-utils` |
 | Content Steering | hls.js `content-steering-controller.ts` | L3 | 后期 |
-| HLS 清单解析（自研轻引擎用） | hls.js `m3u8-parser.ts` 或 `m3u8-parser`（video.js 系） | L3 | 均 Apache |
+| HLS 清单解析：video.js SPF | `@videojs/spf` 的 `media/hls/parse-*`、`resolve-url`、`reload-policy`，`media/buffer/forward-buffer` / `back-buffer`，`media/live-window`，`media/mp4/box` / `timestamp-origin`，及其测试与夹具（video.js@92be7bd） | L3 | 自研 CMAF-HLS 引擎（M5，ADR-010）：拷入 `format-hls` 的引擎块，`@videojs/utils` 换本地实现，CMAF-HAM 类型在引擎边界转成 `TrackList`；SPF 的 signals / actor 运行时与 `playback/` 层不拷 |
 | DASH MPD 解析 | `mpd-parser`（video.js 系） | L1 | 独立 npm 包 |
 | WHEP 客户端 | `@eyevinn/whep-video-component` 或 Cloudflare WHEP 示例（MIT） | L3 | 约百行 |
 | WebCodecs 播放循环 | webcodecsfundamentals.org 示例 + libmedia | L3 | 示例与 libmedia 都可以直接拷（ADR-008） |

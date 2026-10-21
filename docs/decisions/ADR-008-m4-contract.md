@@ -81,7 +81,7 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 
 ### 7. 多宫格（`@otter-player/presentation/multiview`，按需入口）
 
-- `createMultiview({ container, columns?, label?, before? })`：一张画布、一个 WebGL2 上下文（渲染在 Worker 中），每路一个视口；没有 WebGL2 时每路一个 2D canvas。`add(label)` 返回该路的 `surface`（交给 WebCodecs 后端作 `sink`）和覆盖在视口上的按钮。默认列数为能放下所有路的最小正方形。
+- `createMultiview({ container, columns?, label?, before? })`：一张画布、一个 WebGL2 上下文（渲染在 Worker 中），每路一个视口；没有 WebGL2 时每路一个 2D canvas，在主线程绘制，最多 4 路（`CANVAS2D_MAX_TILES`；16 路 720p 时主线程只有约 10 fps），第 5 路起 `add()` 抛出 `gpuUnavailable`（非致命）。2D 兜底不放进 Worker（2026-10-21 负责人决定）。`add(label)` 返回该路的 `surface`（交给 WebCodecs 后端作 `sink`）和覆盖在视口上的按钮。默认列数为能放下所有路的最小正方形。
 - 焦点：单击或 Enter 聚焦一路（`aria-pressed`，描边）。宿主只让焦点那一路出声（其他路 `set-muted`），并用 `createFocusStore(shellStore, tileStore)` 把外壳的控件接到焦点那一路：状态是外壳状态（chrome、presentation）叠上该路状态，动作先交给该路（媒体动作），未处理的交给外壳（全屏等作用于整个墙）。控件只绑定一次，焦点切换时订阅者收到通知。
 - 局部全屏：双击或 Shift+Enter 让一路铺满整面墙，其余视口区域为零（不上传、不绘制），再次双击回到网格。
 - 每路是一个独立的 core（media + QoE），共享整页的解码池和一个 AudioContext；超过 16 路的那一路排队，`route-detail` 写进 `router.explain()`（「decoder queued: 16 decoders busy (pool limit) …」），并发出非致命 QoE 事件 `decoderQueued`，有路退出后自动开始。

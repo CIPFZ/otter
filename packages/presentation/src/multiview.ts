@@ -5,7 +5,7 @@
 // (local fullscreen) and back. Tiles are buttons over their regions: keyboard and screen readers
 // reach every stream.
 
-import type { StateListener, StoreView, Unsubscribe } from '@otter-player/core';
+import { createError, type StateListener, type StoreView, type Unsubscribe } from '@otter-player/core';
 import { createCanvasSurface, createGPUGrid, type FrameSurface, type GPUGrid, type GPUView, type Region } from '@otter-player/surface/gpu';
 
 export interface MultiviewOptions {
@@ -48,6 +48,12 @@ export interface Multiview {
 }
 
 const HIDDEN: Region = { x: 0, y: 0, width: 0, height: 0 };
+
+/**
+ * Tiles a wall without WebGL2 takes: each one is a 2D canvas drawn on the main thread, which
+ * keeps up with about 4 streams (16 x 720p fell to ~10 fps). ADR-008 §7.
+ */
+export const CANVAS2D_MAX_TILES = 4;
 
 export function createMultiview(options: MultiviewOptions): Multiview {
   const { container } = options;
@@ -121,6 +127,15 @@ export function createMultiview(options: MultiviewOptions): Multiview {
       return expanded;
     },
     add(label) {
+      if (grid === undefined && tiles.length >= CANVAS2D_MAX_TILES) {
+        throw createError({
+          type: 'other',
+          details: 'gpuUnavailable',
+          fatal: false,
+          recoverable: false,
+          message: `no WebGL2 here: a multi-view wall takes at most ${CANVAS2D_MAX_TILES} streams on 2D canvases`,
+        });
+      }
       const id = ++ids;
       const name = label ?? `Stream ${id}`;
       const button = doc.createElement('div');

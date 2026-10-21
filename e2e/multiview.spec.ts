@@ -188,8 +188,23 @@ test('every viewport of the shared canvas shows its own stream', async ({ page }
   ciNotice(`multiview 4 tiles on ${await w.eval((x) => x.kind)}: each viewport shows its own stream (${info.project.name})`);
 });
 
+test('without WebGL2 a wall takes 4 streams and refuses more with gpuUnavailable', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/player.html?multiview=6&idle=0');
+  const kind = await page.evaluate(async () => (await (window.wall as Promise<WallFixture>)).kind);
+  test.skip(kind === 'gpu', 'WebGL2 here: the 2D limit does not apply');
+  const r = await page.evaluate(async () => {
+    const w = await (window.wall as Promise<WallFixture>);
+    return { tiles: w.tiles().length, refused: [...w.refused] };
+  });
+  expect(r).toEqual({ tiles: 4, refused: ['gpuUnavailable'] });
+  ciNotice('multiview without WebGL2: 4 tiles, the 5th refused (gpuUnavailable)');
+});
+
 test('a 17th stream waits for a decoder slot, says why, and starts when one frees', async ({ page }) => {
   test.setTimeout(120_000);
+  await page.goto('/player.html?multiview=1&idle=0');
+  test.skip((await page.evaluate(async () => (await (window.wall as Promise<WallFixture>)).kind)) !== 'gpu', 'no WebGL2: walls stop at 4 streams');
   await open(page, 17);
   const w = wall(page);
   // Whichever stream asked last waits (17 load at once): exactly one, told why.

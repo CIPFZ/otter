@@ -206,7 +206,7 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
 
 | 包 | 职责 | 阶段 |
 |---|---|---|
-| `format-hls` | 先 hls.js 适配器；后期自研轻量 CMAF-HLS（对标 SPF 12KB） | M1 适配，M5 自研（ADR-009） |
+| `format-hls` | 先 hls.js 适配器；M5 起自研轻量 CMAF-HLS 引擎（按需块，独立实现，L3 拷 SPF 解析器等纯函数层，ADR-010；引擎块点播 ≤ 12KB、含直播 ≤ 15KB），不支持的情况交 hls.js | M1 适配，M5 自研（ADR-009、ADR-010） |
 | `format-dash` | Shaka 适配器；自研轻量 CMAF-DASH 可选 | M1 适配 |
 | `format-flv` | 自研（demuxer 取自 mpegts.js） | M3 |
 | `format-ts` | 自研（demuxer 取自 hls.js） | M3 |
@@ -434,7 +434,7 @@ M0 接口落点（ADR-002）：
 
 ## 19. 场景覆盖矩阵
 
-| 场景 | backend | 格式包 | 必带模块 | 体积目标：自有代码 (gzip，M1–M6 门禁) | 含第三方引擎 (gzip，M5 起逐步门禁) |
+| 场景 | backend | 格式包 | 必带模块 | 体积目标：自有代码 (gzip，M1–M6 门禁) | 含第三方引擎 (gzip，记录到 M6) |
 |---|---|---|---|---|---|
 | 短视频 / 简单点播 | native 或 mse | mp4-range 或 hls | core + ui 最小皮肤 | < 30KB | 记录 |
 | 长视频点播 + 多清晰度 + 字幕 | mse | hls / dash | abr + text + thumbnails | < 80KB | 记录 |
@@ -448,7 +448,7 @@ M0 接口落点（ADR-002）：
 | 沉浸竖屏信息流 | mse | hls / mp4-range | preset shorts | < 60KB | 记录 |
 | 电视遥控器 | mse | hls / dash | ui-skin-tv | < 90KB | 记录 |
 
-体积口径（ADR-004、ADR-009）：「自有代码」指 Otter 各包及其非引擎 L1 依赖，不含 hls.js / Shaka / mpegts.js / WASM 解码器；「含第三方引擎」在此基础上加上该场景首次播放必须加载的引擎块。自有代码列为 M1–M6 门禁；含引擎列在自研 CMAF-HLS 引擎落地（M5）前只记录，M5 起对短视频 / 长视频点播场景门禁，M6 全部门禁。引擎库只能在 `Engine.load()` / `Decoder.create()` 中以 `import()` 按需加载，不得进入首屏 chunk。
+体积口径（ADR-004、ADR-009、ADR-010）：「自有代码」指 Otter 各包及其非引擎 L1 依赖，不含 hls.js / Shaka / mpegts.js / WASM 解码器；「含第三方引擎」在此基础上加上该场景首次播放必须加载的引擎块。两条独立门禁：自有代码列为 M1–M6 门禁；自研 CMAF-HLS 引擎块（`format-hls` 的按需块及其独有依赖）点播 ≤ 12KB、含直播 ≤ 15KB，M5 起门禁。含第三方引擎列只记录到 M6。引擎库只能在 `Engine.load()` / `Decoder.create()` 中以 `import()` 按需加载，不得进入首屏 chunk。
 
 ## 20. 自研与复用的边界
 
@@ -468,7 +468,7 @@ M0 接口落点（ADR-002）：
 | M2.5 | — | 视觉系统：设计令牌、Lucide 图标集（ADR-006）、控制栏 / 进度条 / 顶部栏 / 中央反馈 / 移动端布局、设置菜单二级结构、stats 面板、字幕默认样式（`docs/design/UI-DESIGN.md`） | UI-DESIGN §11 七条（截图由用户目视）；M2 的 a11y、CVAA、体积门禁保持 |
 | M3 | 自研 FLV/TS/fMP4 管线（含 SEI 中的 CEA-608）、`LiveController`（回到直播）、`format-mp4-range`（多档位无缝切换） | `presentation` 全模式（重点 iPhone 伪全屏与 Document PiP）、MediaSession、WakeLock、投屏（Remote Playback / AirPlay）、剧场；原生 TextTrack 回退；预览卡缩略图（VTT sprite / I-frame）；CVAA 字幕窗口（ADR-007） | 桌面真机 + CI WebKit / 模拟移动端全模式通过，capabilities 按环境如实报告，拒绝有 denied + reason；Document PiP 不中断；FLV 直播延迟 ≤ 2s 且 TTFF 不劣于 mpegts.js；mp4-range 切档无 `waiting`；回到直播 / 剧场 / AirPlay / Cast 有 e2e；首次 L2 vendoring 走完 vendor-sync 评审（`docs/reports/M3.md`） |
 | M4 | `backend-webcodecs`、WASM 解码插件、`format-whep`、`format-file` | `GPUSurface`、多宫格、电子放大、滤镜 | 16 路 720p HEVC 可播；三级降级可观测 |
-| M5 | 自研轻量 CMAF-HLS 引擎替换简单场景（原 M6，ADR-009 提前）；音视频分离 DASH 优化、多编码探测与偏好持久化 | `danmaku`（Canvas + WebGL + 蒙版）、水印 | 自研引擎在 §19 短视频 / 长视频点播场景替换 hls.js 后 TTFF 与 rebuffer 不劣于适配器，含引擎口径简单点播 < 30KB；5000 条/分钟弹幕 60fps；蒙版弹幕对齐 |
+| M5 | 自研轻量 CMAF-HLS 引擎替换简单场景（原 M6，ADR-009 提前）；音视频分离 DASH 优化、多编码探测与偏好持久化 | `danmaku`（Canvas + WebGL + 蒙版）、水印 | 自研引擎在 §19 短视频 / 长视频点播场景替换 hls.js 后 TTFF 与 rebuffer 不劣于适配器，引擎块点播 ≤ 12KB、含直播 ≤ 15KB（ADR-010）；5000 条/分钟弹幕 60fps；蒙版弹幕对齐 |
 | M6 | presets 发布；体积收口 | `ui-skin-tv`、shorts preset、React/Vue/Svelte 绑定、SSR、文档站 | 体积预算全部达标（含 Hero < 5KB）；文档站上线 |
 | M7 | 移动端与 TV 真机回归：M1–M6 全部场景与模式（原 M5.5，ADR-009 移至最后） | 同左 | 真 iPhone Safari、真 Android Chrome、至少一台 Tizen 或 webOS 全部场景通过并有报告；问题在本里程碑内修完 |
 
@@ -486,7 +486,7 @@ M0 接口落点（ADR-002）：
 
 - Q1：正式项目名与 npm scope（当前 Otter 为工作代号）。
 - Q2：video.js v10 GA 后，是 L2 vendoring 其 core store，还是保持自写同形状以避免跟随其 API 变动。
-- Q3：自研轻量 CMAF 引擎与 SPF 的关系，是复用 SPF 组件还是独立实现。
+- ~~Q3：自研轻量 CMAF 引擎与 SPF 的关系，是复用 SPF 组件还是独立实现。~~ 已结案（2026-10-21，ADR-010）：独立实现，不依赖 SPF 运行时；按 L3 拷 SPF 的 m3u8 解析、缓冲计划、重载策略、`tfdt` 读取及其测试。
 - Q4：P2P-CDN 插件是否纳入 v1 范围。
 - Q5：WebTransport / MoQ 是否等标准稳定再做。
 - Q6：是否提供 Electron 专用包。

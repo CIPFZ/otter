@@ -80,6 +80,8 @@ export interface WallTile {
 
 export interface WallFixture {
   readonly kind: 'gpu' | 'canvas2d';
+  /** Errors of tiles the wall would not take (gpuUnavailable past the 2D limit). */
+  readonly refused: readonly string[];
   tiles(): WallTile[];
   focus(index: number): void;
   /** Local fullscreen of tile `index`; -1 back to the grid. */
@@ -338,8 +340,16 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
   const blob = await (await fetch(src)).blob();
   type TileCore = { core: ReturnType<typeof createCore<MediaState & QoeState, MediaActionMap>>; tile: ReturnType<typeof wall.add>; errors: string[]; dropped: number; decoded: number; loops: number };
   const tiles: TileCore[] = [];
+  const refused: string[] = [];
   for (let i = 0; i < count; i++) {
-    const tile = wall.add(`Camera ${i + 1}`);
+    let tile: ReturnType<typeof wall.add>;
+    try {
+      tile = wall.add(`Camera ${i + 1}`);
+    } catch (err) {
+      // No WebGL2: the wall stops at its 2D limit and says why.
+      refused.push((err as { details?: string }).details ?? String(err));
+      break;
+    }
     const media = createMediaPlugin<MediaState & QoeState, MediaActionMap>({
       target: document.createElement('video'),
       formats: [createFileFormat()],
@@ -383,6 +393,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
   );
   return {
     kind: wall.kind,
+    refused,
     tiles: () =>
       tiles.map((t) => {
         const s = t.core.store.getState();
