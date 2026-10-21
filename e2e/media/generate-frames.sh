@@ -10,6 +10,8 @@
 #   frames/hevc-720p.mp4        HEVC 1280x720 (hvc1), no B-frames, keyframe every 60 frames, no
 #                               audio: the surveillance-camera case (multi-view, WASM decoding);
 #                               blocks scale with the picture (96 px at 1280 wide)
+#   frames/hls-hevc/            the same clip as HLS fMP4 (2 s segments): surveillance-style HEVC
+#                               HLS that MSE cannot play here (WebCodecs / WASM through format-hls)
 # HEVC needs libx265, which the distro ffmpeg lacks: a pinned BtbN static build is downloaded (and
 # checked) into $FFMPEG_STATIC_DIR, default ~/.cache/otter/ffmpeg-static.
 set -euo pipefail
@@ -60,3 +62,7 @@ HCR="if(lt(Y,$((HB / 2)))*lt(X,$((BITS * HB / 2))),128,cr(X,Y))"
   -vf "format=yuv420p,geq=lum='$HLUM':cb='$HCB':cr='$HCR'" -c:v libx265 -tag:v hvc1 -preset fast \
   -x265-params "keyint=60:min-keyint=60:scenecut=0:bframes=0:vbv-maxrate=1200:vbv-bufsize=1200:log-level=error" -b:v 1000k \
   -an -movflags +faststart frames/hevc-720p.mp4
+mkdir -p frames/hls-hevc
+"$STATIC_FFMPEG" -y -hide_banner -loglevel error -i frames/hevc-720p.mp4 -c copy -tag:v hvc1 -f hls -hls_time 2 -hls_playlist_type vod \
+  -hls_segment_type fmp4 -hls_fmp4_init_filename init.mp4 -hls_segment_filename 'frames/hls-hevc/seg_%03d.m4s' \
+  -master_pl_name master.m3u8 frames/hls-hevc/media.m3u8

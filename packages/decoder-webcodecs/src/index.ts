@@ -16,6 +16,12 @@ export interface WebCodecsDecoderOptions {
    */
   readonly requireHardware?: boolean;
   /**
+   * Take no video at all, as on a machine without a decoder for the codec: the WebCodecs step
+   * fails (codecUnsupported) and the route falls back (WASM, MSE). For hosts that switch hardware
+   * decoding off, and for testing the fallback chain.
+   */
+  readonly disableVideo?: boolean;
+  /**
    * Where video decodes: a pool (default: the page's shared pool), or false for the main thread
    * (also the fallback where Workers or WebCodecs in Workers are missing).
    */
@@ -62,7 +68,7 @@ export function createWebCodecsDecoder(options: WebCodecsDecoderOptions = {}): D
         const s = await AudioDecoder.isConfigSupported({ codec, sampleRate: 48000, numberOfChannels: 2 }).catch(() => ({ supported: false }));
         return s.supported === true ? 'software' : false;
       }
-      if (typeof VideoDecoder !== 'function') return false;
+      if (typeof VideoDecoder !== 'function' || options.disableVideo === true) return false;
       return videoSupport(codec, requireHardware);
     },
     create(config) {

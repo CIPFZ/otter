@@ -1,12 +1,19 @@
 // SPEC §19 scenario matrix in a real browser (M1 acceptance: "全场景矩阵能播", stats panel has data,
 // router.explain() exports the decision). Each run attaches state, explain() and a screenshot.
 
+import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { SCENARIOS, type Requirement, type Scenario } from './scenarios.ts';
 import type { OtterFixture } from './site/player.ts';
 
 test.describe.configure({ timeout: 60_000 });
+
+/** One line for the CI run page (the workflow turns test-results/ci-notices.txt into notices). */
+const ciNotice = (text: string): void => {
+  mkdirSync('test-results', { recursive: true });
+  appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
+};
 
 async function supports(page: Page, req: Requirement): Promise<boolean> {
   return page.evaluate(async (r) => {
@@ -142,6 +149,11 @@ for (const scenario of SCENARIOS) {
         throw new Error(`playhead did not advance from ${start}: ${JSON.stringify(await elementDiagnostics(page))}`, { cause: err });
       }
       state = await snapshot(page);
+      if (scenario.id.startsWith('surveillance-hevc')) {
+        // Which level of the chain plays HEVC here (MSE, WebCodecs hardware, WASM), for the record.
+        const steps = (state.explain?.steps ?? []).filter((s) => s.outcome !== 'rejected' || s.candidate === 'platform').map((s) => `${s.candidate}:${s.outcome}`);
+        ciNotice(`${scenario.id} plays on ${state.backend} (${steps.join(' > ')})`);
+      }
       expect(state.paused).toBe(false);
       expect(state.videoWidth).toBeGreaterThan(0);
       expect(state.qoe.route?.backend).toBe(state.backend);

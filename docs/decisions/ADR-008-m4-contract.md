@@ -61,7 +61,11 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 ### 5. 三级降级
 
 - 顺序按 router 已有的链：WebCodecs 硬解 → WASM 软解 → MSE → native。每一步的失败原因都进入 `router.explain()`，每次降级发出 QoE 事件，以便观测和导出。
-- 运行时降级：WebCodecs 在播放中出错（例如解码器报错、或连续若干帧无输出），在同一 backend 内切到 WASM，并从最近的关键帧重新开始。
+- 什么时候走这条链：只能喂 WebCodecs 的格式（format-file）；源带 HEVC 编码提示且浏览器没有 HEVC 支持；宿主 `preferBackend: 'webcodecs'`（新增：以前偏好只能在可行步骤里提前，默认顺序里没有 WebCodecs 时不起作用，现在偏好 WebCodecs 意味着整条链，reason「WebCodecs preferred by policy: full chain」）。其他情况仍是 MSE 优先。
+- `format-hls` 对 WebCodecs 后端提供 demuxer（mediabunny 读 HLS，`@otter-player/demux-mediabunny`，与 format-file 共用，按需加载），只用于无 DRM 的源；取最高码率的视频变体和与之配对的音频，这条路径上还没有 ABR。surveillance-hevc（公网 HEVC + AAC 的 HLS fMP4）因此从「优雅失败」变为可播：无头 Chrome / Android 仿真上 WebCodecs 步骤 `codecUnsupported` 后由 WASM 解码（含音频），Firefox 由 MSE 播放；另加本地 HEVC HLS 场景 `surveillance-hevc-local` 进入每次提交的 CI。
+- 每一步失败：session 发 `error` QoE 事件（错误本身 + 剩余步骤），`route` QoE 事件带新的决策；`router.explain()` 记录 `<step> failed <details>` 和 `<next> selected fallback after <step>`，后端还会把该步如何运行（解码器构建、SIMD、线程、Worker）作为 `route-detail` 附在步骤上。
+- 人为禁用硬解（验收与宿主开关）：`createWebCodecsDecoder({ disableVideo: true })` 让 WebCodecs 步骤不接视频（`codecUnsupported`），就像机器上没有该编码的解码器。e2e（`e2e/fallback.spec.ts`，播放器外壳 `?prefer=webcodecs&hw=off&wasm=fail`）：H.264 HLS 依次经过 webcodecs 失败（codecUnsupported）→ wasm 失败（WASM 文件缺失，workerDecoderFailed）→ mse 播放，两条 `error` 事件的剩余步骤分别是 wasm、mse 与 mse，Chrome、Firefox、Android 仿真一致；`?hw=off` 的 HEVC HLS 落在 WASM（浏览器 MSE 能播 HEVC 时不经过 WebCodecs）。
+- 运行时降级（未实现，后续）：WebCodecs 在播放中出错（例如解码器报错、或连续若干帧无输出），在同一 backend 内切到 WASM，并从最近的关键帧重新开始。目前播放中的解码错误是致命错误，由 session 走同一条链重建（从当前位置继续）。
 
 ### 6. GPUSurface（SPEC §12）
 

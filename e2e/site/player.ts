@@ -161,7 +161,12 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v)
     ],
     backends: [createMseBackendFactory(), createNativeBackendFactory(), createWebCodecsBackendFactory({ sink: frameSink(root) })],
     // WebCodecs (hardware where there is any) first, the WASM decoder for the wasm step.
-    decoders: [createWebCodecsDecoder(), createWasmHevcDecoder()],
+    // ?hw=off: no video through WebCodecs (hardware decoding switched off); ?wasm=fail: the WASM
+    // decoder's files are missing. Both force the fallback chain (ADR-008 §5).
+    decoders: [
+      createWebCodecsDecoder(params.get('hw') === 'off' ? { disableVideo: true } : {}),
+      createWasmHevcDecoder(params.get('wasm') === 'fail' ? { baseUrl: new URL('/missing-wasm-decoder/', location.href) } : {}),
+    ],
     policy,
     ...(cmcd === undefined ? {} : { cmcd }),
   });
@@ -256,16 +261,27 @@ function frameSink(root: HTMLElement): FrameSink {
     }
     return holder.otterFrames;
   };
+  // Hidden without a picture: after a fallback from WebCodecs to MSE / native the <video> under
+  // it shows again.
   return {
-    draw: (frame) => surface().draw(frame),
-    clear: () => holder.otterFrames?.clear(),
+    draw(frame) {
+      const s = surface();
+      s.element.hidden = false;
+      s.draw(frame);
+    },
+    clear() {
+      holder.otterFrames?.clear();
+      if (holder.otterFrames !== undefined) holder.otterFrames.element.hidden = true;
+    },
   };
 }
 
 async function start(): Promise<OtterFixture> {
   defineOtterElements();
   const events: OtterFixture['events'] = [];
-  let current = await build({});
+  // ?prefer=<backend>: the host's preferBackend (prefer=webcodecs puts the whole chain first).
+  const prefer = new URLSearchParams(location.search).get('prefer');
+  let current = await build(prefer === 'webcodecs' || prefer === 'mse' || prefer === 'native' ? { preferBackend: prefer } : {});
   const listen = (): void => {
     for (const type of QOE_TYPES) current.core.qoe.on(type, (payload) => events.push({ type, payload }));
   };

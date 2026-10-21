@@ -39,7 +39,10 @@ export const SCENARIOS: readonly Scenario[] = [
   { id: 'camera-ts-video-only', row: '监控多路 + HEVC', source: { src: '/ts/clip-video-only.ts' }, format: 'ts', later: 'H.264 video-only camera stream; HEVC / multi-view in M4' },
   { id: 'ott-clearkey-local', row: 'OTT 付费 + DRM + 离线', source: { src: '/dash-clearkey/manifest.mpd', drm: { servers: {}, clearKeys: clearKey } }, format: 'dash', requires: ['clearkey'], later: 'offline storage, ads' },
   { id: 'ott-clearkey-server', row: 'OTT 付费 + DRM + 离线', source: { src: SHAKA_ASSETS.angelOneClearKey.manifestUri, drm: { servers: SHAKA_ASSETS.angelOneClearKey.licenseServers } }, format: 'dash', network: true, requires: ['clearkey'] },
-  { id: 'surveillance-hevc', row: '监控多路 + HEVC', source: { src: 'https://bitmovin-a.akamaihd.net/content/dataset/multi-codec/hevc/stream_fmp4.m3u8', codecs: 'hvc1.1.6.L93.90,mp4a.40.2' }, format: 'hls', network: true, requires: ['hevc'], later: 'WebCodecs / WASM HEVC, GPUSurface multi-view (M4)' },
+  // HEVC HLS: MSE when the browser has HEVC, else format-hls feeds WebCodecs (hardware) or the WASM
+  // decoder (ADR-008 §5); no longer a graceful failure.
+  { id: 'surveillance-hevc', row: '监控多路 + HEVC', source: { src: 'https://bitmovin-a.akamaihd.net/content/dataset/multi-codec/hevc/stream_fmp4.m3u8', codecs: 'hvc1.1.6.L93.90,mp4a.40.2' }, format: 'hls', network: true },
+  { id: 'surveillance-hevc-local', row: '监控多路 + HEVC', source: { src: '/frames/hls-hevc/master.m3u8', codecs: 'hvc1.1.6.L93.90' }, format: 'hls' },
   { id: 'danmaku-dash-av', row: 'B 站式弹幕站', source: { src: '/dash/manifest.mpd' }, format: 'dash', later: 'danmaku (M5), codec preference persistence (M5)' },
   // A local file goes to format-file on WebCodecs (frame-accurate seek, ADR-008 §2).
   { id: 'edit-local-file', row: '剪辑 / 标注 / 逐帧', source: { src: '/vod/progressive.mp4' }, asBlob: true, format: 'file' },

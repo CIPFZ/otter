@@ -79,6 +79,27 @@ describe('format-file (WebCodecs only)', () => {
   });
 });
 
+describe('format-hls on the WebCodecs path (ADR-008 §5)', () => {
+  const webCodecs: Capabilities = { ...desktop, webCodecs: true };
+  const router = createRouter({ formats: [createHlsFormat()], backends: ['webcodecs', 'mse', 'native'], decoders: [{ id: 'wasm-hevc', supports: () => Promise.resolve('software'), create: () => { throw new Error('unused'); } }] });
+  const steps = (src: Source, policy = {}): string[] => {
+    const d = router.select(src, webCodecs, policy);
+    return [d.step, ...d.remaining].map((s) => s.decoder ?? s.backend);
+  };
+
+  it('feeds WebCodecs for clear content only', () => {
+    expect(createHlsFormat().backends({ src: 'a.m3u8' }, webCodecs)).toEqual(['mse', 'webcodecs']);
+    expect(createHlsFormat().backends({ src: 'a.m3u8', drm: { servers: {} } }, webCodecs)).toEqual(['mse']);
+  });
+
+  it('H.264 stays on MSE; HEVC without support and a WebCodecs preference take the whole chain', () => {
+    expect(steps({ src: 'a.m3u8' })).toEqual(['mse']);
+    expect(steps({ src: 'a.m3u8', codecs: 'hvc1.1.6.L93.90' })).toEqual(['webcodecs', 'wasm', 'mse']);
+    expect(steps({ src: 'a.m3u8' }, { preferBackend: 'webcodecs' })).toEqual(['webcodecs', 'wasm', 'mse']);
+    expect(router.explain()?.steps).toContainEqual({ candidate: 'platform', outcome: 'selected', reason: 'WebCodecs preferred by policy: full chain' });
+  });
+});
+
 describe('remaining M0 stubs', () => {
   it('whep format never wins routing yet', () => {
     const format = createWhepFormat();
