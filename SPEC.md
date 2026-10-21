@@ -408,7 +408,7 @@ interface UIFeature {
 
 ## 18. 包清单
 
-引擎：`core`、`media`、`backend-native`、`backend-mse`、`backend-webcodecs`、`pipeline`、`format-hls`、`format-dash`、`format-flv`、`format-ts`、`format-mp4-range`、`format-whep`、`format-file`、`engine-adapter-hlsjs`、`engine-adapter-shaka`、`engine-adapter-mpegts`、`decoder-webcodecs`、`decoder-wasm-hevc`、`decoder-wasm-ffmpeg`、`decoder-pool`（共享 Worker 解码池，ADR-008 §3）、`qoe`。
+引擎：`core`、`media`、`backend-native`、`backend-mse`、`backend-webcodecs`、`pipeline`、`format-hls`、`format-dash`、`format-flv`、`format-ts`、`format-mp4-range`、`format-whep`、`format-file`、`engine-adapter-hlsjs`、`engine-adapter-shaka`、`engine-adapter-mpegts`、`decoder-webcodecs`、`decoder-wasm-hevc`、`decoder-wasm-ffmpeg`、`decoder-pool`（共享 Worker 解码池，ADR-008 §3）、`demux-mediabunny`（WebCodecs 路径的 demuxer，ADR-008 §2）、`qoe`。
 
 渲染：`surface`、`presentation`、`input`、`ui-core`、`ui-skin-default`、`ui-skin-minimal`、`ui-skin-tv`、`ui-skin-audio`、`text`、`text-ass`、`danmaku`、`overlay-watermark`、`overlay-ads`、`overlay-thumbnails`、`react`、`vue`、`svelte`。
 

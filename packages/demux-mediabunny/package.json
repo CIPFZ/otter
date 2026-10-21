@@ -1,0 +1,27 @@
+{
+  "name": "@otter-player/demux-mediabunny",
+  "version": "0.0.0",
+  "description": "mediabunny (L1) Demuxer for the WebCodecs backend: local files (format-file) and HLS (format-hls), loaded on demand.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "@otter-player/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  },
+  "dependencies": {
+    "@otter-player/core": "workspace:*",
+    "@otter-player/media": "workspace:*",
+    "mediabunny": "1.61.6"
+  }
+}

@@ -23,6 +23,7 @@
     "@otter-player/core": "workspace:*",
     "@otter-player/engine-adapter-hlsjs": "workspace:*",
     "@otter-player/engine-adapter-shaka": "workspace:*",
-    "@otter-player/media": "workspace:*"
+    "@otter-player/media": "workspace:*",
+    "@otter-player/demux-mediabunny": "workspace:*"
   }
 }

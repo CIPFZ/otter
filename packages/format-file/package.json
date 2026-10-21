@@ -22,6 +22,6 @@
   "dependencies": {
     "@otter-player/core": "workspace:*",
     "@otter-player/media": "workspace:*",
-    "mediabunny": "1.61.6"
+    "@otter-player/demux-mediabunny": "workspace:*"
   }
 }

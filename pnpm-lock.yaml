@@ -283,6 +283,18 @@ importers:
         specifier: workspace:*
         version: link:../media
 
+  packages/demux-mediabunny:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+      mediabunny:
+        specifier: 1.61.6
+        version: 1.61.6
+
   packages/engine-adapter-hlsjs:
     dependencies:
       '@otter-player/core':
@@ -354,12 +366,12 @@ importers:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+      '@otter-player/demux-mediabunny':
+        specifier: workspace:*
+        version: link:../demux-mediabunny
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
-      mediabunny:
-        specifier: 1.61.6
-        version: 1.61.6
 
   packages/format-flv:
     dependencies:
@@ -381,6 +393,9 @@ importers:
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+      '@otter-player/demux-mediabunny':
+        specifier: workspace:*
+        version: link:../demux-mediabunny
       '@otter-player/engine-adapter-hlsjs':
         specifier: workspace:*
         version: link:../engine-adapter-hlsjs

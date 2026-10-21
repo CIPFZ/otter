@@ -1,6 +1,7 @@
 // Local File / Blob over WebCodecs (SPEC §8, ADR-008 §2). Demuxing is mediabunny (L1, MP4 / MOV /
-// WebM / MKV / MPEG-TS / Ogg ...), loaded with the demuxer chunk on the first file. The format feeds
-// only the WebCodecs backend: frame-accurate seeking and codecs MSE lacks are the point of it.
+// WebM / MKV / MPEG-TS / Ogg ...) through @otter-player/demux-mediabunny, loaded on the first
+// file. The format feeds only the WebCodecs backend: frame-accurate seeking and codecs MSE lacks
+// are the point of it.
 
 import { createError } from '@otter-player/core';
 import type { FormatPlugin, Source } from '@otter-player/media';
@@ -21,8 +22,8 @@ export function createFileFormat(): FormatPlugin {
       if (!isBlob(ctx.source.src)) {
         throw createError({ type: 'other', details: 'notABlob', fatal: true, recoverable: false, message: 'format-file plays File / Blob sources' });
       }
-      const { openBlob } = await import('./demuxer.js');
-      return openBlob(ctx.source.src, ctx.signal, { createError });
+      const { openBlob } = await import('@otter-player/demux-mediabunny');
+      return openBlob(ctx.source.src, { signal: ctx.signal, createError });
     },
   };
 }

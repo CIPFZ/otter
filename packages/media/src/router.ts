@@ -73,6 +73,9 @@ function initialOrder(format: FormatPlugin, source: Source, caps: Capabilities, 
   // first, on every platform.
   const fed = new Set(format.backends(source, caps));
   if (!fed.has('mse') && !fed.has('native')) return { order: FALLBACK_CHAIN, reason: 'format only feeds WebCodecs' };
+  // The host asks for WebCodecs (frame-accurate seeking, GPU surface, multi-view): the whole chain,
+  // so its failure still ends on MSE / native.
+  if (policy.preferBackend === 'webcodecs' && fed.has('webcodecs')) return { order: FALLBACK_CHAIN, reason: 'WebCodecs preferred by policy: full chain' };
 
   // iPhone: no MediaSource; ManagedMediaSource on iOS 17.1+, only native HLS before that.
   const iPhone = !caps.mediaSource && (caps.managedMediaSource || caps.nativeHls);

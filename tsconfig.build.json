@@ -29,6 +29,9 @@
       "path": "packages/decoder-webcodecs"
     },
     {
+      "path": "packages/demux-mediabunny"
+    },
+    {
       "path": "packages/engine-adapter-hlsjs"
     },
     {
