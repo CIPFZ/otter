@@ -95,7 +95,8 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 
 ### 8. 其余
 
-- 后台模式：页面隐藏时 GPUSurface 停止渲染；MSE 后端响应 MMS 的 `endstreaming`，停止取流。
+- 后台模式：页面隐藏时 GPUSurface 停止渲染（动画帧本身不再触发，GPU 网格与渲染 Worker 只在有帧时绘制）。WebCodecs 后端在隐藏时停止视频解码与绘制（已解码的帧在播放时释放，暂停时保留），音频与时钟继续（AudioWorklet 照常运行），后台用 250 ms 的定时器代替动画帧推进时间与 `ended`；回到前台时只重启视频：从时钟之前的关键帧解码，时钟之前的帧不显示、不计入丢帧，音频与时钟不动。隐藏期间的 seek 仍会完成（加载在后台标签页里也能结束）。presentation 进入 `background` 模式。e2e（`e2e/background.spec.ts`，可见性用页面内的 `visibilityState` 模拟，因为无头浏览器切换标签页不会隐藏页面）：隐藏 2 s 画面帧号不变、`currentTime` 前进，回到前台后 0.5 s 内画面与时钟一致。
+- MMS `startstreaming` / `endstreaming`：hls.js、Shaka、mpegts.js 自己处理；Otter 的 MSE sink 记录 `streaming`（`whenStreaming()`），自研的 mp4-range 引擎在 `endstreaming` 后不再发 Range 请求，FLV / TS 管线暂停读取流（TCP 背压，直播回来后由 LiveController 追帧）。单测：`packages/engine-pipeline/test/mse-sink.test.ts`。
 - WebCodecs 路径的 PiP：`canvas.captureStream()` 喂给一个隐藏的 `<video>`，再对它请求 PiP。
 - 多标签：通过 `BroadcastChannel` 协调，同一时间只有一个实例出声。
 - `format-whep`：WHEP 客户端（POST SDP offer，取 answer），`RTCPeerConnection` 的 MediaStream 交给 native 后端。
