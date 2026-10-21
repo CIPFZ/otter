@@ -96,3 +96,73 @@ test('hardware decoding off: HEVC HLS goes to the WASM decoder', async ({ page }
   // How the WASM step runs is part of the explanation.
   expect(r.steps.find((s) => s.candidate === 'wasm' && / on wasm-hevc /.test(s.reason))?.reason).toMatch(/jv4-decoder .*crossOriginIsolated (true|false)/);
 });
+
+/** Frame number painted into the frames/*.mp4 clips, read from the player's WebCodecs canvas. */
+async function frameOnPlayer(page: Page): Promise<number> {
+  // The bars' gradients would darken the blocks: hidden for the screenshot only.
+  const style = await page.addStyleTag({ content: '[data-otter-top], [data-otter-controls], [data-otter-center] { visibility: hidden !important; }' });
+  const png = (await page.locator('[data-otter-frames]').screenshot({ animations: 'disabled' })).toString('base64');
+  await style.evaluate((el) => (el as Element).remove());
+  return page.evaluate(async (b64) => {
+    const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+    const c = new OffscreenCanvas(img.width, img.height);
+    const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    ctx.drawImage(img, 0, 0);
+    let bits = 0;
+    for (let i = 0; i < 10; i++) {
+      const d = ctx.getImageData(Math.floor(((i * 48 + 24) / 640) * img.width), Math.floor((24 / 360) * img.height), 1, 1).data;
+      if ((d[0] as number) + (d[1] as number) + (d[2] as number) > 384) bits |= 1 << i;
+    }
+    return bits;
+  }, png);
+}
+
+for (const [mode, details] of [
+  ['hwfail', 'decodeError'],
+  ['hwstall', 'decoderStalled'],
+] as const) {
+  test(`runtime fallback (${mode}): the hardware decoder breaks mid-stream, WASM continues in the same backend`, async ({ page }) => {
+    test.setTimeout(90_000);
+    // 150 packets: past the first keyframe interval (90), so the restart is from a later keyframe.
+    await page.goto(`/player.html?${mode}=150&idle=0`);
+    await page.evaluate(async () => {
+      const o = (await window.otter) as OtterFixture;
+      o.dispatch('set-muted', { muted: true });
+      o.load({ src: await o.fetchBlob('/frames/h264-video-only.mp4') }, { autoplay: true, startTime: 1 });
+    });
+    const backend = () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().backend);
+    await expect.poll(backend, { timeout: 30_000 }).toBe('wasm');
+    const r = await page.evaluate(async () => {
+      const o = (await window.otter) as OtterFixture;
+      return {
+        steps: o.explain()?.steps ?? [],
+        explainBackend: o.explain()?.backend,
+        // Plain fields: Error objects lose their own properties on the way out of the page.
+        errors: o.events
+          .filter((e) => e.type === 'error')
+          .map((e) => {
+            const err = (e.payload as { error: { details: string; fatal: boolean } }).error;
+            return { details: err.details, fatal: err.fatal };
+          }),
+        routes: o.events.filter((e) => e.type === 'route').length,
+      };
+    });
+    // The route says what happened, in order, and its backend is now the WASM step.
+    expect(r.explainBackend).toBe('wasm');
+    const failed = r.steps.findIndex((s) => s.candidate === 'webcodecs' && s.outcome === 'failed' && s.reason.startsWith(details) && s.reason.endsWith('(runtime)'));
+    const selected = r.steps.findIndex((s) => s.candidate === 'wasm' && s.outcome === 'selected' && s.reason.startsWith('runtime fallback inside backend-webcodecs'));
+    expect(failed).toBeGreaterThan(-1);
+    expect(selected).toBeGreaterThan(failed);
+    // QoE: one non-fatal decoderFallback, nothing fatal, no reload by the session.
+    expect(r.errors.filter((e) => e.details === 'decoderFallback')).toHaveLength(1);
+    expect(r.errors.filter((e) => e.fatal)).toEqual([]);
+    // Playback goes on, and stays frame accurate on the new decoder.
+    const t0 = await page.evaluate(async () => ((await window.otter) as OtterFixture).state().currentTime);
+    await expect.poll(() => page.evaluate(async () => ((await window.otter) as OtterFixture).state().currentTime), { timeout: 15_000 }).toBeGreaterThan(t0 + 1);
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('pause', undefined));
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('seek', { time: (200 + 0.7) / 30 }));
+    await expect.poll(() => page.evaluate(async () => ((await window.otter) as OtterFixture).state().seeking), { timeout: 10_000 }).toBe(false);
+    await expect.poll(() => frameOnPlayer(page), { timeout: 10_000 }).toBe(200);
+    ciNotice(`runtime fallback (${mode}): ${r.steps.filter((s) => s.reason.endsWith('(runtime)') || s.reason.startsWith('runtime fallback')).map((s) => `${s.candidate} ${s.outcome}`).join(' > ')}`);
+  });
+}

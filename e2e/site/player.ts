@@ -1,7 +1,7 @@
 // Player fixture: the M1 composition a host (or a future preset) would build, exposed on
 // window.otter so the e2e scenario matrix can drive it. Engine and UI only meet in the store.
 
-import { createCore, type QoeEventMap, type RouteExplanation } from '@otter-player/core';
+import { createCore, createError, type QoeEventMap, type RouteExplanation } from '@otter-player/core';
 import { createMseBackendFactory } from '@otter-player/backend-mse';
 import { createWebCodecsBackendFactory } from '@otter-player/backend-webcodecs';
 import { sharedDecodePool } from '@otter-player/decoder-pool';
@@ -18,6 +18,7 @@ import {
   createMediaPlugin,
   MEDIA_SLICE,
   type CmcdConfig,
+  type Decoder,
   type FrameSink,
   type LoadOptions,
   type MediaActionMap,
@@ -166,7 +167,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v)
     // ?hw=off: no video through WebCodecs (hardware decoding switched off); ?wasm=fail: the WASM
     // decoder's files are missing. Both force the fallback chain (ADR-008 §5).
     decoders: [
-      createWebCodecsDecoder(params.get('hw') === 'off' ? { disableVideo: true } : {}),
+      faulty(createWebCodecsDecoder(params.get('hw') === 'off' ? { disableVideo: true } : {}), params),
       createWasmHevcDecoder(params.get('wasm') === 'fail' ? { baseUrl: new URL('/missing-wasm-decoder/', location.href) } : {}),
     ],
     policy,
@@ -244,6 +245,52 @@ function trackControls(store: { getState(): State; subscribe(h: (s: State) => vo
   return () => {
     observer.disconnect();
     off();
+  };
+}
+
+/**
+ * ?hwfail=<n> / ?hwstall=<n> (test only): the WebCodecs decoder reports a decode error, or stops
+ * producing frames, after n packets, as a broken hardware decoder would mid-stream (runtime
+ * fallback to WASM, ADR-008 §5).
+ */
+function faulty(decoder: Decoder, params: URLSearchParams): Decoder {
+  const failAt = Number(params.get('hwfail') ?? 0);
+  const stallAt = Number(params.get('hwstall') ?? 0);
+  if (failAt <= 0 && stallAt <= 0) return decoder;
+  return {
+    ...decoder,
+    create(config) {
+      let n = 0;
+      let failed = false;
+      const inner = decoder.create(config);
+      return {
+        get state() {
+          return inner.state;
+        },
+        get decodeQueueSize() {
+          return inner.decodeQueueSize + (stallAt > 0 && n > stallAt ? n - stallAt : 0);
+        },
+        decode(chunk) {
+          n++;
+          if (failAt > 0 && n > failAt) {
+            if (!failed) {
+              failed = true;
+              setTimeout(() => config.error(createError({ type: 'media', details: 'decodeError', fatal: true, recoverable: true, message: `test: decoder broke after ${failAt} packets` })), 0);
+            }
+            return;
+          }
+          if (stallAt > 0 && n > stallAt) return;
+          inner.decode(chunk);
+        },
+        flush: () => (stallAt > 0 && n > stallAt ? new Promise<void>(() => undefined) : inner.flush()),
+        reset() {
+          inner.reset();
+        },
+        close() {
+          inner.close();
+        },
+      };
+    },
   };
 }
 

@@ -12,6 +12,9 @@
 #                               blocks scale with the picture (96 px at 1280 wide)
 #   frames/hls-hevc/            the same clip as HLS fMP4 (2 s segments): surveillance-style HEVC
 #                               HLS that MSE cannot play here (WebCodecs / WASM through format-hls)
+#   frames/hls-ladder/          30 s H.264 HLS fMP4, 640x360 at ~600 kbps and 320x180 at ~150 kbps,
+#                               2 s segments with keyframes on the same frames: quality switching
+#                               (ABR) on the WebCodecs path, continuity checked from the numbers
 # HEVC needs libx265, which the distro ffmpeg lacks: a pinned BtbN static build is downloaded (and
 # checked) into $FFMPEG_STATIC_DIR, default ~/.cache/otter/ffmpeg-static.
 set -euo pipefail
@@ -66,3 +69,12 @@ mkdir -p frames/hls-hevc
 "$STATIC_FFMPEG" -y -hide_banner -loglevel error -i frames/hevc-720p.mp4 -c copy -tag:v hvc1 -f hls -hls_time 2 -hls_playlist_type vod \
   -hls_segment_type fmp4 -hls_fmp4_init_filename init.mp4 -hls_segment_filename 'frames/hls-hevc/seg_%03d.m4s' \
   -master_pl_name master.m3u8 frames/hls-hevc/media.m3u8
+
+# Quality ladder: one 30 s numbered source, two renditions with aligned keyframes (every 60 frames).
+mkdir -p frames/hls-ladder
+"$STATIC_FFMPEG" -y -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=640x360:rate=30' -t 30 \
+  -filter_complex "[0:v]format=yuv420p,geq=lum='$LUM':cb='$CB':cr='$CR',split=2[a][b];[b]scale=320:180[b2]" \
+  -map '[a]' -map '[b2]' -c:v libx264 -profile:v baseline -bf 0 -g 60 -keyint_min 60 -sc_threshold 0 \
+  -b:v:0 600k -maxrate:v:0 600k -bufsize:v:0 600k -b:v:1 150k -maxrate:v:1 150k -bufsize:v:1 150k \
+  -f hls -hls_time 2 -hls_playlist_type vod -hls_segment_type fmp4 -var_stream_map 'v:0 v:1' -master_pl_name master.m3u8 \
+  -hls_fmp4_init_filename 'init_%v.mp4' -hls_segment_filename 'frames/hls-ladder/v%v_%03d.m4s' frames/hls-ladder/v%v.m3u8

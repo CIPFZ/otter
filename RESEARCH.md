@@ -66,6 +66,9 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - 无头 Firefox 没有 WebGL2，多宫格退到每路一个 2D canvas，16 路 720p 时主线程只有约 10 fps：这个兜底只适合少量路数。真实 Firefox 有 WebGL2，走 GPU 路径。
 - Vite 库模式下 `new Worker(new URL('./w.ts', import.meta.url))` 会把 Worker 单独打包，但默认生成以站点根为基准的绝对路径（`/assets/…`），库被别人引用时会 404；库构建要设 `base: './'`，路径才相对于模块。
 - Playwright 的 `page.waitForFunction` 传入 async 函数时，返回的 Promise 本身被当作真值，条件不会真正等待；需要等异步条件时用 `expect.poll`。
+- mediabunny 1.61 的 `EncodedPacketSink.packets()` 迭代器会按消费速度自行预读：对 HLS 源，本地网络下一两秒内就把整个档位的分片下载完，调用方的读前控制、限速测试和 ABR 都失去作用。需要按需下载时逐个 `getNextPacket()`。它的 `UrlSource` 按 `Content-Length` 读到长度就停止读取响应体（既不读到流结束也不取消），用包装的 `fetch` 测下载量时要在读到声明长度时上报。
+- Jessibuca jv4-decoder（WASM）在同一 Worker 里频繁新建 / 删除 embind `VideoDecoder`（每次 seek 新建一个）会在十几路并发时出错（`decode()` 抛异常）；seek 时 `clear()` + `setCodec()` 复用同一个对象则稳定。
+- Playwright 的 `page.evaluate` 返回 Error 对象时只保留 `message` / `stack`，自定义属性（如 `OtterError.details`）会丢失；要在页面内先映射成普通对象再返回。
 
 ## 2. 格式 / 协议 / 编码全景
 
