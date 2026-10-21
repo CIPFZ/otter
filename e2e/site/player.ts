@@ -33,6 +33,7 @@ import { createText, TEXT_SLICE, type TextActionMap, type TextState } from '@ott
 import { createInputController } from '@otter-player/input';
 import { createThumbnails } from '@otter-player/overlay-thumbnails';
 import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationState } from '@otter-player/presentation';
+import { createPicturePlugin, PICTURE_SLICE, type PictureActionMap, type PictureSliceState } from '@otter-player/presentation/picture';
 import {
   bindActivity,
   CHROME_SLICE,
@@ -44,8 +45,8 @@ import {
   type ChromeState,
 } from '@otter-player/ui-core';
 
-type State = MediaState & QoeState & TextState & ChromeState & PresentationState;
-type Actions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap;
+type State = MediaState & QoeState & TextState & ChromeState & PresentationState & PictureSliceState;
+type Actions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap & PictureActionMap;
 
 export interface OtterFixture {
   load(source: Source, options?: LoadOptions): void;
@@ -91,6 +92,8 @@ export interface WallFixture {
   expanded(): number;
   /** Removes tile `index` (its stream stops; a queued decoder may start). */
   remove(index: number): Promise<void>;
+  /** Zoom each tile's surface currently has (electronic zoom follows the focus). */
+  viewZooms(): number[];
   /** Shows / hides the shell's bars (picture checks read the top of the frames). */
   setControlsVisible(visible: boolean): void;
   /** Dispatches a media action to one tile (not through the focus). */
@@ -127,12 +130,16 @@ const QOE_TYPES: readonly (keyof QoeEventMap)[] = [
 
 type View = ReturnType<ReturnType<typeof createCore<State, Actions>>['store']['view']>;
 
-/** `bind` (multi-view): the store the controls, input and overlays use instead of the core's. */
-async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v): Promise<{
+/**
+ * `bind` (multi-view): the store the controls, input and overlays use instead of the core's.
+ * `pictureSurface`: the surface the picture controls drive (default: the player's own picture).
+ */
+async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v, pictureSurface?: () => Surface | undefined): Promise<{
   core: ReturnType<typeof createCore<State, Actions>>;
   media: ReturnType<typeof createMediaPlugin<State, Actions>>;
   surface: Surface;
   layer: OverlayLayer;
+  picture: { refresh(): void };
   dispose: () => void;
 }> {
   const params = new URLSearchParams(location.search);
@@ -177,9 +184,19 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v)
   const text = createText({ inband: media, native: video, ...(params.get('text') === 'native' ? { mode: 'native' as const } : {}) });
   // ?idle=<ms> sets the control auto-hide delay (0 keeps them shown).
   const idleMs = Number(params.get('idle') ?? 3000);
+  // Picture controls (SPEC §12 电子放大): zoom, pan and filters of whichever surface shows the
+  // picture (the VideoSurface, the WebCodecs canvas, or a wall's focused tile). The zoomed picture
+  // stays above the control bar while the bar shows.
+  const shown = (): Surface => pictureSurface?.() ?? (root as HTMLElement & { otterFrames?: FrameSurface }).otterFrames ?? surface;
+  const controlsBar = root.querySelector<HTMLElement>('[data-otter-controls]');
+  const picture = createPicturePlugin<State>({
+    surface: shown,
+    controlsInset: () => (controlsBar !== null && !controlsBar.hasAttribute('data-idle') ? controlsBar.offsetHeight : 0),
+  });
   const core = createCore<State, Actions>({
-    slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE],
+    slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE, PICTURE_SLICE],
     plugins: [
+      picture,
       media,
       createQoePlugin(),
       text.plugin,
@@ -195,6 +212,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v)
     ],
   });
   await core.start();
+  watchPicture(core.store, picture, shown);
   const view = bind(core.store.view());
   root.querySelector('[data-otter-overlays]')?.remove();
   const layer = createOverlayLayer({ container: root, surface, store: view, mediaTime: () => video.currentTime });
@@ -203,7 +221,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v)
   // Preview card pictures: the source's WebVTT sprite track, else the engine's I-frame playlist.
   provideThumbnails(root, createThumbnails({ store: view, media }));
   // Keyboard, pointer and touch go through one InputController on the player root (SPEC §14.3).
-  const input = createInputController({ store: view });
+  const input = createInputController({ store: view, zoomed: () => (core.store.getState().picture?.zoom ?? 1) > 1 });
   input.attach(root);
   const offActivity = bindActivity(root, view);
   const offControls = trackControls(view, layer);
@@ -212,12 +230,30 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v)
     media,
     surface,
     layer,
+    picture,
     dispose: () => {
       input.destroy();
       offActivity();
       offControls();
     },
   };
+}
+
+/**
+ * Re-applies the picture to the surface that shows it whenever that changes (WebCodecs canvas
+ * appearing, the wall's focus moving, the control bar showing or hiding).
+ */
+function watchPicture(store: { subscribe(h: () => void): () => void }, picture: { refresh(): void }, shown: () => Surface): void {
+  let last = shown();
+  let bar = document.querySelector('[data-otter-controls]')?.hasAttribute('data-idle');
+  store.subscribe(() => {
+    const now = shown();
+    const idle = document.querySelector('[data-otter-controls]')?.hasAttribute('data-idle');
+    if (now === last && idle === bar) return;
+    last = now;
+    bar = idle;
+    picture.refresh();
+  });
 }
 
 /**
@@ -367,6 +403,12 @@ async function start(): Promise<OtterFixture> {
   };
 }
 
+/** The zoom a surface draws with (its picture rect over the fitted one). */
+const zoomOf = (s: Surface): number => {
+  const drawn = (s as { drawnRect?: { width: number } }).drawnRect;
+  return drawn === undefined || s.contentRect.width === 0 ? 1 : Math.round((drawn.width / s.contentRect.width) * 100) / 100;
+};
+
 /**
  * Multi-view wall in the player shell (ADR-008 §7): the page's player keeps its chrome,
  * presentation and input; every tile is its own core (media + QoE) on the WebCodecs backend,
@@ -380,10 +422,17 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
   // Over the gesture / poster layers (tiles take clicks and double-clicks), under the bars.
   const wall = createMultiview({ container: root, label: `${count} streams`, before: root.querySelector('[data-otter-top]') });
   let focus: ReturnType<typeof createFocusStore<State, Actions>> | undefined;
-  const shell = await build({}, (view) => {
-    focus = createFocusStore(view, view);
-    return focus.view;
-  });
+  // The picture controls drive the focused tile's viewport (each tile keeps its own transform:
+  // on a focus change the shell applies the picture state to the new tile).
+  const shell = await build(
+    {},
+    (view) => {
+      focus = createFocusStore(view, view);
+      return focus.view;
+    },
+    // Before the tiles exist (the shell is built first) the shell's own surface stands in.
+    () => wall.focused?.surface ?? wall.tiles[0]?.surface,
+  );
   const blob = await (await fetch(src)).blob();
   type TileCore = { core: ReturnType<typeof createCore<MediaState & QoeState, MediaActionMap>>; tile: ReturnType<typeof wall.add>; errors: string[]; dropped: number; decoded: number; loops: number };
   const tiles: TileCore[] = [];
@@ -429,6 +478,8 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
     const i = indexOf(tile);
     if (i < 0) return;
     focus?.focus((tiles[i] as TileCore).core.store.view() as unknown as View);
+    // A new tile starts from the original picture; zoom and filters belong to the tile they were set on.
+    shell.core.store.dispatch('reset-picture', {});
     // Only the focused stream plays sound.
     tiles.forEach((t, j) => t.core.store.dispatch('set-muted', { muted: j !== i }));
   };
@@ -451,6 +502,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
     expand: (i) => wall.expand(i < 0 ? undefined : (tiles[i] as TileCore).tile),
     focused: () => indexOf(wall.focused),
     setControlsVisible: (visible) => shell.core.store.setState({ controlsVisible: visible }),
+    viewZooms: () => tiles.map((t) => zoomOf(t.tile.surface)),
     dispatchTo: (i, type) => void (tiles[i] as TileCore).core.store.dispatch(type, undefined),
     seekTile: (i, time) =>
       new Promise((resolve) => {

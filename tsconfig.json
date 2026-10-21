@@ -20,6 +20,7 @@
       "@otter-player/text/render": ["./packages/text/src/render.ts"],
       "@otter-player/surface/gpu": ["./packages/surface/src/gpu.ts"],
       "@otter-player/presentation/multiview": ["./packages/presentation/src/multiview.ts"],
+      "@otter-player/presentation/picture": ["./packages/presentation/src/picture.ts"],
       "@otter-player/*": ["./packages/*/src/index.ts"]
     }
   },

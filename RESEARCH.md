@@ -69,6 +69,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - mediabunny 1.61 的 `EncodedPacketSink.packets()` 迭代器会按消费速度自行预读：对 HLS 源，本地网络下一两秒内就把整个档位的分片下载完，调用方的读前控制、限速测试和 ABR 都失去作用。需要按需下载时逐个 `getNextPacket()`。它的 `UrlSource` 按 `Content-Length` 读到长度就停止读取响应体（既不读到流结束也不取消），用包装的 `fetch` 测下载量时要在读到声明长度时上报。
 - Jessibuca jv4-decoder（WASM）在同一 Worker 里频繁新建 / 删除 embind `VideoDecoder`（每次 seek 新建一个）会在十几路并发时出错（`decode()` 抛异常）；seek 时 `clear()` + `setCodec()` 复用同一个对象则稳定。
 - Playwright 的 `page.evaluate` 返回 Error 对象时只保留 `message` / `stack`，自定义属性（如 `OtterError.details`）会丢失；要在页面内先映射成普通对象再返回。
+- 鼠标拖动结束时浏览器仍会在同一元素上派发 `click`：拖动平移画面后要吞掉这个 click，否则会切换播放。happy-dom 构造 `WheelEvent` 时丢掉 `ctrlKey` 等修饰键（浏览器保留），单测要另行设置。
 
 ## 2. 格式 / 协议 / 编码全景
 

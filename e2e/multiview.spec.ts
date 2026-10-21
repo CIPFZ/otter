@@ -171,6 +171,32 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   expect(await w.eval((x) => x.expanded())).toBe(2);
 });
 
+test('electronic zoom on a wall: Ctrl+wheel on a tile focuses and zooms that tile only', async ({ page }) => {
+  test.setTimeout(90_000);
+  await open(page, 4);
+  const w = wall(page);
+  const tile = page.locator('[data-otter-multiview-tile="2"]');
+  const box = (await tile.boundingBox()) as { x: number; y: number; width: number; height: number };
+  await tile.click({ position: { x: box.width * 0.85, y: box.height * 0.6 } });
+  expect(await w.eval((x) => x.focused())).toBe(1);
+  // Over the tile, clear of the centre buttons (small players put them over the tiles).
+  await page.mouse.move(box.x + box.width * 0.85, box.y + box.height * 0.6);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await expect.poll(() => w.eval((x) => x.shellState().picture?.zoom ?? 1)).toBeGreaterThan(1.2);
+  // The focused tile's view got the zoom; the others did not.
+  const zooms = await page.evaluate(async () => {
+    const x = await (window.wall as Promise<WallFixture>);
+    return x.viewZooms();
+  });
+  expect(zooms[1]).toBeGreaterThan(1.2);
+  expect([zooms[0], zooms[2], zooms[3]]).toEqual([1, 1, 1]);
+  // Moving the focus starts the next tile from the original picture.
+  await page.locator('[data-otter-multiview-tile="1"]').click({ position: { x: 20, y: box.height * 0.6 } });
+  await expect.poll(() => w.eval((x) => x.shellState().picture?.zoom ?? 1)).toBe(1);
+});
+
 test('every viewport of the shared canvas shows its own stream', async ({ page }, info) => {
   test.setTimeout(120_000);
   await open(page, 4);
