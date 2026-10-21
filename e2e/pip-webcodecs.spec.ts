@@ -72,7 +72,8 @@ test('video PiP of the WebCodecs canvas: enter and leave without interrupting pl
   await expect.poll(async () => (await state(page)).mode, { timeout: 8000 }).toMatch(/pip|inline/);
   if ((await state(page)).mode !== 'pip') {
     // Headless WebKit may refuse to open a PiP window (rolled back with a reason).
-    expect(browserName).toBe('webkit');
+    const denied = await page.evaluate(async () => ((await window.otter) as OtterFixture).events.filter((e) => e.type === 'presentation-denied').map((e) => e.payload));
+    expect(browserName, `PiP rolled back: ${JSON.stringify(denied)}`).toBe('webkit');
     ciNotice('canvas PiP refused by the browser; rolled back to inline');
     return;
   }

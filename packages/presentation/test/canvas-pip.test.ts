@@ -76,18 +76,29 @@ describe('bindCanvasPip', () => {
     expect(pip.pipVideo()).toBeUndefined();
   });
 
-  it('drops the stream when the canvas goes, and gives undefined (the <video>) then', () => {
+  it('keeps the stream while the canvas is only hidden; another canvas gets a new one', () => {
     const { store, set } = fakeStore(true);
-    const { canvas, stop } = fakeCanvas();
-    let shown: HTMLCanvasElement | undefined = canvas;
+    const first = fakeCanvas();
+    let shown: HTMLCanvasElement | undefined = first.canvas;
     const pip = bindCanvasPip(document, store, () => shown);
     const v = pip.pipVideo();
+    // Hidden (a seek clears the picture): the <video> for PiP meanwhile, the stream stays ready.
     shown = undefined;
     set({ currentTime: 1 });
     expect(pip.pipVideo()).toBeUndefined();
+    expect(v?.isConnected).toBe(true);
+    shown = first.canvas;
+    set({ currentTime: 2 });
+    expect(pip.pipVideo()).toBe(v);
+    // Another canvas: the old stream ends.
+    const second = fakeCanvas();
+    shown = second.canvas;
+    set({ currentTime: 3 });
+    expect(first.stop).toHaveBeenCalled();
     expect(v?.isConnected).toBe(false);
-    expect(stop).toHaveBeenCalled();
+    expect(pip.pipVideo()).not.toBe(v);
     pip.destroy();
+    expect(second.stop).toHaveBeenCalled();
   });
 
   it('mirrors the player only on changes, and passes the window’s play / pause to the player', () => {

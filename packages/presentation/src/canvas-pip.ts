@@ -33,7 +33,10 @@ export interface CanvasPipStore {
  * state into it, and the PiP window's play / pause back to the player.
  */
 export function bindCanvasPip(doc: Document, s: CanvasPipStore, canvas: () => HTMLCanvasElement | undefined): CanvasPip {
+  /** The canvas showing the picture now (undefined: the <video> does). */
   let source: HTMLCanvasElement | undefined;
+  /** The canvas the stream video captures: kept while the canvas is only hidden for a moment. */
+  let captured: HTMLCanvasElement | undefined;
   let video: HTMLVideoElement | undefined;
   let ready = false;
   let playerPaused = s.getState().paused !== false;
@@ -47,7 +50,7 @@ export function bindCanvasPip(doc: Document, s: CanvasPipStore, canvas: () => HT
     if (video === undefined || doc.pictureInPictureElement === video) return; // keep the open window's source
     stop(video);
     video = undefined;
-    source = undefined;
+    captured = undefined;
     ready = false;
   };
   const follow = (): void => {
@@ -56,10 +59,13 @@ export function bindCanvasPip(doc: Document, s: CanvasPipStore, canvas: () => HT
     if (video !== undefined && ready && video.paused !== playerPaused) void s.dispatch(video.paused ? 'pause' : 'play', undefined);
   };
   const prepare = (next: HTMLCanvasElement | undefined): void => {
-    if (next === source) return;
-    drop();
-    if (next === undefined || video !== undefined) return;
     source = next;
+    // Hidden (a seek or a reset clears the picture) or back again: the same stream video, which
+    // stays ready; a new video would need its metadata again before PiP could open.
+    if (next === undefined || next === captured) return;
+    drop();
+    if (video !== undefined) return;
+    captured = next;
     const v = doc.createElement('video');
     v.muted = true;
     v.playsInline = true;
@@ -100,7 +106,7 @@ export function bindCanvasPip(doc: Document, s: CanvasPipStore, canvas: () => HT
       off();
       if (video !== undefined) stop(video);
       video = undefined;
-      source = undefined;
+      source = captured = undefined;
     },
   };
 }

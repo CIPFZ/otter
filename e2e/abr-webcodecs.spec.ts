@@ -71,14 +71,15 @@ test('manual quality switch on WebCodecs: at the next keyframe, no rebuffer, pic
   expect(s.tracks.map((t) => t.height).sort((a, b) => a - b)).toEqual([180, 360]);
   const target = s.tracks.find((t) => t.id !== s.active) as { id: string; height: number };
   await expect.poll(async () => (await state(page)).currentTime, { timeout: 10_000 }).toBeGreaterThan(1);
-  const t0 = (await state(page)).currentTime;
+  // Rebuffers of the switch only (a loaded machine may stall once at the start).
+  const { currentTime: t0, rebuffers: r0 } = await state(page);
   await page.evaluate(async (id) => ((await window.otter) as OtterFixture).dispatch('select-quality', { id }), target.id);
   // A switch lands within a keyframe interval (2 s) plus what is decoded ahead.
   await expect.poll(async () => (await state(page)).height, { timeout: 8_000 }).toBe(target.height);
   s = await state(page);
   expect(s.active).toBe(target.id);
   expect(s.switches.at(-1)).toMatchObject({ to: target.id, mode: 'manual' });
-  expect(s.rebuffers).toBe(0);
+  expect(s.rebuffers).toBe(r0);
   expect(s.currentTime).toBeGreaterThan(t0);
   // The new rendition's pictures are the right frames.
   await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('pause', undefined));
