@@ -14,6 +14,7 @@ import { createFlvFormat } from '@otter-player/format-flv';
 import { createHlsFormat } from '@otter-player/format-hls';
 import { createMp4RangeFormat } from '@otter-player/format-mp4-range';
 import { createTsFormat } from '@otter-player/format-ts';
+import { createWhepFormat } from '@otter-player/format-whep';
 import {
   createMediaPlugin,
   MEDIA_SLICE,
@@ -171,6 +172,8 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
       createTsFormat(pipeline === undefined ? {} : { engine: pipeline }),
       createMp4RangeFormat(ahead === undefined ? {} : { maxBufferAheadS: ahead }),
       createFileFormat(),
+      // ?ice=ms: the WHEP connect timeout (the ICE-failure case need not wait the default 8 s).
+      createWhepFormat(params.get('ice') === null ? {} : { connectTimeoutMs: Number(params.get('ice')) }),
     ],
     backends: [
       createMseBackendFactory(),

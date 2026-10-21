@@ -61,6 +61,11 @@ export interface Source {
   readonly renditions?: readonly Mp4Rendition[];
   /** Seek-preview thumbnails: a WebVTT track of `image#xywh=x,y,w,h` cues (ADR-007 §7). */
   readonly thumbnails?: { readonly src: string };
+  /**
+   * The same programme over another protocol, routed afresh once every backend for this source
+   * failed (e.g. WHEP whose ICE cannot connect -> HTTP-FLV, ADR-008 §8). May have its own.
+   */
+  readonly fallback?: Source;
 }
 
 export interface LoadOptions {

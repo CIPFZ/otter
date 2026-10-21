@@ -90,6 +90,25 @@ export interface Demuxer {
   destroy(): void;
 }
 
+/** Everything a format needs to open a live MediaStream for the native backend (ADR-008 §8). */
+export interface StreamContext {
+  readonly source: Source;
+  readonly options: LoadOptions;
+  readonly qoe: QoeHook;
+  /** Aborted when the backend is torn down; implementations stop connecting. */
+  readonly signal: AbortSignal;
+}
+
+/** A connected MediaStream (WebRTC) the native backend plays through `srcObject`. */
+export interface StreamSession {
+  readonly stream: MediaStream;
+  /** Seconds from capture to display where the transport measures it (WebRTC stats), else undefined. */
+  readonly latency: number | undefined;
+  /** Fatal errors after the stream started (the connection failed for good). */
+  onError(h: (e: OtterError) => void): Unsubscribe;
+  destroy(): void;
+}
+
 export interface FormatPlugin {
   readonly id: string;
   /** Confidence 0..1 that this plugin can play `source`. */
@@ -102,4 +121,9 @@ export interface FormatPlugin {
    * instead of `createEngine` for that backend; the module it needs loads inside it.
    */
   createDemuxer?(ctx: DemuxContext): Promise<Demuxer>;
+  /**
+   * A connected MediaStream for the native backend instead of `src` (format-whep, ADR-008 §8).
+   * Rejects with an OtterError (e.g. `iceFailed`, fatal) when it cannot connect.
+   */
+  openStream?(ctx: StreamContext): Promise<StreamSession>;
 }

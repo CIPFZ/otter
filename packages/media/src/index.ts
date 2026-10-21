@@ -37,7 +37,7 @@ export {
   type MediaElementObserver,
   type ObserveOptions,
 } from './element.js';
-export type { DemuxContext, Demuxer, Engine, EngineContext, EngineEvents, FormatPlugin } from './format.js';
+export type { DemuxContext, Demuxer, Engine, EngineContext, EngineEvents, FormatPlugin, StreamContext, StreamSession } from './format.js';
 export {
   createRouter,
   FALLBACK_CHAIN,

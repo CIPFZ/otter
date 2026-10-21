@@ -352,9 +352,32 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     }
   };
 
+  /**
+   * Every backend for `source` failed: its `fallback` (the same programme over another protocol),
+   * routed afresh with fresh retry counters; null when there is none that can play.
+   */
+  const fallbackSource = (source: Source, caps: Capabilities): { source: Source; decision: RouteDecision } | null => {
+    for (let alt = source.fallback; alt !== undefined; alt = alt.fallback) {
+      let decision: RouteDecision;
+      try {
+        decision = router.select(alt, caps, options.policy);
+      } catch {
+        continue;
+      }
+      router.annotate({ candidate: 'source', outcome: 'selected', reason: `fallback source (${decision.format.id})` });
+      budget.reset();
+      set({ source: alt, live: alt.live ?? false });
+      publishRoute(router.explain());
+      return { source: alt, decision };
+    }
+    return null;
+  };
+
   /** Walks the fallback chain from `decision` until something loads or the chain is exhausted. */
-  const run = async (decision: RouteDecision | null, source: Source, opts: LoadOptions, caps: Capabilities, loadToken: number): Promise<void> => {
+  const run = async (decision: RouteDecision | null, first: Source, firstOpts: LoadOptions, caps: Capabilities, loadToken: number): Promise<void> => {
     let current = decision;
+    let source = first;
+    let opts = firstOpts;
     while (current !== null) {
       const error = await attempt(current, source, opts, caps, loadToken);
       if (loadToken !== token || error === null) return;
@@ -365,8 +388,16 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       qoe?.emit('error', { error, fallback: next === null ? [] : [stepLabel(next.step), ...next.remaining.map(stepLabel)] });
       publishRoute(router.explain());
       if (next === null) {
-        set({ status: 'error', error });
-        return;
+        const alt = fallbackSource(source, caps);
+        if (alt === null) {
+          set({ status: 'error', error });
+          return;
+        }
+        ({ source, decision: current } = alt);
+        // Another source has its own timeline: from its start (or live edge).
+        const { startTime: _, ...rest } = opts;
+        opts = rest;
+        continue;
       }
       current = next;
     }
@@ -410,7 +441,10 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     qoe?.emit('error', { error, fallback: next === null ? [] : [stepLabel(next.step), ...next.remaining.map(stepLabel)] });
     publishRoute(router.explain());
     if (next === null) {
-      set({ status: 'error', error });
+      const alt = fallbackSource(source, lastCaps);
+      if (alt === null) set({ status: 'error', error });
+      // Another source has its own timeline: from its start (or live edge).
+      else await run(alt.decision, alt.source, { ...lastOptions, autoplay }, lastCaps, loadToken);
       return;
     }
     await run(next, source, { ...lastOptions, startTime: resumeAt, autoplay }, lastCaps, loadToken);

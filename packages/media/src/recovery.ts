@@ -35,6 +35,8 @@ export const DEFAULT_RECOVERY: RecoveryPolicy = {
     'mediaSrcNotSupported',
     'manifestIncompatibleCodecsError',
     'capabilityDetectionFailed',
+    // WebRTC could not find a path (UDP blocked, unreachable candidates): a new offer will not.
+    'iceFailed',
   ],
   resetAfterMs: 30_000,
   stallTimeoutMs: 8_000,

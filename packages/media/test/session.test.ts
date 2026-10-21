@@ -298,3 +298,70 @@ describe('media plugin', () => {
     expect(view.getState().error).toMatchObject({ details: 'playNotAllowed', fatal: false });
   });
 });
+
+describe('fallback source (Source.fallback)', () => {
+  const whep: FormatPlugin = {
+    id: 'whep',
+    probe: (s) => (String(s.src).includes('/whep') ? 1 : 0),
+    backends: () => ['native'],
+    createEngine: () => {
+      throw new Error('unused');
+    },
+  };
+  const m3u8: FormatPlugin = { ...hls, probe: (s) => (String(s.src).endsWith('.m3u8') ? 1 : 0) };
+
+  async function setupSources() {
+    const created: { kind: BackendKind; src: string }[] = [];
+    const factory = (kind: BackendKind): BackendFactory => ({
+      kind,
+      create: () => {
+        const b = fakeBackend(kind);
+        return {
+          ...b,
+          load: async (source) => {
+            created.push({ kind, src: String(source.src) });
+            // WebRTC cannot connect here: a fatal iceFailed, which is not retried.
+            if (String(source.src).includes('/whep')) throw createError({ type: 'network', details: 'iceFailed', fatal: true, recoverable: false });
+          },
+        };
+      },
+    });
+    const plugin = createMediaPlugin({
+      target,
+      formats: [whep, m3u8],
+      backends: [factory('mse'), factory('native')],
+      detect: async () => ({ ...NO_CAPABILITIES, mediaSource: true }),
+      recovery: { backoffMs: () => 0, stallTimeoutMs: 0 },
+    });
+    const core = createCore<MediaState, MediaActionMap>({ slices: [MEDIA_SLICE], plugins: [plugin] });
+    const errors: unknown[] = [];
+    core.qoe.on('error', (p) => void errors.push(p));
+    await core.start();
+    return { view: core.store.view(), created, errors };
+  }
+
+  it('routes the fallback source afresh once every backend for the source failed', async () => {
+    const { view, created, errors } = await setupSources();
+    const fallback = { src: 'https://e.test/live.m3u8', live: true };
+    view.dispatch('load', { source: { src: 'https://e.test/whep/live', live: true, fallback } });
+    await flush();
+    await flush();
+    // One WHEP attempt (iceFailed is not retried), then HLS over MSE.
+    expect(created).toEqual([
+      { kind: 'native', src: 'https://e.test/whep/live' },
+      { kind: 'mse', src: 'https://e.test/live.m3u8' },
+    ]);
+    expect(view.getState()).toMatchObject({ status: 'ready', format: 'hls', backend: 'mse', source: fallback });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ error: { details: 'iceFailed' }, fallback: [] });
+    expect(view.getState().route?.steps.some((s) => s.candidate === 'source' && s.reason.startsWith('fallback source (hls)'))).toBe(true);
+  });
+
+  it('ends in error without a fallback source', async () => {
+    const { view, created } = await setupSources();
+    view.dispatch('load', { source: { src: 'https://e.test/whep/live', live: true } });
+    await flush();
+    expect(created).toHaveLength(1);
+    expect(view.getState()).toMatchObject({ status: 'error', error: { details: 'iceFailed' } });
+  });
+});

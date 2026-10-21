@@ -1,5 +1,6 @@
 // Native backend (SPEC §6.1): `<video src>` for progressive files and Safari native HLS. Keeps
 // AirPlay, native PiP and the power-efficient system pipeline; quality is opaque to the page.
+// Formats with `openStream` (WHEP, ADR-008 §8) hand it a MediaStream instead (`srcObject`).
 
 import { createError, createEventBus, type Unsubscribe } from '@otter-player/core';
 import {
@@ -13,6 +14,7 @@ import {
   type BackendFactory,
   type MediaBackend,
   type MediaElementObserver,
+  type StreamSession,
   type TextTrackInfo,
   type TrackList,
   type VideoTrack,
@@ -86,13 +88,15 @@ function liveLatency(m: HTMLMediaElement | undefined): number | undefined {
   return Math.max(0, m.seekable.end(m.seekable.length - 1) - m.currentTime);
 }
 
-export function createNativeBackend(_ctx: BackendContext, options: NativeBackendOptions = {}): MediaBackend {
+export function createNativeBackend(ctx: BackendContext, options: NativeBackendOptions = {}): MediaBackend {
   const bus = createEventBus<BackendEvents>();
   const emit = <E extends keyof BackendEvents>(e: E, p: BackendEvents[E]): void => bus.emit(e, p);
   let media: HTMLMediaElement | undefined;
   let observer: MediaElementObserver | undefined;
   let objectUrl: string | undefined;
   let tracks: TrackList = EMPTY_TRACKS;
+  let stream: StreamSession | undefined;
+  const aborted = new AbortController();
   const offs: Unsubscribe[] = [];
 
   const element = (): HTMLMediaElement => {
@@ -122,7 +126,7 @@ export function createNativeBackend(_ctx: BackendContext, options: NativeBackend
       return media?.buffered ?? EMPTY_TIME_RANGES;
     },
     get latency() {
-      return liveLatency(media);
+      return stream !== undefined ? stream.latency : liveLatency(media);
     },
     attach(target) {
       if (!('canPlayType' in target)) {
@@ -137,15 +141,21 @@ export function createNativeBackend(_ctx: BackendContext, options: NativeBackend
         listen(list, 'change', refreshTracks);
       }
       listen(target, 'timeupdate', () => {
-        const latency = liveLatency(media);
+        const latency = stream !== undefined ? stream.latency : liveLatency(media);
         if (latency !== undefined) emit('latency-change', { latency });
       });
     },
-    load(source, opts) {
+    async load(source, opts) {
       const m = element();
       if (options.disableRemotePlayback === true) m.disableRemotePlayback = true;
-      if (objectUrl !== undefined) URL.revokeObjectURL(objectUrl);
-      objectUrl = typeof source.src === 'string' ? undefined : URL.createObjectURL(source.src);
+      if (ctx.format.openStream !== undefined) {
+        stream?.destroy();
+        stream = await ctx.format.openStream({ source, options: opts, qoe: ctx.qoe, signal: aborted.signal });
+        offs.push(stream.onError((e) => emit('error', e)));
+      } else {
+        if (objectUrl !== undefined) URL.revokeObjectURL(objectUrl);
+        objectUrl = typeof source.src === 'string' ? undefined : URL.createObjectURL(source.src);
+      }
       return new Promise<void>((resolve, reject) => {
         const done = (): void => {
           m.removeEventListener('loadedmetadata', onMeta);
@@ -170,8 +180,11 @@ export function createNativeBackend(_ctx: BackendContext, options: NativeBackend
         m.addEventListener('error', onError);
         opts.signal?.addEventListener('abort', onAbort);
         m.preload = 'auto';
-        m.src = objectUrl ?? (source.src as string);
-        m.load();
+        if (stream !== undefined) m.srcObject = stream.stream;
+        else {
+          m.src = objectUrl ?? (source.src as string);
+          m.load();
+        }
       });
     },
     play: () => element().play(),
@@ -203,7 +216,11 @@ export function createNativeBackend(_ctx: BackendContext, options: NativeBackend
       observer?.destroy();
       for (const off of offs.splice(0)) off();
       bus.clear();
+      aborted.abort();
+      stream?.destroy();
+      stream = undefined;
       if (media !== undefined) {
+        media.srcObject = null;
         media.removeAttribute('src');
         media.load();
       }

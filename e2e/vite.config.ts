@@ -1,10 +1,11 @@
 // Dev server for the Playwright fixture site. Packages resolve to their sources (same alias as
 // Vitest); local test media (e2e/media) is served from the root; /live/stream.flv is a paced
-// local HTTP-FLV live stream.
+// local HTTP-FLV live stream; /whep/* is a local WHEP endpoint (e2e/whep.ts).
 import { cpSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { liveFlvPlugin } from './live-flv.ts';
+import { whepPlugin } from './whep.ts';
 
 const packagesDir = fileURLToPath(new URL('../packages/', import.meta.url));
 const mediaDir = fileURLToPath(new URL('./media/', import.meta.url));
@@ -15,6 +16,7 @@ export default defineConfig({
   logLevel: 'warn',
   plugins: [
     liveFlvPlugin(`${mediaDir}flv/clip.flv`),
+    whepPlugin(`${mediaDir}whep/clip.ivf`),
     // decoder-wasm-hevc loads its WASM next to its own module (otter.assets): in the built site
     // that module lives in assets/.
     {

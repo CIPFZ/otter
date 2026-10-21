@@ -152,4 +152,7 @@ printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:12\n#EXT-X-PLAYLIST-TYP
 # Frame-numbered clips for frame-accurate seek on the WebCodecs path (format-file).
 ./generate-frames.sh
 
+# VP8 clip for the local WHEP fixture (format-whep).
+./generate-whep.sh
+
 du -sh . && find . -type f | sort | sed 's/^/  /' | head -80
