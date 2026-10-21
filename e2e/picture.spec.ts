@@ -69,11 +69,17 @@ for (const p of PATHS) {
     expect(base / box.width, 'two 1-bits read as one bright run').toBeGreaterThan(0.12);
     expect(base / box.width).toBeLessThan(0.18);
 
-    // Ctrl + wheel at the top-left corner: zoom in there.
-    await page.mouse.move(box.x + 2, box.y + 2);
-    await page.keyboard.down('Control');
-    await page.mouse.wheel(0, -350);
-    await page.keyboard.up('Control');
+    // Ctrl + wheel at the top-left corner: zoom in there. Playwright has no wheel in mobile
+    // WebKit (a phone has none either): there the same zoom-at the wheel sends is dispatched.
+    const wheel = !test.info().project.name.includes('iphone');
+    if (wheel) {
+      await page.mouse.move(box.x + 2, box.y + 2);
+      await page.keyboard.down('Control');
+      await page.mouse.wheel(0, -350);
+      await page.keyboard.up('Control');
+    } else {
+      await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('zoom-at', { factor: 2, x: 0, y: 0 }));
+    }
     // How far one wheel step goes depends on the engine's wheel deltas; the picture must follow
     // whatever zoom resulted.
     await expect.poll(async () => (await picture(page)).zoom).toBeGreaterThan(1.25);
@@ -85,7 +91,8 @@ for (const p of PATHS) {
     // The page did not scroll (the wheel was ours).
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     // Plain wheel down while zoomed: zooms back out, still no scroll.
-    await page.mouse.wheel(0, 2000);
+    if (wheel) await page.mouse.wheel(0, 2000);
+    else await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('zoom-at', { factor: 0.1, x: 0.5, y: 0.5 }));
     await expect.poll(async () => (await picture(page)).zoom).toBe(1);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     // And plain wheel unzoomed scrolls the page as usual (passive for us).

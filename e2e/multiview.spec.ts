@@ -173,6 +173,7 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
 
 test('electronic zoom on a wall: Ctrl+wheel on a tile focuses and zooms that tile only', async ({ page }) => {
   test.setTimeout(90_000);
+  test.skip(test.info().project.name.includes('iphone'), 'Playwright has no mouse wheel in mobile WebKit');
   await open(page, 4);
   const w = wall(page);
   const tile = page.locator('[data-otter-multiview-tile="2"]');
