@@ -16,6 +16,11 @@
       "types": "./dist/canvas-pip.d.ts",
       "default": "./dist/canvas-pip.js"
     },
+    "./single-audio": {
+      "@otter-player/source": "./src/single-audio.ts",
+      "types": "./dist/single-audio.d.ts",
+      "default": "./dist/single-audio.js"
+    },
     "./multiview": {
       "@otter-player/source": "./src/multiview.ts",
       "types": "./dist/multiview.d.ts",
@@ -42,7 +47,8 @@
     "entries": {
       "canvas-pip": "src/canvas-pip.ts",
       "multiview": "src/multiview.ts",
-      "picture": "src/picture.ts"
+      "picture": "src/picture.ts",
+      "single-audio": "src/single-audio.ts"
     }
   }
 }

@@ -35,6 +35,7 @@ import { createThumbnails } from '@otter-player/overlay-thumbnails';
 import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationState } from '@otter-player/presentation';
 import { bindCanvasPip, canvasPipSupported, type CanvasPip } from '@otter-player/presentation/canvas-pip';
 import { createPicturePlugin, PICTURE_SLICE, type PictureActionMap, type PictureSliceState } from '@otter-player/presentation/picture';
+import { createSingleAudioPlugin } from '@otter-player/presentation/single-audio';
 import {
   bindActivity,
   CHROME_SLICE,
@@ -127,6 +128,7 @@ const QOE_TYPES: readonly (keyof QoeEventMap)[] = [
   'route',
   'presentation-change',
   'presentation-denied',
+  'audio-yield',
 ];
 
 type View = ReturnType<ReturnType<typeof createCore<State, Actions>>['store']['view']>;
@@ -218,6 +220,8 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
         preferDocumentPip: params.get('pip') === 'document',
         mediaSession: { metadata: { title: 'Otter Player Demo', artist: 'Otter' } },
       }),
+      // One tab of the origin plays with sound (the latest to start).
+      createSingleAudioPlugin<State, Actions>(),
     ],
   });
   await core.start();

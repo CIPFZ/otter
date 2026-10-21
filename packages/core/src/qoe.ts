@@ -84,6 +84,13 @@ export interface QoeEventMap {
     readonly to: string;
     readonly reason: string;
   };
+  /**
+   * This player muted itself because another one (another tab of the origin) started playing
+   * with sound (SPEC §15, ADR-008 §8). `to`: that player's random instance id.
+   */
+  'audio-yield': {
+    readonly to: string;
+  };
 }
 
 export type QoeEventType = keyof QoeEventMap;

@@ -377,7 +377,7 @@ stateDiagram-v2
 | 剧场模式 | 纯布局，派发事件让宿主改容器尺寸 | 播放器不改页面布局 |
 | 后台 | `visibilitychange` + `MediaSession` | 后台停弹幕和 GPU 渲染，音频继续；MMS `endstreaming` 要停取流 |
 | 多宫格 | 多实例共享一个 `GPUSurface` 分视口或各自独立 | 共享 Worker 解码池，限路数，焦点一路出声，双击局部全屏 |
-| 外部窗口 / 多标签 | `BroadcastChannel` 同步，同账号单实例出声 | |
+| 外部窗口 / 多标签 | `BroadcastChannel` 同步，同账号单实例出声 | 后开始有声播放的实例让其他实例静音（不暂停），暂停或关闭后不自动恢复别的标签；见 ADR-008 §8 |
 | 投屏 | Remote Playback API / AirPlay `webkitShowPlaybackTargetPicker` / Cast SDK | iPhone MMS 必须有 AirPlay 备用源，与引擎层协同 |
 | 常亮 | `navigator.wakeLock.request('screen')` | 全屏与播放中申请，暂停释放 |
 | 系统媒体控件 | `navigator.mediaSession` 元数据、封面、上下首、seek 处理器 | 锁屏与耳机按键 |
