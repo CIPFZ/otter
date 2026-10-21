@@ -280,8 +280,11 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
           ...(video?.codec === undefined ? {} : { codec: video.codec }),
         });
       }),
-      on('route-detail', ({ reason }) => {
-        router.annotate({ candidate: stepLabel(decision.step), outcome: 'selected', reason });
+      on('route-detail', ({ reason, candidate, outcome }) => {
+        const label = candidate ?? stepLabel(decision.step);
+        const switched = outcome === 'selected' && candidate !== undefined && candidate !== state().backend;
+        router.annotate({ candidate: label, outcome: outcome ?? 'selected', reason }, switched ? label : undefined);
+        if (switched) set({ backend: label });
         publishRoute(router.explain());
       }),
       on('remote-playback', ({ mms, remotePlayback, reason }) => {

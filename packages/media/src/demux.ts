@@ -34,8 +34,32 @@ export interface DemuxInfo {
   readonly duration: number;
   /** Timestamp of the first packet; media time 0 starts here. */
   readonly startTime: number;
+  /** The video track to start with (the primary one). */
   readonly video: DemuxVideoTrack | null;
   readonly audio: DemuxAudioTrack | null;
+  /**
+   * Every video rendition the source offers (HLS variants), `video` among them; switchable with
+   * `Demuxer.openVideo`. Absent or one entry: no quality choice.
+   */
+  readonly videoTracks?: readonly DemuxVideoTrack[];
+  /** Typical segment length (HLS target duration), for ABR; absent for files. */
+  readonly segmentDuration?: number;
+}
+
+/** A packet stream positioned on a keyframe. */
+export interface PositionedStream {
+  /** Timestamp (s) of the keyframe the stream starts with. */
+  readonly start: number;
+  readonly packets: PacketStream;
+}
+
+/** One finished download of media data, for bandwidth estimation (ABR). */
+export interface DemuxDownload {
+  readonly bytes: number;
+  /** Transfer time in milliseconds (request to last byte). */
+  readonly ms: number;
+  /** Time to first byte in milliseconds. */
+  readonly ttfbMs?: number;
 }
 
 /** Encoded packets of one track, in decode order. EOS is the end of the iterator. */

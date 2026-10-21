@@ -42,8 +42,11 @@ export interface Router {
   select(source: Source, caps: Capabilities, policy?: RoutePolicy): RouteDecision;
   /** Next decision after `failed` failed for `reason`; null when the chain is exhausted. */
   fallback(failed: RouteDecision, reason: string): RouteDecision | null;
-  /** Appends a detail to the latest explanation (e.g. backend-mse MMS / AirPlay handling). */
-  annotate(step: RouteStep): void;
+  /**
+   * Appends a detail to the latest explanation (e.g. backend-mse MMS / AirPlay handling); with
+   * `backend`, the explanation's backend label changes too (runtime fallback inside a backend).
+   */
+  annotate(step: RouteStep, backend?: string): void;
   /** Explanation of the latest decision, also emitted as the `route` QoE event. */
   explain(): RouteExplanation | null;
 }
@@ -182,8 +185,8 @@ export function createRouter(options: RouterOptions): Router {
       return { format: failed.format, step: next, remaining: rest, explanation };
     },
 
-    annotate(step) {
-      if (last !== null) last = { ...last, steps: [...last.steps, step] };
+    annotate(step, backend) {
+      if (last !== null) last = { ...last, ...(backend === undefined ? {} : { backend }), steps: [...last.steps, step] };
     },
 
     explain: () => last,

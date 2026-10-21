@@ -5,7 +5,7 @@ import type { OtterError, QoeHook, Unsubscribe } from '@otter-player/core';
 import type { BackendKind } from './backend.js';
 import type { Capabilities } from './capabilities.js';
 import type { CmcdDecorator } from './cmcd.js';
-import type { DemuxInfo, PacketStream } from './demux.js';
+import type { DemuxDownload, DemuxInfo, PacketStream, PositionedStream } from './demux.js';
 import type { LoadOptions, Source } from './source.js';
 import type { ThumbnailProvider } from './thumbnails.js';
 import type { InbandCues, TrackList } from './tracks.js';
@@ -79,6 +79,14 @@ export interface Demuxer {
   packets(track: 'video' | 'audio'): PacketStream;
   /** Packets from the last keyframe at or before `time`, in decode order. */
   seek(track: 'video' | 'audio', time: number): Promise<PacketStream>;
+  /**
+   * Packets of video rendition `id` (one of `info.videoTracks`) from its keyframe at or before
+   * `time` (`edge: 'before'`) or at or after it (`'after'`, for a seamless quality switch);
+   * null when there is none.
+   */
+  openVideo?(id: number, time: number, edge: 'before' | 'after'): Promise<PositionedStream | null>;
+  /** Media downloads as they finish (URL sources), for ABR. */
+  onDownload?(h: (d: DemuxDownload) => void): Unsubscribe;
   destroy(): void;
 }
 

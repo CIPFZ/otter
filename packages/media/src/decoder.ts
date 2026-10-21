@@ -30,6 +30,8 @@ export interface DecoderConfig {
   readonly error: (error: OtterError) => void;
   /** The decoder waits for a slot (shared decode pool full) and will start later; why. */
   readonly queued?: (reason: string) => void;
+  /** A decoder that was queued got its slot. */
+  readonly started?: () => void;
 }
 
 export interface DecoderInstance {

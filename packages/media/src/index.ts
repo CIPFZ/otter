@@ -27,7 +27,7 @@ export type {
   CmcdState,
 } from './cmcd.js';
 export type { Decoder, DecoderConfig, DecoderInstance, EncodedChunk } from './decoder.js';
-export type { DemuxAudioTrack, DemuxInfo, DemuxTrack, DemuxVideoTrack, DecodeSetup, PacketStream } from './demux.js';
+export type { DemuxAudioTrack, DemuxDownload, DemuxInfo, DemuxTrack, DemuxVideoTrack, DecodeSetup, PacketStream, PositionedStream } from './demux.js';
 export { closeFrame, frameTransferables, i420Size, isI420, type DecodedFrame, type FrameSink, type I420Frame } from './frames.js';
 export {
   bufferedEndAt,

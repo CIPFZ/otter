@@ -100,7 +100,7 @@ let hostUrl: string | undefined;
 const workerUrl = (): string => (hostUrl ??= URL.createObjectURL(new Blob([`(${host.toString()})();`], { type: 'text/javascript' })));
 
 const configOnly = (c: DecoderConfig): Record<string, unknown> => {
-  const { output: _o, error: _e, queued: _q, ...rest } = c;
+  const { output: _o, error: _e, queued: _q, started: _s, ...rest } = c;
   return rest;
 };
 
@@ -206,6 +206,7 @@ export function createDecodePool(options: DecodePoolOptions = {}): DecodePool {
     if (next !== undefined && !destroyed) {
       start(next);
       next.options.started?.();
+      next.config.started?.();
     }
   };
 
