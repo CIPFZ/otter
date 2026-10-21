@@ -272,4 +272,35 @@ describe('backend-webcodecs', () => {
     expect(state['waiting']).not.toBe(true);
     backend.destroy();
   }, 15_000);
+
+  it('background: no video decoding while hidden, the clock goes on; back in view, video restarts at the clock', async () => {
+    const setVisibility = (v: 'hidden' | 'visible'): void => {
+      Object.defineProperty(document, 'visibilityState', { value: v, configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    };
+    try {
+      const { backend, fed, drawn, state } = setup();
+      await backend.load({ src: new Blob() }, { startTime: 1 });
+      await backend.play();
+      await new Promise((r) => setTimeout(r, 300));
+      setVisibility('hidden');
+      await new Promise((r) => setTimeout(r, 100));
+      const fedAtHide = fed.length;
+      const drawnAtHide = drawn.length;
+      await new Promise((r) => setTimeout(r, 1500));
+      // Nothing decoded or drawn in the background (a few packets already read ahead may go in).
+      expect(fed.length - fedAtHide).toBeLessThan(15);
+      expect(drawn.length).toBe(drawnAtHide);
+      // The clock went on.
+      expect(state['currentTime'] as number).toBeGreaterThan(2.5);
+      setVisibility('visible');
+      // Video catches up at once: the next picture is near the clock, not where it stopped.
+      await vi.waitFor(() => expect(drawn.length).toBeGreaterThan(drawnAtHide));
+      const first = drawn[drawnAtHide] as number;
+      expect(first / FPS).toBeGreaterThan((state['currentTime'] as number) - 0.3);
+      backend.destroy();
+    } finally {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    }
+  }, 10_000);
 });

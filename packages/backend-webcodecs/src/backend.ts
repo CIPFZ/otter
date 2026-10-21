@@ -197,8 +197,10 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     if (changed.paused !== undefined) setPlaying(audioCtx, owner, !changed.paused);
   };
 
-  // Decoding state. `gen` changes on every seek; work of an older generation stops.
+  // Decoding state. `gen` changes on every seek; work of an older generation stops. `vgen` is the
+  // video's: it also changes when only the video restarts (back from the background).
   let gen = 0;
+  let vgen = 0;
   const queue: DecodedFrame[] = [];
   /** Video lanes in play order: the current one last; earlier ones finish up to its start. */
   let lanes: Lane[] = [];
@@ -222,6 +224,13 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   let loaded: { resolve: () => void; reject: (e: unknown) => void } | undefined;
   /** Runtime fallback in progress or done (only once, then errors go to the session). */
   let fellBack = false;
+  /**
+   * Background (page hidden, ADR-008 §8): no video decoding (nothing would be drawn: animation
+   * frames stop), audio and the clock go on. Back in view, video restarts at the clock.
+   */
+  let background = false;
+  /** After a video restart: frames before this (µs) are not shown or counted. */
+  let discardBeforeUs = Number.NEGATIVE_INFINITY;
   // Playing on performance.now() instead of the AudioContext (QoE once, after PERF_REPORT_MS).
   let sourceReason = '';
   let perfSince: number | undefined;
@@ -275,8 +284,14 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   };
 
   const onVideoFrame = (lane: Lane, g: number, frame: DecodedFrame): void => {
-    if (destroyed || g !== gen) return closeFrame(frame);
+    if (destroyed || g !== vgen) return closeFrame(frame);
     lane.outputs++;
+    if (seek === undefined && frameTime(frame) < discardBeforeUs) {
+      // Decoded from the keyframe before the clock on a video restart: not shown, not dropped.
+      lane.pendingSince = lane.decoder.decodeQueueSize > 0 ? performance.now() : undefined;
+      signal.notify();
+      return closeFrame(frame);
+    }
     // Progress: the stall timer restarts while packets are still in the decoder.
     lane.pendingSince = lane.decoder.decodeQueueSize > 0 ? performance.now() : undefined;
     signal.notify();
@@ -340,7 +355,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   /** Reads a lane's packets ahead of the clock, and feeds its decoder; ends with flush + close. */
   const runLane = async (lane: Lane, stream: PacketStream, g: number): Promise<void> => {
     const it = stream[Symbol.asyncIterator]();
-    const live = (): boolean => g === gen && !destroyed && !lane.done;
+    const live = (): boolean => g === vgen && !destroyed && !lane.done;
     const reader = (async () => {
       try {
         for (;;) {
@@ -365,7 +380,9 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       for (;;) {
         // Bounded by what waits in the decoder and the queue, also while seeking (frames before
         // the target are dropped as they come, so the decoder's queue is what limits a seek).
-        while (live() && (lane.packets.length === 0 ? !lane.readDone : decodedAhead() >= VIDEO_AHEAD)) await signal.wait();
+        // In the background only a seek decodes (its frame must exist when the page comes back).
+        const idle = (): boolean => background && seek === undefined;
+        while (live() && (idle() || (lane.packets.length === 0 ? !lane.readDone : decodedAhead() >= VIDEO_AHEAD))) await signal.wait(idle() ? 250 : 20);
         if (!live()) return;
         const chunk = lane.packets.shift();
         if (chunk === undefined) break;
@@ -381,7 +398,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       await reader;
       // Frames still held for reordering come out on flush.
       await lane.decoder.flush().catch(() => undefined);
-      if (g !== gen || destroyed) return;
+      if (g !== vgen || destroyed) return;
       lane.done = true;
       lane.pendingSince = undefined;
       // A lane that handed over to the next one is not needed any more.
@@ -478,6 +495,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     if (demuxer === undefined || info === undefined) return;
     const d = demuxer;
     const g = ++gen;
+    const vg = ++vgen;
+    discardBeforeUs = Number.NEGATIVE_INFINITY;
     signal.notify();
     if (seek !== undefined) closeFrame(seek.candidate);
     for (const f of queue.splice(0)) closeFrame(f);
@@ -499,7 +518,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     if (track !== undefined) {
       void openVideoAt(d, track, target).then(
         (s) => {
-          if (g === gen) openLane(track, s, g, reuse);
+          if (vg === vgen) openLane(track, s, vg, reuse);
           else reuse?.decoder.close();
         },
         (e: unknown) => fail(fatal('mux', 'demuxFailed', String(e), e)),
@@ -509,6 +528,59 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     }
     if (audio !== undefined) void d.seek('audio', target).then((s) => (g === gen ? pumpAudio(s, g) : undefined), (e: unknown) => fail(fatal('mux', 'demuxFailed', String(e), e)));
   };
+
+  /**
+   * Video alone restarts at the clock (back from the background): from the keyframe before it,
+   * frames before the clock decoded but not shown; audio and the clock are not touched.
+   */
+  const resyncVideo = (): void => {
+    const d = demuxer;
+    const track = current;
+    if (d === undefined || track === undefined || clock === undefined || seek !== undefined) return;
+    const t = clock.now();
+    // Paused and nothing missed: decoding just carries on from where it stopped.
+    if (!clock.playing && !snap.waiting && lanes.length > 0) return;
+    const vg = ++vgen;
+    for (const f of queue.splice(0)) closeFrame(f);
+    const last = lanes.at(-1);
+    const reuse = last !== undefined && last.track === track && last.plugin === videoPlugin ? last : undefined;
+    closeLanes(reuse);
+    switching = false;
+    discardBeforeUs = Math.round(t * 1e6) - Math.round(1e6 / (track.frameRate ?? 30));
+    void openVideoAt(d, track, t).then(
+      (s) => {
+        if (vg === vgen) openLane(track, s, vg, reuse);
+        else reuse?.decoder.close();
+      },
+      (e: unknown) => fail(fatal('mux', 'demuxFailed', String(e), e)),
+    );
+  };
+
+  const onVisibility = (): void => {
+    const hidden = typeof document === 'object' && document.visibilityState === 'hidden';
+    if (hidden === background) return;
+    background = hidden;
+    signal.notify();
+    if (hidden) {
+      // Playing: decoded pictures would be stale on return, release them now (GPU memory).
+      // Paused: they are the next ones to show, kept.
+      if (seek === undefined && clock?.playing === true) for (const f of queue.splice(0)) closeFrame(f);
+      // A slow timer keeps time, audio and `ended` going while animation frames stop.
+      backgroundTimer = setInterval(() => {
+        if (cancelTick !== undefined) {
+          cancelTick();
+          cancelTick = undefined;
+        }
+        tick();
+      }, 250);
+    } else {
+      if (backgroundTimer !== undefined) clearInterval(backgroundTimer);
+      backgroundTimer = undefined;
+      if (cancelTick === undefined && !destroyed && clock !== undefined) cancelTick = schedule(tick);
+      resyncVideo();
+    }
+  };
+  let backgroundTimer: ReturnType<typeof setInterval> | undefined;
 
   const trackList = (): TrackList => ({
     video: levels.map(
@@ -540,13 +612,13 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     const from = lanes.at(-1);
     if (d?.openVideo === undefined || next === current || switching || seek !== undefined || from === undefined || clock === undefined) return;
     switching = true;
-    const g = gen;
+    const g = vgen;
     try {
       // At least SWITCH_LEAD_S ahead of the clock: the new rendition's first segment has to be
       // downloaded and decoded from its keyframe before the old lane runs out there.
       const after = Math.max((soon ? from.fedTo : from.readTo) / 1e6, clock.now() + SWITCH_LEAD_S);
       const pos = await d.openVideo(next.id, after, 'after');
-      if (g !== gen || destroyed || pos === null) return;
+      if (g !== vgen || destroyed || pos === null) return;
       // Packets of the old rendition from the switch point on are not needed.
       from.stopAt = Math.round(pos.start * 1e6);
       const keep = from.packets.filter((p) => p.timestamp < from.stopAt);
@@ -560,7 +632,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       bus.emit('quality-change', { id: String(next.id), auto: autoQuality, reason: `${reason}, from ${pos.start.toFixed(3)} s` });
       driver?.applied(levels.indexOf(next), levels.map((l) => ({ id: String(l.id), bitrate: l.bitrate ?? 0, width: l.width, height: l.height })));
     } catch (err) {
-      if (g === gen) fail(isOtterError(err) ? err : fatal('mux', 'demuxFailed', String(err), err));
+      if (g === vgen) fail(isOtterError(err) ? err : fatal('mux', 'demuxFailed', String(err), err));
     } finally {
       switching = false;
     }
@@ -591,7 +663,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
    * a second failure goes to the session (next step of the route).
    */
   const onVideoError = (lane: Lane, g: number, err: OtterError): void => {
-    if (destroyed || g !== gen || lane.done) return;
+    if (destroyed || g !== vgen || lane.done) return;
     const at = clock?.now() ?? snap.currentTime;
     const wasm = (ctx.decoders ?? []).find((d) => d.id.startsWith('wasm'));
     const codec = lane.track.codec;
@@ -600,7 +672,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     fellBack = true;
     const resume = clock?.playing === true || snap.waiting;
     void wasm.supports(codec, ctx.caps).then((support) => {
-      if (destroyed || g !== gen) return;
+      if (destroyed || g !== vgen) return;
       if (support === false) return fail(err);
       videoPlugin = wasm;
       bus.emit('route-detail', { candidate: 'webcodecs', outcome: 'failed', reason: `${err.details} at ${at.toFixed(3)} s (runtime)` });
@@ -625,7 +697,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       if (now - lane.pendingSince > STALL_MS) {
         const stalled = createError({ type: 'media', details: 'decoderStalled', fatal: true, recoverable: true, message: `no frame for ${STALL_MS} ms with packets in the decoder` });
         lane.pendingSince = undefined;
-        onVideoError(lane, gen, stalled);
+        onVideoError(lane, vgen, stalled);
         return;
       }
     }
@@ -651,8 +723,9 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     const t = clock.now();
     if (seek === undefined) {
       // The latest frame at or before the clock; the ones before it were skipped (dropped).
+      // Nothing is drawn in the background (the queue was released on hiding).
       let latest: DecodedFrame | undefined;
-      while (queue.length > 0 && frameTime(queue[0] as DecodedFrame) <= t * 1e6 + EPS_US) {
+      while (!background && queue.length > 0 && frameTime(queue[0] as DecodedFrame) <= t * 1e6 + EPS_US) {
         if (latest !== undefined) {
           closeFrame(latest);
           dropped++;
@@ -665,7 +738,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         signal.notify();
       }
       const frameUs = 1e6 / (current?.frameRate ?? 30);
-      if (playing && current !== undefined && !videoEos() && queue.length === 0 && t * 1e6 > shownAt + 2 * frameUs) {
+      if (playing && !background && current !== undefined && !videoEos() && queue.length === 0 && t * 1e6 > Math.max(shownAt, discardBeforeUs) + 2 * frameUs) {
         // Ran dry: hold the clock until a few frames are decoded.
         clock.stop();
         update({ waiting: true, currentTime: clock.now() });
@@ -674,7 +747,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         clock.start();
         update({ waiting: false });
       }
-      if ((playing || snap.waiting) && videoEos() && audioEos && queue.length === 0 && t >= info.duration - 1e-3) {
+      if ((playing || snap.waiting) && (background || videoEos()) && audioEos && queue.length === 0 && t >= info.duration - 1e-3) {
         clock.stop();
         clock.set(info.duration);
         update({ currentTime: info.duration, paused: true, ended: true, waiting: false });
@@ -686,9 +759,10 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         update({ currentTime: Math.min(t, info.duration) });
         if (dropped > 0) bus.emit('dropped-frames', { dropped, total });
       }
-      if (playing) abrStep();
+      if (playing && !background) abrStep();
     }
-    cancelTick = schedule(tick);
+    // In the background the interval drives the ticks (animation frames do not run).
+    if (!background) cancelTick = schedule(tick);
   };
 
   const pickDecoder = (kind: 'video' | 'audio'): Decoder | undefined => {
@@ -789,6 +863,10 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       bus.emit('buffered-change', { buffered });
       update({ duration: info.duration, bufferedEnd: info.duration, videoWidth: current?.width ?? 0, videoHeight: current?.height ?? 0, readyState: 1 });
       cancelTick = schedule(tick);
+      if (typeof document === 'object') {
+        document.addEventListener('visibilitychange', onVisibility);
+        onVisibility();
+      }
       // Resolves once the first picture is on the surface.
       const first = new Promise<void>((resolve, reject) => {
         loaded = { resolve, reject };
@@ -864,9 +942,12 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       if (destroyed) return;
       destroyed = true;
       gen++;
+      vgen++;
       abort.abort();
       signal.notify();
       cancelTick?.();
+      if (backgroundTimer !== undefined) clearInterval(backgroundTimer);
+      if (typeof document === 'object') document.removeEventListener('visibilitychange', onVisibility);
       loaded?.reject(fatal('other', 'destroyed', 'backend destroyed during load'));
       loaded = undefined;
       if (seek !== undefined) closeFrame(seek.candidate);
