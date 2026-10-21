@@ -68,6 +68,8 @@ const PERF_REPORT_MS = 1000;
 const STALL_MS = 3000;
 /** How often automatic quality is reconsidered (and not within this after a switch). */
 const ABR_INTERVAL_MS = 1000;
+/** A quality switch takes effect no sooner than this far (s) ahead of the clock. */
+const SWITCH_LEAD_S = 1;
 /** Segment length assumed for ABR when the source does not say. */
 const DEFAULT_SEGMENT_S = 4;
 
@@ -540,7 +542,9 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     switching = true;
     const g = gen;
     try {
-      const after = Math.max((soon ? from.fedTo : from.readTo) / 1e6, clock.now());
+      // At least SWITCH_LEAD_S ahead of the clock: the new rendition's first segment has to be
+      // downloaded and decoded from its keyframe before the old lane runs out there.
+      const after = Math.max((soon ? from.fedTo : from.readTo) / 1e6, clock.now() + SWITCH_LEAD_S);
       const pos = await d.openVideo(next.id, after, 'after');
       if (g !== gen || destroyed || pos === null) return;
       // Packets of the old rendition from the switch point on are not needed.
