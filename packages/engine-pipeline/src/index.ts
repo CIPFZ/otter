@@ -254,6 +254,12 @@ export function createPipelineEngine(ctx: EngineContext, options: PipelineEngine
       const pump = async (): Promise<void> => {
         try {
           for (;;) {
+            // ManagedMediaSource does not want data (page in the background, buffer full): stop
+            // reading the stream until it does (backpressure; live catches up afterwards).
+            if (!s.streaming) {
+              await s.whenStreaming();
+              if (destroyed) return;
+            }
             const { done, value } = await reader.read();
             if (destroyed) return;
             if (done) break;

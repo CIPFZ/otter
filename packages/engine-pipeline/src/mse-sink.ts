@@ -32,6 +32,14 @@ export interface MseSink {
   clear(): Promise<void>;
   endOfStream(): void;
   readonly types: readonly string[];
+  /**
+   * Whether the browser wants more media: always with MediaSource; with ManagedMediaSource,
+   * between its `startstreaming` and `endstreaming` (it stops wanting data while the page is in the
+   * background or the buffer is full). Engines stop fetching while false.
+   */
+  readonly streaming: boolean;
+  /** Resolves when `streaming` is true (at once if it is). */
+  whenStreaming(): Promise<void>;
   /** Buffered ranges of one SourceBuffer (the element's are the intersection of all). */
   buffered(type: 'audio' | 'video'): [number, number][];
   destroy(): void;
@@ -56,6 +64,22 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
     if (ms.readyState === 'open') resolve();
     else ms.addEventListener('sourceopen', () => resolve(), { once: true });
   });
+
+  // ManagedMediaSource streaming hints (WebKit): start true, like hls.js; the browser says when.
+  const managed = 'streaming' in ms;
+  let streaming = managed ? (ms as MediaSource & { streaming?: boolean }).streaming !== false : true;
+  let wakers: (() => void)[] = [];
+  if (managed) {
+    ms.addEventListener('startstreaming', () => {
+      streaming = true;
+      const w = wakers;
+      wakers = [];
+      for (const r of w) r();
+    });
+    ms.addEventListener('endstreaming', () => {
+      streaming = false;
+    });
+  }
 
   const next = (q: Queue): void => {
     if (q.busy || destroyed) return;
@@ -124,6 +148,10 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
     get types() {
       return [...queues.keys()];
     },
+    get streaming() {
+      return streaming;
+    },
+    whenStreaming: () => (streaming || destroyed ? Promise.resolve() : new Promise<void>((r) => wakers.push(r))),
     buffered: (type) => {
       const q = queues.get(type);
       return q === undefined ? [] : ranges(q.sb);
@@ -200,6 +228,7 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
     },
     destroy() {
       destroyed = true;
+      for (const r of wakers.splice(0)) r();
       for (const q of queues.values()) for (const op of q.ops.splice(0)) op.fail(new Error('sink destroyed'));
       URL.revokeObjectURL(url);
     },

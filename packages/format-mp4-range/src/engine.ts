@@ -279,6 +279,11 @@ export function createMp4RangeEngine(ctx: EngineContext, options: Mp4RangeEngine
     pumping = true;
     try {
       while (!destroyed) {
+        // ManagedMediaSource does not want data (background, buffer full): no Range requests.
+        if (sink !== undefined && !sink.streaming) {
+          await sink.whenStreaming();
+          continue;
+        }
         const ahead = bufferedEnd(media.buffered, media.currentTime) - media.currentTime;
         // Enough ahead, or the file is done (a seek or switch resets `ended`): check again soon.
         if (ahead > maxAhead || ended || !(await step(epoch))) await new Promise((r) => setTimeout(r, 250));
