@@ -15,6 +15,8 @@ import { computeContentRect, createElementFilter, IDENTITY_TRANSFORM, type Pictu
 export interface FrameSurface extends Surface {
   readonly kind: 'gpu' | 'canvas2d';
   readonly element: HTMLCanvasElement;
+  /** The picture as drawn (zoom and pan applied); `contentRect` stays the fitted picture. */
+  readonly drawnRect: DOMRectReadOnly;
   draw(frame: SurfaceFrame): void;
   /** Back to black (no picture). */
   clear(): void;
@@ -75,7 +77,10 @@ function createViewState(canvas: HTMLCanvasElement, regionOf: () => Region) {
   let transform: SurfaceTransform = IDENTITY_TRANSFORM;
   let filters: SurfaceFilters = NEUTRAL_FILTERS;
   let picture: { width: number; height: number } = { width: 0, height: 0 };
+  /** Fitted rect (zoom 1): what overlays align to and contentRect reports. */
   let rect: PictureRect = { x: 0, y: 0, width: 0, height: 0 };
+  /** The picture as drawn (zoom / pan / viewport applied). */
+  let drawn: PictureRect = { x: 0, y: 0, width: 0, height: 0 };
   /** Region in CSS pixels of the canvas box. */
   const regionCss = (): PictureRect => {
     const r = regionOf();
@@ -83,7 +88,12 @@ function createViewState(canvas: HTMLCanvasElement, regionOf: () => Region) {
   };
   const update = (): void => {
     const box = regionCss();
-    const c = computeContentRect({ width: box.width, height: box.height }, picture, fit, transform);
+    const size = { width: box.width, height: box.height };
+    // Overlays never zoom with the picture (text stays its size); the drawn rect does.
+    const f = computeContentRect(size, picture, fit, { rotate: transform.rotate, mirror: transform.mirror, zoom: 1, pan: [0, 0] });
+    const d = computeContentRect(size, picture, fit, transform);
+    drawn = { x: box.x + d.x, y: box.y + d.y, width: d.width, height: d.height };
+    const c = f;
     const next = { x: box.x + c.x, y: box.y + c.y, width: c.width, height: c.height };
     if (next.x !== rect.x || next.y !== rect.y || next.width !== rect.width || next.height !== rect.height) {
       rect = next;
@@ -114,6 +124,9 @@ function createViewState(canvas: HTMLCanvasElement, regionOf: () => Region) {
     },
     get rect() {
       return rect;
+    },
+    get drawn() {
+      return drawn;
     },
     regionCss,
     setPicture(size: { width: number; height: number }) {
@@ -342,7 +355,7 @@ export function createGPUGrid(canvas: HTMLCanvasElement, options: GPUGridOptions
         renderer.upload(v.id, v.pending);
         v.pending = undefined;
       }
-      draws.set(v.id, { region: devicePx(canvas, v.state.regionCss(), target), content: devicePx(canvas, v.state.rect, target), transform: v.state.transform, filters: v.state.filters });
+      draws.set(v.id, { region: devicePx(canvas, v.state.regionCss(), target), content: devicePx(canvas, v.state.drawn, target), transform: v.state.transform, filters: v.state.filters });
     }
     renderer.render(target.width, target.height, draws);
   };
@@ -405,6 +418,9 @@ export function createGPUGrid(canvas: HTMLCanvasElement, options: GPUGridOptions
         get contentRect() {
           return toDomRect(state.rect);
         },
+        get drawnRect() {
+          return toDomRect(state.drawn);
+        },
         setRegion(r: Region) {
           region = r;
           state.update();
@@ -440,7 +456,7 @@ export function createGPUGrid(canvas: HTMLCanvasElement, options: GPUGridOptions
           state.setPicture({ width: 0, height: 0 });
           request();
         },
-        snapshot: (opts: SnapshotOptions = {}) => renderer.snapshot(devicePx(canvas, state.rect, target), opts),
+        snapshot: (opts: SnapshotOptions = {}) => renderer.snapshot(devicePx(canvas, state.drawn, target), opts),
         onContentRectChange: (h: (r: DOMRectReadOnly) => void): Unsubscribe => state.bus.on('rect', (r) => h(r)),
         destroy() {
           destroyView(view);
@@ -503,7 +519,7 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (last === undefined) return;
-    const c = devicePx(canvas, state.rect);
+    const c = devicePx(canvas, state.drawn);
     const t = state.transform;
     const turned = t.rotate === 90 || t.rotate === 270;
     const [w, h] = turned ? [c.height, c.width] : [c.width, c.height];
@@ -533,6 +549,9 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
     get contentRect() {
       return toDomRect(state.rect);
     },
+    get drawnRect() {
+      return toDomRect(state.drawn);
+    },
     setFit(f) {
       state.fit = f;
       request();
@@ -560,7 +579,7 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
       state.setPicture({ width: 0, height: 0 });
       request();
     },
-    snapshot: (opts = {}) => snapshotRegion(canvas, state.rect, render, opts),
+    snapshot: (opts = {}) => snapshotRegion(canvas, state.drawn, render, opts),
     onContentRectChange: (h) => state.bus.on('rect', (r) => h(r)),
     destroy() {
       destroyed = true;

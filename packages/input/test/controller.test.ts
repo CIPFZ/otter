@@ -3,16 +3,17 @@ import { describe, expect, it } from 'vitest';
 import { createCore } from '@otter-player/core';
 import { createInputController, DEFAULT_GESTURES, DEFAULT_HOTKEYS, type InputAction, type InputActionMap } from '@otter-player/input';
 
-async function setup(over: { modal?: boolean; timings?: { doubleMs?: number; longPressMs?: number } } = {}) {
+async function setup(over: { modal?: boolean; timings?: { doubleMs?: number; longPressMs?: number }; zoomed?: () => boolean } = {}) {
   const core = createCore<object, InputActionMap>();
   const actions: [string, unknown][] = [];
   const controller = createInputController({
     store: core.store.view(),
     modal: () => over.modal ?? false,
     ...(over.timings === undefined ? {} : { timings: over.timings }),
+    ...(over.zoomed === undefined ? {} : { zoomed: over.zoomed }),
   });
   // Record every default-mapped action by registering handlers.
-  const types = new Set([...Object.values(DEFAULT_HOTKEYS), ...Object.values(DEFAULT_GESTURES)].map((a) => a.type));
+  const types = new Set([...Object.values(DEFAULT_HOTKEYS), ...Object.values(DEFAULT_GESTURES)].map((a) => a.type).concat(['zoom-at', 'pan-by']));
   for (const type of types) core.store.handle(type, (payload) => void actions.push([type, payload]));
   const root = document.createElement('div');
   root.tabIndex = -1;
@@ -168,13 +169,61 @@ describe('InputController pointer (SPEC §14.3)', () => {
     expect(actions.at(-1)).toEqual(['seek-preview', { seconds: 50, commit: true }]);
   });
 
-  it('pinch reports the scale relative to the start distance', async () => {
+  it('pinch zooms the picture (zoom-at) by a factor relative to the previous distance', async () => {
     const { actions, root } = await setup();
     ptr(root, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 100 });
     ptr(root, 'pointerdown', { pointerId: 2, clientX: 200, clientY: 100, isPrimary: false });
     ptr(root, 'pointermove', { pointerId: 2, clientX: 300, clientY: 100, isPrimary: false });
-    expect(actions.at(-1)?.[0]).toBe('zoom');
-    expect((actions.at(-1)?.[1] as { scale: number }).scale).toBeCloseTo(2);
+    expect(actions.at(-1)?.[0]).toBe('zoom-at');
+    const a = actions.at(-1)?.[1] as { factor: number; x: number; y: number };
+    expect(a.factor).toBeCloseTo(2);
+    expect([a.x, a.y]).toEqual([0.5, 0.5]);
+    // The next move is relative to the distance just measured (200 px), not to the start: 250 is 1.25.
+    ptr(root, 'pointermove', { pointerId: 2, clientX: 350, clientY: 100, isPrimary: false });
+    expect((actions.at(-1)?.[1] as { factor: number }).factor).toBeCloseTo(1.25);
+  });
+
+  it('zoomed: a drag pans the picture, and the click that ends a mouse drag is not a gesture', async () => {
+    let zoomed = true;
+    const { actions, root } = await setup({ zoomed: () => zoomed });
+    rect(root, 400, 200);
+    ptr(root, 'pointerdown', { pointerId: 1, clientX: 100, clientY: 100, pointerType: 'mouse', button: 0 });
+    ptr(root, 'pointermove', { pointerId: 1, clientX: 120, clientY: 100, pointerType: 'mouse' });
+    ptr(root, 'pointermove', { pointerId: 1, clientX: 140, clientY: 110, pointerType: 'mouse' });
+    ptr(root, 'pointerup', { pointerId: 1, clientX: 140, clientY: 110, pointerType: 'mouse' });
+    root.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(actions).toEqual([['pan-by', { dx: 0.05, dy: 0.05 }]]);
+    // Not zoomed: the same movement is a click (mouse moves are no swipes).
+    zoomed = false;
+    actions.length = 0;
+    ptr(root, 'pointerdown', { pointerId: 2, clientX: 100, clientY: 100, pointerType: 'mouse', button: 0 });
+    ptr(root, 'pointermove', { pointerId: 2, clientX: 140, clientY: 110, pointerType: 'mouse' });
+    ptr(root, 'pointerup', { pointerId: 2, clientX: 140, clientY: 110, pointerType: 'mouse' });
+    root.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(actions).toEqual([['toggle-paused', {}]]);
+  });
+
+  it('Ctrl + wheel zooms at the pointer; a plain wheel only when zoomed (else the page scrolls)', async () => {
+    let zoomed = false;
+    const { actions, root } = await setup({ zoomed: () => zoomed });
+    rect(root, 400, 200);
+    const wheel = (init: WheelEventInit): boolean => {
+      const e = new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 100, clientY: 50, ...init });
+      // happy-dom drops the modifier flags of WheelEventInit; browsers keep them.
+      if (init.ctrlKey === true) Object.defineProperty(e, 'ctrlKey', { value: true });
+      for (const k of ['clientX', 'clientY'] as const) Object.defineProperty(e, k, { value: init[k] ?? (k === 'clientX' ? 100 : 50) });
+      return root.dispatchEvent(e);
+    };
+    expect(wheel({ deltaY: -100 })).toBe(true);
+    expect(actions).toEqual([]);
+    expect(wheel({ deltaY: -100, ctrlKey: true })).toBe(false);
+    const a = actions.at(-1) as [string, { factor: number; x: number; y: number }];
+    expect(a[0]).toBe('zoom-at');
+    expect(a[1].factor).toBeGreaterThan(1);
+    expect([a[1].x, a[1].y]).toEqual([0.25, 0.25]);
+    zoomed = true;
+    expect(wheel({ deltaY: 100 })).toBe(false);
+    expect((actions.at(-1) as [string, { factor: number }])[1].factor).toBeLessThan(1);
   });
 
   it('mouse click and double-click; taps on chrome are not gestures', async () => {

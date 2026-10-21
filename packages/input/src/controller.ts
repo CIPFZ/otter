@@ -41,6 +41,15 @@ const onPath = (e: Event, root: Element, selector: string): boolean => {
   return false;
 };
 
+/**
+ * Controls that are also a picture (multi-view tiles): taps and clicks belong to them, but wheel,
+ * pinch and drag still zoom and pan the picture.
+ */
+const PICTURE_CONTROL = '[data-otter-picture-gestures]';
+
+/** Payload fields a continuous gesture scales by its magnitude (pinch factor, drag fractions). */
+const MAGNITUDE = new Set(['seconds', 'delta', 'scale', 'factor', 'dx', 'dy']);
+
 /** `KeyboardEvent.key` -> hotkey lookup key: single letters lower-case. */
 const keyOf = (e: KeyboardEvent): string => (e.key.length === 1 ? e.key.toLowerCase() : e.key);
 
@@ -70,6 +79,8 @@ export interface AttachOptions<S extends object> {
   readonly store: StoreView<S, InputActionMap>;
   readonly hotkeys: () => HotkeyMap;
   readonly gestures: () => GestureMap;
+  /** Whether the picture is zoomed (drags pan it then); the shell's picture plugin answers. */
+  readonly zoomed?: () => boolean;
   /** Focus is trapped (Tab cycles) only while this holds; default: the player is fullscreen. */
   readonly modal: () => boolean;
   readonly timings: InputTimings;
@@ -82,7 +93,9 @@ interface Press {
   readonly y0: number;
   lastX: number;
   lastY: number;
-  mode: 'press' | 'swipe-x' | 'swipe-y' | 'long' | 'pinch';
+  mode: 'press' | 'swipe-x' | 'swipe-y' | 'long' | 'pinch' | 'drag';
+  /** Started on a picture surface that is itself a control (a multi-view tile): pinch / drag only. */
+  readonly pictureOnly: boolean;
   longTimer: ReturnType<typeof setTimeout> | undefined;
 }
 
@@ -93,8 +106,9 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
   const send = (action: InputAction | undefined, scale = 1): boolean => {
     if (action === undefined) return false;
     const { type, ...payload } = action as InputAction & Record<string, unknown>;
+    // Only the magnitude field scales; coordinates (zoom-at's x / y) and absolute values do not.
     const scaled: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(payload)) scaled[k] = typeof v === 'number' && k !== 'percent' ? v * scale : v;
+    for (const [k, v] of Object.entries(payload)) scaled[k] = typeof v === 'number' && MAGNITUDE.has(k) ? v * scale : v;
     return store.dispatch(type as keyof InputActionMap, scaled as never);
   };
   const gesture = (kind: GestureKind, scale = 1): boolean => send(o.gestures()[kind], scale);
@@ -149,9 +163,10 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
 
   const onPointerDown = (e: PointerEvent): void => {
     if (!e.isPrimary && presses.size !== 1) return;
-    if (onPath(e, target, INTERACTIVE)) return;
+    const pictureOnly = onPath(e, target, PICTURE_CONTROL);
+    if (!pictureOnly && onPath(e, target, INTERACTIVE)) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    const press: Press = { id: e.pointerId, type: e.pointerType, x0: e.clientX, y0: e.clientY, lastX: e.clientX, lastY: e.clientY, mode: 'press', longTimer: undefined };
+    const press: Press = { id: e.pointerId, type: e.pointerType, x0: e.clientX, y0: e.clientY, lastX: e.clientX, lastY: e.clientY, mode: 'press', longTimer: undefined, pictureOnly };
     presses.set(e.pointerId, press);
     if (presses.size === 2) {
       for (const p of presses.values()) {
@@ -161,12 +176,16 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
       pinchStart = distance();
       return;
     }
+    if (pictureOnly) return;
     press.longTimer = setTimeout(() => {
       if (press.mode !== 'press') return;
       press.mode = 'long';
       gesture('long-press');
     }, timings.longPressMs);
   };
+
+  /** Whether the picture is zoomed (the host's picture plugin): drags then pan it. */
+  const zoomed = (): boolean => o.zoomed?.() === true;
 
   const onPointerMove = (e: PointerEvent): void => {
     const p = presses.get(e.pointerId);
@@ -175,10 +194,28 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
     const dy = e.clientY - p.lastY;
     p.lastX = e.clientX;
     p.lastY = e.clientY;
-    if (p.mode === 'pinch') {
-      if (pinchStart > 0) gesture('pinch', distance() / pinchStart);
+    if (p.mode === 'drag') {
+      const r = target.getBoundingClientRect();
+      // Per axis: the mapped action's dx / dy are per-unit factors of the fraction moved.
+      const action = o.gestures().drag;
+      if (r.width > 0 && r.height > 0 && action?.type === 'pan-by') send({ type: 'pan-by', dx: (action.dx * dx) / r.width, dy: (action.dy * dy) / r.height });
+      else if (r.width > 0) send(action, dx / r.width);
       return;
     }
+    if (p.mode === 'pinch') {
+      // Relative to the last distance: the zoom action takes a factor, not an absolute scale.
+      const d = distance();
+      if (pinchStart > 0 && d > 0) gesture('pinch', d / pinchStart);
+      pinchStart = d;
+      return;
+    }
+    if (p.mode === 'press' && zoomed() && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) > timings.slopPx) {
+      // Zoomed: a drag moves the picture instead of a swipe.
+      clearTimeout(p.longTimer);
+      p.mode = 'drag';
+      return;
+    }
+    if (p.pictureOnly) return;
     if (p.mode === 'press' && p.type !== 'mouse' && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) > timings.slopPx) {
       clearTimeout(p.longTimer);
       p.mode = Math.abs(e.clientX - p.x0) > Math.abs(e.clientY - p.y0) ? 'swipe-x' : 'swipe-y';
@@ -209,6 +246,7 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
       if (presses.size === 0) pinchStart = 0;
       return;
     }
+    if (p.pictureOnly) return;
     if (p.mode === 'long') {
       // Release restores the rate (hold-rate with rate <= 0).
       const action = o.gestures()['long-press'];
@@ -219,6 +257,11 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
     if (p.mode === 'swipe-x') {
       const action = o.gestures()['swipe-horizontal'];
       if (action?.type === 'seek-preview') store.dispatch('seek-preview', { seconds: previewSeconds, commit: true });
+      return;
+    }
+    // A mouse drag still ends in a click on the same element: that click is not a gesture.
+    if (p.mode === 'drag') {
+      if (p.type === 'mouse') suppressClick = true;
       return;
     }
     if (p.mode === 'swipe-y' || p.type === 'mouse' || e.type === 'pointercancel') return;
@@ -255,6 +298,23 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
     if (onPath(e, target, INTERACTIVE)) return;
     gesture('double-click');
   };
+  /**
+   * Wheel: Ctrl/Cmd + wheel (a trackpad pinch in Chrome, the Ctrl+wheel of every browser) zooms the
+   * picture at the pointer; plain wheel leaves the page's scrolling alone unless the picture is
+   * zoomed, where it zooms back out. Both are passive: preventDefault only where handled.
+   */
+  const onWheel = (e: WheelEvent): void => {
+    if (!onPath(e, target, PICTURE_CONTROL) && onPath(e, target, INTERACTIVE)) return;
+    const zoom = e.ctrlKey || e.metaKey;
+    if (!zoom && !zoomed()) return;
+    // Exponential: the same feel at every level (a notch of 100 px doubles, roughly).
+    const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1) * 0.002);
+    const r = target.getBoundingClientRect();
+    const x = r.width > 0 ? (e.clientX - r.left) / r.width : 0.5;
+    const y = r.height > 0 ? (e.clientY - r.top) / r.height : 0.5;
+    if (send({ type: 'zoom-at', factor, x, y })) e.preventDefault();
+  };
+
   const onPointerCancel = (e: PointerEvent): void => {
     const p = presses.get(e.pointerId);
     if (p === undefined) return;
@@ -271,6 +331,8 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
   target.addEventListener('pointercancel', onPointerCancel);
   target.addEventListener('click', onClick);
   target.addEventListener('dblclick', onDoubleClick);
+  // Not passive: handled wheel events must not scroll the page.
+  target.addEventListener('wheel', onWheel, { passive: false });
   // touch-action is the skin's job ([data-otter-player] pan-y inline, none when fullscreen):
   // inline, the page keeps vertical scrolling and the browser cancels vertical swipes.
 
@@ -282,6 +344,7 @@ export function attachInput<S extends object>(o: AttachOptions<S>): () => void {
     target.removeEventListener('pointercancel', onPointerCancel);
     target.removeEventListener('click', onClick);
     target.removeEventListener('dblclick', onDoubleClick);
+    target.removeEventListener('wheel', onWheel);
     clearTimeout(tapTimer);
     for (const p of presses.values()) clearTimeout(p.longTimer);
     presses.clear();

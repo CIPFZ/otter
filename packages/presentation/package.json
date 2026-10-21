@@ -15,6 +15,11 @@
       "@otter-player/source": "./src/multiview.ts",
       "types": "./dist/multiview.d.ts",
       "default": "./dist/multiview.js"
+    },
+    "./picture": {
+      "@otter-player/source": "./src/picture.ts",
+      "types": "./dist/picture.d.ts",
+      "default": "./dist/picture.js"
     }
   },
   "files": [
@@ -30,7 +35,8 @@
   },
   "otter": {
     "entries": {
-      "multiview": "src/multiview.ts"
+      "multiview": "src/multiview.ts",
+      "picture": "src/picture.ts"
     }
   }
 }

@@ -45,18 +45,47 @@ function fitRect(box: Size, intrinsic: Size, fit: SurfaceFit): PictureRect {
   return { x: (box.width - width) / 2, y: (box.height - height) / 2, width, height };
 }
 
-/** Actual picture rectangle inside the element box, after fit, rotation, zoom and pan. */
+/** Area zoom and pan work in: the element box above the controls' band (viewportBottom). */
+export function viewportOf(box: Size, t: SurfaceTransform): PictureRect {
+  const bottom = Math.min(Math.max(t.viewportBottom ?? 0, 0), box.height);
+  return { x: 0, y: 0, width: box.width, height: Math.max(0, box.height - bottom) };
+}
+
+/**
+ * Actual picture rectangle inside the element box, after fit, rotation, zoom and pan. Zoomed, the
+ * picture is fitted into the viewport (the area above the controls) and its centre taken from
+ * there; unzoomed, it is exactly the fit in the whole box.
+ */
 export function computeContentRect(box: Size, video: Size, fit: SurfaceFit, t: SurfaceTransform = IDENTITY_TRANSFORM): PictureRect {
   const intrinsic = quarterTurn(t) ? { width: video.height, height: video.width } : video;
   const base = fitRect(box, intrinsic, fit);
   const width = base.width * t.zoom;
   const height = base.height * t.zoom;
+  const view = viewportOf(box, t);
+  const cx = t.zoom !== 1 ? view.x + view.width / 2 : base.x + base.width / 2;
+  const cy = t.zoom !== 1 ? view.y + view.height / 2 : base.y + base.height / 2;
   return {
-    x: base.x - (width - base.width) / 2 + t.pan[0],
-    y: base.y - (height - base.height) / 2 + t.pan[1],
+    x: cx - width / 2 + t.pan[0],
+    y: cy - height / 2 + t.pan[1],
     width,
     height,
   };
+}
+
+/**
+ * Clamps a transform's pan so a zoomed picture stays inside the viewport (a dimension smaller
+ * than the viewport is centred on it). Zoom 1 has no pan.
+ */
+export function clampTransform(box: Size, video: Size, fit: SurfaceFit, t: SurfaceTransform): SurfaceTransform {
+  const zoom = Math.max(1, t.zoom);
+  if (zoom === 1) return { ...t, zoom, pan: [0, 0] };
+  const g = computeContentRect(box, video, fit, { ...t, zoom, pan: [0, 0] });
+  const view = viewportOf(box, t);
+  const clamp = (pan: number, size: number, room: number): number => {
+    const limit = Math.max(0, (size - room) / 2);
+    return Math.min(limit, Math.max(-limit, pan));
+  };
+  return { ...t, zoom, pan: [clamp(t.pan[0], g.width, view.width), clamp(t.pan[1], g.height, view.height)] };
 }
 
 /**
@@ -76,6 +105,9 @@ export function surfaceCss(box: Size, video: Size, fit: SurfaceFit, t: SurfaceTr
   }
   const parts = [
     t.pan[0] !== 0 || t.pan[1] !== 0 ? `translate(${t.pan[0]}px, ${t.pan[1]}px)` : '',
+    // Zoomed over a viewport (the controls' band left out): the picture centres on the viewport,
+    // half the band above the box centre (translations come before the scale: plain pixels).
+    t.zoom !== 1 && (t.viewportBottom ?? 0) > 0 ? `translateY(${-(t.viewportBottom ?? 0) / 2}px)` : '',
     t.zoom !== 1 ? `scale(${t.zoom})` : '',
     t.rotate !== 0 ? `rotate(${t.rotate}deg)` : '',
     Math.abs(sx - 1) > 1e-6 || Math.abs(sy - 1) > 1e-6 ? `scale(${round(sx)}, ${round(sy)})` : '',
@@ -157,7 +189,8 @@ export function createVideoSurface(element: HTMLVideoElement): Surface {
     element.style.objectFit = css.objectFit;
     element.style.transform = css.transform;
     element.style.transformOrigin = 'center';
-    const next = computeContentRect(box(), video(), fit, transform);
+    // Overlays align to the fitted picture, never to the zoomed one (text keeps its size).
+    const next = computeContentRect(box(), video(), fit, { rotate: transform.rotate, mirror: transform.mirror, zoom: 1, pan: [0, 0] });
     if (next.x !== rect.x || next.y !== rect.y || next.width !== rect.width || next.height !== rect.height) {
       rect = next;
       bus.emit('rect', toDomRect(rect));

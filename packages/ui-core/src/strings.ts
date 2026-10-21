@@ -1,6 +1,20 @@
 // UI strings (ADR-005 §6): primitives never hard-code text. English and Chinese ship; a host
 // swaps or extends the table with provideStrings(). `{n}` / `{label}` are placeholders.
 
+/** Texts of the settings menu's Picture page (defaults in settings-level.ts, by language). */
+export interface PictureStrings {
+  readonly picture: string;
+  readonly brightness: string;
+  readonly contrast: string;
+  readonly saturate: string;
+  readonly temperature: string;
+  readonly sharpness: string;
+  readonly resetPicture: string;
+  /** Value of the Picture row while any adjustment is on. */
+  readonly pictureAdjusted: string;
+  readonly reset: string;
+}
+
 export interface UiStrings {
   readonly play: string;
   readonly pause: string;
@@ -31,6 +45,11 @@ export interface UiStrings {
   readonly stopCast: string;
   readonly airplay: string;
   readonly closeMini: string;
+  /**
+   * Picture page (zoom and filters, SPEC §12). Its default texts load with the settings menu's
+   * level-two chunk; a host table may override them here.
+   */
+  readonly picture?: Partial<PictureStrings>;
   readonly audio: string;
   // Caption display settings (CVAA).
   readonly captionSize: string;

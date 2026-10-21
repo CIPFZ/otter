@@ -1,5 +1,6 @@
 // Chrome state (SPEC §14.2, ADR-005 §6): control visibility and auto-hide, the player's own
-// brightness layer, gesture feedback (seek preview, zoom) and the open menu. UI code (the skin's
+// brightness layer, gesture feedback (seek preview) and the open menu. Electronic zoom is the
+// picture plugin's (@otter-player/presentation/picture). UI code (the skin's
 // shell, the primitives) reads this slice and dispatches these actions; the plugin owns timers.
 
 import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@otter-player/core';
@@ -13,12 +14,10 @@ export interface ChromeState {
   readonly brightness: number;
   /** Pending seek offset from a horizontal swipe, seconds; the UI shows the target preview. */
   readonly seekPreview: number | null;
-  /** Electronic zoom, 1 = none. */
-  readonly zoom: number;
   readonly menu: string | null;
 }
 
-export const INITIAL_CHROME_STATE: ChromeState = { controlsVisible: true, brightness: 1, seekPreview: null, zoom: 1, menu: null };
+export const INITIAL_CHROME_STATE: ChromeState = { controlsVisible: true, brightness: 1, seekPreview: null, menu: null };
 export const CHROME_SLICE: StoreSlice<ChromeState> = { id: 'chrome', initialState: INITIAL_CHROME_STATE };
 
 /** Actions handled by the chrome plugin; `toggle-fullscreen` etc. belong to presentation. */
@@ -27,7 +26,6 @@ export interface ChromeActionMap {
   'show-controls': Record<string, never>;
   'brightness-by': { readonly delta: number };
   'seek-preview': { readonly seconds: number; readonly commit?: boolean };
-  zoom: { readonly scale: number };
   'open-menu': { readonly id: string | null };
   escape: Record<string, never>;
 }
@@ -87,7 +85,6 @@ export function createChromePlugin<S extends ChromeState & Pick<MediaState, 'pau
           }
           patch({ seekPreview: seconds });
         }),
-        s.handle('zoom', ({ scale }) => patch({ zoom: Math.min(4, Math.max(1, scale)) })),
         s.handle('open-menu', ({ id }) => {
           patch({ menu: id, controlsVisible: true });
           schedule();
@@ -135,4 +132,4 @@ export function bindActivity(root: HTMLElement, store: { dispatch(type: 'show-co
 }
 
 // InputActionMap has the same names; exported so hosts can compose UiActions without importing both.
-export type ChromeUiActions = Pick<InputActionMap, 'toggle-controls' | 'brightness-by' | 'seek-preview' | 'zoom' | 'escape'>;
+export type ChromeUiActions = Pick<InputActionMap, 'toggle-controls' | 'brightness-by' | 'seek-preview' | 'escape'>;

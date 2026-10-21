@@ -301,7 +301,7 @@ describe('settings menu (APG menu button, two levels)', () => {
     await new Promise((r) => setTimeout(r, 0));
   };
 
-  it('level one: value rows, speed segments, focus starts at the checked speed', () => {
+  it('level one: value rows, speed segments, focus starts at the checked speed', async () => {
     const { trigger, focused, key, menu, store, sr } = open();
     expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
     expect(trigger.getAttribute('aria-label')).toBe('Settings');
@@ -310,8 +310,9 @@ describe('settings menu (APG menu button, two levels)', () => {
     expect(menu.hidden).toBe(false);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(store.getState().menu).not.toBeNull();
-    const rows = [...sr.querySelectorAll<HTMLElement>('[role="menuitem"][aria-haspopup="menu"]')].map((r) => r.getAttribute('aria-label'));
-    expect(rows).toEqual(['Quality, Auto (720P)', 'Captions, Off', 'Caption style, Default']);
+    const rows = () => [...sr.querySelectorAll<HTMLElement>('[role="menuitem"][aria-haspopup="menu"]')].map((r) => r.getAttribute('aria-label'));
+    // The Picture row comes with the level-two chunk (requested when the menu opens).
+    await vi.waitFor(() => expect(rows()).toEqual(['Quality, Auto (720P)', 'Captions, Off', 'Caption style, Default', 'Picture, Original picture']));
     // The checked speed segment is the first checked item.
     expect(focused().getAttribute('aria-label')).toBe('Normal');
     key('ArrowRight');
@@ -384,11 +385,13 @@ describe('settings menu (APG menu button, two levels)', () => {
     expect(options).toEqual(['Off:true', 'English:false']);
   });
 
-  it('stats switch toggles the player stats panel', () => {
+  it('stats switch toggles the player stats panel', async () => {
     const m = mount('<div data-otter-player><otter-stats hidden></otter-stats><otter-settings-menu></otter-settings-menu></div>');
     m.store.setState({ ...READY });
     const sr = m.shadow('otter-settings-menu');
     (sr.querySelector('button') as HTMLButtonElement).click();
+    // The switch comes with the level-two chunk.
+    await vi.waitFor(() => expect(sr.querySelector('[role="menuitemcheckbox"]')).toBeTruthy());
     const sw = sr.querySelector('[role="menuitemcheckbox"]') as HTMLElement;
     expect(sw.getAttribute('aria-checked')).toBe('false');
     sw.click();
@@ -451,7 +454,5 @@ describe('chrome plugin', () => {
     core.store.dispatch('seek-preview', { seconds: 12, commit: true });
     expect(core.store.getState().seekPreview).toBeNull();
     expect(seeks).toEqual([12]);
-    core.store.dispatch('zoom', { scale: 9 });
-    expect(core.store.getState().zoom).toBe(4);
   });
 });

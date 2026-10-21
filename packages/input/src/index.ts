@@ -25,7 +25,10 @@ export type InputAction =
   | { readonly type: 'toggle-captions' }
   | { readonly type: 'toggle-pip' }
   | { readonly type: 'toggle-mini' }
-  | { readonly type: 'zoom'; readonly scale: number }
+  /** Picture zoom at a point (fractions of the picture box), from a wheel or pinch. `factor` multiplies. */
+  | { readonly type: 'zoom-at'; readonly factor: number; readonly x: number; readonly y: number }
+  /** Drag of the zoomed picture, fractions of the player box. */
+  | { readonly type: 'pan-by'; readonly dx: number; readonly dy: number }
   /** Close the open menu, otherwise leave fullscreen. */
   | { readonly type: 'escape' };
 
@@ -50,7 +53,9 @@ export type GestureKind =
   | 'swipe-vertical-left'
   | 'swipe-vertical-right'
   | 'swipe-horizontal'
-  | 'pinch';
+  | 'pinch'
+  /** Drag of the zoomed picture (mouse, or one finger while zoomed). */
+  | 'drag';
 
 /**
  * For continuous gestures (swipes, pinch) the numeric payload is a per-unit factor that the
@@ -98,8 +103,11 @@ export const DEFAULT_GESTURES: GestureMap = {
   'swipe-vertical-left': { type: 'brightness-by', delta: 1 },
   'swipe-vertical-right': { type: 'volume-by', delta: 1 },
   'swipe-horizontal': { type: 'seek-preview', seconds: 1 },
-  pinch: { type: 'zoom', scale: 1 },
+  // Pinch zooms the picture at its centre (the picture plugin's action).
+  pinch: { type: 'zoom-at', factor: 1, x: 0.5, y: 0.5 },
+  drag: { type: 'pan-by', dx: 1, dy: 1 },
 };
+
 
 export interface InputController {
   readonly hotkeys: HotkeyMap;
@@ -122,6 +130,8 @@ export interface InputControllerOptions<S extends object = object> {
    */
   readonly modal?: (target: HTMLElement) => boolean;
   readonly timings?: Partial<InputTimings>;
+  /** Whether the picture is zoomed (drags pan it then); the shell's picture plugin answers. */
+  readonly zoomed?: () => boolean;
 }
 
 const isFullscreen = (target: HTMLElement): boolean => {
@@ -145,7 +155,15 @@ export function createInputController<S extends object>(options: InputController
     },
     attach(target) {
       detach?.();
-      detach = attachInput({ target, store: options.store, hotkeys: () => hotkeys, gestures: () => gestures, modal: () => modal(target), timings });
+      detach = attachInput({
+        target,
+        store: options.store,
+        hotkeys: () => hotkeys,
+        gestures: () => gestures,
+        modal: () => modal(target),
+        timings,
+        ...(options.zoomed === undefined ? {} : { zoomed: options.zoomed }),
+      });
     },
     detach() {
       detach?.();

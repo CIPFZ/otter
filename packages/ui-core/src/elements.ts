@@ -8,7 +8,6 @@
 // top level: Workers / SSR, AGENT §4), so a bundler keeps only the elements a host defines.
 
 import {
-  Activity,
   Airplay,
   AudioLines,
   Captions,
@@ -34,7 +33,7 @@ import {
   X,
 } from 'lucide';
 import type { Thumbnail } from '@otter-player/media';
-import { findThumbnails, type UiState } from './context.js';
+import { findThumbnails, type UiActions, type UiState } from './context.js';
 import { formatBitrate, formatMs, formatSeconds, formatTime } from './format.js';
 import { icon, LiveDot, SpinnerRing, Theater, type IconNode } from './icons.js';
 import { buttonCss, createBase, glass, glassFallback, rangeCss, REDUCED_MOTION, speakTime, speakVolume, T, unsupported, type OtterBase } from './primitives.js';
@@ -1307,7 +1306,7 @@ const speedMenuClass = () =>
     };
   });
 
-export type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style';
+export type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style' | 'picture';
 
 /**
  * Settings (UI-DESIGN §7): a two-level menu. Level one: rows "icon + label + current value +
@@ -1328,8 +1327,24 @@ const settingsMenuClass = () =>
       #loadLevels(): Promise<void> {
         this.#loading ??= import('./settings-level.js').then((m) => {
           this.#levels = m;
+          // Level one has rows from the chunk too (Picture): rebuild it once it is here.
+          const s = this.ui?.getState();
+          if (s !== undefined && this.open && this.#view === 'root') {
+            this.#signature = '';
+            this.#build(s, undefined);
+          }
         });
         return this.#loading;
+      }
+      #levelHost(): import('./settings-level.js').LevelHost {
+        return {
+          doc: this.ownerDocument,
+          strings: this.strings,
+          el: this,
+          menuId: this.menuId,
+          radioRow: (group, o) => this.radioRow(group, o),
+          cueLayer: () => playerRoot(this)?.querySelector<HTMLElement>('[data-otter-cues]') ?? null,
+        };
       }
       constructor() {
         super();
@@ -1340,7 +1355,11 @@ const settingsMenuClass = () =>
           else if (group === 'speed') this.ui?.dispatch('set-playback-rate', { rate: Number(value) }, trigger);
           else if (group === 'captions') this.ui?.dispatch('select-text-track', { id: value === '' ? null : value }, trigger);
           else if (group === 'audio') this.ui?.dispatch('select-audio-track', { id: value }, trigger);
-          else if (group.startsWith('caption-')) this.ui?.dispatch('set-caption-style', JSON.parse(value) as Record<string, never>, trigger);
+          // Level-two items (caption style, picture) carry their action: [type, payload].
+          else if (value.startsWith('[')) {
+            const [type, payload] = JSON.parse(value) as [keyof UiActions, never];
+            this.ui?.dispatch(type, payload, trigger);
+          }
         });
       }
       protected override extraCss(): string {
@@ -1439,7 +1458,7 @@ const settingsMenuClass = () =>
         const levels = this.#levels;
         if (this.#view !== 'root' && levels === undefined) return;
         const groups = settingsGroups(s, this.strings);
-        const signature = JSON.stringify([this.#view, groups, s.captionStyle ?? null, this.#stats()?.hidden ?? null]);
+        const signature = JSON.stringify([this.#view, groups, s.captionStyle ?? null, s.picture ?? null, this.#stats()?.hidden ?? null]);
         if (signature === this.#signature) return;
         this.#signature = signature;
         const focused = (this.shadowRoot?.activeElement as HTMLElement | null)?.dataset['key'];
@@ -1449,19 +1468,7 @@ const settingsMenuClass = () =>
         view.append(
           ...(this.#view === 'root' || levels === undefined
             ? this.#root(s, groups)
-            : levels.buildLevel(
-                {
-                  doc: this.ownerDocument,
-                  strings: this.strings,
-                  menuId: this.menuId,
-                  radioRow: (group, o) => this.radioRow(group, o),
-                  cueLayer: () => playerRoot(this)?.querySelector<HTMLElement>('[data-otter-cues]') ?? null,
-                },
-                this.#view,
-                s,
-                groups,
-                { icon, ChevronLeft },
-              )),
+            : levels.buildLevel(this.#levelHost(), this.#view, s, groups, { icon, ChevronLeft, ChevronRight })),
         );
         const slot = list.querySelector('slot');
         list.replaceChildren(view, ...(slot === null ? [] : [slot]));
@@ -1528,23 +1535,15 @@ const settingsMenuClass = () =>
           const custom = Object.keys(s.captionStyle ?? {}).length > 0;
           out.push(this.#row('row:caption-style', Type, t.captionStyle, custom ? '✓' : t.styleDefault, 'caption-style'));
         }
-        const stats = this.#stats();
-        if (stats !== null) {
-          const item = doc.createElement('div');
-          item.setAttribute('role', 'menuitemcheckbox');
-          item.setAttribute('aria-checked', String(!stats.hidden));
-          item.dataset['action'] = 'stats';
-          item.dataset['key'] = 'row:stats';
-          item.tabIndex = -1;
-          item.innerHTML = `<span class="ic">${icon(Activity)}</span><span class="lb"></span><span class="switch" aria-hidden="true"></span>`;
-          (item.querySelector('.lb') as HTMLElement).textContent = t.statsForNerds;
-          out.push(item);
-        }
+        // Picture and the stats switch: built by the level-two chunk (loading since the menu opened).
+        const levels = this.#levels;
+        if (levels !== undefined) out.push(...levels.extraRows(this.#levelHost(), s, { icon, ChevronLeft, ChevronRight }, this.#stats()));
         return out;
       }
       protected override render(s: Readonly<UiState>): void {
         super.render(s);
-        // Keep an open menu current (e.g. "Auto (720P)" while ABR switches, the style preview).
+        // Keep an open menu current (e.g. "Auto (720P)" while ABR switches, the style preview,
+        // the picture page while zooming with a gesture).
         if (this.open) this.#build(s, undefined);
       }
     };

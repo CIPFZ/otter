@@ -14,6 +14,12 @@ export interface SurfaceTransform {
   mirror: boolean;
   zoom: number;
   pan: [number, number];
+  /**
+   * Where the picture is fitted and may be zoomed: pixel inset from the bottom (the controls'
+   * band, SPEC §12 电子放大). Unzoomed pictures are unaffected; zoomed and panned ones stay
+   * inside this area. Default 0.
+   */
+  readonly viewportBottom?: number;
 }
 
 export interface SurfaceFilters {

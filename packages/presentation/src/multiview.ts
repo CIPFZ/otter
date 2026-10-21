@@ -144,6 +144,8 @@ export function createMultiview(options: MultiviewOptions): Multiview {
       button.setAttribute('tabindex', '0');
       button.setAttribute('aria-label', name);
       button.setAttribute('aria-pressed', 'false');
+      // Taps and clicks are the tile's; wheel, pinch and drag still zoom / pan its picture.
+      button.setAttribute('data-otter-picture-gestures', '');
       button.style.cssText = 'position:absolute;box-sizing:border-box;outline:none;cursor:pointer';
       let tileCanvas: HTMLCanvasElement | undefined;
       let surface: FrameSurface;
