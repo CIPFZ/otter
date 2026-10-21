@@ -11,6 +11,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./canvas-pip": {
+      "@otter-player/source": "./src/canvas-pip.ts",
+      "types": "./dist/canvas-pip.d.ts",
+      "default": "./dist/canvas-pip.js"
+    },
     "./multiview": {
       "@otter-player/source": "./src/multiview.ts",
       "types": "./dist/multiview.d.ts",
@@ -35,6 +40,7 @@
   },
   "otter": {
     "entries": {
+      "canvas-pip": "src/canvas-pip.ts",
       "multiview": "src/multiview.ts",
       "picture": "src/picture.ts"
     }

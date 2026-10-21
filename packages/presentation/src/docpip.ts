@@ -38,8 +38,8 @@ function copyStyles(from: Document, to: Document): void {
   }
 }
 
-/** Moves `container` into the PiP window; the returned function puts it back. */
-export function moveInto(container: HTMLElement, pip: Window, video: HTMLVideoElement | undefined): () => void {
+/** Moves `container` into the PiP window, and back when the window closes (then `closed()`). */
+export function moveInto(container: HTMLElement, pip: Window, video: HTMLVideoElement | undefined, closed: () => void): void {
   const home = container.ownerDocument;
   const placeholder = home.createElement('div');
   placeholder.setAttribute('data-otter-placeholder', '');
@@ -51,9 +51,14 @@ export function moveInto(container: HTMLElement, pip: Window, video: HTMLVideoEl
   container.before(placeholder);
   pip.document.body.append(container);
   restore(video, before);
-  return () => {
-    const s = snapshot(video);
-    placeholder.replaceWith(container);
-    restore(video, s);
-  };
+  pip.addEventListener(
+    'pagehide',
+    () => {
+      const s = snapshot(video);
+      placeholder.replaceWith(container);
+      restore(video, s);
+      closed();
+    },
+    { once: true },
+  );
 }

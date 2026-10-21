@@ -49,6 +49,11 @@ export interface WebCodecsBackendOptions {
    * with the backend.
    */
   readonly sink: FrameSink;
+  /**
+   * Whether the picture is seen (default: the page is visible). A host whose picture is shown
+   * elsewhere while the page is hidden (video PiP of the canvas) says so: no background mode then.
+   */
+  readonly visible?: () => boolean;
 }
 
 /** A frame counts as "at or before t" up to this much after t (µs), against rounding. */
@@ -106,8 +111,11 @@ function createSignal() {
   };
 }
 
+const VISIBILITY_EVENTS = ['visibilitychange', 'enterpictureinpicture', 'leavepictureinpicture'] as const;
+
 const schedule = (cb: () => void): (() => void) => {
-  if (typeof requestAnimationFrame === 'function') {
+  // A hidden page gets no animation frames; a timer keeps a picture shown elsewhere (PiP) going.
+  if (typeof requestAnimationFrame === 'function' && !(typeof document === 'object' && document.visibilityState === 'hidden')) {
     const id = requestAnimationFrame(cb);
     return () => cancelAnimationFrame(id);
   }
@@ -557,7 +565,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   };
 
   const onVisibility = (): void => {
-    const hidden = typeof document === 'object' && document.visibilityState === 'hidden';
+    const hidden = options.visible !== undefined ? !options.visible() : typeof document === 'object' && document.visibilityState === 'hidden';
     if (hidden === background) return;
     background = hidden;
     signal.notify();
@@ -864,7 +872,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       update({ duration: info.duration, bufferedEnd: info.duration, videoWidth: current?.width ?? 0, videoHeight: current?.height ?? 0, readyState: 1 });
       cancelTick = schedule(tick);
       if (typeof document === 'object') {
-        document.addEventListener('visibilitychange', onVisibility);
+        // PiP events too: options.visible may count a PiP window (they bubble from its video).
+        for (const t of VISIBILITY_EVENTS) document.addEventListener(t, onVisibility);
         onVisibility();
       }
       // Resolves once the first picture is on the surface.
@@ -947,7 +956,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       signal.notify();
       cancelTick?.();
       if (backgroundTimer !== undefined) clearInterval(backgroundTimer);
-      if (typeof document === 'object') document.removeEventListener('visibilitychange', onVisibility);
+      if (typeof document === 'object') for (const t of VISIBILITY_EVENTS) document.removeEventListener(t, onVisibility);
       loaded?.reject(fatal('other', 'destroyed', 'backend destroyed during load'));
       loaded = undefined;
       if (seek !== undefined) closeFrame(seek.candidate);

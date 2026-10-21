@@ -64,6 +64,11 @@ export interface PresentationOptions {
   readonly docPipSize?: { readonly width: number; readonly height: number };
   /** localStorage key for the mini window position (`otter:mini-position`); null: session only. */
   readonly miniPositionKey?: string | null;
+  /**
+   * The video for video PiP when the <video> does not show the picture (undefined: the <video>).
+   * WebCodecs hosts pass the stream video of `@otter-player/presentation/canvas-pip`.
+   */
+  readonly pipVideo?: () => HTMLVideoElement | undefined;
 }
 
 interface WebKitVideo {
@@ -103,7 +108,7 @@ const nextEvent = (target: EventTarget, types: readonly string[], ok: () => bool
   });
 
 export function createPresentationController(options: PresentationOptions): PresentationController {
-  const { container } = options;
+  const { container, pipVideo } = options;
   const doc = container.ownerDocument;
   const win = doc.defaultView as (Window & { documentPictureInPicture?: DocumentPictureInPicture }) | null;
   const video = (options.surface.element instanceof HTMLVideoElement ? options.surface.element : undefined) as (HTMLVideoElement & WebKitVideo) | undefined;
@@ -127,13 +132,18 @@ export function createPresentationController(options: PresentationOptions): Pres
     const fs = doc.fullscreenElement;
     return fs != null && (fs === container || fs.contains(container));
   };
-  const inPip = (): boolean => video !== undefined && doc.pictureInPictureElement === video;
+  // pictureInPictureElement is null or an element, so an absent video never matches.
+  const inPip = (): boolean => {
+    const el = doc.pictureInPictureElement;
+    return el === video || el === pipVideo?.();
+  };
 
   const capabilities: PresentationCapabilities = {
     inline: 'native',
     theater: 'emulated',
     fullscreen: doc.fullscreenEnabled === true && typeof container.requestFullscreen === 'function' ? 'native' : 'emulated',
-    pip: video !== undefined && !video.disablePictureInPicture && doc.pictureInPictureEnabled === true && typeof video.requestPictureInPicture === 'function' ? 'native' : false,
+    // pictureInPictureEnabled is only there with the API (requestPictureInPicture).
+    pip: pipVideo !== undefined || (video !== undefined && !video.disablePictureInPicture && doc.pictureInPictureEnabled === true) ? 'native' : false,
     docpip: win?.documentPictureInPicture !== undefined && win.top === win ? 'native' : false,
     mini: typeof IntersectionObserver === 'function' ? 'emulated' : false,
     background: typeof doc.visibilityState === 'string' ? 'native' : false,
@@ -269,23 +279,16 @@ export function createPresentationController(options: PresentationOptions): Pres
       fullscreenKind = 'native';
       return container.requestFullscreen().then(() => nextEvent(doc, ['fullscreenchange'], inFullscreen));
     }
-    if (to === 'pip') return (video as HTMLVideoElement).requestPictureInPicture().then(() => undefined);
+    if (to === 'pip') return (pipVideo?.() ?? (video as HTMLVideoElement)).requestPictureInPicture().then(() => undefined);
     // docpip
     const size = options.docPipSize ?? { width: Math.round(container.clientWidth) || 640, height: Math.round(container.clientHeight) || 360 };
     const opened = (win?.documentPictureInPicture as DocumentPictureInPicture).requestWindow(size);
     return opened.then(async (w) => {
       pipWindow = w;
-      const { moveInto } = await import('./docpip.js');
-      const back = moveInto(container, w, video);
-      w.addEventListener(
-        'pagehide',
-        () => {
-          back();
-          pipWindow = undefined;
-          if (mode === 'docpip') set(layout);
-        },
-        { once: true },
-      );
+      (await import('./docpip.js')).moveInto(container, w, video, () => {
+        pipWindow = undefined;
+        if (mode === 'docpip') set(layout);
+      });
     });
   };
 
@@ -358,7 +361,8 @@ export function createPresentationController(options: PresentationOptions): Pres
       set(layout, 'exited');
     }
   });
-  listen(video, ['leavepictureinpicture'], () => {
+  // Bubbles from the <video> or from options.pipVideo's.
+  listen(doc, ['leavepictureinpicture'], () => {
     if (mode === 'pip' && !inPip()) set(layout, 'exited');
   });
   listen(video, ['webkitendfullscreen'], () => {

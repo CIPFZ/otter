@@ -170,7 +170,7 @@ describe('presentation controller', () => {
     await vi.waitFor(() => expect(mode()).toBe('pip'));
     expect(core.store.getState().presentation.videoOnly).toBe(true);
     stub(document, 'pictureInPictureElement', null);
-    video.dispatchEvent(new Event('leavepictureinpicture'));
+    video.dispatchEvent(new Event('leavepictureinpicture', { bubbles: true }));
     expect(mode()).toBe('inline');
   });
 

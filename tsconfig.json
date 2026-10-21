@@ -19,6 +19,7 @@
       "@otter-player/pipeline/captions": ["./packages/pipeline/src/captions/cea608.ts"],
       "@otter-player/text/render": ["./packages/text/src/render.ts"],
       "@otter-player/surface/gpu": ["./packages/surface/src/gpu.ts"],
+      "@otter-player/presentation/canvas-pip": ["./packages/presentation/src/canvas-pip.ts"],
       "@otter-player/presentation/multiview": ["./packages/presentation/src/multiview.ts"],
       "@otter-player/presentation/picture": ["./packages/presentation/src/picture.ts"],
       "@otter-player/*": ["./packages/*/src/index.ts"]

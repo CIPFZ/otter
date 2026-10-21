@@ -33,6 +33,7 @@ import { createText, TEXT_SLICE, type TextActionMap, type TextState } from '@ott
 import { createInputController } from '@otter-player/input';
 import { createThumbnails } from '@otter-player/overlay-thumbnails';
 import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationState } from '@otter-player/presentation';
+import { bindCanvasPip, canvasPipSupported, type CanvasPip } from '@otter-player/presentation/canvas-pip';
 import { createPicturePlugin, PICTURE_SLICE, type PictureActionMap, type PictureSliceState } from '@otter-player/presentation/picture';
 import {
   bindActivity,
@@ -169,7 +170,12 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
       createMp4RangeFormat(ahead === undefined ? {} : { maxBufferAheadS: ahead }),
       createFileFormat(),
     ],
-    backends: [createMseBackendFactory(), createNativeBackendFactory(), createWebCodecsBackendFactory({ sink: frameSink(root) })],
+    backends: [
+      createMseBackendFactory(),
+      createNativeBackendFactory(),
+      // In video PiP the canvas picture is seen even with the page hidden: no background mode.
+      createWebCodecsBackendFactory({ sink: frameSink(root), visible: () => document.visibilityState === 'visible' || document.pictureInPictureElement != null }),
+    ],
     // WebCodecs (hardware where there is any) first, the WASM decoder for the wasm step.
     // ?hw=off: no video through WebCodecs (hardware decoding switched off); ?wasm=fail: the WASM
     // decoder's files are missing. Both force the fallback chain (ADR-008 §5).
@@ -193,6 +199,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
     surface: shown,
     controlsInset: () => (controlsBar !== null && !controlsBar.hasAttribute('data-idle') ? controlsBar.offsetHeight : 0),
   });
+  let canvasPip: CanvasPip | undefined;
   const core = createCore<State, Actions>({
     slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE, PICTURE_SLICE],
     plugins: [
@@ -205,6 +212,8 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
       createPresentationPlugin({
         container: root,
         surface,
+        // Video PiP of the WebCodecs canvas: a stream of it (bound below).
+        ...(canvasPipSupported(document) ? { pipVideo: () => canvasPip?.pipVideo() } : {}),
         autoMini: params.get('mini') === 'auto',
         preferDocumentPip: params.get('pip') === 'document',
         mediaSession: { metadata: { title: 'Otter Player Demo', artist: 'Otter' } },
@@ -212,6 +221,11 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
     ],
   });
   await core.start();
+  // The WebCodecs canvas, while it shows the picture.
+  canvasPip = bindCanvasPip(document, core.store, () => {
+    const frames = (root as HTMLElement & { otterFrames?: FrameSurface }).otterFrames?.element;
+    return frames !== undefined && !frames.hidden ? frames : undefined;
+  });
   watchPicture(core.store, picture, shown);
   const view = bind(core.store.view());
   root.querySelector('[data-otter-overlays]')?.remove();
@@ -232,6 +246,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
     layer,
     picture,
     dispose: () => {
+      canvasPip?.destroy();
       input.destroy();
       offActivity();
       offControls();

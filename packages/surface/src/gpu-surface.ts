@@ -65,8 +65,13 @@ const closeFrame = (f: SurfaceFrame | undefined): void => {
   if (f !== undefined && typeof (f as VideoFrame).close === 'function' && !isI420(f)) (f as VideoFrame).close();
 };
 
+/**
+ * Next paint. A hidden page gets no animation frames, but its canvas may still be shown (a video
+ * PiP of a canvas stream): a timer then.
+ */
 const schedule = (cb: () => void): void => {
-  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(cb);
+  const hidden = typeof document === 'object' && document.visibilityState === 'hidden';
+  if (typeof requestAnimationFrame === 'function' && !hidden) requestAnimationFrame(cb);
   else setTimeout(cb, 16);
 };
 
