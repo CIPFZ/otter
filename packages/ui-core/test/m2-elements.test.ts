@@ -385,6 +385,19 @@ describe('settings menu (APG menu button, two levels)', () => {
     expect(options).toEqual(['Off:true', 'English:false']);
   });
 
+  it('hovering the settings button prefetches level two: its rows are there on open', async () => {
+    const m = mount('<div data-otter-player><otter-stats hidden></otter-stats><otter-settings-menu></otter-settings-menu></div>');
+    m.store.setState({ ...READY });
+    const menu = m.root.querySelector('otter-settings-menu') as HTMLElement;
+    menu.dispatchEvent(new PointerEvent('pointerenter'));
+    await new Promise((r) => setTimeout(r, 50));
+    const sr = m.shadow('otter-settings-menu');
+    (sr.querySelector('button') as HTMLButtonElement).click();
+    // Synchronously on open: no wait for the chunk.
+    expect(sr.querySelector('[role="menuitemcheckbox"]')).toBeTruthy();
+    expect([...sr.querySelectorAll('[role="menuitem"]')].some((r) => r.getAttribute('aria-label')?.startsWith('Picture,'))).toBe(true);
+  });
+
   it('stats switch toggles the player stats panel', async () => {
     const m = mount('<div data-otter-player><otter-stats hidden></otter-stats><otter-settings-menu></otter-settings-menu></div>');
     m.store.setState({ ...READY });

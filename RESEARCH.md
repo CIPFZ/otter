@@ -70,6 +70,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - Jessibuca jv4-decoder（WASM）在同一 Worker 里频繁新建 / 删除 embind `VideoDecoder`（每次 seek 新建一个）会在十几路并发时出错（`decode()` 抛异常）；seek 时 `clear()` + `setCodec()` 复用同一个对象则稳定。
 - Playwright 的 `page.evaluate` 返回 Error 对象时只保留 `message` / `stack`，自定义属性（如 `OtterError.details`）会丢失；要在页面内先映射成普通对象再返回。
 - 鼠标拖动结束时浏览器仍会在同一元素上派发 `click`：拖动平移画面后要吞掉这个 click，否则会切换播放。happy-dom 构造 `WheelEvent` 时丢掉 `ctrlKey` 等修饰键（浏览器保留），单测要另行设置。
+- 自己调度分片的引擎切换清晰度时，切换点（新档位的起始关键帧）至少要在播放位置前 1 秒：新档位的第一个分片要先下载、再从关键帧解码，切换点离播放头太近（实测 0.3 s）时旧档位先放完，Firefox 上偶发 rebuffer。Otter 的 WebCodecs 后端取「已解码位置之后、且不早于时钟 + 1 s 的第一个关键帧」（`SWITCH_LEAD_S`）；M5 的自研 CMAF-HLS 引擎按 MSE 切档时同样适用。
 
 ## 2. 格式 / 协议 / 编码全景
 

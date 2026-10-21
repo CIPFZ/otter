@@ -1348,6 +1348,9 @@ const settingsMenuClass = () =>
       }
       constructor() {
         super();
+        // Prefetch the level-two chunk on hover or keyboard focus, so the rows it builds (Picture,
+        // stats) are there when the menu opens.
+        for (const type of ['pointerenter', 'focusin'] as const) this.addEventListener(type, () => void this.#loadLevels(), { once: true });
         this.addEventListener('otter-select', (e) => {
           const { group, value } = (e as CustomEvent<{ group: string; value: string }>).detail;
           const trigger = { type: 'click', source: 'otter-settings-menu' };
