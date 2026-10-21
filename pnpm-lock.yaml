@@ -229,6 +229,9 @@ importers:
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
+      '@otter-player/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
 
   packages/core: {}
 
