@@ -157,7 +157,7 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
    - iPhone 上需切清晰度或 DASH → `mse`（MMS），自动附加 AirPlay 备用源或 `disableRemotePlayback`。
    - HEVC 且无硬解 → `webcodecs`（WebCodecs 软解）→ 再降 WASM。
    - 其他 → `mse`。
-4. 失败按降级链重试并上报 QoE：`webcodecs → wasm → mse → native`，每一步记录 reason。
+4. 失败按降级链重试并上报 QoE：`webcodecs → wasm → mse → native`，每一步记录 reason。链走完后，若源带 `fallback?: Source`（同一节目的另一种协议，例如 WHEP 的 ICE 连不上时改用同一路流的 HTTP-FLV），对它从第 2 步重新选路，重试计数清零；`router.explain()` 记一步 `source fallback`（reason 为新选中的格式）。`fallback` 可以再带自己的 `fallback`（ADR-008 §8）。
 5. 决策结果可通过 `router.explain()` 导出，并允许宿主以 `preferBackend` / `forbidBackend` 覆盖。
 
 ### 5.3 播放会话（media plugin）

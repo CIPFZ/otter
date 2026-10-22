@@ -121,8 +121,11 @@ for (const [mode, details] of [
   ['hwfail', 'decodeError'],
   ['hwstall', 'decoderStalled'],
 ] as const) {
-  test(`runtime fallback (${mode}): the hardware decoder breaks mid-stream, WASM continues in the same backend`, async ({ page }) => {
+  test(`runtime fallback (${mode}): the hardware decoder breaks mid-stream, WASM continues in the same backend`, async ({ page, browserName }) => {
     test.setTimeout(90_000);
+    // Known flaky on CI WebKit (hwfail): the backend sometimes stays on webcodecs for 30 s, passes
+    // on retry; not reproducible without WebKit here (RESEARCH §1, M4 report).
+    if (browserName === 'webkit') test.info().annotations.push({ type: 'flaky', description: 'CI WebKit: runtime fallback sometimes not reached within 30 s (RESEARCH §1)' });
     // 150 packets: past the first keyframe interval (90), so the restart is from a later keyframe.
     await page.goto(`/player.html?${mode}=150&idle=0`);
     await page.evaluate(async () => {

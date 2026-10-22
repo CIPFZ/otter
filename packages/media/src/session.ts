@@ -364,7 +364,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       } catch {
         continue;
       }
-      router.annotate({ candidate: 'source', outcome: 'selected', reason: `fallback source (${decision.format.id})` });
+      router.annotate({ candidate: 'source fallback', outcome: 'selected', reason: `format ${decision.format.id}` });
       budget.reset();
       set({ source: alt, live: alt.live ?? false });
       publishRoute(router.explain());

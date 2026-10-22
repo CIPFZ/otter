@@ -95,5 +95,5 @@ test('cn-live WHEP: ICE that cannot connect falls back to the HTTP-FLV source', 
   expect(s).toMatchObject({ status: 'ready', paused: false });
   // No retry of the same offer: one iceFailed, straight to the fallback source.
   expect(s.errors).toEqual(['iceFailed']);
-  expect(s.steps.some((r) => r.startsWith('source selected fallback source (flv)'))).toBe(true);
+  expect(s.steps.some((r) => r === 'source fallback selected format flv')).toBe(true);
 });

@@ -354,7 +354,7 @@ describe('fallback source (Source.fallback)', () => {
     expect(view.getState()).toMatchObject({ status: 'ready', format: 'hls', backend: 'mse', source: fallback });
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatchObject({ error: { details: 'iceFailed' }, fallback: [] });
-    expect(view.getState().route?.steps.some((s) => s.candidate === 'source' && s.reason.startsWith('fallback source (hls)'))).toBe(true);
+    expect(view.getState().route?.steps.some((s) => s.candidate === 'source fallback' && s.outcome === 'selected' && s.reason === 'format hls')).toBe(true);
   });
 
   it('ends in error without a fallback source', async () => {

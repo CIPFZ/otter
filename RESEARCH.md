@@ -74,6 +74,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - 画布画面的视频 PiP：`requestPictureInPicture()` 只接受 `<video>`，且必须在用户手势里同步调用、视频已有元数据，否则拒绝（`InvalidStateError`）。所以 `canvas.captureStream()` 喂的隐藏 `<video>` 要在画布显示画面时就建好并播放，不能等点击时再建；隐藏方式不能用 `display:none`（部分引擎拒绝为未显示的视频开 PiP），用 1 px、透明度 0。PiP 窗口里的播放 / 暂停只作用于这个流视频，要转回播放器；播放器把自己的暂停状态同步过去时只能在状态变化时同步：store 每次 tick 都通知，若每次都同步，用户在窗口里按暂停后、`pause` 事件到达前的一次 tick 会把视频重新播放，按键被吞掉。页面隐藏时没有 `requestAnimationFrame`，画布仍在 PiP 窗口里显示，绘制要改用定时器。
 - 打开 Document PiP 窗口后，Chrome 的 Android 仿真会把原页面的定时器节流到约 0.4 s 一次（焦点在 PiP 窗口）：在原页面里每 50 ms 采样播放位置时，相邻样本的间隔会变成 0.4 s 左右，判断「播放位置不跳变」要和墙钟间隔比，不能和固定采样间隔比。
 - 无头 Firefox（Playwright 构建，本机 Linux 容器）的 WebRTC 收集不到任何 ICE 候选：`setLocalDescription` 之后 `iceGatheringState` 一直是 `new`，控制台直接报「ICE failed, add a STUN server」，关掉主机地址混淆（mDNS）、套接字进程、内容沙箱都不变；同一容器里的无头 Chrome 正常。WHEP 播放用例因此先在页面里探测能否收集到候选，收集不到就跳过并留 notice（CI 的 Firefox 能收集时照常验证）。同一环境里 ICE 失败时 Firefox 的 `connectionState` 已是 `failed`，但只监听 `connectionstatechange` 的等待没有结束（到超时才报错），同时监听 `iceconnectionstatechange` 后立即结束；WebRTC 客户端两个事件都要听，并且只报一次。
+- 已知偶发（未定位，2026-10-22 记为 flaky）：CI 的 macOS WebKit（desktop-safari、emulated-iphone）上，`e2e/fallback.spec.ts` 的运行时降级用例（`?hwfail=150`，WebCodecs 解码器在第 150 个包后报错）偶尔 30 s 内没有切到 WASM，`state().backend` 一直是 `webcodecs`，重试通过；8f1a60b、0f8dbce 两次 CI 各出现一次。Chrome、Firefox、Android 仿真上没有出现，本机没有 WebKit 无法复现。猜测与 CI 的 macOS 虚拟机上 WebKit 解码偏慢、150 个包没在 30 s 内送进解码器有关，未验证。用例保留，WebKit 上带 `flaky` 标注。
 
 ## 2. 格式 / 协议 / 编码全景
 
