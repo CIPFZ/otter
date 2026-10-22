@@ -328,8 +328,8 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     };
     let { inLedger, next } = plan();
     // ABR only when there is a segment to load: at the end of a VOD the buffer drains and
-    // InsufficientBuffer would call it empty.
-    if (next !== undefined && lane.type === 'video') {
+    // InsufficientBuffer would call it empty. A manual choice applies at once, like hls.js'.
+    if ((next !== undefined || requested !== undefined) && lane.type === 'video') {
       const before = lane.track;
       await chooseVariant(lane, run);
       if (run !== epoch) return true;

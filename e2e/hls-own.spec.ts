@@ -182,3 +182,16 @@ test('live: the reported latency is the wall latency (edge from PROGRAM-DATE-TIM
   }
 });
 
+
+test('a manual quality choice with nothing left to load still applies (like hls.js)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await load(page, '/hls-fmp4/master.m3u8');
+  await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().ended), { timeout: 20_000 }).toBe(true);
+  const other = await page.evaluate(async () => {
+    const o = (await window.otter) as OtterFixture;
+    const s = o.state();
+    return s.tracks.video.find((v) => v.id !== s.activeQuality)?.id as string;
+  });
+  await page.evaluate(async (id) => ((await window.otter) as OtterFixture).dispatch('select-quality', { id }), other);
+  await expect.poll(async () => (await state(page)).active, { timeout: 5_000 }).toBe(other);
+});
