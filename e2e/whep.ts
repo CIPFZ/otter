@@ -1,7 +1,8 @@
 // Minimal local WHEP endpoint for the e2e matrix (format-whep, SPEC §19 "国内直播"): POST an SDP
 // offer to /whep/live, get 201 + an SDP answer + a Location; a werift peer (pure TypeScript
 // WebRTC, dev dependency only) then sends e2e/media/whep/clip.ivf (VP8, looped, real-time paced)
-// as RTP. DELETE on the Location ends the session. /whep/ice-fail answers with an unreachable
+// as RTP, and e2e/media/whep/tone.ogg (Opus, 440 Hz) on the audio track when the offer has one.
+// DELETE on the Location ends the session. /whep/ice-fail answers with an unreachable
 // candidate only, so the client's ICE never connects (the fallback path). /whep/reject answers 503.
 
 import { readFileSync } from 'node:fs';
@@ -31,6 +32,36 @@ export function parseIvf(file: Buffer): { fps: number; frames: IvfFrame[] } {
   return { fps: rate / scale, frames };
 }
 
+/** Opus packets of an Ogg file, without the OpusHead / OpusTags header packets. */
+export function parseOggOpus(file: Buffer): Buffer[] {
+  const packets: Buffer[] = [];
+  let partial: Buffer[] = [];
+  let pos = 0;
+  while (pos + 27 <= file.length && file.toString('latin1', pos, pos + 4) === 'OggS') {
+    const segments = file.readUInt8(pos + 26);
+    const table = file.subarray(pos + 27, pos + 27 + segments);
+    let at = pos + 27 + segments;
+    for (const lace of table) {
+      partial.push(file.subarray(at, at + lace));
+      at += lace;
+      // A lacing value below 255 ends a packet.
+      if (lace < 255) {
+        packets.push(Buffer.concat(partial));
+        partial = [];
+      }
+    }
+    pos = at;
+  }
+  return packets.slice(2);
+}
+
+interface Clip {
+  readonly fps: number;
+  readonly frames: IvfFrame[];
+  /** 20 ms Opus packets. */
+  readonly opus: Buffer[];
+}
+
 const MTU_PAYLOAD = 1100;
 
 /** RFC 7741 VP8 payloads: a one-byte descriptor (S on the first packet of the frame, PID 0). */
@@ -55,7 +86,7 @@ const sessions = new Map<string, () => void>();
 let nextId = 0;
 
 /** Sends the clip in a loop on `track`, paced at its frame rate, with continuing RTP timestamps. */
-function play(track: MediaStreamTrack, clip: { fps: number; frames: IvfFrame[] }): () => void {
+function play(track: MediaStreamTrack, clip: Clip): () => void {
   let seq = Math.floor(Math.random() * 0xffff);
   let n = 0;
   const step = Math.round(90_000 / clip.fps);
@@ -76,9 +107,29 @@ function play(track: MediaStreamTrack, clip: { fps: number; frames: IvfFrame[] }
   return () => clearInterval(timer);
 }
 
-async function answer(offer: string, clip: { fps: number; frames: IvfFrame[] }): Promise<{ sdp: string; close: () => void }> {
+/** Sends the Opus packets in a loop on `track`, one per 20 ms (960 samples at 48 kHz). */
+function playAudio(track: MediaStreamTrack, opus: Buffer[]): () => void {
+  let seq = Math.floor(Math.random() * 0xffff);
+  let n = 0;
+  const started = Date.now();
+  const pump = (): void => {
+    const due = Math.floor((Date.now() - started) / 20);
+    for (; n <= due; n++) {
+      const header = new RtpHeader({ payloadType: 111, sequenceNumber: seq, timestamp: (n * 960) >>> 0, marker: n === 0 });
+      seq = (seq + 1) & 0xffff;
+      track.writeRtp(new RtpPacket(header, opus[n % opus.length] as Buffer));
+    }
+  };
+  const timer = setInterval(pump, 10);
+  return () => clearInterval(timer);
+}
+
+async function answer(offer: string, clip: Clip): Promise<{ sdp: string; close: () => void }> {
   const pc = new RTCPeerConnection({
-    codecs: { video: [new RTCRtpCodecParameters({ mimeType: 'video/VP8', clockRate: 90_000 })], audio: [] },
+    codecs: {
+      video: [new RTCRtpCodecParameters({ mimeType: 'video/VP8', clockRate: 90_000 })],
+      audio: [new RTCRtpCodecParameters({ mimeType: 'audio/opus', clockRate: 48_000, channels: 2 })],
+    },
     iceAdditionalHostAddresses: ['127.0.0.1'],
     // Host candidates only: no public STUN lookups from the test machine.
     iceServers: [],
@@ -89,14 +140,20 @@ async function answer(offer: string, clip: { fps: number; frames: IvfFrame[] }):
   if (video === undefined) throw new Error('offer has no video');
   video.setDirection('sendonly');
   video.sender.replaceTrack(track);
-  // Audio (if offered) stays inactive: the fixture has no sound.
-  for (const t of pc.getTransceivers()) if (t.kind === 'audio') t.setDirection('inactive');
+  const sound = new MediaStreamTrack({ kind: 'audio' });
+  const audio = pc.getTransceivers().find((t) => t.kind === 'audio');
+  if (audio !== undefined) {
+    audio.setDirection('sendonly');
+    audio.sender.replaceTrack(sound);
+  }
   await pc.setLocalDescription(await pc.createAnswer());
   // Non-trickle: the answer carries every candidate.
   if (pc.iceGatheringState !== 'complete') await new Promise<void>((r) => pc.iceGatheringStateChange.subscribe((s) => s === 'complete' && r()));
   let stop: (() => void) | undefined;
   pc.connectionStateChange.subscribe((s) => {
-    if (s === 'connected' && stop === undefined) stop = play(track, clip);
+    if (s !== 'connected' || stop !== undefined) return;
+    const stops = [play(track, clip), ...(audio === undefined ? [] : [playAudio(sound, clip.opus)])];
+    stop = () => stops.forEach((f) => f());
   });
   return {
     sdp: pc.localDescription?.sdp ?? '',
@@ -115,7 +172,7 @@ const unreachable = (sdp: string): string =>
     .flatMap((l) => (l.startsWith('a=mid:') ? [l, 'a=candidate:1 1 udp 2130706431 192.0.2.1 9 typ host', 'a=end-of-candidates'] : [l]))
     .join('\r\n');
 
-async function handle(req: IncomingMessage, res: ServerResponse, clip: () => { fps: number; frames: IvfFrame[] }): Promise<void> {
+async function handle(req: IncomingMessage, res: ServerResponse, clip: () => Clip): Promise<void> {
   const path = req.url?.split('?')[0] ?? '';
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Expose-Headers', 'Location');
@@ -146,8 +203,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, clip: () => { f
 }
 
 export function whepPlugin(file: string): Plugin {
-  let clip: { fps: number; frames: IvfFrame[] } | undefined;
-  const load = (): { fps: number; frames: IvfFrame[] } => (clip ??= parseIvf(readFileSync(file)));
+  let clip: Clip | undefined;
+  const load = (): Clip => (clip ??= { ...parseIvf(readFileSync(file)), opus: parseOggOpus(readFileSync(file.replace(/clip\.ivf$/, 'tone.ogg'))) });
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
     if (!(req.url ?? '').startsWith('/whep/')) {
       next();

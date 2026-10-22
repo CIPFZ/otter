@@ -37,11 +37,13 @@ const ciNotice = (text: string): void => {
 const gathers = (page: Page): Promise<boolean> =>
   page.evaluate(async () => {
     const pc = new RTCPeerConnection();
+    let any = false;
+    // Candidate events, not the SDP: real Firefox (Windows) gathers but its localDescription read
+    // here did not list them.
+    pc.onicecandidate = (e) => (any ||= e.candidate !== null && e.candidate.candidate !== '');
     pc.addTransceiver('video', { direction: 'recvonly' });
     await pc.setLocalDescription(await pc.createOffer());
-    for (let i = 0; i < 30 && pc.iceGatheringState === 'new'; i++) await new Promise((r) => setTimeout(r, 100));
-    await new Promise((r) => setTimeout(r, 500));
-    const any = (pc.localDescription?.sdp ?? '').includes('a=candidate:');
+    for (let i = 0; i < 30 && !any; i++) await new Promise((r) => setTimeout(r, 100));
     pc.close();
     return any;
   });
@@ -84,6 +86,29 @@ test('cn-live WHEP: the WebRTC stream plays on the native backend', async ({ pag
   // Sub-second: the receiver's jitter buffer, from WebRTC stats.
   await expect.poll(async () => (await state(page)).latency, { timeout: 5000 }).not.toBeNull();
   expect((await state(page)).latency as number).toBeLessThan(1);
+  // The audio track (Opus, 440 Hz tone) arrives and carries sound: RMS of the received stream
+  // through an AnalyserNode (the player is muted; the stream itself is not).
+  const audio = await page.evaluate(async () => {
+    const stream = (document.querySelector('video') as HTMLVideoElement).srcObject as MediaStream;
+    const tracks = stream.getAudioTracks().length;
+    const ctx = new AudioContext();
+    const running = await Promise.race([ctx.resume().then(() => ctx.state === 'running'), new Promise<boolean>((r) => setTimeout(() => r(false), 1000))]);
+    if (!running || tracks === 0) return { tracks, running, rms: 0 };
+    const analyser = ctx.createAnalyser();
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    const data = new Float32Array(analyser.fftSize);
+    let rms = 0;
+    for (let i = 0; i < 20 && rms < 0.01; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      analyser.getFloatTimeDomainData(data);
+      rms = Math.sqrt(data.reduce((a, x) => a + x * x, 0) / data.length);
+    }
+    void ctx.close();
+    return { tracks, running, rms };
+  });
+  expect(audio.tracks).toBe(1);
+  if (audio.running) expect(audio.rms).toBeGreaterThan(0.01);
+  ciNotice(`WHEP: video ${frames} frames/s, audio track ${audio.running ? `RMS ${audio.rms.toFixed(3)}` : '(no running AudioContext to measure it)'}`);
 });
 
 test('cn-live WHEP: ICE that cannot connect falls back to the HTTP-FLV source', async ({ page }) => {
