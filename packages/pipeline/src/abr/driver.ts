@@ -3,7 +3,6 @@
 // counters and ladder ordering so hls.js and Shaka integrations stay thin and identical.
 
 import { type AbrController, type AbrDecision, type AbrLevel, type BufferState } from './abr.js';
-import { createDefaultAbrController } from './defaults.js';
 import { EwmaBandwidthEstimator, type BandwidthEstimate } from '../vendor/hls.js/ewma.js';
 
 export interface AbrSnapshot {
@@ -63,8 +62,11 @@ function bufferStateOf(bufferLevel: number, segmentDuration: number): BufferStat
 const orderOf = (levels: readonly AbrLevel[]): number[] =>
   levels.map((_, i) => i).sort((a, b) => (levels[a] as AbrLevel).bitrate - (levels[b] as AbrLevel).bitrate);
 
-export function createAbrDriver(options: AbrDriverOptions = {}): AbrDriver {
-  const controller = options.controller ?? createDefaultAbrController();
+/**
+ * The driver around `controller`. createAbrDriver (defaults.ts) supplies the default rule stack;
+ * this one does not import it, so a lean stack does not carry BOLA (own CMAF-HLS engine, ADR-010 §3).
+ */
+export function createAbrDriverWith(controller: AbrController, options: Omit<AbrDriverOptions, 'controller'> = {}): AbrDriver {
   const now = options.now ?? (() => Date.now());
   const estimator = new EwmaBandwidthEstimator(options.halfLife?.slow ?? 15, options.halfLife?.fast ?? 4, options.defaultEstimate ?? 500_000);
   let appended = 0;

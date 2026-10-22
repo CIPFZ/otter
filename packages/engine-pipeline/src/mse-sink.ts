@@ -50,8 +50,8 @@ export interface MseSink {
   abort(type?: 'audio' | 'video'): void;
   /** Removes media older than `currentTime - backBufferS` on every buffer. */
   evict(currentTime: number): Promise<void>;
-  /** Removes everything (seek outside the buffer / discontinuity). */
-  clear(): Promise<void>;
+  /** Removes everything of `type` (default: every buffer); audio track switch, discontinuity. */
+  clear(type?: 'audio' | 'video'): Promise<void>;
   endOfStream(): void;
   readonly types: readonly string[];
   /**
@@ -264,9 +264,9 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
         }),
       );
     },
-    async clear() {
+    async clear(type) {
       await Promise.all(
-        [...queues.values()].map((q) => {
+        [...queues.entries()].filter(([t]) => type === undefined || t === type).map(([, q]) => {
           const r = ranges(q.sb);
           const first = r[0];
           const last = r.at(-1);

@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/format-hls",
   "version": "0.0.0",
-  "description": "HLS format plugin (hls.js adapter first, lightweight CMAF-HLS later).",
+  "description": "HLS format plugin: own CMAF-HLS engine (ADR-010), hls.js for what it leaves out, Shaka for DRM.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -24,6 +24,8 @@
     "@otter-player/engine-adapter-hlsjs": "workspace:*",
     "@otter-player/engine-adapter-shaka": "workspace:*",
     "@otter-player/media": "workspace:*",
-    "@otter-player/demux-mediabunny": "workspace:*"
+    "@otter-player/demux-mediabunny": "workspace:*",
+    "@otter-player/engine-pipeline": "workspace:*",
+    "@otter-player/pipeline": "workspace:*"
   }
 }

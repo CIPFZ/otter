@@ -15,7 +15,7 @@ export {
   type BufferState,
   type Priority,
 } from './abr/abr.js';
-export { createDefaultAbrController, createServerHintRule, type DefaultAbrOptions } from './abr/defaults.js';
+export { createAbrDriver, createDefaultAbrController, createLeanAbrController, createServerHintRule, type DefaultAbrOptions } from './abr/defaults.js';
 export { createBolaRule, type BolaRuleOptions } from './vendor/dash.js/bola.js';
 export { createDynamicRule, type DynamicRuleOptions } from './vendor/dash.js/dynamic.js';
 export {
@@ -26,7 +26,7 @@ export {
 } from './vendor/dash.js/rules.js';
 export { Ewma, EwmaBandwidthEstimator, type BandwidthEstimate } from './vendor/hls.js/ewma.js';
 export {
-  createAbrDriver,
+  createAbrDriverWith,
   type AbrDriver,
   type AbrDriverOptions,
   type AbrEngineDecision,

@@ -408,9 +408,15 @@ importers:
       '@otter-player/engine-adapter-shaka':
         specifier: workspace:*
         version: link:../engine-adapter-shaka
+      '@otter-player/engine-pipeline':
+        specifier: workspace:*
+        version: link:../engine-pipeline
       '@otter-player/media':
         specifier: workspace:*
         version: link:../media
+      '@otter-player/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
 
   packages/format-mp4-range:
     dependencies:

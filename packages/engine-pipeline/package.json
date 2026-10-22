@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/engine-pipeline",
   "version": "0.0.0",
-  "description": "Otter's own engine (ADR-007 \u00a72): streaming loader -> pipeline transmuxer -> MSE sink, with the LiveController.",
+  "description": "Otter's own engine (ADR-007 §2): streaming loader -> pipeline transmuxer -> MSE sink, with the LiveController.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -10,6 +10,16 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./sink": {
+      "@otter-player/source": "./src/mse-sink.ts",
+      "types": "./dist/mse-sink.d.ts",
+      "default": "./dist/sink.js"
+    },
+    "./fallback": {
+      "@otter-player/source": "./src/fallback.ts",
+      "types": "./dist/fallback.d.ts",
+      "default": "./dist/fallback.js"
     }
   },
   "files": [
@@ -23,5 +33,11 @@
     "@otter-player/core": "workspace:*",
     "@otter-player/media": "workspace:*",
     "@otter-player/pipeline": "workspace:*"
+  },
+  "otter": {
+    "entries": {
+      "sink": "src/mse-sink.ts",
+      "fallback": "src/fallback.ts"
+    }
   }
 }

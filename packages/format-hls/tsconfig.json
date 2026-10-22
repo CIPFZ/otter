@@ -27,6 +27,12 @@
     },
     {
       "path": "../demux-mediabunny"
+    },
+    {
+      "path": "../engine-pipeline"
+    },
+    {
+      "path": "../pipeline"
     }
   ]
 }

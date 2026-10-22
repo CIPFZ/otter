@@ -148,7 +148,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
 }> {
   const params = new URLSearchParams(location.search);
   const abr = params.get('abr') === 'engine' ? 'engine' : 'otter';
-  // ?ahead=<s>: mp4-range buffer goal (short clips would otherwise be buffered whole).
+  // ?ahead=<s>: mp4-range / own HLS engine buffer goal (short clips would otherwise be buffered whole).
   const ahead = params.get('ahead') === null ? undefined : Number(params.get('ahead'));
   // ?pipeline=otter|mpegts selects the FLV / TS engine (ADR-007 §2).
   const pipeline = params.get('pipeline') === 'otter' ? 'otter' : params.get('pipeline') === 'mpegts' ? 'mpegts' : undefined;
@@ -166,7 +166,8 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
     target: video,
     // ?abr=engine: the engines' own ABR instead of the Otter rule stack, for A/B runs (ADR-005 §1).
     formats: [
-      createHlsFormat({ abr }),
+      // ?hls=hlsjs: the hls.js adapter instead of the own CMAF-HLS engine (A/B runs, ADR-010).
+      createHlsFormat({ abr, ...(params.get('hls') === 'hlsjs' ? { engine: 'hlsjs' as const } : {}), ...(ahead === undefined ? {} : { own: { forwardBufferS: ahead } }) }),
       createDashFormat({ abr }),
       createFlvFormat(pipeline === undefined ? {} : { engine: pipeline }),
       createTsFormat(pipeline === undefined ? {} : { engine: pipeline }),

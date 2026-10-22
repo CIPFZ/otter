@@ -94,9 +94,29 @@ const onDemand = readdirSync('packages')
       .map((f) => ({ name: `on-demand chunk: @otter-player/${name} ${f.replace(/-[A-Za-z0-9_-]{8}\.js$/, '')}`, path: `packages/${name}/dist/${f}`, gzip: true, modifyEsbuildConfig: firstScreenOnly })),
   );
 
+// Own CMAF-HLS engine (ADR-010 §3): the format-hls engine chunk and what it alone brings in (the
+// MSE sink, ABR rule stack; @otter-player/core is on the first screen anyway). VOD: the engine chunk
+// every VOD playback loads; VOD + live: every chunk of the engine (live, and the subtitle chunk that
+// loads when a WebVTT track is turned on).
+const hlsChunk = (prefix) => {
+  const f = existsSync('packages/format-hls/dist') ? readdirSync('packages/format-hls/dist').find((x) => x.startsWith(`${prefix}-`) && x.endsWith('.js')) : undefined;
+  return f === undefined ? `packages/format-hls/dist/${prefix}.js` : `packages/format-hls/dist/${f}`;
+};
+const ownHlsEngine = [
+  { name: 'own CMAF-HLS engine chunk, VOD (ADR-010 §3, ≤ 12 KB)', path: hlsChunk('engine'), gzip: true, limit: '12 KB', ignore: ['@otter-player/core'], modifyEsbuildConfig: firstScreenOnly },
+  {
+    name: 'own CMAF-HLS engine chunks, VOD + live (ADR-010 §3, ≤ 15 KB)',
+    path: [hlsChunk('engine'), hlsChunk('subtitles'), hlsChunk('live')],
+    gzip: true,
+    limit: '15 KB',
+    ignore: ['@otter-player/core'],
+    modifyEsbuildConfig: firstScreenOnly,
+  },
+];
+
 const reports = readdirSync('packages')
   .filter((name) => existsSync(`packages/${name}/tsconfig.json`))
   .sort()
   .map((name) => ({ name: `@otter-player/${name}`, path: dist(name), import: '*', gzip: true }));
 
-export default [...budgets, ...scenarios, ...engineChunks, ...onDemand, ...reports];
+export default [...budgets, ...scenarios, ...engineChunks, ...ownHlsEngine, ...onDemand, ...reports];

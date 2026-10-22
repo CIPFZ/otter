@@ -43,6 +43,17 @@ ADR-009 的「含引擎口径简单点播 < 30KB」与现状冲突：短视频�
 
 SPEC §8 的「对标 SPF 12KB」改成这两个数字。引擎块的 size-limit 条目随引擎在 M5 加入 `.size-limit.js`（与 §19 场景并列，两档上限）。
 
+M5 实现时的口径（2026-10-22）：
+
+- **两条门禁各量什么**：
+  - 「点播」量每次点播播放都会加载的引擎块（`engine-*.js`）及其独有依赖：MSE sink、ABR 规则栈。`@otter-player/core` 首屏已有，不计。
+  - 「含直播」量引擎的全部按需块：引擎块，加上直播块（LiveController、重载策略），再加上打开 WebVTT 字幕时才加载的字幕块。
+- **ABR 用精简规则栈**：Throughput + InsufficientBuffer（`createLeanAbrController`），不带 BOLA 与 Dynamic 切换，比完整规则栈轻约 1.4 KB。hls.js 适配器、Shaka、mp4-range 仍用完整规则栈。为此 `createAbrDriverWith(controller)` 与带默认规则栈的 `createAbrDriver` 分开，精简栈不会带上 BOLA。
+- **模块边界**：
+  - 引擎块不直接引用 `@otter-player/core` 的值，由按需包装层传入（`CoreHelpers`）。
+  - sink 与 `withAdapterFallback` 各走 `@otter-player/engine-pipeline` 的子路径（`/sink`、`/fallback`）。
+  - 这样首屏入口和引擎块不会共享同一个模块，副作用门禁（单文件打包时的惰性初始化）保持干净。
+
 ### 4. 接口改动（M4 → M5 交接，2026-10-22 负责人确认）
 
 M4 报告「M4 → M5 交接」的五条建议全部采纳，在拷入 SPF 与写调度器之前单独提交：

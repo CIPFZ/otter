@@ -155,4 +155,7 @@ printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:12\n#EXT-X-PLAYLIST-TYP
 # VP8 clip for the local WHEP fixture (format-whep).
 ./generate-whep.sh
 
+# HLS streams the own CMAF-HLS engine hands to hls.js (discontinuity, AES-128, LL-HLS parts).
+./generate-hls-unsupported.sh
+
 du -sh . && find . -type f | sort | sed 's/^/  /' | head -80

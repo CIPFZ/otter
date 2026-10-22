@@ -1,10 +1,11 @@
 // Dev server for the Playwright fixture site. Packages resolve to their sources (same alias as
 // Vitest); local test media (e2e/media) is served from the root; /live/stream.flv is a paced
-// local HTTP-FLV live stream; /whep/* is a local WHEP endpoint (e2e/whep.ts).
+// local HTTP-FLV live stream; /whep/* is a local WHEP endpoint (e2e/whep.ts); /live-hls/* a looped live CMAF-HLS stream (e2e/live-hls.ts).
 import { cpSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { liveFlvPlugin } from './live-flv.ts';
+import { liveHlsPlugin } from './live-hls.ts';
 import { whepPlugin } from './whep.ts';
 
 const packagesDir = fileURLToPath(new URL('../packages/', import.meta.url));
@@ -17,6 +18,7 @@ export default defineConfig({
   plugins: [
     liveFlvPlugin(`${mediaDir}flv/clip.flv`),
     whepPlugin(`${mediaDir}whep/clip.ivf`),
+    liveHlsPlugin(`${mediaDir}frames/hls-ladder`),
     // decoder-wasm-hevc loads its WASM next to its own module (otter.assets): in the built site
     // that module lives in assets/.
     {
@@ -35,6 +37,8 @@ export default defineConfig({
       { find: /^@otter-player\/surface\/gpu$/, replacement: `${packagesDir}surface/src/gpu.ts` },
       { find: /^@otter-player\/presentation\/multiview$/, replacement: `${packagesDir}presentation/src/multiview.ts` },
       { find: /^@otter-player\/presentation\/canvas-pip$/, replacement: `${packagesDir}presentation/src/canvas-pip.ts` },
+      { find: /^@otter-player\/engine-pipeline\/fallback$/, replacement: `${packagesDir}engine-pipeline/src/fallback.ts` },
+      { find: /^@otter-player\/engine-pipeline\/sink$/, replacement: `${packagesDir}engine-pipeline/src/mse-sink.ts` },
       { find: /^@otter-player\/presentation\/picture$/, replacement: `${packagesDir}presentation/src/picture.ts` },
       { find: /^@otter-player\/presentation\/single-audio$/, replacement: `${packagesDir}presentation/src/single-audio.ts` },
       { find: /^@otter-player\/([a-z0-9-]+)$/, replacement: `${packagesDir}$1/src/index.ts` },
