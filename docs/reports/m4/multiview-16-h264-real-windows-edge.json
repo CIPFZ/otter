@@ -1,0 +1,191 @@
+{
+  "project": "real-windows-edge",
+  "src": "/frames/h264-720p.mp4",
+  "cores": 10,
+  "kind": "gpu",
+  "hevcHardware": false,
+  "browserCpu": {
+    "browser": 13.4,
+    "renderer": 18.7,
+    "GPU": 38.4,
+    "network.mojom.NetworkService": 0,
+    "storage.mojom.StorageService": 0,
+    "proxy_resolver.mojom.ProxyResolverFactory": 0,
+    "entity_extraction_service.mojom.Extractor": 0,
+    "audio.mojom.AudioService": 0
+  },
+  "perStreamCpu": 4.4,
+  "mainThread": {
+    "frames": 600,
+    "over20": 0,
+    "over34": 0,
+    "over50": 0,
+    "longest": 18,
+    "longTasks": 0,
+    "longTaskMs": 0
+  },
+  "wallMs": 10041,
+  "workers": 4,
+  "streams": [
+    {
+      "tile": "Camera 1",
+      "backend": "webcodecs",
+      "advancedS": 9.92,
+      "decodedFrames": -96,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 2",
+      "backend": "webcodecs",
+      "advancedS": 9.93,
+      "decodedFrames": -105,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 3",
+      "backend": "webcodecs",
+      "advancedS": 9.86,
+      "decodedFrames": -101,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 4",
+      "backend": "webcodecs",
+      "advancedS": 9.97,
+      "decodedFrames": -132,
+      "cpuPercentOfOneCore": -0.1,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 5",
+      "backend": "webcodecs",
+      "advancedS": 9.98,
+      "decodedFrames": -119,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 6",
+      "backend": "webcodecs",
+      "advancedS": 9.91,
+      "decodedFrames": -89,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 7",
+      "backend": "webcodecs",
+      "advancedS": 9.9,
+      "decodedFrames": -113,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 8",
+      "backend": "webcodecs",
+      "advancedS": 10.13,
+      "decodedFrames": -93,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 9",
+      "backend": "webcodecs",
+      "advancedS": 9.88,
+      "decodedFrames": -91,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 10",
+      "backend": "webcodecs",
+      "advancedS": 9.92,
+      "decodedFrames": -124,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 11",
+      "backend": "webcodecs",
+      "advancedS": 9.9,
+      "decodedFrames": -115,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 12",
+      "backend": "webcodecs",
+      "advancedS": 9.91,
+      "decodedFrames": -128,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 13",
+      "backend": "webcodecs",
+      "advancedS": 9.94,
+      "decodedFrames": -103,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 14",
+      "backend": "webcodecs",
+      "advancedS": 9.87,
+      "decodedFrames": -109,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 15",
+      "backend": "webcodecs",
+      "advancedS": 9.96,
+      "decodedFrames": -122,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    },
+    {
+      "tile": "Camera 16",
+      "backend": "webcodecs",
+      "advancedS": 9.91,
+      "decodedFrames": -97,
+      "cpuPercentOfOneCore": 0,
+      "droppedByClock": 0,
+      "replacedOnCanvas": 0,
+      "errors": []
+    }
+  ]
+}
