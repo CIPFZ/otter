@@ -110,11 +110,15 @@ const plausibleFit = (m: ColorFit): boolean =>
   [1, 2, 4, 6, 8, 9].every((i) => Math.abs(m[i] as number) < 0.3) &&
   [3, 7, 11].every((i) => Math.abs(m[i] as number) < 40);
 
+/** No colour map to speak of: the platform treats both paths the same. */
+const nearIdentity = (m: ColorFit): boolean => m.every((v, i) => Math.abs(v - (IDENTITY_FIT[i] as number)) < ([3, 7, 11].includes(i) ? 4 : 0.03));
+
 // Resampling and YUV conversion differ slightly between paths; edges of a sharpened, zoomed test
 // pattern are the worst case.
 const MAX_MEAN = 6;
 /**
- * Where the platform colour-manages one path and not the other (WebKit: <video> yes, WebGL no),
+ * Where the platform colour-manages <video> and not the frame surfaces (WebKit; Edge on Windows
+ * with a hardware video path: <video> yes, 2D canvas / WebGL drawing of the frame no),
  * the colour map is fitted on the unfiltered frame and does not commute exactly with the filters:
  * the mean may drift, the share of clearly different pixels must not.
  */
@@ -171,16 +175,18 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
   }
   await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).frame(2.3));
   const boxes = gpu ? ['gpu-box', 'canvas2d-box'] : ['canvas2d-box'];
-  // Platform colour management, probed directly: the same frame through a 2D canvas and through
-  // a WebGL texture. Only where they differ (WebKit) does the GPU path get a colour map, fitted
-  // on the unfiltered frame, and the wider mean limit; every other path (and every path on
-  // Chrome / Firefox) is compared as is, with the original limits.
+  // Platform colour management: a colour map from each surface to the <video> box, fitted on the
+  // unfiltered frame. Near identity (Chrome / Firefox headless, Firefox on Windows): compared as
+  // is with the original limits. Otherwise (WebKit; Edge on Windows, whose <video> converts the
+  // untagged SMPTE 170M picture while the frame surfaces draw it unconverted) the map must look
+  // like colour management and the surface is compared after it, with the wider mean limit.
+  // The in-page probe (2D canvas vs WebGL) is reported only: on Edge both draw unconverted.
   const probe = await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).colourManaged());
   const fits: Record<string, ColorFit> = {};
   const fitted = await compareBoxes(page, boxes, {}, true);
   for (const box of boxes) {
     const d = fitted[box] as (typeof fitted)[string];
-    if (box === 'gpu-box' && probe.managed) {
+    if (!nearIdentity(d.fit)) {
       if (!plausibleFit(d.fit)) ciNotice(`surfaces: implausible colour map for ${box}, samples ${JSON.stringify(d.samples)}`);
       expect(plausibleFit(d.fit), `${box}: colour map ${JSON.stringify(d.fit.map((v) => Math.round(v * 1000) / 1000))} is colour management, not another picture`).toBe(true);
       fits[box] = d.fit;
@@ -220,7 +226,8 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
   }
   const worst = Object.values(results).reduce((w, d) => ({ mean: Math.max(w.mean, d.mean), outliers: Math.max(w.outliers, d.outliers) }), { mean: 0, outliers: 0 });
   const maps = Object.entries(fits).map(([k, v]) => `${k} ${v.map((x) => Math.round(x * 100) / 100).join(' ')}`).join('; ');
-  const managed = probe.managed ? `platform colour-manages <video> but not WebGL (2D ${probe.canvas2d.map(Math.round).join(',')} vs WebGL ${probe.webgl.map(Math.round).join(',')}): gpu-box fitted, mean limit ${MAX_MEAN_MANAGED}` : 'no colour management difference: no fit, mean limit 6';
+  const fittedBoxes = boxes.filter((b) => limits[b] === MAX_MEAN_MANAGED);
+  const managed = `${fittedBoxes.length > 0 ? `<video> colour-managed differently from ${fittedBoxes.join(', ')}: fitted, mean limit ${MAX_MEAN_MANAGED}` : 'no colour management difference: no fit, mean limit 6'}; probe 2D ${probe.canvas2d.map(Math.round).join(',')} vs WebGL ${probe.webgl.map(Math.round).join(',')}`;
   ciNotice(`surfaces: worst mean ${worst.mean.toFixed(2)}, outliers ${(worst.outliers * 100).toFixed(2)}%; ${managed} (maps: ${maps})${ok ? '' : ` FAILED ${JSON.stringify(results)}`}`);
   info.annotations.push({ type: 'surface-diff', description: JSON.stringify(results) });
   test.info().attach('surface-diff.json', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
