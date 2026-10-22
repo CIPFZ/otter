@@ -16,7 +16,7 @@ const ciNotice = (text: string): void => {
 const state = (page: Page) =>
   page.evaluate(async () => {
     const s = ((await window.otter) as OtterFixture).state();
-    return { t: s.currentTime, paused: s.paused, backend: s.backend, mode: s.presentation?.mode, pip: s.presentation?.capabilities.pip };
+    return { t: s.currentTime, paused: s.paused, backend: s.backend, mode: s.presentation?.mode, pending: s.presentation?.pending, pip: s.presentation?.capabilities.pip };
   });
 
 async function load(page: Page, query = ''): Promise<void> {
@@ -69,7 +69,8 @@ test('video PiP of the WebCodecs canvas: enter and leave without interrupting pl
   await sample(page);
   await page.addStyleTag({ content: 'otter-pip-button { display: inline-block !important; }' });
   await page.locator('otter-pip-button').getByRole('button').click();
-  await expect.poll(async () => (await state(page)).mode, { timeout: 8000 }).toMatch(/pip|inline/);
+  // Settled: in PiP, or the request is over (refused or rolled back).
+  await expect.poll(async () => ((s) => (s.mode === 'pip' ? 'pip' : s.pending == null ? 'settled' : 'pending'))(await state(page)), { timeout: 8000 }).not.toBe('pending');
   if ((await state(page)).mode !== 'pip') {
     // Headless WebKit may refuse to open a PiP window (rolled back with a reason).
     const denied = await page.evaluate(async () => ((await window.otter) as OtterFixture).events.filter((e) => e.type === 'presentation-denied').map((e) => e.payload));
