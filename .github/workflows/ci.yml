@@ -129,6 +129,14 @@ jobs:
           name: playwright-report-${{ matrix.os }}
           path: playwright-report
           if-no-files-found: ignore
+      # Background mode: time until the picture caught up with the clock (ADR-011 §4, 20 main runs).
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: background-catch-up-${{ matrix.os }}
+          path: test-results/background
+          retention-days: 90
+          if-no-files-found: ignore
 
   network-nightly:
     name: e2e @network (nightly)

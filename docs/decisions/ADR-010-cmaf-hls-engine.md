@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-10-21
-- 关联：`SPEC.md` §8、§19、§23 Q3；`REUSE.md` §3；ADR-009（体积口径修订）；`docs/reports/M4.md`「Q3 材料」
+- 关联：`SPEC.md` §8、§19、§23 Q3；ADR-011（M5 批次）；`docs/reports/M4.md`「M4 → M5 交接」；`REUSE.md` §3；ADR-009（体积口径修订）；`docs/reports/M4.md`「Q3 材料」
 
 ## 背景
 
@@ -42,6 +42,32 @@ ADR-009 的「含引擎口径简单点播 < 30KB」与现状冲突：短视频�
 - **「含第三方引擎」列**：继续只记录，到 M6。
 
 SPEC §8 的「对标 SPF 12KB」改成这两个数字。引擎块的 size-limit 条目随引擎在 M5 加入 `.size-limit.js`（与 §19 场景并列，两档上限）。
+
+### 4. 接口改动（M4 → M5 交接，2026-10-22 负责人确认）
+
+M4 报告「M4 → M5 交接」的五条建议全部采纳，在拷入 SPF 与写调度器之前单独提交：
+
+1. **Engine / EngineContext**：EngineContext 不加字段。`Engine` 加可选 `readonly targetLatency?: number`；`backend-mse` 采样延迟时一起读，`latency-change` 带上 `target`（hls.js 适配器同样受益）。
+2. **MSE sink**：
+   - **分片账本**：`append(type, data, seg?: { id, start, end, level })`；`evict` / `clear` / 浏览器自行驱逐后按 `buffered` 修剪；查询接口 `segments(type)`。
+   - **`abort(type)`**：清掉该队列未执行的操作（Promise 以 `AbortError` 结束），正在追加时调用 `SourceBuffer.abort()`，之后下一段前须重新追加 init。
+   - **不加 timestampOffset**：与上面「PTS 不平移」一致。
+3. **withAdapterFallback**：
+   - **新的回退触发**：新增 details `ownEngineUnsupported`（`type: 'media'`）触发回退，原因写在 `pipelineFallback` 的 message 里，由 `backend-mse` 记成 `router.explain()` 的一步。`unsupportedSource` 与网络错误仍不回退。
+   - **运行时回退一次**：`load()` 之后的致命媒体错误，从当前位置用适配器重建一次。重建时**保留用户已选的清晰度、字幕轨和音轨**：手动选了某档就仍是那一档，不回自动档；自动档仍是自动档。字幕与音轨按 id 选回，适配器里没有同 id 的，按语言加类型匹配，再不行保持适配器默认并在 `pipelineFallback` 的 message 里说明。
+4. **ABR driver**：接口不改。
+   - `sampleDownload(ms, bytes, ttfbMs)`：每个媒体分片下载完时调用（不含 init 和播放列表）。
+   - `decide`：选下一个视频分片前调用，前向缓冲取视频 SourceBuffer，`segmentDuration` 取 TARGETDURATION。
+   - `segmentAppended`：视频分片追加后调用。
+   - `applied`：切档后调用。
+   - `reset`：seek 时调用。
+   - 切档点不早于「时钟 + 1 s」的分片边界。
+5. **LiveController**：
+   - **`setTargetLatency(s)`**：重算阈值。目标取 `HOLD-BACK`，缺省 3 × TARGETDURATION，宿主可用 `createHlsFormat({ targetLatency })` 覆盖。
+   - **`LiveSample.edge?`**：直播边缘的媒体时间。有它时 `chaseLatency` / `syncRate` / `seekToLive` 用它代替缓冲末尾；FLV / TS 不传，行为不变。
+   - **起播位置**：`edge − HOLD-BACK`，由引擎设置。
+
+直播可拖范围随引擎首批做：引擎调用 `setLiveSeekableRange`，`PlaybackSnapshot` 增加 `seekableStart` / `seekableEnd`（ADR-011）。
 
 ## 代价
 

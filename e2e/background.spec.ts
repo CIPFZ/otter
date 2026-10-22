@@ -4,6 +4,7 @@
 // visibility is emulated: a controllable document.visibilityState and a real visibilitychange.
 // (MMS startstreaming / endstreaming for the own MSE engines: unit tests, engine-pipeline.)
 
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
@@ -69,8 +70,19 @@ test('background on WebCodecs: nothing decoded or drawn while hidden, the clock 
   expect(t1 - t0).toBeGreaterThan(1.5);
 
   await setHidden(page, false);
+  const shownAt = Date.now();
   // Back in view: the picture jumps to the clock (past the hidden span), not on from where it stopped.
-  await expect.poll(async () => frameOnPlayer(page), { timeout: 5_000 }).toBeGreaterThan(before + (t1 - t0) * FPS * 0.9);
+  // How long that takes is recorded for every run (ADR-011 §4: CI artifact, distribution over 20
+  // main runs before a threshold is set); 15 s only catches a picture that never catches up.
+  let caughtUpMs: number | null = null;
+  try {
+    await expect.poll(async () => frameOnPlayer(page), { timeout: 15_000, intervals: [100] }).toBeGreaterThan(before + (t1 - t0) * FPS * 0.9);
+    caughtUpMs = Date.now() - shownAt;
+  } finally {
+    mkdirSync('test-results/background', { recursive: true });
+    appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: background catch-up ${caughtUpMs === null ? 'none within 15 s' : `${caughtUpMs} ms`} (retry ${test.info().retry})\n`);
+    writeFileSync(`test-results/background/catch-up-${test.info().project.name}-r${test.info().retry}.json`, JSON.stringify({ project: test.info().project.name, retry: test.info().retry, caughtUpMs, hiddenS: t1 - t0, at: new Date().toISOString(), sha: process.env['GITHUB_SHA'] ?? null }));
+  }
   expect((await state(page)).mode).not.toBe('background');
   expect((await state(page)).paused).toBe(false);
   // And it is the clock's frame (paused, so the comparison does not race the screenshot).
