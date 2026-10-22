@@ -402,6 +402,9 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       managed = MS.managed;
       const s = createMseSink(MS.Ctor, { backBufferS: BACK_BUFFER_S });
       sink = s;
+      // ManagedMediaSource opens only with remote playback off or an AirPlay <source>; for HLS the
+      // alternate is the playlist itself, added by backend-mse after load (as for hls.js).
+      if (managed && media.querySelector('source') === null) media.disableRemotePlayback = true;
       media.src = s.url;
       // Start like hls.js: the first variant listed (ABR decides once it has samples).
       const first = variants[0] as PartiallyResolvedVideoTrack;

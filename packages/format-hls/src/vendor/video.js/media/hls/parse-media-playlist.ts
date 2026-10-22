@@ -108,15 +108,12 @@ function placeOnPreviousTimeline(
     const overlap = prevSegments[offset]!;
 
     if (overlap.url !== segments[0]!.url) {
-      console.warn(
-        `[parseMediaPlaylist] media-sequence aligns previous[${offset}] with the new window's first segment, ` +
-          `but URLs differ (${overlap.url} vs ${segments[0]!.url}); sequence numbers may be unreliable.`
-      );
+      // Otter: diagnostic console.warn dropped (UPSTREAM.json).
     }
 
     anchor = overlap.startTime;
   } else if (offset < 0) {
-    console.warn(`[parseMediaPlaylist] media-sequence went backwards (offset ${offset}); resetting timeline.`);
+    // Otter: diagnostic console.warn dropped (UPSTREAM.json).
     anchor = localBase;
   } else {
     const last = prevSegments[prevSegments.length - 1]!;
@@ -130,10 +127,7 @@ function placeOnPreviousTimeline(
       anchor = last.startTime + (newFirst.startDate - last.startDate);
     } else {
       anchor = last.startTime + last.duration + (offset - prevSegments.length) * targetDuration;
-      console.warn(
-        `[parseMediaPlaylist] full window turnover (offset ${offset} >= ${prevSegments.length}); ` +
-          'no PDT to bridge — estimating from previous end.'
-      );
+      // Otter: diagnostic console.warn dropped (UPSTREAM.json).
     }
   }
 

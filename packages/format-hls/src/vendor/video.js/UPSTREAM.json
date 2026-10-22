@@ -157,6 +157,7 @@
     "Copied by tmp/tools/copy_spf.py (ADR-010 §1): file-level copies of SPF's pure-function layer (m3u8 parsing, buffer planning, reload policy, live window, tfdt reading, end-of-stream check) with the same relative paths under media/.",
     "Relative imports carry .js extensions (NodeNext); tests import the copies from packages/format-hls/test/vendor/video.js (listed under \"tests\", same headers) and use vitest instead of vite-plus/test.",
     "@videojs/utils isUndefined and generateId inlined (generateId is a page-unique counter).",
-    "Strict TS: MediaPlaylistMetadata.playlistType / holdBack allow undefined (exactOptionalPropertyTypes); explicit types on defaulted parameters and NON_FMP4_CONTAINER_MIMES (isolatedDeclarations). No behaviour change."
+    "Strict TS: MediaPlaylistMetadata.playlistType / holdBack allow undefined (exactOptionalPropertyTypes); explicit types on defaulted parameters and NON_FMP4_CONTAINER_MIMES (isolatedDeclarations). No behaviour change.",
+    "parse-media-playlist.ts: the diagnostic console.warn calls (media-sequence / URL mismatch, sequence going backwards, full window turnover) are dropped: no console output from the engine, and about 200 B of the engine chunk budget (ADR-010 §3). Behaviour unchanged."
   ]
 }
