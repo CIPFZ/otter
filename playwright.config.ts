@@ -21,6 +21,7 @@ const env = (name: string): string | undefined => {
 };
 
 const baseURL = env('OTTER_E2E_BASE_URL') ?? 'http://localhost:4173';
+const FIREFOX_PREFS = { 'media.peerconnection.ice.obfuscate_host_addresses': false };
 const iosEndpoint = env('OTTER_REAL_IOS_WS_ENDPOINT');
 const androidEndpoint = env('OTTER_REAL_ANDROID_WS_ENDPOINT');
 const tvCdpUrl = env('OTTER_REAL_TV_CDP_URL');
@@ -28,7 +29,8 @@ const tvPlatform = env('OTTER_REAL_TV_PLATFORM') ?? 'tizen';
 
 const projects: Project<PlaywrightTestOptions, PlaywrightWorkerOptions & OtterWorkerOptions>[] = [
   { name: 'desktop-chrome', use: { ...devices['Desktop Chrome'] }, metadata: { matrix: 'desktop' } },
-  { name: 'desktop-firefox', use: { ...devices['Desktop Firefox'] }, metadata: { matrix: 'desktop' } },
+  // Real host addresses in ICE candidates: the local WHEP fixture (werift) cannot resolve mDNS names.
+  { name: 'desktop-firefox', use: { ...devices['Desktop Firefox'], launchOptions: { firefoxUserPrefs: FIREFOX_PREFS } }, metadata: { matrix: 'desktop' } },
   { name: 'desktop-safari', use: { ...devices['Desktop Safari'] }, metadata: { matrix: 'desktop' } },
   { name: 'emulated-iphone', use: { ...devices['iPhone 15'] }, metadata: { matrix: 'emulated' } },
   { name: 'emulated-android', use: { ...devices['Pixel 7'] }, metadata: { matrix: 'emulated' } },
@@ -47,7 +49,7 @@ if (env('OTTER_REAL_WINDOWS_EDGE') === '1') {
 if (env('OTTER_REAL_WINDOWS_FIREFOX') === '1') {
   projects.push({
     name: 'real-windows-firefox',
-    use: { ...devices['Desktop Firefox'], channel: 'moz-firefox', headless: false },
+    use: { ...devices['Desktop Firefox'], channel: 'moz-firefox', headless: false, launchOptions: { firefoxUserPrefs: FIREFOX_PREFS } },
     metadata: { matrix: 'real' },
   });
 }

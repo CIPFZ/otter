@@ -48,6 +48,17 @@ const gathers = (page: Page): Promise<boolean> =>
     return any;
   });
 
+/**
+ * Firefox under automation does not start ICE gathering on a document loaded straight from the
+ * local server (gathering stays `new`; data: URLs and documents fulfilled through Playwright's
+ * routing gather at once, RESEARCH §1): its documents go through routing here. Its host
+ * candidates are mDNS names the werift fixture cannot resolve, so the Firefox projects turn
+ * obfuscation off (playwright.config.ts).
+ */
+async function routeDocuments(page: Page, browserName: string): Promise<void> {
+  if (browserName === 'firefox') await page.route('**/*', async (r) => (r.request().resourceType() === 'document' ? r.fulfill({ response: await r.fetch() }) : r.fallback()));
+}
+
 async function load(page: Page, source: object, query = ''): Promise<void> {
   await page.goto(`/player.html?idle=0${query}`);
   await page.evaluate(async (src) => {
@@ -57,8 +68,9 @@ async function load(page: Page, source: object, query = ''): Promise<void> {
   }, source);
 }
 
-test('cn-live WHEP: the WebRTC stream plays on the native backend', async ({ page }) => {
+test('cn-live WHEP: the WebRTC stream plays on the native backend', async ({ page, browserName }) => {
   test.setTimeout(60_000);
+  await routeDocuments(page, browserName);
   await page.goto('/player.html?idle=0');
   if (!(await gathers(page))) {
     ciNotice('WHEP: this browser gathers no ICE candidates here; WebRTC playback not testable');
@@ -111,8 +123,9 @@ test('cn-live WHEP: the WebRTC stream plays on the native backend', async ({ pag
   ciNotice(`WHEP: video ${frames} frames/s, audio track ${audio.running ? `RMS ${audio.rms.toFixed(3)}` : '(no running AudioContext to measure it)'}`);
 });
 
-test('cn-live WHEP: ICE that cannot connect falls back to the HTTP-FLV source', async ({ page }) => {
+test('cn-live WHEP: ICE that cannot connect falls back to the HTTP-FLV source', async ({ page, browserName }) => {
   test.setTimeout(60_000);
+  await routeDocuments(page, browserName);
   await load(page, { src: '/whep/ice-fail', type: 'application/whep', live: true, fallback: { src: '/live/stream.flv', live: true } }, '&ice=2000');
   await expect.poll(async () => (await state(page)).format, { timeout: 20_000 }).toBe('flv');
   await expect.poll(async () => (await state(page)).t, { timeout: 20_000 }).toBeGreaterThan(0.5);

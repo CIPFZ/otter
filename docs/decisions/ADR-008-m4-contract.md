@@ -103,7 +103,7 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
   - 契约：`FormatPlugin.openStream?(ctx: StreamContext): Promise<StreamSession>`（与 WebCodecs 的 `createDemuxer` 并列）。native 后端在格式提供它时用 `srcObject` 播放这个 MediaStream，否则照旧 `src`；`StreamSession.latency`（WebRTC 接收端抖动缓冲，`jitterBufferDelay / jitterBufferEmittedCount`）作为直播延迟上报，`onError` 是开始播放后的致命错误。
   - 客户端（`format-whep` 的按需块）：recvonly 视频 + 音频，非 trickle（等 ICE 收集完成，最多 1.5 s），`POST application/sdp`（带 `source.headers`，鉴权用），201 + `Location`，销毁时 `DELETE`。识别：`type: 'application/whep'`（1），或 URL 路径里有 `whep` 段（0.9）。
   - 失败：POST 失败或非 2xx 是 `network` 致命错误（`whepRequestFailed` / `whepRejected`），按重试预算重建；ICE 在 `connectTimeoutMs`（默认 8 s）内连不上、或进入 failed，是 `iceFailed`（`network`，不可恢复），列入 `noRetry`：同一条路径重发 offer 没有用，直接进降级链。WHEP 只能喂 native，链在这里就走完了，所以 `Source` 新增 `fallback?: Source`：同一节目的另一种协议（例如同一路流的 HTTP-FLV），当前源的所有后端都失败后重新选路（`router.explain()` 里记一步 `{ candidate: 'source fallback', outcome: 'selected', reason: 'format flv' }`，接在上一个源的失败步骤之后），重试计数清零，可以再带自己的 `fallback`。开始播放后 ICE 失败同样走这条路。
-  - e2e：`e2e/cn-live-whep.spec.ts` 对本地 WHEP 服务（`e2e/whep.ts`，Vite 插件，werift 应答并按实时节奏发送循环的 VP8 片段 `e2e/media/whep/clip.ivf`）：能播、画面持续更新、延迟 < 1 s；`/whep/ice-fail` 的应答只有不可达的候选，ICE 失败后切到 `/live/stream.flv` 播放，`iceFailed` 只出现一次。无头 Firefox 在本机容器里收集不到任何 ICE 候选（见 RESEARCH §1），播放用例在那里跳过并留 notice；失败转 FLV 的用例照常运行。
+  - e2e：`e2e/cn-live-whep.spec.ts` 对本地 WHEP 服务（`e2e/whep.ts`，Vite 插件，werift 应答并按实时节奏发送循环的 VP8 片段 `e2e/media/whep/clip.ivf`）：能播、画面持续更新、延迟 < 1 s；`/whep/ice-fail` 的应答只有不可达的候选，ICE 失败后切到 `/live/stream.flv` 播放，`iceFailed` 只出现一次。Firefox（自动化下）对直接从本地服务器加载的文档不启动 ICE 收集，用例在 Firefox 上把文档经 Playwright 路由交付，并关掉主机地址的 mDNS 混淆（werift 夹具解析不了 `.local`），见 RESEARCH §1；这样 Linux 无头 Firefox 与 Windows 正式版 Firefox 都实际播放 WHEP。没有可用候选的环境里播放用例仍会跳过并留 notice。
 
 ## 代价
 
