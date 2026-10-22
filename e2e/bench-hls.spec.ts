@@ -175,7 +175,7 @@ async function wallLatency(page: Page): Promise<number> {
 
 test(`live: wall latency, own engine vs hls.js, ${LIVE_RUNS} runs each`, async ({ browser }) => {
   test.setTimeout(LIVE_RUNS * 2 * 90_000);
-  const runs: Record<EngineId, { startup: number; steady: number; backToLive: number; reported: number | null }[]> = { otter: [], hlsjs: [] };
+  const runs: Record<EngineId, { startup: number; steady: number; backToLive: number; reportedMinusWall: number }[]> = { otter: [], hlsjs: [] };
   for (let i = 0; i < LIVE_RUNS; i++) {
     for (const engine of i % 2 === 0 ? ENGINES : ([...ENGINES].reverse() as EngineId[])) {
       const context = await browser.newContext();
@@ -191,11 +191,14 @@ test(`live: wall latency, own engine vs hls.js, ${LIVE_RUNS} runs each`, async (
       const startup = await wallLatency(page);
       await page.waitForTimeout(13_000);
       const steady: number[] = [];
+      // The engine's own latency (state.latency) against the wall latency, same moments.
+      const diffs: number[] = [];
       for (let k = 0; k < 10; k++) {
-        steady.push(await wallLatency(page));
+        const [wall, reported] = await Promise.all([wallLatency(page), page.evaluate(async () => ((await window.otter) as OtterFixture).state().latency)]);
+        steady.push(wall);
+        if (reported !== null) diffs.push(reported - wall);
         await page.waitForTimeout(1000);
       }
-      const reported = await page.evaluate(async () => ((await window.otter) as OtterFixture).state().latency);
       // Paused behind the edge, then back to live.
       await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('pause', undefined));
       await page.waitForTimeout(8000);
@@ -210,12 +213,22 @@ test(`live: wall latency, own engine vs hls.js, ${LIVE_RUNS} runs each`, async (
         back.push(await wallLatency(page));
         await page.waitForTimeout(1000);
       }
-      runs[engine].push({ startup, steady: quantile(steady, 0.5), backToLive: quantile(back, 0.5), reported });
+      runs[engine].push({ startup, steady: quantile(steady, 0.5), backToLive: quantile(back, 0.5), reportedMinusWall: quantile(diffs, 0.5) });
       await context.close();
     }
   }
   const summary = Object.fromEntries(
-    ENGINES.map((e) => [e, { runs: runs[e].length, startupS: stats(runs[e].map((r) => r.startup)), steadyS: stats(runs[e].map((r) => r.steady)), backToLiveS: stats(runs[e].map((r) => r.backToLive)), raw: runs[e] }]),
+    ENGINES.map((e) => [
+      e,
+      {
+        runs: runs[e].length,
+        startupS: stats(runs[e].map((r) => r.startup)),
+        steadyS: stats(runs[e].map((r) => r.steady)),
+        backToLiveS: stats(runs[e].map((r) => r.backToLive)),
+        reportedMinusWallS: stats(runs[e].map((r) => r.reportedMinusWall)),
+        raw: runs[e],
+      },
+    ]),
   );
   save('live', { holdBackS: 6, summary });
   for (const e of ENGINES) for (const r of runs[e]) expect(Number.isFinite(r.steady)).toBe(true);
