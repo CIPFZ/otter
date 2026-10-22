@@ -33,6 +33,7 @@
 | CMCD | `@svta/cml-cmcd`（SVTA common-media-library monorepo 的拆分包，Apache-2.0） | L1 | 直接用。伞包 `@svta/common-media-library` 停在 0.18.1（2025-10），改用拆分包 2.8.2（ADR-005 §2）；对等依赖 `@svta/cml-structured-field-values`、`@svta/cml-utils` |
 | Content Steering | hls.js `content-steering-controller.ts` | L3 | 后期 |
 | HLS 清单解析：video.js SPF | `@videojs/spf` 的 `media/hls/parse-*`、`resolve-url`、`reload-policy`，`media/buffer/forward-buffer` / `back-buffer`，`media/live-window`，`media/mp4/box` / `timestamp-origin`，及其测试与夹具（video.js@92be7bd） | L3 | 自研 CMAF-HLS 引擎（M5，ADR-010）：拷入 `format-hls` 的引擎块，`@videojs/utils` 换本地实现，CMAF-HAM 类型在引擎边界转成 `TrackList`；SPF 的 signals / actor 运行时与 `playback/` 层不拷 |
+| HLS 清单解析、缓冲计划、重载策略、直播窗口、`tfdt` 读取 | video.js SPF（`@videojs/spf` 10.1.0，video.js@92be7bd，Apache-2.0） | L3 | M5（ADR-010 §1）：14 个文件按原相对路径拷到 `packages/format-hls/src/vendor/video.js/media/`，配套 212 个测试与 m3u8 夹具拷到 `packages/format-hls/test/vendor/video.js/`；只改 import 扩展名、内联 `@videojs/utils` 两个小函数、补严格模式类型（UPSTREAM.json） |
 | DASH MPD 解析 | `mpd-parser`（video.js 系） | L1 | 独立 npm 包 |
 | WHEP 客户端 | `@eyevinn/whep-video-component` 或 Cloudflare WHEP 示例（MIT） | L3 | 约百行。M4 实际按 RFC 9725 自写（非 trickle，`packages/format-whep/src/client.ts` 约 150 行），没有拷贝；e2e 的本地 WHEP 服务端（`e2e/whep.ts`）用 werift 0.25.1（纯 TypeScript 的 WebRTC 实现，MIT），只是开发依赖，不进包 |
 | WebCodecs 播放循环 | webcodecsfundamentals.org 示例 + libmedia | L3 | 示例与 libmedia 都可以直接拷（ADR-008） |

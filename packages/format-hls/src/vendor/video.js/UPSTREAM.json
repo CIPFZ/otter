@@ -1,0 +1,162 @@
+{
+  "project": "video.js",
+  "repo": "https://github.com/videojs/video.js",
+  "commit": "92be7bdd72c8782348ebafc765a23cf8d8cba004",
+  "tag": "@videojs/spf@10.1.0",
+  "license": "Apache-2.0",
+  "level": "L3",
+  "files": [
+    {
+      "upstream": "packages/spf/src/media/types/index.ts",
+      "local": "media/types/index.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/parse-attributes.ts",
+      "local": "media/hls/parse-attributes.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/resolve-url.ts",
+      "local": "media/hls/resolve-url.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/parse-multivariant.ts",
+      "local": "media/hls/parse-multivariant.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/parse-media-playlist.ts",
+      "local": "media/hls/parse-media-playlist.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/reload-policy.ts",
+      "local": "media/hls/reload-policy.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/session-data.ts",
+      "local": "media/hls/session-data.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/utils/tracks.ts",
+      "local": "media/utils/tracks.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/buffer/forward-buffer.ts",
+      "local": "media/buffer/forward-buffer.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/buffer/back-buffer.ts",
+      "local": "media/buffer/back-buffer.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/live-window.ts",
+      "local": "media/live-window.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/mp4/box.ts",
+      "local": "media/mp4/box.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/mp4/timestamp-origin.ts",
+      "local": "media/mp4/timestamp-origin.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/dom/mse/end-of-stream.ts",
+      "local": "media/dom/mse/end-of-stream.ts"
+    }
+  ],
+  "tests": [
+    {
+      "upstream": "packages/spf/src/media/hls/tests/parse-attributes.test.ts",
+      "local": "test/vendor/video.js/media/hls/tests/parse-attributes.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/resolve-url.test.ts",
+      "local": "test/vendor/video.js/media/hls/tests/resolve-url.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/parse-multivariant.test.ts",
+      "local": "test/vendor/video.js/media/hls/tests/parse-multivariant.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/parse-media-playlist.test.ts",
+      "local": "test/vendor/video.js/media/hls/tests/parse-media-playlist.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/reload-policy.test.ts",
+      "local": "test/vendor/video.js/media/hls/tests/reload-policy.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/session-data.test.ts",
+      "local": "test/vendor/video.js/media/hls/tests/session-data.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/utils/tests/tracks.test.ts",
+      "local": "test/vendor/video.js/media/utils/tests/tracks.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/buffer/tests/forward-buffer.test.ts",
+      "local": "test/vendor/video.js/media/buffer/tests/forward-buffer.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/buffer/tests/back-buffer.test.ts",
+      "local": "test/vendor/video.js/media/buffer/tests/back-buffer.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/tests/live-window.test.ts",
+      "local": "test/vendor/video.js/media/tests/live-window.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/mp4/tests/box.test.ts",
+      "local": "test/vendor/video.js/media/mp4/tests/box.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/mp4/tests/timestamp-origin.test.ts",
+      "local": "test/vendor/video.js/media/mp4/tests/timestamp-origin.test.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/mp4/tests/synthetic-boxes.ts",
+      "local": "test/vendor/video.js/media/mp4/tests/synthetic-boxes.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/raw-imports.d.ts",
+      "local": "test/vendor/video.js/media/hls/tests/raw-imports.d.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/fixtures/README.md",
+      "local": "test/vendor/video.js/media/hls/tests/fixtures/README.md"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/fixtures/drm-cmaf-audio.m3u8",
+      "local": "test/vendor/video.js/media/hls/tests/fixtures/drm-cmaf-audio.m3u8"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/fixtures/drm-cmaf-video.m3u8",
+      "local": "test/vendor/video.js/media/hls/tests/fixtures/drm-cmaf-video.m3u8"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/fixtures/live-cmaf-audio.m3u8",
+      "local": "test/vendor/video.js/media/hls/tests/fixtures/live-cmaf-audio.m3u8"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/fixtures/live-cmaf-video.m3u8",
+      "local": "test/vendor/video.js/media/hls/tests/fixtures/live-cmaf-video.m3u8"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/fixtures/live-ts-video-1.m3u8",
+      "local": "test/vendor/video.js/media/hls/tests/fixtures/live-ts-video-1.m3u8"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/fixtures/live-ts-video-2.m3u8",
+      "local": "test/vendor/video.js/media/hls/tests/fixtures/live-ts-video-2.m3u8"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/tests/fixtures/live-ts-video-3.m3u8",
+      "local": "test/vendor/video.js/media/hls/tests/fixtures/live-ts-video-3.m3u8"
+    }
+  ],
+  "localChanges": [
+    "Copied by tmp/tools/copy_spf.py (ADR-010 §1): file-level copies of SPF's pure-function layer (m3u8 parsing, buffer planning, reload policy, live window, tfdt reading, end-of-stream check) with the same relative paths under media/.",
+    "Relative imports carry .js extensions (NodeNext); tests import the copies from packages/format-hls/test/vendor/video.js (listed under \"tests\", same headers) and use vitest instead of vite-plus/test.",
+    "@videojs/utils isUndefined and generateId inlined (generateId is a page-unique counter).",
+    "Strict TS: MediaPlaylistMetadata.playlistType / holdBack allow undefined (exactOptionalPropertyTypes); explicit types on defaulted parameters and NON_FMP4_CONTAINER_MIMES (isolatedDeclarations). No behaviour change."
+  ]
+}
