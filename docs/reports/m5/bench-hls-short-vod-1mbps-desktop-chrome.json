@@ -1,0 +1,325 @@
+{
+  "scenario": {
+    "id": "short-vod",
+    "src": "hls-fmp4/master.m3u8",
+    "playS": 10
+  },
+  "link": {
+    "id": "1mbps",
+    "kbps": 1000
+  },
+  "summary": {
+    "otter": {
+      "runs": 10,
+      "ttffMs": {
+        "median": 872.55,
+        "p90": 874.07,
+        "min": 865.0999999977648,
+        "max": 874.7000000029802
+      },
+      "rebuffers": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rebufferMs": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "runsWithRebuffer": 0,
+      "switches": {
+        "median": 1,
+        "p90": 1,
+        "min": 1,
+        "max": 1
+      },
+      "startHeights": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "endHeights": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "fallbacks": 0,
+      "fatal": [],
+      "raw": [
+        {
+          "ttff": 867.5,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 872.4000000022352,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 865.0999999977648,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 865.5999999977648,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 874.7000000029802,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 874,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 873,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 871,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 872.6999999992549,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 873.7000000029802,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        }
+      ]
+    },
+    "hlsjs": {
+      "runs": 10,
+      "ttffMs": {
+        "median": 908.3,
+        "p90": 914.98,
+        "min": 903.5999999977648,
+        "max": 917.5
+      },
+      "rebuffers": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rebufferMs": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "runsWithRebuffer": 0,
+      "switches": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "startHeights": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "endHeights": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "fallbacks": 0,
+      "fatal": [],
+      "raw": [
+        {
+          "ttff": 907.6000000014901,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 903.5999999977648,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 911.1000000014901,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 914.6999999992549,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 904.5,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 905.3999999985099,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 911.5,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 909,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 917.5,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        },
+        {
+          "ttff": 907.2000000029802,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360
+        }
+      ]
+    }
+  }
+}

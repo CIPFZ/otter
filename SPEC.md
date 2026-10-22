@@ -469,7 +469,7 @@ M0 接口落点（ADR-002）：
 | M3 | 自研 FLV/TS/fMP4 管线（含 SEI 中的 CEA-608）、`LiveController`（回到直播）、`format-mp4-range`（多档位无缝切换） | `presentation` 全模式（重点 iPhone 伪全屏与 Document PiP）、MediaSession、WakeLock、投屏（Remote Playback / AirPlay）、剧场；原生 TextTrack 回退；预览卡缩略图（VTT sprite / I-frame）；CVAA 字幕窗口（ADR-007） | 桌面真机 + CI WebKit / 模拟移动端全模式通过，capabilities 按环境如实报告，拒绝有 denied + reason；Document PiP 不中断；FLV 直播延迟 ≤ 2s 且 TTFF 不劣于 mpegts.js；mp4-range 切档无 `waiting`；回到直播 / 剧场 / AirPlay / Cast 有 e2e；首次 L2 vendoring 走完 vendor-sync 评审（`docs/reports/M3.md`） |
 | M4 | `backend-webcodecs`、WASM 解码插件、`format-whep`、`format-file` | `GPUSurface`、多宫格、电子放大、滤镜 | 16 路 720p HEVC 可播；三级降级可观测 |
 | M5 | 自研轻量 CMAF-HLS 引擎替换简单场景（原 M6，ADR-009 提前，点播 + 直播，不支持的五类交 hls.js）；直播可拖范围（`seekableStart` / `seekableEnd`）；音视频分离 DASH 优化、多编码探测与偏好持久化 | DVR 时间条（落后秒数、回到直播）；画布 SDR 色彩管理（601 / 709、limited / full → sRGB）；`danmaku`（Canvas + WebGL + 蒙版）、水印 | 自研引擎在 §19 短视频 / 长视频点播场景替换 hls.js 后 TTFF 与 rebuffer 不劣于适配器，直播延迟与 hls.js 持平或更好，引擎块点播 ≤ 12KB、含直播 ≤ 15KB 进门禁（ADR-010），SPF 拷入测试全过，五类不支持的流回退 hls.js 有 e2e；画面面与 `<video>` 色差回到原阈值；5000 条/分钟弹幕 60fps；蒙版弹幕对齐（ADR-011） |
-| M6 | presets 发布；体积收口 | `ui-skin-tv`、shorts preset、React/Vue/Svelte 绑定、SSR、文档站；多宫格每路独立记住放大与滤镜（M4 是焦点切换时恢复原画） | 体积预算全部达标（含 Hero < 5KB）；文档站上线 |
+| M6 | presets 发布；体积收口（含自研 CMAF-HLS 点播引擎块的余量，M5 只剩约 160 B，ADR-010 §3） | `ui-skin-tv`、shorts preset、React/Vue/Svelte 绑定、SSR、文档站；多宫格每路独立记住放大与滤镜（M4 是焦点切换时恢复原画） | 体积预算全部达标（含 Hero < 5KB）；文档站上线 |
 | M7 | 移动端与 TV 真机回归：M1–M6 全部场景与模式（原 M5.5，ADR-009 移至最后） | 同左 | 真 iPhone Safari、真 Android Chrome、至少一台 Tizen 或 webOS 全部场景通过并有报告；问题在本里程碑内修完 |
 
 每个里程碑结束都跑同一份 Playwright 矩阵和 axe 扫描。M1–M6 的真机要求为桌面 Chrome / Firefox / Safari 真机加 CI 上的 WebKit 与模拟移动端（`emulated-*` 不计为真机）；真 iPhone / Android / TV 在 M7 对最终代码一次性补跑（ADR-004、ADR-009）。

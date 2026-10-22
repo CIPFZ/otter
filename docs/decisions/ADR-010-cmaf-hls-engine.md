@@ -53,6 +53,8 @@ M5 实现时的口径（2026-10-22）：
   - 引擎块不直接引用 `@otter-player/core` 的值，由按需包装层传入（`CoreHelpers`）。
   - sink 与 `withAdapterFallback` 各走 `@otter-player/engine-pipeline` 的子路径（`/sink`、`/fallback`）。
   - 这样首屏入口和引擎块不会共享同一个模块，副作用门禁（单文件打包时的惰性初始化）保持干净。
+- **余量规则**（2026-10-22 负责人）：点播引擎块只剩约 160 B，引擎今后的新路径一律做成按需块，不进引擎块；压缩引擎块记为 M6 待办（SPEC §21 M6 行）。
+- **待办**：`CLOSED-CAPTIONS`（fMP4 视频里的 CEA-608）现在交 hls.js。以后在字幕块里从 `mdat` 的 SEI 取 cc_data，接已有的 `cea-608-parser`（hls.js L2 拷贝）。
 
 ### 4. 接口改动（M4 → M5 交接，2026-10-22 负责人确认）
 
