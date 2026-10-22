@@ -98,6 +98,8 @@ for (const [name, background] of [
 }
 
 test('motion: show 150 ms ease-out, hide 250 ms ease-in; reduced motion removes transitions', async ({ page }) => {
+  // Playwright over WebDriver BiDi (stock Firefox) does not emulate prefers-reduced-motion.
+  test.skip(test.info().project.name === 'real-windows-firefox', 'no reducedMotion emulation through WebDriver BiDi');
   await ready(page);
   const timing = () =>
     page.evaluate(() => {
