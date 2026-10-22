@@ -68,21 +68,42 @@ async function open(page: Page, count: number): Promise<void> {
 // one worker: pnpm e2e --project=desktop-chrome --grep @bench --workers=1 (CI: its own step).
 test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread keeps its frames @bench', async ({ page }, info) => {
   test.setTimeout(180_000);
-  test.skip(info.project.name !== 'desktop-chrome', 'the M4 acceptance runs in desktop Chrome');
+  test.skip(!['desktop-chrome', 'real-windows-edge'].includes(info.project.name), 'the M4 acceptance runs in desktop Chrome (and on the real Windows Edge)');
   const cores = await page.evaluate(() => navigator.hardwareConcurrency);
   if (cores < 8) {
     ciNotice(`multiview bench skipped: ${cores} cores here, 16 software-decoded 720p HEVC streams need about 3 cores of decoding plus rendering (run it on an 8+ core machine)`);
     test.skip(true, `${cores} cores`);
   }
+  // Hardware HEVC in WebCodecs here? (With it the tiles decode on the GPU, not in the WASM pool.)
+  const hevcHardware = await page.evaluate(async () =>
+    typeof VideoDecoder === 'function'
+      ? (await VideoDecoder.isConfigSupported({ codec: 'hvc1.1.6.L93.B0', codedWidth: 1280, codedHeight: 720, hardwareAcceleration: 'prefer-hardware' })).supported === true
+      : false,
+  );
   await open(page, 16);
   const w = wall(page);
   const kind = await w.eval((x) => x.kind);
+  // Whole-browser CPU (all processes: browser, renderer, GPU, utility), from Chromium's
+  // SystemInfo.getProcessInfo: the per-stream cost with hardware decoding, where the pool's
+  // busy time does not apply.
+  const cdp = await page.context().browser()?.newBrowserCDPSession();
+  const processCpu = async (): Promise<Record<string, number>> => {
+    const r = (await cdp?.send('SystemInfo.getProcessInfo')) as { processInfo: { type: string; cpuTime: number }[] } | undefined;
+    const out: Record<string, number> = {};
+    for (const p of r?.processInfo ?? []) out[p.type] = (out[p.type] ?? 0) + p.cpuTime;
+    return out;
+  };
   // Warm up, then 10 s of measurement (the 10 s clip loops).
   await page.waitForTimeout(2000);
+  const cpu0 = await processCpu();
   const before = await w.eval((x) => ({ tiles: x.tiles(), pool: x.pool(), at: performance.now() }));
   const main = await w.eval((x) => x.measure(10_000));
   const after = await w.eval((x) => ({ tiles: x.tiles(), pool: x.pool(), at: performance.now() }));
+  const cpu1 = await processCpu();
   const wallMs = after.at - before.at;
+  // Percent of one core per process type, and the whole browser divided by the 16 streams.
+  const browserCpu = Object.fromEntries(Object.keys(cpu1).map((k) => [k, Math.round((((cpu1[k] ?? 0) - (cpu0[k] ?? 0)) / (wallMs / 1000)) * 1000) / 10]));
+  const perStreamCpu = Math.round((Object.values(browserCpu).reduce((a, b) => a + b, 0) / 16) * 10) / 10;
 
   const rows = after.tiles.map((t, i) => {
     const b = before.tiles[i] as (typeof before.tiles)[number];
@@ -103,12 +124,12 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       errors: t.errors.filter((e) => e !== 'codecUnsupported'),
     };
   });
-  const report = { project: info.project.name, cores, kind, mainThread: main, wallMs: Math.round(wallMs), workers: after.pool.workers, streams: rows };
+  const report = { project: info.project.name, cores, kind, hevcHardware, browserCpu, perStreamCpu, mainThread: main, wallMs: Math.round(wallMs), workers: after.pool.workers, streams: rows };
   mkdirSync('test-results', { recursive: true });
   writeFileSync(`test-results/multiview-${info.project.name}.json`, JSON.stringify(report, null, 2));
   info.attach('multiview.json', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
   const worst = rows.reduce((m, r) => ({ cpu: Math.max(m.cpu, r.cpuPercentOfOneCore), lost: Math.max(m.lost, r.droppedByClock + r.replacedOnCanvas), slow: Math.min(m.slow, r.advancedS) }), { cpu: 0, lost: 0, slow: Infinity });
-  ciNotice(`multiview 16 x 720p HEVC (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core, worst lost frames ${worst.lost}, slowest ${worst.slow} s played`);
+  ciNotice(`multiview 16 x 720p HEVC (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core (decoder pool), whole browser ${perStreamCpu}% of a core per stream (${JSON.stringify(browserCpu)}), hardware HEVC ${hevcHardware}, worst lost frames ${worst.lost}, slowest ${worst.slow} s played`);
 
   for (const r of rows) {
     expect(r.errors, r.tile).toEqual([]);

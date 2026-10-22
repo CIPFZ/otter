@@ -43,6 +43,15 @@ if (env('OTTER_REAL_WINDOWS_EDGE') === '1') {
   });
 }
 
+// Real Windows desktop with the installed (stock, release) Firefox, driven over WebDriver BiDi.
+if (env('OTTER_REAL_WINDOWS_FIREFOX') === '1') {
+  projects.push({
+    name: 'real-windows-firefox',
+    use: { ...devices['Desktop Firefox'], channel: 'moz-firefox', headless: false },
+    metadata: { matrix: 'real' },
+  });
+}
+
 if (iosEndpoint !== undefined) {
   projects.push({
     name: 'real-iphone-safari',

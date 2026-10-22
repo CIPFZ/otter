@@ -149,6 +149,50 @@ for (const clip of CLIPS) {
   });
 }
 
+// The shared AudioContext suspends 5 s after the last instance stops playing (clock.ts) and is
+// resumed by the next play() in a user gesture: the clock is the AudioContext again, not the
+// performance.now() fallback. Real Firefox on Windows is where this path was unverified (M4).
+test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it as the clock', async ({ page }) => {
+  test.setTimeout(60_000);
+  // Records the AudioContexts the page makes, to read their state.
+  await page.addInitScript(() => {
+    const Native = window.AudioContext;
+    const made: AudioContext[] = [];
+    (window as unknown as { contexts: AudioContext[] }).contexts = made;
+    window.AudioContext = class extends Native {
+      constructor(options?: AudioContextOptions) {
+        super(options);
+        made.push(this);
+      }
+    };
+  });
+  await page.goto('/webcodecs.html');
+  await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).load('h264.mp4', 1));
+  await page.locator('#play').click();
+  const states = () => page.evaluate(() => (window as unknown as { contexts: AudioContext[] }).contexts.map((c) => c.state));
+  await expect.poll(async () => (await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).state().currentTime)), { timeout: 15_000 }).toBeGreaterThan(1.5);
+  if (!(await states()).includes('running')) {
+    ciNotice('no running AudioContext here: idle suspend / resume not testable');
+    return;
+  }
+  await page.locator('#play').click();
+  await page.waitForTimeout(6000);
+  expect(await states()).not.toContain('running');
+  const before = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).state().currentTime);
+  await page.locator('#play').click();
+  await page.waitForTimeout(1500);
+  const r = await page.evaluate(async () => {
+    const f = await (window.wc as Promise<WebCodecsFixture>);
+    return { t: f.state().currentTime, paused: f.state().paused, errors: f.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string } }).error.details) };
+  });
+  expect(await states()).toContain('running');
+  expect(r.paused).toBe(false);
+  expect(r.t - before).toBeGreaterThan(1);
+  expect(r.t - before).toBeLessThan(2);
+  expect(r.errors).toEqual([]);
+  ciNotice(`AudioContext idle suspend after 6 s paused, resumed by play: ${(r.t - before).toFixed(2)} s played in 1.5 s, no audioClockUnavailable`);
+});
+
 for (const build of ['simd', 'plain'] as const) {
 test(`hevc-720p.mp4 (${build} WASM build): no HEVC in WebCodecs here, so the route falls back to the WASM decoder in the pool`, async ({ page }) => {
   test.setTimeout(90_000);
