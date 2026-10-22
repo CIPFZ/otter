@@ -613,4 +613,11 @@ if (new URLSearchParams(location.search).get('chunks') === 'views') {
 // ?multiview=<n>&src=<url>: a wall of n streams in the player shell (ADR-008 §7).
 const wallSize = Number(new URLSearchParams(location.search).get('multiview') ?? 0);
 if (wallSize > 0) window.wall = startWall(wallSize, new URLSearchParams(location.search).get('src') ?? '/frames/hevc-720p.mp4');
-else window.otter = start();
+else {
+  window.otter = start();
+  // ?load=<url>[&type=<mime>]: load a source at once, for manual checks (play with the Play
+  // button: sound needs a user gesture), e.g. ?load=/whep/live&type=application/whep.
+  const load = new URLSearchParams(location.search).get('load');
+  const type = new URLSearchParams(location.search).get('type');
+  if (load !== null) void window.otter.then((o) => o.load({ src: load, ...(type === null ? {} : { type }) }));
+}

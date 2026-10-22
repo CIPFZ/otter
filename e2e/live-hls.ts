@@ -67,6 +67,9 @@ export function liveHlsPlugin(dir: string): Plugin {
     };
     let m: RegExpExecArray | null;
     if (name === 'master.m3u8') return send('application/vnd.apple.mpegurl', master);
+    // The real-time live point on the stream timeline: segment k (2k..2k+2 s) is published when
+    // its end is 6 segments ahead of the server's time, so the live point is now + 12 s.
+    if (name === 'clock') return send('application/json', JSON.stringify({ live: (Date.now() - started) / 1000 + WINDOW * SEGMENT_S }));
     if ((m = /^v([01])\.m3u8$/.exec(name)) !== null) return send('application/vnd.apple.mpegurl', playlist(Number(m[1])));
     if ((m = /^init_([01])\.mp4$/.exec(name)) !== null) return send('video/mp4', readFileSync(`${dir}/init_${m[1]}.mp4`));
     if ((m = /^v([01])_(\d+)\.m4s$/.exec(name)) !== null) {
