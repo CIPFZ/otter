@@ -82,9 +82,11 @@ test('VOD: plays on the own engine, manual switch at a segment boundary, seek, s
   expect((await state(page)).errors).toEqual([]);
 });
 
-test('VOD ladder: manual switch down lands without rebuffer; a seek past the buffer loads from there', async ({ page }) => {
+test('VOD ladder: manual switch lands soon without rebuffer (buffer ahead replaced); a seek past the buffer loads from there', async ({ page }) => {
   test.setTimeout(90_000);
-  await page.goto('/player.html?idle=0&ahead=4');
+  // Default 30 s buffer: the clip is buffered at the first quality, so the switch has to replace
+  // what is ahead (from a segment boundary at least 1 s ahead), as hls.js does.
+  await page.goto('/player.html?idle=0');
   await page.evaluate(async () => {
     const o = (await window.otter) as OtterFixture;
     o.dispatch('set-muted', { muted: true });
@@ -93,8 +95,8 @@ test('VOD ladder: manual switch down lands without rebuffer; a seek past the buf
   await expect.poll(async () => (await state(page)).t, { timeout: 20_000 }).toBeGreaterThan(1);
   const low = (await state(page)).tracks.video.find((v) => v.height === 180)?.id as string;
   await page.evaluate(async (id) => ((await window.otter) as OtterFixture).dispatch('select-quality', { id }), low);
-  // At most the forward buffer (4 s) plus a segment later.
-  await expect.poll(async () => (await state(page)).height, { timeout: 15_000 }).toBe(180);
+  // Within the next segment or two (2 s segments).
+  await expect.poll(async () => (await state(page)).height, { timeout: 6_000 }).toBe(180);
   let s = await state(page);
   expect(s.rebuffers).toBe(0);
   expect(s.active).toBe(low);

@@ -466,12 +466,21 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       for (const l of lanes) void run(l);
     },
     selectQuality(id) {
-      if (id === 'auto') requested = undefined;
-      else {
-        const index = Number(id.replace(/^video-/, ''));
-        if (Number.isInteger(index) && index >= 0 && index < variants.length) requested = index;
-      }
+      const index = Number(id.replace(/^video-/, ''));
+      requested = id !== 'auto' && index >= 0 && index < variants.length ? index : undefined;
       describe();
+      // A manual choice shows soon, like hls.js: the video buffered from the first segment
+      // boundary at least a second ahead goes, and the lane refills from there.
+      const lane = videoLane();
+      if (requested === undefined || lane === undefined || sink === undefined || requested === lane.index) return;
+      const from = sink.segments('video').find((x) => x.start >= media.currentTime + 1)?.start;
+      if (from === undefined) return;
+      epoch++;
+      sink.abort('video');
+      lane.needsInit = true;
+      lane.ended = false;
+      endSignalled = false;
+      void sink.remove('video', from, Number.POSITIVE_INFINITY).catch(fail);
     },
     selectAudioTrack(id) {
       const index = Number(id.replace(/^audio-/, ''));

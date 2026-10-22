@@ -52,6 +52,8 @@ export interface MseSink {
   evict(currentTime: number): Promise<void>;
   /** Removes everything of `type` (default: every buffer); audio track switch, discontinuity. */
   clear(type?: 'audio' | 'video'): Promise<void>;
+  /** Removes [start, end) from `type` (a manual quality switch drops what is buffered ahead). */
+  remove(type: 'audio' | 'video', start: number, end: number): Promise<void>;
   endOfStream(): void;
   readonly types: readonly string[];
   /**
@@ -263,6 +265,10 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
           return first === undefined || first[0] >= until ? Promise.resolve() : remove(q, first[0], until);
         }),
       );
+    },
+    remove: (type, start, end) => {
+      const q = queues.get(type);
+      return q === undefined ? Promise.resolve() : remove(q, start, end);
     },
     async clear(type) {
       await Promise.all(
