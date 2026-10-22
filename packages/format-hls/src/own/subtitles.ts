@@ -1,31 +1,20 @@
 // Subtitle renditions of the own CMAF-HLS engine (ADR-010), a chunk loaded when a text track is
 // selected: the rendition's segments around the playhead, parsed and handed out as cue batches.
-// Segmented WebVTT: cue timing,
-// settings and text of each block, placed on the media timeline. With X-TIMESTAMP-MAP the cue
+// Segmented WebVTT: cue timing, settings and text of each block, placed on the media timeline. With X-TIMESTAMP-MAP the cue
 // times are mapped through MPEGTS (90 kHz, the media's own PTS clock, which the engine does not
 // shift): media time = cue time - LOCAL + MPEGTS / 90000. Without it the cue times are playlist
 // times and `offset` (media - playlist) is added. Text keeps WebVTT markup out (tags dropped,
 // the few entities decoded); styling of cue spans is the text package's business for sidecars.
 
 import type { InbandCue } from '@otter-player/media';
+import type { PartiallyResolvedTextTrack } from '../vendor/video.js/media/types/index.js';
+import type { EngineInner } from './engine.js';
 
-export interface SubtitleHooks {
-  readonly media: HTMLMediaElement;
-  /** Seconds of subtitles fetched ahead of the playhead. */
-  readonly aheadS: number;
-  readonly live: () => boolean;
-  /** The rendition's segments (re-read for live), on the playlist timeline. */
-  segments(): Promise<readonly { readonly id: string; readonly url: string; readonly startTime: number; readonly duration: number }[]>;
-  fetchText(segment: { readonly url: string }): Promise<string>;
-  /** Playlist time of the playhead and media - playlist time. */
-  playlistTime(): number;
-  offset(): number;
-  cues(cues: InbandCue[]): void;
-  error(err: unknown): void;
-}
-
-/** Loads cues around the playhead every 2 s and after seeks; returns the stop function. */
-export function loadSubtitles(h: SubtitleHooks): () => void {
+/**
+ * Loads `partial`'s cues around the playhead every 2 s and after seeks, as `trackId` batches while
+ * that track stays selected; returns the stop function.
+ */
+export function loadSubtitles(e: EngineInner, partial: PartiallyResolvedTextTrack, trackId: string): () => void {
   const done = new Set<string>();
   let stopped = false;
   let busy = false;
@@ -33,27 +22,31 @@ export function loadSubtitles(h: SubtitleHooks): () => void {
     if (busy || stopped) return;
     busy = true;
     try {
-      const now = h.playlistTime();
-      for (const seg of await h.segments()) {
-        if (stopped || done.has(seg.id) || seg.startTime + seg.duration < now - 1 || seg.startTime > now + h.aheadS) continue;
-        const text = await h.fetchText(seg);
+      // Live: the subtitle playlist moves with the stream, so it is re-read each time.
+      if (e.isLive()) e.forget(partial.id);
+      const now = e.playlistTime();
+      for (const seg of (await e.resolve(partial)).segments) {
+        if (stopped || done.has(seg.id) || seg.startTime + seg.duration < now - 1 || seg.startTime > now + e.forwardS) continue;
+        const text = new TextDecoder().decode((await e.get(seg, 'caption')).data);
         done.add(seg.id);
-        const cues = parseVttSegment(text, h.offset());
-        if (!stopped && cues.length > 0) h.cues(cues);
+        const cues = parseVttSegment(text, e.offset());
+        if (!stopped && e.textTrack() === trackId && cues.length > 0) e.bus.emit('text-cues', { trackId, cues });
       }
     } catch (err) {
-      h.error(err);
+      // Subtitles are not worth stopping playback for.
+      if ((err as { name?: string } | null)?.name !== 'AbortError')
+        e.bus.emit('error', e.core.createError({ type: 'other', details: 'subtitleLoadError', fatal: false, recoverable: true, message: String(err), cause: err }));
     } finally {
       busy = false;
     }
   };
   const timer = setInterval(() => void pull(), 2000);
-  h.media.addEventListener('seeked', pull);
+  e.media.addEventListener('seeked', pull);
   void pull();
   return () => {
     stopped = true;
     clearInterval(timer);
-    h.media.removeEventListener('seeked', pull);
+    e.media.removeEventListener('seeked', pull);
   };
 }
 

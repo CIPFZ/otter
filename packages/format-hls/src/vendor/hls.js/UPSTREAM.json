@@ -1,0 +1,19 @@
+{
+  "project": "hls.js",
+  "repo": "https://github.com/video-dev/hls.js",
+  "commit": "e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de",
+  "tag": "v1.7.3",
+  "license": "Apache-2.0",
+  "level": "L3",
+  "files": [
+    {
+      "upstream": "src/controller/abr-controller.ts",
+      "local": "abandon.ts"
+    }
+  ],
+  "localChanges": [
+    "AbrController._abandonRulesCheck and getTimeToLoadFrag as one pure function over a snapshot of the download in flight (AbandonSnapshot); the caller (format-hls own engine, src/own/abandon.ts) aborts the request, samples the partial download and loads the returned level. Same conditions and arithmetic as upstream.",
+    "Left with the caller: the autoLevelEnabled / paused / readyState gate, the 100 ms timer, the estimator sampling and reset, and findBestLevel (the own engine's ABR picks levels after the switch).",
+    "When the downward loop reaches the lowest level, its own load delay is computed for the final comparison (upstream compares with the delay of the level above it)."
+  ]
+}

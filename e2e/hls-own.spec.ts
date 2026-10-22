@@ -149,3 +149,36 @@ test('TS segments: handed to hls.js, and the route says why', async ({ page }) =
   // hls.js may add its own non-fatal notes (bufferSeekOverHole on TS in Firefox).
   expect(s.errors.filter((d) => d === 'pipelineFallback')).toHaveLength(1);
 });
+
+test('VOD to the end, and a seek near the end: no quality switch when nothing is left to load', async ({ page }) => {
+  test.setTimeout(60_000);
+  await load(page, '/hls-fmp4/master.m3u8');
+  await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().ended), { timeout: 20_000 }).toBe(true);
+  // Again from 1.5 s before the end (InsufficientBuffer would call the drained buffer empty).
+  await page.evaluate(async () => {
+    const o = (await window.otter) as OtterFixture;
+    o.dispatch('seek', { time: o.state().duration - 1.5 });
+    o.dispatch('play', undefined);
+  });
+  await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().ended), { timeout: 15_000 }).toBe(true);
+  const switches = await page.evaluate(async () => ((await window.otter) as OtterFixture).events.filter((e) => e.type === 'quality-switch' && (e.payload as { from: string | null }).from !== null).length);
+  expect(switches).toBe(0);
+});
+
+test('live: the reported latency is the wall latency (edge from PROGRAM-DATE-TIME / playlist age)', async ({ page }) => {
+  test.setTimeout(60_000);
+  await load(page, '/live-hls/master.m3u8');
+  await expect.poll(async () => (await state(page)).t, { timeout: 20_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(4000);
+  for (let k = 0; k < 3; k++) {
+    // Wall latency: the source's live point minus the presented stream time (no shift: currentTime).
+    const { live, t, reported } = await page.evaluate(async () => {
+      const o = (await window.otter) as OtterFixture;
+      const clock = (await (await fetch('/live-hls/clock')).json()) as { live: number };
+      return { live: clock.live, t: (document.querySelector('video') as HTMLVideoElement).currentTime, reported: o.state().latency as number };
+    });
+    expect(Math.abs(live - t - reported), `reported ${reported.toFixed(2)} s, wall ${(live - t).toFixed(2)} s`).toBeLessThan(0.5);
+    await page.waitForTimeout(1000);
+  }
+});
+

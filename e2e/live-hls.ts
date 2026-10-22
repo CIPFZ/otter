@@ -53,7 +53,10 @@ export function liveHlsPlugin(dir: string): Plugin {
     const last = edge();
     const first = last - WINDOW + 1;
     const lines = ['#EXTM3U', '#EXT-X-VERSION:7', `#EXT-X-TARGETDURATION:${SEGMENT_S}`, '#EXT-X-SERVER-CONTROL:HOLD-BACK=6.0', `#EXT-X-MEDIA-SEQUENCE:${first}`, `#EXT-X-MAP:URI="init_${r}.mp4"`];
-    lines.push(`#EXT-X-PROGRAM-DATE-TIME:${new Date(started + (first - (WINDOW - 1)) * SEGMENT_S * 1000).toISOString()}`);
+    // Capture time of the first segment's start: segment k is published as its end becomes the live
+    // point, which is server time + 12 s (/live-hls/clock), so stream time 2k was captured at
+    // started + (2k - 12) s.
+    lines.push(`#EXT-X-PROGRAM-DATE-TIME:${new Date(started + (first - WINDOW) * SEGMENT_S * 1000).toISOString()}`);
     for (let n = first; n <= last; n++) lines.push(`#EXTINF:${SEGMENT_S.toFixed(6)},`, `v${r}_${n}.m4s`);
     return `${lines.join('\n')}\n`;
   };

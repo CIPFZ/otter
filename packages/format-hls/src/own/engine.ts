@@ -87,6 +87,33 @@ export function unsupportedIn(text: string, master: boolean, subtitles = false):
   );
 }
 
+/**
+ * What the on-demand chunks (subtitles.ts, abandon.ts) use of the engine: one object, so the engine
+ * chunk does not build a hook set per chunk (ADR-010 §3 budget).
+ */
+export interface EngineInner {
+  readonly media: HTMLMediaElement;
+  readonly forwardS: number;
+  readonly core: CoreHelpers;
+  readonly bus: { emit<E extends keyof EngineEvents>(e: E, p: EngineEvents[E]): void };
+  isLive(): boolean;
+  /** Media playlist of a rendition (live: aligned to the playing video). */
+  resolve(partial: PartiallyResolvedVideoTrack | PartiallyResolvedAudioTrack | PartiallyResolvedTextTrack): Promise<ResolvedTrack>;
+  /** Drops a cached playlist (live subtitles are re-read). */
+  forget(id: string): void;
+  get(o: AddressableObject, kind: CmcdObjectKind): Promise<{ data: ArrayBuffer }>;
+  playlistTime(): number;
+  offset(): number;
+  /** Seconds of video buffered ahead. */
+  aheadS(): number;
+  /** Video variants in manifest order, and whether their playlists are loaded. */
+  readonly variants: readonly PartiallyResolvedVideoTrack[];
+  loaded(id: string): boolean;
+  readonly driver: AbrDriver | undefined;
+  /** The text track selected now (cues of another one are dropped). */
+  textTrack(): string | null;
+}
+
 function mediaSourceCtor(preferManaged: boolean): { Ctor: typeof MediaSource; managed: boolean } | undefined {
   const g = globalThis as { ManagedMediaSource?: typeof MediaSource; MediaSource?: typeof MediaSource };
   if (g.ManagedMediaSource !== undefined && (preferManaged || g.MediaSource === undefined)) return { Ctor: g.ManagedMediaSource, managed: true };
@@ -137,19 +164,23 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   let selectedText: string | null = null;
   let stopText: (() => void) | undefined;
   let switchReason = 'start';
+  /** Variant an abandoned download asked for (the next segment comes from it). */
+  let forced: number | undefined;
+  let abandon: import('./abandon.js').Abandon | undefined;
   let endSignalled = false;
 
   // --- network ---------------------------------------------------------------------------------
 
   /** GET with Range, CMCD and retries (network errors and 5xx); download stats for ABR. */
-  const get = async (o: AddressableObject, kind: CmcdObjectKind, extra: { durationS?: number; bitrateBps?: number } = {}): Promise<{ data: ArrayBuffer; ms: number; ttfbMs: number }> => {
+  /** `variant`: a video segment of that variant in auto mode, watched by the abandon chunk. */
+  const get = async (o: AddressableObject, kind: CmcdObjectKind, extra: { durationS?: number; bitrateBps?: number } = {}, variant?: number): Promise<{ data: ArrayBuffer; ms: number; ttfbMs: number }> => {
     const cmcd = ctx.cmcd?.decorate({ url: o.url, kind, ...extra });
     const headers: Record<string, string> = { ...ctx.source.headers, ...cmcd?.headers };
     if (o.byteRange !== undefined) headers['Range'] = `bytes=${o.byteRange.start}-${o.byteRange.end}`;
     let last: unknown;
     for (let attempt = 0; attempt <= RETRIES; attempt++) {
       if (attempt > 0) await wait(500 * 2 ** (attempt - 1));
-      if (destroyed) throw Object.assign(new Error('destroyed'), { name: 'AbortError' });
+      abort.signal.throwIfAborted();
       const began = performance.now();
       try {
         const res = await fetch(cmcd?.url ?? o.url, { headers, signal: abort.signal });
@@ -159,10 +190,10 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
           if (res.status < 500) break;
           continue;
         }
-        const data = await res.arrayBuffer();
+        const data = await (abandon !== undefined && variant !== undefined ? abandon.read(res, variant, extra.durationS ?? 0, began, ttfbMs) : res.arrayBuffer());
         return { data, ms: performance.now() - began, ttfbMs };
       } catch (err) {
-        if (aborted(err)) throw err;
+        if (aborted(err) || (err as { variant?: number }).variant !== undefined) throw err;
         last = err;
       }
     }
@@ -266,8 +297,9 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
 
   /** ABR or the manual choice, before the next video segment is picked. */
   const chooseVariant = async (lane: Lane, run: number): Promise<void> => {
-    let target = requested ?? lane.index;
-    if (requested === undefined && driver !== undefined && driver.canEstimate && variants.length > 1) {
+    let target = requested ?? forced ?? lane.index;
+    forced = undefined;
+    if (target === lane.index && requested === undefined && driver !== undefined && driver.canEstimate && variants.length > 1) {
       const meta = getMediaPlaylistMetadata(lane.track);
       const d = driver.decide({ levels: levels(), current: lane.index, bufferLevel: aheadOf('video'), segmentDuration: meta?.targetDuration ?? 6, live: isLive, lowLatency: false, bufferTarget: forwardS });
       if (d.engineLevel >= 0) target = d.engineLevel;
@@ -288,12 +320,21 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   /** One segment for `lane`; false when there is nothing to do right now. */
   const step = async (lane: Lane, run: number): Promise<boolean> => {
     const s = sink as MseSink;
-    if (lane.type === 'video') await chooseVariant(lane, run);
-    if (run !== epoch) return true;
     if (aheadOf(lane.type) >= forwardS) return false;
-    const inLedger = new Set(s.segments(lane.type).map((x) => x.id));
-    const buffered = lane.track.segments.filter((x) => inLedger.has(x.id));
-    const next = getSegmentsToLoad(lane.track.segments, buffered, playlistTime(), { bufferDuration: forwardS })[0];
+    const plan = () => {
+      const inLedger = new Set(s.segments(lane.type).map((x) => x.id));
+      const buffered = lane.track.segments.filter((x) => inLedger.has(x.id));
+      return { inLedger, next: getSegmentsToLoad(lane.track.segments, buffered, playlistTime(), { bufferDuration: forwardS })[0] };
+    };
+    let { inLedger, next } = plan();
+    // ABR only when there is a segment to load: at the end of a VOD the buffer drains and
+    // InsufficientBuffer would call it empty.
+    if (next !== undefined && lane.type === 'video') {
+      const before = lane.track;
+      await chooseVariant(lane, run);
+      if (run !== epoch) return true;
+      if (lane.track !== before) ({ inLedger, next } = plan());
+    }
     if (next === undefined) {
       const last = lane.track.segments[lane.track.segments.length - 1];
       if (!isLive && last !== undefined && inLedger.has(last.id)) {
@@ -307,7 +348,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     }
     if (lane.needsInit && !(await appendInit(lane, run))) return true;
     const kind: CmcdObjectKind = lane.type === 'audio' ? 'audio' : lane.track.codecs !== undefined && lane.track.codecs.length > 1 ? 'muxed' : 'video';
-    const { data, ms, ttfbMs } = await get(next, kind, { durationS: next.duration, bitrateBps: lane.track.bandwidth });
+    const { data, ms, ttfbMs } = await get(next, kind, { durationS: next.duration, bitrateBps: lane.track.bandwidth }, lane.type === 'video' && requested === undefined ? lane.index : undefined);
     if (run !== epoch) return true;
     driver?.sampleDownload(ms, data.byteLength, ttfbMs);
     if (driver?.canEstimate === true) {
@@ -343,6 +384,14 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
         busy = await step(lane, e);
       } catch (err) {
         if (aborted(err) && e !== epoch) continue;
+        // An abandoned download (abandon.ts, a non-fatal error): its reason to the route and QoE,
+        // the next try at the variant it names.
+        forced = (err as { variant?: number }).variant;
+        if (forced !== undefined) {
+          switchReason = (err as Error).message;
+          bus.emit('error', err as OtterError);
+          continue;
+        }
         fail(err);
         return;
       }
@@ -363,6 +412,28 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     driver?.reset();
   };
 
+  const inner: EngineInner = {
+    media,
+    forwardS,
+    core,
+    bus,
+    isLive: () => isLive,
+    resolve: (p) => resolve(p, videoLane()?.track),
+    forget: (id) => resolved.delete(id),
+    get,
+    playlistTime,
+    offset: () => offset ?? 0,
+    aheadS: () => aheadOf('video'),
+    get variants() {
+      return variants;
+    },
+    loaded: (id) => resolved.has(id),
+    get driver() {
+      return driver;
+    },
+    textTrack: () => selectedText,
+  };
+
   return {
     formatId: 'hls',
     get tracks() {
@@ -380,7 +451,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     async load() {
       const url = ctx.source.src;
       if (typeof url !== 'string') throw fatal('other', 'unsupportedSource', 'HLS plays playlist URLs');
-      const masterUrl = new URL(url, typeof location === 'object' ? location.href : undefined).href;
+      const masterUrl = new URL(url, globalThis.location?.href).href;
       const text = await getText(masterUrl);
       if (destroyed) return;
       if (!text.includes('#EXT-X-STREAM-INF')) throw unsupported('no multivariant playlist');
@@ -412,17 +483,22 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       const audioIndex = audios.findIndex((a) => groups.includes(a.groupId) && a.default === true);
       const startAudio = audioIndex >= 0 ? audioIndex : audios.findIndex((a) => groups.includes(a.groupId));
       const [vTrack, aTrack] = await Promise.all([resolve(first), startAudio >= 0 ? resolve(audios[startAudio] as PartiallyResolvedAudioTrack) : undefined]);
+      const loadedAt = performance.now();
       if (destroyed) return;
       isLive = !Number.isFinite(vTrack.duration);
       // Lean rule stack (Throughput + InsufficientBuffer): the engine chunk budget (ADR-010 §3).
-      if (variants.length > 1) driver = createAbrDriverWith(createLeanAbrController());
+      // The abandon rules (an on-demand chunk) watch video downloads in auto mode.
+      if (variants.length > 1) {
+        driver = createAbrDriverWith(createLeanAbrController());
+        void import('./abandon.js').then((m) => (abandon = m.createAbandon(inner)));
+      }
       await s.ready;
       if (destroyed) return;
       const lane = (type: Kind, index: number, track: ResolvedTrack): Lane => ({ type, index, track, init: undefined, initKey: undefined, needsInit: true, ended: false, timing: undefined });
       lanes.push(lane('video', 0, vTrack));
       if (aTrack !== undefined) lanes.push(lane('audio', startAudio, aTrack));
       describe();
-      bus.emit('quality-change', { id: 'video-0', auto: true, reason: 'start (first variant)' });
+      bus.emit('quality-change', { id: 'video-0', auto: true, reason: 'start' });
       if (isLive) {
         try {
           s.mediaSource.duration = Number.POSITIVE_INFINITY;
@@ -437,6 +513,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
           ...opt('targetLatency', options.targetLatency),
           track: () => (videoLane() as Lane).track,
           window,
+          loadedAt,
           // Reloads the playing renditions (a switch in flight keeps its new track).
           refresh: () =>
             Promise.all(
@@ -507,29 +584,10 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       selectedText = id;
       const partial = id === null ? undefined : texts[Number(id.replace(/^text-/, ''))];
       describe();
-      if (partial === undefined) return;
-      const pick = selectedText;
-      void import('./subtitles.js').then(({ loadSubtitles }) => {
-        if (destroyed || selectedText !== pick) return;
-        stopText = loadSubtitles({
-          media,
-          aheadS: forwardS,
-          live: () => isLive,
-          // Live: the subtitle playlist moves with the stream, so it is re-read each time.
-          segments: async () => {
-            if (isLive) resolved.delete(partial.id);
-            return (await resolve(partial, videoLane()?.track)).segments;
-          },
-          fetchText: async (seg) => new TextDecoder().decode((await get(seg, 'caption')).data),
-          playlistTime,
-          offset: () => offset ?? 0,
-          cues: (cues) => {
-            if (selectedText === pick) bus.emit('text-cues', { trackId: pick as string, cues });
-          },
-          // Subtitles are not worth stopping playback for.
-          error: (err) => aborted(err) || bus.emit('error', createError({ type: 'other', details: 'subtitleLoadError', fatal: false, recoverable: true, message: String(err), cause: err })),
+      if (partial !== undefined)
+        void import('./subtitles.js').then((m) => {
+          if (!destroyed && selectedText === id) stopText = m.loadSubtitles(inner, partial, id as string);
         });
-      });
     },
     seekToLive: () => live?.seekToLive(),
     on: (e, h) => bus.on(e, (p) => h(p)),

@@ -120,8 +120,8 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         e.on('bandwidth', (b) => emit('bandwidth', b)),
         e.on('text-cues', (c) => emit('text-cues', c)),
         e.on('error', (err) => {
-          // Own engine -> adapter (ADR-010 §4): the reason goes into router.explain().
-          if (err.details === 'pipelineFallback') emit('route-detail', { reason: err instanceof Error ? err.message : 'own engine -> adapter' });
+          // Own engine -> adapter, an abandoned segment download (ADR-010 §4): the reason goes into router.explain().
+          if (err.details === 'pipelineFallback' || err.details === 'segmentAbandoned') emit('route-detail', { reason: err instanceof Error ? err.message : err.details });
           emit('error', err);
         }),
       );

@@ -96,8 +96,8 @@ const onDemand = readdirSync('packages')
 
 // Own CMAF-HLS engine (ADR-010 §3): the format-hls engine chunk and what it alone brings in (the
 // MSE sink, ABR rule stack; @otter-player/core is on the first screen anyway). VOD: the engine chunk
-// every VOD playback loads; VOD + live: every chunk of the engine (live, and the subtitle chunk that
-// loads when a WebVTT track is turned on).
+// every VOD playback loads; VOD + live: the live chunk and the subtitle chunk that loads when a
+// WebVTT track is turned on as well.
 const hlsChunk = (prefix) => {
   const f = existsSync('packages/format-hls/dist') ? readdirSync('packages/format-hls/dist').find((x) => x.startsWith(`${prefix}-`) && x.endsWith('.js')) : undefined;
   return f === undefined ? `packages/format-hls/dist/${prefix}.js` : `packages/format-hls/dist/${f}`;
@@ -109,6 +109,15 @@ const ownHlsEngine = [
     path: [hlsChunk('engine'), hlsChunk('subtitles'), hlsChunk('live')],
     gzip: true,
     limit: '15 KB',
+    ignore: ['@otter-player/core'],
+    modifyEsbuildConfig: firstScreenOnly,
+  },
+  // The abandon rules (M5 fix, 2026-10-23; multivariant playlists only): reported with the rest until
+  // the owner decides how they count against the 15 KB gate (docs/reports/M5.md).
+  {
+    name: 'own CMAF-HLS engine chunks incl. abandon rules (report)',
+    path: [hlsChunk('engine'), hlsChunk('subtitles'), hlsChunk('live'), hlsChunk('abandon')],
+    gzip: true,
     ignore: ['@otter-player/core'],
     modifyEsbuildConfig: firstScreenOnly,
   },
