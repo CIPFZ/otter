@@ -153,6 +153,9 @@ export function createPipelineEngine(ctx: EngineContext, options: PipelineEngine
       if (!live || media.buffered.length === 0) return undefined;
       return Math.max(0, media.buffered.end(media.buffered.length - 1) - media.currentTime);
     },
+    get targetLatency() {
+      return live ? controller?.targetLatency : undefined;
+    },
     get mms() {
       return managed;
     },

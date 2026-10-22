@@ -15,6 +15,11 @@ export interface LiveSample {
   readonly playbackRate: number;
   /** HTMLMediaElement.readyState. */
   readonly readyState: number;
+  /**
+   * Otter: the live edge on the media timeline when the engine knows it apart from the buffer (HLS:
+   * end of the playlist's last segment). Latency is measured to it instead of the buffer end.
+   */
+  readonly edge?: number;
 }
 
 export interface LatencyConfig {
@@ -41,7 +46,8 @@ export const MPEGTS_LIVE_DEFAULTS: LatencyConfig = {
   chaseOnPaused: false,
 };
 
-const bufferEnd = (s: LiveSample): number | undefined => s.buffered.at(-1)?.[1];
+// Otter: the edge when the engine gives one (upstream: the buffer end).
+const bufferEnd = (s: LiveSample): number | undefined => s.edge ?? s.buffered.at(-1)?.[1];
 
 /** LiveLatencyChaser._chaseLiveLatency: seek target when too far behind, else undefined. */
 export function chaseLatency(s: LiveSample, c: LatencyConfig): number | undefined {

@@ -35,7 +35,7 @@ export function createFlvFormat(options: FlvFormatOptions = {}): FormatPlugin {
       const adapter = () => createMpegtsEngine(ctx, { type: 'flv', ...(options.config === undefined ? {} : { config: options.config }) });
       if ((options.engine ?? 'otter') === 'mpegts') return adapter();
       const own = createPipelineEngine(ctx, { type: 'flv', ...(options.targetLatency === undefined ? {} : { targetLatency: options.targetLatency }) });
-      return withAdapterFallback(own, adapter);
+      return withAdapterFallback(own, adapter, { media: ctx.media });
     },
   };
 }

@@ -59,6 +59,11 @@ export function observeMediaElement(
   let lastDropped = -1;
   let timer: ReturnType<typeof setInterval> | undefined;
 
+  const seekable = (): Pick<PlaybackSnapshot, 'seekableStart' | 'seekableEnd'> => {
+    const r = media.seekable;
+    return r === undefined || r.length === 0 ? { seekableStart: null, seekableEnd: null } : { seekableStart: r.start(0), seekableEnd: r.end(r.length - 1) };
+  };
+
   const snapshot = (): PlaybackSnapshot => ({
     paused: media.paused,
     ended: media.ended,
@@ -67,6 +72,7 @@ export function observeMediaElement(
     currentTime: media.currentTime,
     duration: media.duration,
     bufferedEnd: bufferedEndAt(media.buffered, media.currentTime),
+    ...seekable(),
     volume: media.volume,
     muted: media.muted,
     playbackRate: media.playbackRate,
@@ -109,8 +115,9 @@ export function observeMediaElement(
     stalled: () => emit('stalled', { position: media.currentTime }),
     seeking: () => emit('playback-change', { seeking: true, currentTime: media.currentTime }),
     seeked: () => emit('playback-change', { seeking: false, currentTime: media.currentTime }),
-    timeupdate: () => emit('playback-change', { currentTime: media.currentTime }),
-    durationchange: () => emit('playback-change', { duration: media.duration }),
+    // The live window moves with the stream: read with the playhead.
+    timeupdate: () => emit('playback-change', { currentTime: media.currentTime, ...seekable() }),
+    durationchange: () => emit('playback-change', { duration: media.duration, ...seekable() }),
     progress: () => {
       emit('buffered-change', { buffered: media.buffered });
       emit('playback-change', { bufferedEnd: bufferedEndAt(media.buffered, media.currentTime) });

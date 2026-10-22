@@ -42,6 +42,8 @@ export interface Engine {
   readonly formatId: string;
   readonly tracks: TrackList;
   readonly latency?: number | undefined;
+  /** Live: the latency the engine steers to (seconds, e.g. HLS HOLD-BACK), undefined without. */
+  readonly targetLatency?: number | undefined;
   /** Whether the engine actually uses ManagedMediaSource; known once `load()` resolved. */
   readonly mms: boolean;
   /** Loads the engine library (dynamic import) and the manifest; resolves once tracks are known. */

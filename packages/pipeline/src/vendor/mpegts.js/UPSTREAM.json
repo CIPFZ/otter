@@ -21,7 +21,8 @@
   ],
   "localChanges": [
     "The three element-bound controllers became pure functions over a LiveSample (currentTime, paused, buffered ranges, playbackRate, readyState); the caller applies the seek / rate. Same conditions and thresholds as upstream (defaults from src/config.js).",
-    "Logging dropped; config object replaced by the typed LatencyConfig."
+    "Logging dropped; config object replaced by the typed LatencyConfig.",
+    "2026-10-22 (ADR-010 §4): optional LiveSample.edge, the live edge on the media timeline when the engine knows it apart from the buffer (HLS); latency is measured to it instead of the buffer end."
   ],
   "syncLog": [
     {

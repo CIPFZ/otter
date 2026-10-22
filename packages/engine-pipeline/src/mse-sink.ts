@@ -9,6 +9,16 @@ export interface SinkInit {
   readonly data: Uint8Array;
 }
 
+/** A media segment appended to a SourceBuffer, for the segment ledger (ADR-010 §4). */
+export interface SinkSegment {
+  readonly id: string | number;
+  /** Media time, seconds. */
+  readonly start: number;
+  readonly end: number;
+  /** Rendition (quality id) it came from. */
+  readonly level?: string | number;
+}
+
 export interface MseSinkOptions {
   /** Seconds kept behind the playhead before removal. */
   readonly backBufferS: number;
@@ -25,7 +35,19 @@ export interface MseSink {
    * re-initialise it (changeType when the codec changed).
    */
   init(segments: readonly SinkInit[]): Promise<void>;
-  append(type: 'audio' | 'video', data: Uint8Array): Promise<void>;
+  /** `segment`: recorded in the ledger once the append succeeded (segment engines). */
+  append(type: 'audio' | 'video', data: Uint8Array, segment?: SinkSegment): Promise<void>;
+  /**
+   * Segments appended to `type` that are still buffered, in time order: entries whose middle is no
+   * longer in the SourceBuffer's buffered ranges (evicted by us or by the browser) are dropped.
+   */
+  segments(type: 'audio' | 'video'): readonly SinkSegment[];
+  /**
+   * Interrupts `type` (or every buffer): pending operations reject with an AbortError, an append
+   * in progress is aborted (SourceBuffer.abort()); a removal in progress finishes. The parser is
+   * reset, so the next media needs its init segment again.
+   */
+  abort(type?: 'audio' | 'video'): void;
   /** Removes media older than `currentTime - backBufferS` on every buffer. */
   evict(currentTime: number): Promise<void>;
   /** Removes everything (seek outside the buffer / discontinuity). */
@@ -50,9 +72,15 @@ type Op = () => void;
 interface Queue {
   readonly sb: SourceBuffer;
   mimeType: string;
-  readonly ops: { run: Op; done: () => void; fail: (e: unknown) => void }[];
+  readonly ops: { run: Op; done: () => void; fail: (e: unknown) => void; kind: 'append' | 'other' }[];
   busy: boolean;
+  /** updateend events still to come from an aborted append: not the next operation's. */
+  aborted: number;
 }
+
+const abortError = (): Error => Object.assign(new Error('SourceBuffer operation aborted'), { name: 'AbortError' });
+/** Ledger entries count as buffered when their middle is (segments overlap by frames at edges). */
+const inRanges = (t: number, r: readonly [number, number][]): boolean => r.some(([a, b]) => t >= a - 0.05 && t < b + 0.05);
 
 export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseSinkOptions): MseSink {
   const ms = new MediaSourceCtor();
@@ -96,11 +124,12 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
     }
   };
 
-  const enqueue = (q: Queue, run: Op): Promise<void> =>
+  const enqueue = (q: Queue, run: Op, kind: 'append' | 'other' = 'other'): Promise<void> =>
     new Promise((done, fail) => {
-      q.ops.push({ run, done, fail });
+      q.ops.push({ run, done, fail, kind });
       next(q);
     });
+  const ledger = new Map<string, SinkSegment[]>();
 
   const queueFor = (type: string): Queue => {
     const q = queues.get(type);
@@ -122,14 +151,19 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
     const sb = ms.addSourceBuffer(segment.mimeType);
     // Fragments carry their own timestamps; 'segments' keeps them (no 'sequence' re-stamping).
     sb.mode = 'segments';
-    const created: Queue = { sb, mimeType: segment.mimeType, ops: [], busy: false };
+    const created: Queue = { sb, mimeType: segment.mimeType, ops: [], busy: false, aborted: 0 };
     sb.addEventListener('updateend', () => {
+      if (created.aborted > 0) {
+        created.aborted--;
+        return;
+      }
       const op = created.ops.shift();
       created.busy = false;
       op?.done();
       next(created);
     });
     sb.addEventListener('error', () => {
+      if (created.aborted > 0) return;
       const op = created.ops.shift();
       created.busy = false;
       op?.fail(new Error('SourceBuffer error'));
@@ -176,10 +210,10 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
         await sink.append(segment.type, segment.data);
       }
     },
-    async append(type, data) {
+    async append(type, data, segment) {
       const q = queueFor(type);
       try {
-        await enqueue(q, () => q.sb.appendBuffer(data as BufferSource));
+        await enqueue(q, () => q.sb.appendBuffer(data as BufferSource), 'append');
       } catch (err) {
         if ((err as { name?: string } | null)?.name !== 'QuotaExceededError') throw err;
         // Free everything well behind the playhead, then retry once.
@@ -187,7 +221,38 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
         const first = r[0];
         const last = r.at(-1);
         if (first !== undefined && last !== undefined) await remove(q, first[0], Math.max(first[0], last[1] - options.backBufferS - 10));
-        await enqueue(q, () => q.sb.appendBuffer(data as BufferSource));
+        await enqueue(q, () => q.sb.appendBuffer(data as BufferSource), 'append');
+      }
+      if (segment === undefined) return;
+      // The new segment replaces whatever it overlaps ('segments' mode overwrites by time).
+      const list = (ledger.get(type) ?? []).filter((s) => s.id !== segment.id && (s.end <= segment.start || s.start >= segment.end));
+      list.push(segment);
+      list.sort((a, b) => a.start - b.start);
+      ledger.set(type, list);
+    },
+    segments(type) {
+      const q = queues.get(type);
+      const r = q === undefined ? [] : ranges(q.sb);
+      const kept = (ledger.get(type) ?? []).filter((s) => inRanges((s.start + s.end) / 2, r));
+      ledger.set(type, kept);
+      return [...kept];
+    },
+    abort(type) {
+      for (const [t, q] of queues) {
+        if (type !== undefined && t !== type) continue;
+        const current = q.busy ? q.ops[0] : undefined;
+        for (const op of q.ops.splice(current === undefined ? 0 : 1)) op.fail(abortError());
+        // An append in progress stops now; a removal cannot be aborted (InvalidStateError) and ends.
+        if (current?.kind === 'append' && q.sb.updating && ms.readyState === 'open') {
+          q.aborted++;
+          q.ops.shift();
+          q.busy = false;
+          q.sb.abort();
+          current.fail(abortError());
+        } else if (current === undefined && ms.readyState === 'open' && !q.sb.updating) {
+          // Idle: still reset the parser (a partial media segment may be pending in it).
+          q.sb.abort();
+        }
       }
     },
     async evict(currentTime) {

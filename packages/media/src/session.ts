@@ -81,6 +81,8 @@ const PLAYBACK_RESET: PlaybackSnapshot = {
   currentTime: 0,
   duration: Number.NaN,
   bufferedEnd: 0,
+  seekableStart: null,
+  seekableEnd: null,
   volume: 1,
   muted: false,
   playbackRate: 1,

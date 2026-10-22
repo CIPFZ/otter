@@ -26,6 +26,8 @@ export interface LiveController {
   /** Latency (s) of the last sample, undefined before buffered media. */
   readonly latency: number | undefined;
   readonly targetLatency: number;
+  /** A new latency to hold (HLS: HOLD-BACK of a newly loaded playlist); thresholds follow it. */
+  setTargetLatency(seconds: number): void;
   sample(s: LiveSample, events?: { readonly stalled?: boolean; readonly canPlay?: boolean }): LiveAction | undefined;
   /** The user picked a rate: stop adjusting it until `releaseRate()` (or a back-to-live). */
   holdRate(): void;
@@ -34,16 +36,18 @@ export interface LiveController {
   seekToLive(s: LiveSample): LiveAction | undefined;
 }
 
+const configFor = (target: number, catchUpRate: number | undefined): LatencyConfig => ({
+  ...MPEGTS_LIVE_DEFAULTS,
+  maxLatency: target + 1,
+  minRemain: target,
+  syncMaxLatency: target + 0.4,
+  syncTargetLatency: target,
+  syncPlaybackRate: Math.min(2, Math.max(1, catchUpRate ?? 1.2)),
+});
+
 export function createLiveController(options: LiveControllerOptions = {}): LiveController {
-  const target = Math.max(0.3, options.targetLatency ?? 1);
-  const config: LatencyConfig = {
-    ...MPEGTS_LIVE_DEFAULTS,
-    maxLatency: target + 1,
-    minRemain: target,
-    syncMaxLatency: target + 0.4,
-    syncTargetLatency: target,
-    syncPlaybackRate: Math.min(2, Math.max(1, options.catchUpRate ?? 1.2)),
-  };
+  let target = Math.max(0.3, options.targetLatency ?? 1);
+  let config = configFor(target, options.catchUpRate);
   let latency: number | undefined;
   let rateHeld = false;
   let canPlay = false;
@@ -54,10 +58,16 @@ export function createLiveController(options: LiveControllerOptions = {}): LiveC
     get latency() {
       return latency;
     },
-    targetLatency: target,
+    get targetLatency() {
+      return target;
+    },
+    setTargetLatency(seconds) {
+      target = Math.max(0.3, seconds);
+      config = configFor(target, options.catchUpRate);
+    },
     sample(s, events = {}) {
       if (events.canPlay === true) canPlay = true;
-      const end = s.buffered.at(-1)?.[1];
+      const end = s.edge ?? s.buffered.at(-1)?.[1];
       latency = end === undefined ? undefined : Math.max(0, end - s.currentTime);
       const jump = jumpStartupStall(s, events.stalled === true, canPlay);
       if (jump !== undefined) return { type: 'seek', to: jump, reason: 'startup-stall' };
@@ -78,11 +88,13 @@ export function createLiveController(options: LiveControllerOptions = {}): LiveC
       rateHeld = false;
     },
     seekToLive(s) {
-      const end = s.buffered.at(-1)?.[1];
+      const end = s.edge ?? s.buffered.at(-1)?.[1];
       if (end === undefined) return undefined;
       rateHeld = false;
       ownRate = s.playbackRate;
-      return { type: 'seek', to: Math.max(s.buffered.at(-1)?.[0] ?? 0, end - target), reason: 'seek-to-live' };
+      // Not before the buffered start (FLV / TS); with an edge (HLS) the engine loads what is missing.
+      const floor = s.edge === undefined ? (s.buffered.at(-1)?.[0] ?? 0) : 0;
+      return { type: 'seek', to: Math.max(floor, end - target), reason: 'seek-to-live' };
     },
   };
 }

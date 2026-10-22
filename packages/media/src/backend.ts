@@ -23,6 +23,12 @@ export interface PlaybackSnapshot {
   readonly currentTime: number;
   readonly duration: number;
   readonly bufferedEnd: number;
+  /**
+   * The range the user can seek in (HTMLMediaElement.seekable, first start to last end): VOD
+   * 0..duration; live, the DVR window (engines set it with setLiveSeekableRange); null without one.
+   */
+  readonly seekableStart: number | null;
+  readonly seekableEnd: number | null;
   readonly volume: number;
   readonly muted: boolean;
   readonly playbackRate: number;

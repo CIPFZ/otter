@@ -47,3 +47,28 @@ describe('LiveController (mpegts.js rules, Otter policy)', () => {
     expect(lc.sample(stuck)).toEqual({ type: 'seek', to: 0.4, reason: 'startup-stall' });
   });
 });
+
+describe('LiveController: HLS edge and target (ADR-010 §4)', () => {
+  it('measures latency to the edge when given, and chases against it', () => {
+    const lc = createLiveController({ targetLatency: 6 });
+    // Buffer end 2 s ahead, but the playlist edge 10 s ahead: latency is 10, over target + 1.
+    const a = lc.sample(s(100, 102, { edge: 110 }), { canPlay: true });
+    expect(lc.latency).toBe(10);
+    expect(a).toEqual({ type: 'seek', to: 104, reason: 'chase' });
+    // Without an edge (FLV / TS): the buffer end, as before.
+    lc.sample(s(100, 102), { canPlay: true });
+    expect(lc.latency).toBe(2);
+  });
+
+  it('setTargetLatency moves the thresholds; seekToLive targets edge - target', () => {
+    const lc = createLiveController({ targetLatency: 1 });
+    expect(lc.targetLatency).toBe(1);
+    lc.setTargetLatency(9);
+    expect(lc.targetLatency).toBe(9);
+    // 9.5 s behind the edge: within target + 1, no chase; above target + 0.4: catch up by rate.
+    expect(lc.sample(s(100, 101, { edge: 109.5 }), { canPlay: true })).toEqual({ type: 'rate', rate: 1.2, reason: 'catch-up' });
+    expect(lc.seekToLive(s(100, 101, { edge: 130 }))).toEqual({ type: 'seek', to: 121, reason: 'seek-to-live' });
+    lc.setTargetLatency(0.1);
+    expect(lc.targetLatency).toBe(0.3);
+  });
+});

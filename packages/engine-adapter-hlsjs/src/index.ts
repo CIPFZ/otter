@@ -174,6 +174,10 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
       // hls.js also reports a "latency" for VOD; only live playlists have a live edge.
       return hls?.latestLevelDetails?.live === true && hls.latency > 0 ? hls.latency : undefined;
     },
+    get targetLatency() {
+      const target = hls?.latestLevelDetails?.live === true ? hls.targetLatency : null;
+      return target === null || target === undefined ? undefined : target;
+    },
     get mms() {
       return hls !== undefined && usesMms(ctx.mms);
     },

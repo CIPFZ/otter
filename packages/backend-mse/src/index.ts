@@ -71,7 +71,8 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         const latency = engine.latency;
         if (latency === undefined || !Number.isFinite(latency) || latency < 0 || latency > MAX_PLAUSIBLE_LATENCY_S) return;
         lastSample = now;
-        emit('latency-change', { latency });
+        const goal = engine.targetLatency;
+        emit('latency-change', goal === undefined ? { latency } : { latency, target: goal });
       };
       // timeupdate stops while paused, and WebKit fires no MSE progress events then: a timer keeps
       // latency current while live data keeps arriving (it drives "Back to live").
@@ -118,7 +119,11 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         e.on('first-segment', (f) => emit('first-segment', f)),
         e.on('bandwidth', (b) => emit('bandwidth', b)),
         e.on('text-cues', (c) => emit('text-cues', c)),
-        e.on('error', (err) => emit('error', err)),
+        e.on('error', (err) => {
+          // Own engine -> adapter (ADR-010 §4): the reason goes into router.explain().
+          if (err.details === 'pipelineFallback') emit('route-detail', { reason: err instanceof Error ? err.message : 'own engine -> adapter' });
+          emit('error', err);
+        }),
       );
       await e.load();
       // The engine decides whether it really runs on MMS (Shaka always uses MMS when present).

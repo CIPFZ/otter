@@ -185,6 +185,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     currentTime: 0,
     duration: Number.NaN,
     bufferedEnd: 0,
+    seekableStart: null,
+    seekableEnd: null,
     volume: 1,
     muted: false,
     playbackRate: 1,
@@ -869,7 +871,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       bus.emit('tracks-change', tracks);
       if (current !== undefined && levels.length > 1) bus.emit('quality-change', { id: String(current.id), auto: autoQuality, reason: autoQuality ? 'initial (ABR)' : 'initial (requested)' });
       bus.emit('buffered-change', { buffered });
-      update({ duration: info.duration, bufferedEnd: info.duration, videoWidth: current?.width ?? 0, videoHeight: current?.height ?? 0, readyState: 1 });
+      // Whole files and VOD playlists: seekable from 0 to the end.
+      update({ duration: info.duration, bufferedEnd: info.duration, seekableStart: 0, seekableEnd: info.duration, videoWidth: current?.width ?? 0, videoHeight: current?.height ?? 0, readyState: 1 });
       cancelTick = schedule(tick);
       if (typeof document === 'object') {
         // PiP events too: options.visible may count a PiP window (they bubble from its video).

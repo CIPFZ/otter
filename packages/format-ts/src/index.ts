@@ -35,7 +35,7 @@ export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
       const adapter = () => createMpegtsEngine(ctx, { type: 'mpegts', ...(options.config === undefined ? {} : { config: options.config }) });
       if ((options.engine ?? 'otter') === 'mpegts') return adapter();
       const own = createPipelineEngine(ctx, { type: 'ts', ...(options.targetLatency === undefined ? {} : { targetLatency: options.targetLatency }) });
-      return withAdapterFallback(own, adapter);
+      return withAdapterFallback(own, adapter, { media: ctx.media });
     },
   };
 }
