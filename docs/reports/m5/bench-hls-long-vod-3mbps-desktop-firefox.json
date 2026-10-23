@@ -12,10 +12,10 @@
     "otter": {
       "runs": 10,
       "ttffMs": {
-        "median": 1895.5,
-        "p90": 1912.2,
-        "min": 1888,
-        "max": 1914
+        "median": 1896.5,
+        "p90": 1899.1,
+        "min": 1893,
+        "max": 1900
       },
       "rebuffers": {
         "median": 0,
@@ -64,7 +64,7 @@
       "fatal": [],
       "raw": [
         {
-          "ttff": 1900,
+          "ttff": 1895,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 1,
@@ -74,17 +74,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 1894,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 1,
-          "endHeight": 480,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 1894,
+          "ttff": 1895,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 1,
@@ -104,7 +94,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 1890,
+          "ttff": 1899,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 1,
@@ -124,6 +114,26 @@
           "startHeight": 720
         },
         {
+          "ttff": 1900,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 480,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 1896,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 480,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
           "ttff": 1897,
           "rebuffers": 0,
           "rebufferMs": 0,
@@ -134,7 +144,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 1912,
+          "ttff": 1896,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 1,
@@ -144,17 +154,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 1914,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 1,
-          "endHeight": 480,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 1888,
+          "ttff": 1898,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 1,
@@ -169,9 +169,9 @@
       "runs": 10,
       "ttffMs": {
         "median": 2001,
-        "p90": 2015.3,
-        "min": 1979,
-        "max": 2018
+        "p90": 2014.8,
+        "min": 1986,
+        "max": 2022
       },
       "rebuffers": {
         "median": 0,
@@ -187,8 +187,8 @@
       },
       "runsWithRebuffer": 0,
       "switches": {
-        "median": 2,
-        "p90": 4.1,
+        "median": 1,
+        "p90": 2.3,
         "min": 1,
         "max": 5
       },
@@ -205,42 +205,102 @@
         720
       ],
       "endHeights": [
+        480,
+        480,
+        480,
+        480,
+        720,
         720,
         720,
         480,
         480,
-        480,
-        720,
-        480,
-        720,
-        720,
-        720
+        480
       ],
       "fallbacks": 0,
       "fatal": [],
       "raw": [
         {
-          "ttff": 1995,
+          "ttff": 1992,
           "rebuffers": 0,
           "rebufferMs": 0,
-          "switches": 4,
+          "switches": 1,
+          "endHeight": 480,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 2005,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 480,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 1986,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 480,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 2014,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 480,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 1988,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 2,
           "endHeight": 720,
           "fallback": false,
           "fatal": [],
           "startHeight": 720
         },
         {
-          "ttff": 2013,
+          "ttff": 2004,
           "rebuffers": 0,
           "rebufferMs": 0,
-          "switches": 4,
+          "switches": 2,
           "endHeight": 720,
           "fallback": false,
           "fatal": [],
           "startHeight": 720
         },
         {
-          "ttff": 1984,
+          "ttff": 1998,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 2,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 2014,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 1,
+          "endHeight": 480,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 1987,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 5,
@@ -250,71 +310,11 @@
           "startHeight": 720
         },
         {
-          "ttff": 2018,
+          "ttff": 2022,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 1,
           "endHeight": 480,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 2000,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 1,
-          "endHeight": 480,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 1979,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 2,
-          "endHeight": 720,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 1995,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 1,
-          "endHeight": 480,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 2002,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 2,
-          "endHeight": 720,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 2005,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 2,
-          "endHeight": 720,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 2015,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 2,
-          "endHeight": 720,
           "fallback": false,
           "fatal": [],
           "startHeight": 720

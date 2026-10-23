@@ -195,3 +195,30 @@ test('a manual quality choice with nothing left to load still applies (like hls.
   await page.evaluate(async (id) => ((await window.otter) as OtterFixture).dispatch('select-quality', { id }), other);
   await expect.poll(async () => (await state(page)).active, { timeout: 5_000 }).toBe(other);
 });
+
+test('ManagedMediaSource (emulated): a manual choice after endstreaming still applies', async ({ page }) => {
+  test.setTimeout(60_000);
+  // WebKit's MMS stops streaming at the end; this stand-in does the same where WebKit cannot run.
+  await page.addInitScript(() => {
+    class FakeManagedMediaSource extends MediaSource {
+      streaming = true;
+      constructor() {
+        super();
+        this.addEventListener('sourceended', () => {
+          this.streaming = false;
+          this.dispatchEvent(new Event('endstreaming'));
+        });
+      }
+    }
+    (window as unknown as { ManagedMediaSource: unknown }).ManagedMediaSource = FakeManagedMediaSource;
+  });
+  await load(page, '/hls-fmp4/master.m3u8');
+  await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().ended), { timeout: 20_000 }).toBe(true);
+  const { mms, other } = await page.evaluate(async () => {
+    const s = ((await window.otter) as OtterFixture).state();
+    return { mms: s.mms, other: s.tracks.video.find((v) => v.id !== s.activeQuality)?.id as string };
+  });
+  expect(mms).toBe(true);
+  await page.evaluate(async (id) => ((await window.otter) as OtterFixture).dispatch('select-quality', { id }), other);
+  await expect.poll(async () => (await state(page)).active, { timeout: 5_000 }).toBe(other);
+});

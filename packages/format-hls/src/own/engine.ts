@@ -374,9 +374,10 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   const run = async (lane: Lane): Promise<void> => {
     while (!destroyed) {
       const s = sink as MseSink;
-      // ManagedMediaSource not streaming (buffer full, or ended): wait, unless a manual choice is pending.
+      // ManagedMediaSource not streaming (buffer full, or ended): wait, but look again every 200 ms
+      // so a manual choice made meanwhile applies.
       if (!s.streaming && lane.index === (requested ?? lane.index)) {
-        await s.whenStreaming();
+        await Promise.race([s.whenStreaming(), wait(200)]);
         continue;
       }
       const e = epoch;
