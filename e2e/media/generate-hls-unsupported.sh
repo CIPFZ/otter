@@ -58,3 +58,17 @@ master "$OUT/ll-parts"
   done
   printf '#EXT-X-ENDLIST\n'
 } > "$OUT/ll-parts/v.m3u8"
+
+# Abandon (own engine, hls-abandon.spec.ts): 8 s, two renditions with keyframes on the same
+# frames, CBR so the sizes hold: 640x360 at 1.6 Mbps (~400 KB per 2 s segment) and 320x180 at
+# 0.25 Mbps. Committed (small), so the deterministic abandon case runs in CI.
+FF_LIBX264=${FFMPEG:-$(ls "${FFMPEG_STATIC_DIR:-$HOME/.cache/otter/ffmpeg-static}"/*/bin/ffmpeg 2>/dev/null | head -1)}
+FF_LIBX264=${FF_LIBX264:-ffmpeg}
+rm -rf hls-abandon && mkdir -p hls-abandon
+"$FF_LIBX264" -y -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=640x360:rate=30' -t 8 \
+  -filter_complex '[0:v]split=2[a][b];[b]scale=320:180[b2]' -map '[a]' -map '[b2]' \
+  -c:v libx264 -profile:v main -preset veryfast -bf 0 -g 60 -keyint_min 60 -sc_threshold 0 -x264-params nal-hrd=cbr:force-cfr=1 \
+  -b:v:0 1600k -minrate:v:0 1600k -maxrate:v:0 1600k -bufsize:v:0 1600k \
+  -b:v:1 250k -minrate:v:1 250k -maxrate:v:1 250k -bufsize:v:1 250k \
+  -f hls -hls_time 2 -hls_playlist_type vod -hls_segment_type fmp4 -hls_fmp4_init_filename 'init_%v.mp4' \
+  -hls_segment_filename 'hls-abandon/v%v_%03d.m4s' -master_pl_name master.m3u8 -var_stream_map 'v:0 v:1' 'hls-abandon/v%v.m3u8'
