@@ -1,4 +1,6 @@
 // Bandwidth-limited copy of the e2e media for benchmarks (bench-hls.spec.ts): /t/<kbps>/<sid>/<path>
+// (or /t/<kbps>+<kb>k/...: the session's first <kb> kilobytes unlimited, then <kbps>: a link that
+// drops after the start, hls-abandon.spec.ts)
 // serves e2e/media/<path> at <kbps> kilobits per second, shared by every request of the session
 // <sid> (a page's segment, playlist and init requests compete, as on a real link); 0 is unlimited
 // (the same no-store responses, for a like-for-like baseline). Server side,
@@ -16,16 +18,18 @@ interface Bucket {
   readonly bytesPerTick: number;
   readonly waiting: (() => void)[];
   budget: number;
+  /** Bytes still free of the limit (the `+<kb>k` head start). */
+  free: number;
   timer: ReturnType<typeof setInterval> | undefined;
   idleTicks: number;
 }
 
 export function throttlePlugin(dir: string): Plugin {
   const buckets = new Map<string, Bucket>();
-  const bucket = (sid: string, kbps: number): Bucket => {
+  const bucket = (sid: string, kbps: number, freeKb: number): Bucket => {
     let b = buckets.get(sid);
     if (b === undefined) {
-      const created: Bucket = { bytesPerTick: (kbps * 1000) / 8 / (1000 / TICK_MS), waiting: [], budget: 0, timer: undefined, idleTicks: 0 };
+      const created: Bucket = { bytesPerTick: (kbps * 1000) / 8 / (1000 / TICK_MS), waiting: [], budget: 0, free: freeKb * 1000, timer: undefined, idleTicks: 0 };
       created.timer = setInterval(() => {
         created.budget = Math.min(created.budget + created.bytesPerTick, created.bytesPerTick * 2);
         const w = created.waiting.splice(0);
@@ -43,7 +47,9 @@ export function throttlePlugin(dir: string): Plugin {
   };
   /** Waits until `n` bytes may go out (in pieces of at most one tick's worth). */
   const take = async (b: Bucket, n: number): Promise<void> => {
-    let left = n;
+    const head = Math.min(b.free, n);
+    b.free -= head;
+    let left = n - head;
     while (left > 0) {
       if (b.budget <= 0) await new Promise<void>((r) => b.waiting.push(r));
       const piece = Math.min(left, b.budget);
@@ -53,14 +59,14 @@ export function throttlePlugin(dir: string): Plugin {
   };
 
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
-    const m = /^\/t\/(\d+)\/([\w-]+)\/(.+)$/.exec(req.url?.split('?')[0] ?? '');
+    const m = /^\/t\/(\d+)(?:\+(\d+)k)?\/([\w-]+)\/(.+)$/.exec(req.url?.split('?')[0] ?? '');
     if (m === null) return next();
-    const file = normalize(join(dir, decodeURIComponent(m[3] as string)));
+    const file = normalize(join(dir, decodeURIComponent(m[4] as string)));
     if (!file.startsWith(normalize(dir)) || !existsSync(file) || !statSync(file).isFile()) {
       res.writeHead(404).end();
       return;
     }
-    const b = Number(m[1]) === 0 ? undefined : bucket(m[2] as string, Number(m[1]));
+    const b = Number(m[1]) === 0 ? undefined : bucket(m[3] as string, Number(m[1]), Number(m[2] ?? 0));
     const size = statSync(file).size;
     const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? '');
     const start = range === null ? 0 : Number(range[1]);

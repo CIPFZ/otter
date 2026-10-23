@@ -96,8 +96,8 @@ const onDemand = readdirSync('packages')
 
 // Own CMAF-HLS engine (ADR-010 §3): the format-hls engine chunk and what it alone brings in (the
 // MSE sink, ABR rule stack; @otter-player/core is on the first screen anyway). VOD: the engine chunk
-// every VOD playback loads; VOD + live: the live chunk and the subtitle chunk that loads when a
-// WebVTT track is turned on as well.
+// every VOD playback loads; all chunks: also live, the abandon rules of multivariant playlists and
+// the subtitle chunk that loads when a WebVTT track is turned on (revised 2026-10-23: 16.5 KB).
 const hlsChunk = (prefix) => {
   const f = existsSync('packages/format-hls/dist') ? readdirSync('packages/format-hls/dist').find((x) => x.startsWith(`${prefix}-`) && x.endsWith('.js')) : undefined;
   return f === undefined ? `packages/format-hls/dist/${prefix}.js` : `packages/format-hls/dist/${f}`;
@@ -105,22 +105,14 @@ const hlsChunk = (prefix) => {
 const ownHlsEngine = [
   { name: 'own CMAF-HLS engine chunk, VOD (ADR-010 §3, ≤ 12 KB)', path: hlsChunk('engine'), gzip: true, limit: '12 KB', ignore: ['@otter-player/core'], modifyEsbuildConfig: firstScreenOnly },
   {
-    name: 'own CMAF-HLS engine chunks, VOD + live (ADR-010 §3, ≤ 15 KB)',
-    path: [hlsChunk('engine'), hlsChunk('subtitles'), hlsChunk('live')],
-    gzip: true,
-    limit: '15 KB',
-    ignore: ['@otter-player/core'],
-    modifyEsbuildConfig: firstScreenOnly,
-  },
-  // The abandon rules (M5 fix, 2026-10-23; multivariant playlists only): reported with the rest until
-  // the owner decides how they count against the 15 KB gate (docs/reports/M5.md).
-  {
-    name: 'own CMAF-HLS engine chunks incl. abandon rules (report)',
+    name: 'own CMAF-HLS engine, all chunks (ADR-010 §3, ≤ 16.5 KB)',
     path: [hlsChunk('engine'), hlsChunk('subtitles'), hlsChunk('live'), hlsChunk('abandon')],
     gzip: true,
+    limit: '16.5 KB',
     ignore: ['@otter-player/core'],
     modifyEsbuildConfig: firstScreenOnly,
   },
+  { name: 'own CMAF-HLS engine, abandon chunk (ADR-010 §3, ≤ 1.5 KB)', path: hlsChunk('abandon'), gzip: true, limit: '1.5 KB', ignore: ['@otter-player/core', '@otter-player/pipeline'], modifyEsbuildConfig: firstScreenOnly },
 ];
 
 const reports = readdirSync('packages')
