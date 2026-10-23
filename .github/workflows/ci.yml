@@ -122,10 +122,11 @@ jobs:
       # Per-environment facts the tests record (capabilities, refusals) as run-page notices.
       - name: Test notices
         if: always()
-        # A step shows at most 10 notices: all of them also go to the job summary.
+        # A step shows at most 10 notices (the measurements first): all of them also go to the job summary.
         run: |
           if [ -f test-results/ci-notices.txt ]; then
-            sed 's/^/::notice title=e2e::/' test-results/ci-notices.txt
+            KEY='surfaces|dvr|AudioContext resume'
+            { grep -E "$KEY" test-results/ci-notices.txt; grep -vE "$KEY" test-results/ci-notices.txt; } | sed 's/^/::notice title=e2e::/'
             { echo '### e2e notices'; echo '```'; cat test-results/ci-notices.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/upload-artifact@v7
