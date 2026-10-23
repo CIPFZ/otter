@@ -6,6 +6,7 @@
 // renders nothing (background mode). Fit, transform and filters follow VideoSurface exactly.
 
 import { createError, createEventBus, type Unsubscribe } from '@otter-player/core';
+import { framePrimaries, gamutMatrix, platformManagesVideo, probeConverted, probeFrame } from './color.js';
 import { NEUTRAL_FILTERS } from './filter-css.js';
 import { createGlRenderer, frameSize, isI420, type GlRenderer, type I420Frame, type PixelRect, type SurfaceFrame, type ViewDraw } from './gl-renderer.js';
 import type { GPUSurfaceOptions, SnapshotOptions, Surface, SurfaceColorInfo, SurfaceFilters, SurfaceFit, SurfaceTransform } from './surface.js';
@@ -493,6 +494,67 @@ export function createGPUSurface(canvas: HTMLCanvasElement, options: GPUGridOpti
 }
 
 /**
+ * Whether a 2D canvas needs to convert frame primaries itself (ADR-011 §3): the platform shows
+ * <video> colour-managed (a GPU), and drawImage does not already convert (WebKit does).
+ */
+let canvasManages: boolean | undefined;
+function canvasMustConvert(doc: Document): boolean {
+  if (canvasManages !== undefined) return canvasManages;
+  canvasManages = false;
+  if (typeof VideoFrame !== 'function') return false;
+  const c = doc.createElement('canvas');
+  const gl = c.getContext('webgl');
+  const gpu = platformManagesVideo(gl);
+  gl?.getExtension('WEBGL_lose_context')?.loseContext();
+  if (!gpu) return false;
+  const ctx = doc.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  if (ctx === null) return false;
+  const frame = probeFrame();
+  try {
+    ctx.drawImage(frame, 0, 0);
+    canvasManages = !probeConverted(ctx.getImageData(0, 0, 1, 1).data[1] as number);
+  } catch {
+    // Keep false.
+  } finally {
+    frame.close();
+  }
+  return canvasManages;
+}
+
+let gamutIds = 0;
+
+/**
+ * Primaries -> sRGB for a 2D context: an SVG filter in linear light (`linearRGB` is the sRGB curve)
+ * referenced from ctx.filter. A new id per matrix (WebKit caches resolved url() filters).
+ */
+function createGamutFilter(canvas: HTMLCanvasElement): { css(m: readonly number[] | undefined): string; destroy(): void } {
+  let svg: SVGSVGElement | undefined;
+  let last: readonly number[] | undefined;
+  let id = '';
+  return {
+    css(m) {
+      if (m === undefined) return 'none';
+      if (m !== last) {
+        last = m;
+        id = `otter-gamut-${++gamutIds}`;
+        svg?.remove();
+        svg = canvas.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+        const values = [0, 1, 2].flatMap((r) => [m[r * 3], m[r * 3 + 1], m[r * 3 + 2], 0, 0]).concat([0, 0, 0, 1, 0]);
+        // Markup from numbers only.
+        svg.innerHTML = `<filter id="${id}" color-interpolation-filters="linearRGB" x="0" y="0" width="100%" height="100%"><feColorMatrix type="matrix" values="${values.join(' ')}"/></filter>`;
+        canvas.after(svg);
+      }
+      return `url(#${id})`;
+    },
+    destroy() {
+      svg?.remove();
+    },
+  };
+}
+
+/**
  * Canvas 2D sink: the WebCodecs fallback where WebGL2 is unavailable (e.g. headless Firefox).
  * One picture per canvas, so filters go on the canvas element itself, exactly like VideoSurface
  * (WebKit ignores url() filters in ctx.filter); the letterbox stays transparent for that.
@@ -502,6 +564,10 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
   if (ctx === null) throw createError({ type: 'other', details: 'canvas2dUnavailable', fatal: false, recoverable: false, message: 'no 2D context on this canvas' });
   const state = createViewState(canvas, () => FULL_REGION);
   const filter = createElementFilter(canvas);
+  const convert = canvasMustConvert(canvas.ownerDocument);
+  const gamut = createGamutFilter(canvas);
+  /** ctx.filter for the current picture (set per draw: resizing the canvas resets it). */
+  let gamutCss = 'none';
   let pending: SurfaceFrame | undefined;
   let last: CanvasImageSource | undefined;
   let scheduled = false;
@@ -517,6 +583,7 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
     if (destroyed) return;
     if (pending !== undefined) {
       if (last !== undefined && typeof (last as VideoFrame).close === 'function') (last as VideoFrame).close();
+      if (convert) gamutCss = gamut.css(gamutMatrix(framePrimaries(pending)));
       last = source(pending);
       // A VideoFrame we were given is kept as `last` (closed on replace); I420 was wrapped above.
       pending = undefined;
@@ -531,6 +598,7 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
     ctx.translate(c.x + c.width / 2, c.y + c.height / 2);
     ctx.rotate((t.rotate * Math.PI) / 180);
     if (t.mirror) ctx.scale(-1, 1);
+    if (convert) ctx.filter = gamutCss;
     ctx.drawImage(last, -w / 2, -h / 2, w, h);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   };
@@ -592,6 +660,7 @@ export function createCanvasSurface(canvas: HTMLCanvasElement): FrameSurface {
       if (last !== undefined && typeof (last as VideoFrame).close === 'function') (last as VideoFrame).close();
       stopSize();
       filter.destroy();
+      gamut.destroy();
       state.bus.clear();
     },
   };

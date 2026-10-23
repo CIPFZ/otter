@@ -34,10 +34,19 @@ M4 于 2026-10-22 验收通过。M4 报告末尾的五个问题由负责人逐�
     - 直播标签后显示落后秒数，取引擎修正后的 edge（`state.latency`）。「回到直播」胶囊的触发条件改为比引擎的目标延迟（`state.targetLatency`，新增）多落后 3 s 以上。
     - backend-mse 的延迟采样从每秒 1 次改为 4 次。FLV / TS 管线的可拖窗口就是已缓冲范围（`setLiveSeekableRange`）。
     - e2e `e2e/dvr.spec.ts`：落后秒数与画面帧号算出的墙钟延迟之差 < 0.5 s，在目标延迟处和拖到窗口起点后各核对一次，三个项目通过。
+  - 修正（2026-10-23，CI WebKit 暴露）：
+    - **用户拖动后保持位置**：LiveController 沿用 mpegts.js 的追帧与起播卡顿跳转规则，拖到窗口靠前处后，一旦继续播放就被追回目标延迟；拖到已缓冲范围之前时，起播卡顿规则把播放头跳到缓冲起点。现在控制器区分自己发起的 seek 和用户的 seek（`seeking(time)`）：可播放之后的用户 seek 暂停追帧、倍速同步与卡顿跳转，倍速回到 1，直到「回到直播」或播放头重新回到目标 + 1 s 以内。有 edge（HLS，引擎会补载）时卡顿跳转只用于起播。FLV / TS 同样适用。
+    - **采样节流留余量**：节流判断改为 0.8 × 250 ms，定时器略早触发时不再整拍跳过（原来暂停时实际约 2 次/秒）。
+    - **e2e 读帧号改在页面内**：原来截图后再读时钟，WebKit 上截图耗时把 0.5–0.9 s 加进了播放中的墙钟延迟；现在在页面里把 `<video>` 画到画布读帧号，与落后秒数、时钟同一时刻读取。另加一步：拖动后继续播放 3 s，延迟变化 < 1 s、倍速为 1。
 
 ### 3. 画布 SDR 色彩管理（第二批）
 
 - GPUSurface 与 CanvasSurface 按 `VideoFrame.colorSpace` 在 shader 里做 BT.601 / BT.709 矩阵与 limited / full range 到 sRGB 的转换。I420 帧（WASM 解码）按解码器报告的色彩信息；未标注时按分辨率推定（SD 用 601，HD 用 709），与浏览器对 `<video>` 的默认一致。
+- 实现（2026-10-23，`packages/surface/src/color.ts`）：
+  - **何时转换**：只在平台本身给 `<video>` 做色彩管理时转换，否则画面面会反过来与 `<video>` 不一致。判断依据（RESEARCH §1）：Chromium 在 GPU 合成时转换、软件合成（SwiftShader，无头 Chrome）时不转换；WebKit 转换。实现上看 WebGL 渲染器名是否为软件渲染。另外各绘制路径先用一个打了 SMPTE 170M 标签的红色小帧探测：路径自己已经转换（WebKit 的 2D canvas）就不再转换。
+  - **原色**：帧的标签；YUV 帧没有标签时按高度推定（< 720 行 SMPTE 170M，否则 BT.709）；RGB 帧没有标签视为已在显示色域（Firefox 的帧）。转换只涉及 SMPTE 170M 与 BT.470BG 两种 SD 原色，BT.709 与 sRGB 原色相同；BT.2020 等宽色域不转换（只做 SDR）。
+  - **算法**：sRGB 曲线线性化 → 原色矩阵 → sRGB 曲线编码，与 Edge `<video>` 的结果逐个色彩条一致到个位。GPUSurface 在 fragment shader 的取样函数里做（锐化取的邻点也一样转换）；CanvasSurface 用 `ctx.filter` 引用一个 `linearRGB` 的 SVG `feColorMatrix`（只在 Chromium GPU 合成下需要，WebKit 的 2D canvas 自己转换）。I420 的 YUV → RGB 矩阵按 BT.601 / BT.709 与 limited / full range 由 Kr、Kb 计算，`I420Frame` 增加 `fullRange`、`primaries`。
+  - **e2e**：`e2e/surfaces.spec.ts` 删掉颜色映射拟合与放宽的平均差上限，三种 Surface 直接逐像素比较（平均差 < 6，差值 > 40 的像素 < 3%）。
 - 目标：Edge 与 WebKit 上画面面与 `<video>` 的色差回到 e2e 原阈值（平均差 < 6，差值 > 40 的像素 < 3%），删掉 `e2e/surfaces.spec.ts` 里的颜色映射拟合。
 - 只做 SDR；HDR（PQ / HLG、色调映射）不做。
 

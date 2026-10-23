@@ -14,21 +14,16 @@ interface Diff {
   readonly outliers: number;
 }
 
-/** Row-major 3x4 colour map (rgb + offset per output channel), applied before comparing. */
-type ColorFit = number[];
-
 /**
  * One screenshot of the boxes; each other box is compared with the video box in the page (no
- * pixel arrays through the protocol), after mapping its colours with `fits[id]`. With `fit`
- * set, returns instead the least-squares colour map from each box to the video box: the
- * platform's own colour handling (WebKit colour-manages <video> and 2D canvas but not WebGL
- * uploads), measured once on the unfiltered frame.
+ * pixel arrays through the protocol). No colour map: the frame surfaces colour-manage like the
+ * platform's <video> (ADR-011 §3), so the pixels compare as they are.
  */
-async function compareBoxes(page: Page, others: readonly string[], fits: Record<string, ColorFit> = {}, fit = false): Promise<Record<string, Diff & { fit: ColorFit; samples: number[][] }>> {
+async function compareBoxes(page: Page, others: readonly string[]): Promise<Record<string, Diff & { samples: number[][] }>> {
   // Full page: on a phone viewport the third box sits below the fold.
   const png = (await page.screenshot({ animations: 'disabled', fullPage: true })).toString('base64');
   return page.evaluate(
-    async ([b64, ids, maps, solve]) => {
+    async ([b64, ids]) => {
       const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
       const c = new OffscreenCanvas(img.width, img.height);
       const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
@@ -45,89 +40,35 @@ async function compareBoxes(page: Page, others: readonly string[], fits: Record<
           const i = (Math.round(0.6 * d.height) * d.width + Math.round(fx * d.width)) * 4;
           return [d.data[i] as number, d.data[i + 1] as number, d.data[i + 2] as number];
         });
-      /** Least squares: video ≈ M [r g b 1] over all pixels (normal equations, 4x4 solve). */
-      const fitMap = (from: ImageData, to: ImageData): number[] => {
-        const ata = Array.from({ length: 4 }, () => [0, 0, 0, 0]);
-        const aty = Array.from({ length: 4 }, () => [0, 0, 0]);
-        const n = Math.min(from.data.length, to.data.length) / 4;
-        for (let i = 0; i < n; i++) {
-          const x = [from.data[i * 4] as number, from.data[i * 4 + 1] as number, from.data[i * 4 + 2] as number, 255];
-          for (let r = 0; r < 4; r++) {
-            for (let k = 0; k < 4; k++) (ata[r] as number[])[k] = ((ata[r] as number[])[k] as number) + (x[r] as number) * (x[k] as number);
-            for (let ch = 0; ch < 3; ch++) (aty[r] as number[])[ch] = ((aty[r] as number[])[ch] as number) + (x[r] as number) * (to.data[i * 4 + ch] as number);
-          }
-        }
-        // Gauss-Jordan on [ata | aty].
-        const m = ata.map((row, r) => [...row, ...(aty[r] as number[])]);
-        for (let col = 0; col < 4; col++) {
-          let pivot = col;
-          for (let r = col + 1; r < 4; r++) if (Math.abs((m[r] as number[])[col] as number) > Math.abs((m[pivot] as number[])[col] as number)) pivot = r;
-          [m[col], m[pivot]] = [m[pivot] as number[], m[col] as number[]];
-          const p = (m[col] as number[])[col] as number;
-          if (Math.abs(p) < 1e-9) continue;
-          m[col] = (m[col] as number[]).map((v) => v / p);
-          for (let r = 0; r < 4; r++) {
-            if (r === col) continue;
-            const f = (m[r] as number[])[col] as number;
-            m[r] = (m[r] as number[]).map((v, k) => v - f * ((m[col] as number[])[k] as number));
-          }
-        }
-        // Row-major 3x4: out channel ch = sum_k M[ch][k] x_k, offset in 0..255 units (x_3 = 255).
-        return [0, 1, 2].flatMap((ch) => [0, 1, 2, 3].map((k) => (k === 3 ? 255 : 1) * ((m[k] as number[])[4 + ch] as number)));
-      };
       const video = grab('video-box');
-      const out: Record<string, { mean: number; outliers: number; fit: number[]; samples: number[][] }> = {};
+      const out: Record<string, { mean: number; outliers: number; samples: number[][] }> = {};
       for (const id of ids) {
         const other = grab(id);
-        const fitted = solve ? fitMap(other, video) : (maps[id] ?? [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
         let sum = 0;
         let outliers = 0;
         const n = Math.min(video.data.length, other.data.length) / 4;
         for (let i = 0; i < n; i++) {
-          const r = other.data[i * 4] as number;
-          const g = other.data[i * 4 + 1] as number;
-          const b = other.data[i * 4 + 2] as number;
           let worst = 0;
           for (let ch = 0; ch < 3; ch++) {
-            const mapped = Math.min(255, Math.max(0, (fitted[ch * 4] as number) * r + (fitted[ch * 4 + 1] as number) * g + (fitted[ch * 4 + 2] as number) * b + (fitted[ch * 4 + 3] as number)));
-            const d = Math.abs((video.data[i * 4 + ch] as number) - mapped);
+            const d = Math.abs((video.data[i * 4 + ch] as number) - (other.data[i * 4 + ch] as number));
             sum += d;
             if (d > worst) worst = d;
           }
           if (worst > 40) outliers++;
         }
-        out[id] = { mean: sum / (n * 3), outliers: outliers / n, fit: fitted, samples: [...samples(video), ...samples(other)] };
+        out[id] = { mean: sum / (n * 3), outliers: outliers / n, samples: [...samples(video), ...samples(other)] };
       }
       return out;
     },
-    [png, others, fits, fit] as const,
+    [png, others] as const,
   );
 }
-
-/** A colour map that is colour management (gamut / range), not a different picture. */
-const plausibleFit = (m: ColorFit): boolean =>
-  [0, 1, 2].every((ch) => Math.abs((m[ch * 5] as number) - 1) < 0.3) &&
-  [1, 2, 4, 6, 8, 9].every((i) => Math.abs(m[i] as number) < 0.3) &&
-  [3, 7, 11].every((i) => Math.abs(m[i] as number) < 40);
-
-/** No colour map to speak of: the platform treats both paths the same. */
-const nearIdentity = (m: ColorFit): boolean => m.every((v, i) => Math.abs(v - (IDENTITY_FIT[i] as number)) < ([3, 7, 11].includes(i) ? 4 : 0.03));
 
 // Resampling and YUV conversion differ slightly between paths; edges of a sharpened, zoomed test
 // pattern are the worst case.
 const MAX_MEAN = 6;
-/**
- * Where the platform colour-manages <video> and not the frame surfaces (WebKit; Edge on Windows
- * with a hardware video path: <video> yes, 2D canvas / WebGL drawing of the frame no),
- * the colour map is fitted on the unfiltered frame and does not commute exactly with the filters:
- * the mean may drift, the share of clearly different pixels must not.
- */
-const MAX_MEAN_MANAGED = 12;
 const MAX_OUTLIERS = 0.03;
-/** Per box: the mean limit (MAX_MEAN_MANAGED only for a path the platform colour-manages differently). */
-const limits: Record<string, number> = {};
-const within = (box: string, d: Diff): boolean => d.mean < (limits[box] ?? MAX_MEAN) && d.outliers < MAX_OUTLIERS;
-const IDENTITY_FIT: ColorFit = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+const within = (d: Diff): boolean => d.mean < MAX_MEAN && d.outliers < MAX_OUTLIERS;
 
 /** One line for the CI run page (the workflow turns test-results/ci-notices.txt into notices). */
 const ciNotice = (text: string): void => {
@@ -175,27 +116,8 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
   }
   await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).frame(2.3));
   const boxes = gpu ? ['gpu-box', 'canvas2d-box'] : ['canvas2d-box'];
-  // Platform colour management: a colour map from each surface to the <video> box, fitted on the
-  // unfiltered frame. Near identity (Chrome / Firefox headless, Firefox on Windows): compared as
-  // is with the original limits. Otherwise (WebKit; Edge on Windows, whose <video> converts the
-  // untagged SMPTE 170M picture while the frame surfaces draw it unconverted) the map must look
-  // like colour management and the surface is compared after it, with the wider mean limit.
-  // The in-page probe (2D canvas vs WebGL) is reported only: on Edge both draw unconverted.
+  // What the platform says about the frame and its drawing paths, for the CI notice.
   const probe = await page.evaluate(async () => (await (window.surfaces as Promise<SurfacesFixture>)).colourManaged());
-  const fits: Record<string, ColorFit> = {};
-  const fitted = await compareBoxes(page, boxes, {}, true);
-  for (const box of boxes) {
-    const d = fitted[box] as (typeof fitted)[string];
-    if (!nearIdentity(d.fit)) {
-      if (!plausibleFit(d.fit)) ciNotice(`surfaces: implausible colour map for ${box}, samples ${JSON.stringify(d.samples)}`);
-      expect(plausibleFit(d.fit), `${box}: colour map ${JSON.stringify(d.fit.map((v) => Math.round(v * 1000) / 1000))} is colour management, not another picture`).toBe(true);
-      fits[box] = d.fit;
-      limits[box] = MAX_MEAN_MANAGED;
-    } else {
-      fits[box] = IDENTITY_FIT;
-      limits[box] = MAX_MEAN;
-    }
-  }
   const samples: Record<string, number[][]> = {};
   const passed: Record<string, boolean> = {};
   for (const [name, t, f] of CASES) {
@@ -205,30 +127,28 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
     for (const r of Object.values(rects)) expect(r).toEqual(rects['video']);
     // Compositors may show a new transform / filter a few frames late (WebKit): compare the
     // settled picture, up to 2 s.
-    let diffs = await compareBoxes(page, boxes, fits);
-    for (let i = 0; i < 10 && !Object.entries(diffs).every(([box, d]) => within(box, d)); i++) {
+    let diffs = await compareBoxes(page, boxes);
+    for (let i = 0; i < 10 && !Object.values(diffs).every(within); i++) {
       await page.waitForTimeout(200);
-      diffs = await compareBoxes(page, boxes, fits);
+      diffs = await compareBoxes(page, boxes);
     }
     for (const [box, diff] of Object.entries(diffs)) {
       results[`${name} ${box}`] = { mean: diff.mean, outliers: diff.outliers };
-      passed[`${name} ${box}`] = within(box, diff);
+      passed[`${name} ${box}`] = within(diff);
       samples[`${name} ${box}`] = diff.samples;
-      expect.soft(diff.mean, `${name}: ${box} vs video`).toBeLessThan(limits[box] ?? MAX_MEAN);
+      expect.soft(diff.mean, `${name}: ${box} vs video`).toBeLessThan(MAX_MEAN);
       expect.soft(diff.outliers, `${name}: ${box} vs video`).toBeLessThan(MAX_OUTLIERS);
     }
   }
   const ok = Object.values(passed).every(Boolean);
   if (!ok) {
     // For engines we cannot run locally (WebKit): bar colours (video box first, then the
-    // surface) per case and the colour maps, on the CI run page.
-    ciNotice(`surfaces diagnostics ${JSON.stringify({ fits: Object.fromEntries(Object.entries(fits).map(([k, v]) => [k, v.map((x) => Math.round(x * 1000) / 1000)])), samples })}`);
+    // surface) per case, on the CI run page.
+    ciNotice(`surfaces diagnostics ${JSON.stringify({ samples })}`);
   }
   const worst = Object.values(results).reduce((w, d) => ({ mean: Math.max(w.mean, d.mean), outliers: Math.max(w.outliers, d.outliers) }), { mean: 0, outliers: 0 });
-  const maps = Object.entries(fits).map(([k, v]) => `${k} ${v.map((x) => Math.round(x * 100) / 100).join(' ')}`).join('; ');
-  const fittedBoxes = boxes.filter((b) => limits[b] === MAX_MEAN_MANAGED);
-  const managed = `${fittedBoxes.length > 0 ? `<video> colour-managed differently from ${fittedBoxes.join(', ')}: fitted, mean limit ${MAX_MEAN_MANAGED}` : 'no colour management difference: no fit, mean limit 6'}; probe 2D ${probe.canvas2d.map(Math.round).join(',')} vs WebGL ${probe.webgl.map(Math.round).join(',')}; frame ${JSON.stringify(probe.frame)}, renderer ${probe.renderer}, synthetic 170M red 2D ${probe.synthetic.canvas2d.join(',')} WebGL ${probe.synthetic.webgl.join(',')}`;
-  ciNotice(`surfaces: worst mean ${worst.mean.toFixed(2)}, outliers ${(worst.outliers * 100).toFixed(2)}%; ${managed} (maps: ${maps})${ok ? '' : ` FAILED ${JSON.stringify(results)}`}`);
+  const platform = `probe 2D ${probe.canvas2d.map(Math.round).join(',')} vs WebGL ${probe.webgl.map(Math.round).join(',')}; frame ${JSON.stringify(probe.frame)}, renderer ${probe.renderer}, synthetic 170M red 2D ${probe.synthetic.canvas2d.join(',')} WebGL ${probe.synthetic.webgl.join(',')}`;
+  ciNotice(`surfaces: worst mean ${worst.mean.toFixed(2)}, outliers ${(worst.outliers * 100).toFixed(2)}%; ${platform}; ${ok ? '' : 'FAILED '}${Object.entries(results).map(([k, d]) => `${k} ${d.mean.toFixed(1)}/${(d.outliers * 100).toFixed(1)}%`).join(', ')}`);
   info.annotations.push({ type: 'surface-diff', description: JSON.stringify(results) });
   test.info().attach('surface-diff.json', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
 });

@@ -14,7 +14,8 @@ export interface I420Frame {
   /** YUV -> RGB coefficients; default from the picture height (BT.709 from 720 lines up). */
   readonly matrix?: 'bt601' | 'bt709';
   /** true for full range (JPEG) pictures, false / absent for limited range (MPEG). */
-  readonly fullRange?: boolean;
+  readonly fullRange?: boolean;  /** Colour primaries; default from the matrix (BT.601: SMPTE 170M, BT.709: BT.709). */
+  readonly primaries?: 'bt709' | 'bt470bg' | 'smpte170m';
 }
 
 /** A decoded picture or audio block. */
