@@ -14,7 +14,7 @@ export interface SurfacesFixture {
    * Whether the platform colour-manages <video> / 2D canvas drawing but not WebGL texture uploads
    * of the same frame (WebKit): the same pixels through both paths, compared.
    */
-  colourManaged(): { managed: boolean; canvas2d: number[]; webgl: number[] };
+  colourManaged(): ColourProbe;
   rects(): Record<string, { x: number; y: number; width: number; height: number }>;
   readonly gpu: boolean;
 }
@@ -44,8 +44,51 @@ export async function seekPresented(video: HTMLVideoElement, time: number): Prom
   await nextFrames();
 }
 
+export interface ColourProbe {
+  managed: boolean;
+  canvas2d: number[];
+  webgl: number[];
+  /** What the platform says about the frame: VideoFrame(video).colorSpace and format. */
+  frame: { colorSpace: VideoColorSpaceInit; format: string | null };
+  renderer: string | null;
+  /** A synthetic red I420 frame tagged SMPTE 170M, through 2D and WebGL (converted or not). */
+  synthetic: { canvas2d: number[]; webgl: number[] };
+}
+
+/** RGB of a 4x4 red I420 frame tagged SMPTE 170M, drawn by `path`. */
+function syntheticRed(path: '2d' | 'webgl'): number[] {
+  const data = new Uint8Array(16 + 4 + 4);
+  data.fill(81, 0, 16);
+  data.fill(90, 16, 20);
+  data.fill(240, 20, 24);
+  const frame = new VideoFrame(data, { format: 'I420', codedWidth: 4, codedHeight: 4, timestamp: 0, colorSpace: { primaries: 'smpte170m', transfer: 'smpte170m', matrix: 'smpte170m', fullRange: false } });
+  const c = document.createElement('canvas');
+  c.width = 4;
+  c.height = 4;
+  try {
+    if (path === '2d') {
+      const ctx = c.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D;
+      ctx.drawImage(frame, 0, 0);
+      return Array.from(ctx.getImageData(1, 1, 1, 1).data.slice(0, 3));
+    }
+    const gl = c.getContext('webgl2');
+    if (gl === null) return [];
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gl.createFramebuffer());
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    const b = new Uint8Array(4 * 4 * 4);
+    gl.readPixels(0, 0, 4, 4, gl.RGBA, gl.UNSIGNED_BYTE, b);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return Array.from(b.slice(20, 23));
+  } finally {
+    frame.close();
+  }
+}
+
 /** Mean RGB of the frame through a 2D canvas and through a WebGL2 texture (no shader maths). */
-function colourManaged(video: HTMLVideoElement): { managed: boolean; canvas2d: number[]; webgl: number[] } {
+function colourManaged(video: HTMLVideoElement): ColourProbe {
   const W = 64;
   const H = 36;
   const c2 = document.createElement('canvas');
@@ -58,9 +101,16 @@ function colourManaged(video: HTMLVideoElement): { managed: boolean; canvas2d: n
   cg.width = W;
   cg.height = H;
   const gl = cg.getContext('webgl2');
-  if (gl === null) return { managed: false, canvas2d: [], webgl: [] };
-  // Upload, attach to a framebuffer and read back: the texture's own values.
   const frame = new VideoFrame(video);
+  const info = { colorSpace: frame.colorSpace.toJSON(), format: frame.format };
+  const dbg = gl?.getExtension('WEBGL_debug_renderer_info');
+  const renderer = gl !== null && dbg != null ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : null;
+  const synthetic = { canvas2d: syntheticRed('2d'), webgl: syntheticRed('webgl') };
+  if (gl === null) {
+    frame.close();
+    return { managed: false, canvas2d: [], webgl: [], frame: info, renderer, synthetic };
+  }
+  // Upload, attach to a framebuffer and read back: the texture's own values.
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, frame);
@@ -90,7 +140,7 @@ function colourManaged(video: HTMLVideoElement): { managed: boolean; canvas2d: n
   // only when UNPACK_FLIP_Y is set; it is not, so rows match the image.
   const webgl = meanOf(b, w, h, false);
   const managed = canvas2d.some((v, i) => Math.abs(v - (webgl[i] as number)) > 4);
-  return { managed, canvas2d, webgl };
+  return { managed, canvas2d, webgl, frame: info, renderer, synthetic };
 }
 
 async function start(): Promise<SurfacesFixture> {

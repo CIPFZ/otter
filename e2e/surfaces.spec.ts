@@ -227,7 +227,7 @@ test('zoom and filters: VideoSurface, GPUSurface and CanvasSurface draw the same
   const worst = Object.values(results).reduce((w, d) => ({ mean: Math.max(w.mean, d.mean), outliers: Math.max(w.outliers, d.outliers) }), { mean: 0, outliers: 0 });
   const maps = Object.entries(fits).map(([k, v]) => `${k} ${v.map((x) => Math.round(x * 100) / 100).join(' ')}`).join('; ');
   const fittedBoxes = boxes.filter((b) => limits[b] === MAX_MEAN_MANAGED);
-  const managed = `${fittedBoxes.length > 0 ? `<video> colour-managed differently from ${fittedBoxes.join(', ')}: fitted, mean limit ${MAX_MEAN_MANAGED}` : 'no colour management difference: no fit, mean limit 6'}; probe 2D ${probe.canvas2d.map(Math.round).join(',')} vs WebGL ${probe.webgl.map(Math.round).join(',')}`;
+  const managed = `${fittedBoxes.length > 0 ? `<video> colour-managed differently from ${fittedBoxes.join(', ')}: fitted, mean limit ${MAX_MEAN_MANAGED}` : 'no colour management difference: no fit, mean limit 6'}; probe 2D ${probe.canvas2d.map(Math.round).join(',')} vs WebGL ${probe.webgl.map(Math.round).join(',')}; frame ${JSON.stringify(probe.frame)}, renderer ${probe.renderer}, synthetic 170M red 2D ${probe.synthetic.canvas2d.join(',')} WebGL ${probe.synthetic.webgl.join(',')}`;
   ciNotice(`surfaces: worst mean ${worst.mean.toFixed(2)}, outliers ${(worst.outliers * 100).toFixed(2)}%; ${managed} (maps: ${maps})${ok ? '' : ` FAILED ${JSON.stringify(results)}`}`);
   info.annotations.push({ type: 'surface-diff', description: JSON.stringify(results) });
   test.info().attach('surface-diff.json', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
