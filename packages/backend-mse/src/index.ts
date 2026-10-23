@@ -20,7 +20,9 @@ import { removeSourceChildren } from './vendor/hls.js/mediasource.js';
 
 export { airPlayAlternate, finishRemotePlayback, prepareRemotePlayback, useManagedMediaSource } from './mms.js';
 
-const LATENCY_SAMPLE_MS = 1000;
+// 4 / s: the DVR display ("−6.2 s") stays within a quarter second of the edge, also while paused
+// (ADR-011 §2: checked against the picture to ±0.5 s).
+const LATENCY_SAMPLE_MS = 250;
 /** Anything above an hour is a bogus playhead / clock combination, not a latency. */
 const MAX_PLAUSIBLE_LATENCY_S = 3600;
 

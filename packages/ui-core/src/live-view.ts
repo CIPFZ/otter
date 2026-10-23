@@ -1,10 +1,54 @@
-// Live indicator view (UI-DESIGN §10), an on-demand chunk <otter-live-indicator> loads when the
-// source is live: the "Live" badge, and the "Back to live" capsule once more than 3 s behind.
+// Live views (UI-DESIGN §10), an on-demand chunk loaded when the source is live (ADR-011 §2):
+// - <otter-live-indicator>: the "Live" badge with how far behind the live edge ("−6.0 s"), and the
+//   "Back to live" capsule once more than 3 s past the engine's target latency;
+// - <otter-time-slider> (DVR): the seekable window as the range, the fill and the preview labels as
+//   distance behind the edge. The edge is the engine's (state.latency: currentTime + latency).
 
 import type { UiState, UiStore } from './context.js';
 import type { IconNode } from './icons.js';
 import type { T as Tokens } from './primitives.js';
 import type { UiStrings } from './strings.js';
+
+/** How far behind the live edge: "−6.2 s" below a minute (tenths), else "−1:20". */
+export const formatBehind = (seconds: number): string => {
+  const s = Math.max(0, seconds);
+  return `−${s < 60 ? `${s.toFixed(1)} s` : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`}`;
+};
+
+/** Renders the time slider for live (`value`: a position being dragged). */
+export type LiveSlider = (s: Readonly<UiState>, dragging: boolean, value?: number) => void;
+
+/**
+ * The time slider's live mode: [seekableStart, seekableEnd] as the range (disabled with less than
+ * a second of window), the played fill, aria-valuetext "Behind live 12 seconds", and the preview
+ * card's label (`label`) as distance behind the edge.
+ */
+export function liveSlider(
+  host: HTMLElement,
+  input: HTMLInputElement,
+  strings: () => UiStrings,
+  label: (format: (time: number) => string) => void,
+  speakTime: (seconds: number) => string,
+): LiveSlider {
+  let edge = 0;
+  label((time) => formatBehind(edge - time));
+  return (s, dragging, value) => {
+    const min = s.seekableStart ?? 0;
+    const max = s.seekableEnd ?? 0;
+    edge = s.currentTime + (s.latency ?? Math.max(0, max - s.currentTime));
+    input.disabled = !(max - min > 1);
+    if (input.disabled) return;
+    if (input.min !== String(min)) input.min = String(min);
+    if (input.max !== String(max)) input.max = String(max);
+    const at = value ?? s.currentTime;
+    if (!dragging || value !== undefined) {
+      if (value === undefined) input.value = String(at);
+      input.setAttribute('aria-valuetext', `${strings().behindLive} ${speakTime(edge - at)}`);
+      host.style.setProperty('--otter-played', `${Math.min(100, Math.max(0, ((at - min) / (max - min)) * 100))}%`);
+    }
+    host.style.setProperty('--otter-buffered', `${Math.min(100, Math.max(0, ((s.bufferedEnd - min) / (max - min)) * 100))}%`);
+  };
+}
 
 /** Helpers owned by the main chunk (a value import of them would make a shared chunk). */
 export interface LiveDeps {
@@ -28,7 +72,8 @@ button { all: unset; display: inline-flex; align-items: center; gap: 6px; height
 button svg { color: ${T.dim}; }
 button:hover { background: ${T.hover}; }
 button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; }
-</style><span class="badge" part="badge" role="status">${d.icon(d.LiveDot)}<b part="label" style="font-weight:inherit"></b></span><button part="back-to-live" type="button" hidden>${d.icon(d.LiveDot)}<span></span></button>`;
+i { font-style: normal; font-weight: 500; color: ${T.muted}; font-variant-numeric: tabular-nums; }
+</style><span class="badge" part="badge" role="status">${d.icon(d.LiveDot)}<b part="label" style="font-weight:inherit"></b><i part="behind" aria-hidden="true"></i></span><button part="back-to-live" type="button" hidden>${d.icon(d.LiveDot)}<span></span><i part="behind" aria-hidden="true"></i></button>`;
   const badge = root.querySelector('.badge') as HTMLElement;
   const button = root.querySelector('button') as HTMLButtonElement;
   button.addEventListener('click', (e) => {
@@ -40,7 +85,12 @@ button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; 
   });
   return (s) => {
     const t = strings();
-    const behind = s.live && s.latency !== null && s.latency > 3;
+    // More than 3 s past the engine's own target (HLS HOLD-BACK; FLV ~1 s) is "behind".
+    const behind = s.live && s.latency !== null && s.latency > (s.targetLatency ?? 0) + 3;
+    // How far behind the live edge, in both forms; visual only (the status would be announced 4
+    // times a second; the time slider speaks it as "Behind live 6 seconds").
+    const seconds = s.latency === null ? '' : formatBehind(s.latency);
+    for (const el of root.querySelectorAll('i')) if (el.textContent !== seconds) el.textContent = seconds;
     host.toggleAttribute('behind', behind);
     badge.hidden = behind;
     button.hidden = !behind;

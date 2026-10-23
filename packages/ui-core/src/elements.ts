@@ -35,6 +35,7 @@ import {
 import type { Thumbnail } from '@otter-player/media';
 import { findThumbnails, type UiActions, type UiState } from './context.js';
 import { formatBitrate, formatMs, formatSeconds, formatTime } from './format.js';
+import type { LiveSlider } from './live-view.js';
 import { icon, LiveDot, SpinnerRing, Theater, type IconNode } from './icons.js';
 import { buttonCss, createBase, glass, glassFallback, rangeCss, REDUCED_MOTION, speakTime, speakVolume, T, unsupported, type OtterBase } from './primitives.js';
 import { fill, type UiStrings } from './strings.js';
@@ -489,6 +490,9 @@ const timeSliderClass = () =>
       /** Latest thumbnail request; older answers are dropped. */
       #thumbSeq = 0;
       #thumbView: Promise<(t: Thumbnail | null) => void> | undefined;
+      /** Live (DVR): the window, labels and spoken position, from the live chunk (live-view.ts). */
+      #live: Promise<LiveSlider> | undefined;
+      #label: ((time: number) => string) | undefined;
       protected setup(): void {
         if (this.#input !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
@@ -519,8 +523,10 @@ ${glassFallback('.time')}
         input.addEventListener('input', () => {
           this.#dragging = true;
           this.toggleAttribute('data-active', true);
-          this.#valueText(Number(input.value), Number(input.max));
-          this.#played(Number(input.value), Number(input.max));
+          if (!(this.#last?.live ?? false)) {
+            this.#valueText(Number(input.value), Number(input.max));
+            this.#played(Number(input.value), Number(input.max));
+          } else void this.#live?.then((render) => this.#last !== undefined && render(this.#last, true, Number(input.value)));
           this.#preview(Number(input.value));
         });
         input.addEventListener('change', (e) => {
@@ -536,14 +542,15 @@ ${glassFallback('.time')}
           if (s === undefined || input.disabled) return;
           e.preventDefault();
           const dir = e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -1 : 1;
-          const time = Math.min(s.duration, Math.max(0, s.currentTime + dir * (e.shiftKey ? 10 : 5)));
+          const time = Math.min(Number(input.max), Math.max(Number(input.min), s.currentTime + dir * (e.shiftKey ? 10 : 5)));
           this.ui?.dispatch('seek', { time }, { type: e.type, source: 'otter-time-slider' });
         });
         range.addEventListener('pointermove', (e) => {
           const max = Number(input.max);
+          const min = Number(input.min);
           const r = range.getBoundingClientRect();
-          if (max <= 0 || r.width <= 0) return;
-          this.#hoverTime = Math.min(max, Math.max(0, ((e.clientX - r.left) / r.width) * max));
+          if (max <= min || r.width <= 0) return;
+          this.#hoverTime = min + Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (max - min);
           this.#preview(this.#hoverTime);
         });
         range.addEventListener('pointerleave', () => {
@@ -560,7 +567,8 @@ ${glassFallback('.time')}
       #swipeTarget(): number | null {
         const s = this.#last;
         const offset = s?.seekPreview ?? null;
-        return s === undefined || offset === null ? null : Math.min(s.duration, Math.max(0, s.currentTime + offset));
+        const input = this.#input as HTMLInputElement;
+        return s === undefined || offset === null ? null : Math.min(Number(input.max), Math.max(Number(input.min), s.currentTime + offset));
       }
       /** Shows the preview card at `time` (null hides it). */
       #preview(time: number | null): void {
@@ -568,20 +576,22 @@ ${glassFallback('.time')}
         const input = this.#input;
         if (card === undefined || input === undefined) return;
         const max = Number(input.max);
-        if (time === null || max <= 0) {
+        const min = Number(input.min);
+        if (time === null || max <= min) {
           card.removeAttribute('data-show');
           this.#thumbSeq++;
           return;
         }
         const s = this.#last;
         const offset = s?.seekPreview ?? null;
-        const label = offset !== null && this.#hoverTime === null ? `${offset >= 0 ? '+' : '−'}${formatTime(Math.abs(offset))} · ${formatTime(time)}` : formatTime(time);
+        const at = (this.#label ?? formatTime)(time);
+        const label = offset !== null && this.#hoverTime === null ? `${offset >= 0 ? '+' : '−'}${formatTime(Math.abs(offset))} · ${at}` : at;
         const t = card.querySelector('.time') as HTMLElement;
         if (t.textContent !== label) t.textContent = label;
         // Keep the card inside the bar: half its width from each end.
         const w = this.getBoundingClientRect().width;
         const half = Math.min(w / 2, (card.getBoundingClientRect().width || 160) / 2);
-        card.style.left = `${Math.min(w - half, Math.max(half, (time / max) * w))}px`;
+        card.style.left = `${Math.min(w - half, Math.max(half, ((time - min) / (max - min)) * w))}px`;
         card.setAttribute('data-show', '');
         const seq = ++this.#thumbSeq;
         const provider = findThumbnails(this);
@@ -595,7 +605,18 @@ ${glassFallback('.time')}
         const input = this.#input;
         if (input === undefined) return;
         if (input.getAttribute('aria-label') !== this.strings.seek) input.setAttribute('aria-label', this.strings.seek);
-        const seekable = Number.isFinite(s.duration) && s.duration > 0 && !s.live;
+        if (s.live) {
+          // DVR: the live chunk sets the window (min / max), the fill and the "−12 s" labels;
+          // disabled until it has (a VOD range must not be dragged on a live stream).
+          if (this.#live === undefined) input.disabled = true;
+          this.#live ??= import('./live-view.js').then((m) => m.liveSlider(this, input, () => this.strings, (l) => (this.#label = l), speakTime));
+          void this.#live.then((render) => render(this.ui?.getState() ?? s, this.#dragging));
+          if (this.#hoverTime === null && !this.#dragging) this.#preview(this.#swipeTarget());
+          return;
+        }
+        this.#label = undefined;
+        if (input.min !== '0') input.min = '0';
+        const seekable = Number.isFinite(s.duration) && s.duration > 0;
         input.disabled = !seekable;
         if (!seekable) {
           this.#preview(null);

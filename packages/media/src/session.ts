@@ -31,6 +31,8 @@ export interface MediaState extends PlaybackSnapshot {
   readonly live: boolean;
   /** Seconds behind the live edge. */
   readonly latency: number | null;
+  /** Live: the latency the engine steers to (HLS HOLD-BACK), null when it says none. */
+  readonly targetLatency: number | null;
   readonly tracks: TrackList;
   /** Requested quality id or `auto`. */
   readonly quality: string;
@@ -97,6 +99,7 @@ export const INITIAL_MEDIA_STATE: MediaState = {
   source: null,
   live: false,
   latency: null,
+  targetLatency: null,
   tracks: EMPTY_TRACKS,
   quality: 'auto',
   activeQuality: null,
@@ -265,7 +268,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         if (from !== null && from !== id) qoe?.emit('quality-switch', { from, to: id, reason, mode: auto ? 'auto' : 'manual' });
       }),
       on('latency-change', ({ latency, target }) => {
-        set({ latency });
+        set({ latency, targetLatency: target ?? null });
         qoe?.emit('latency', target === undefined ? { latency } : { latency, target });
       }),
       on('first-segment', ({ at }) => {

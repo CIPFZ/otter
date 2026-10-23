@@ -191,9 +191,15 @@ describe('M2 primitives', () => {
     store.setState({ live: true, latency: 3 });
     expect(el.hasAttribute('data-otter-unsupported')).toBe(false);
     // The view loads once the source is live.
-    await vi.waitFor(() => expect(el.shadowRoot?.querySelector('[part="badge"]')?.textContent).toBe('Live'));
+    // "Live" with how far behind the edge (ADR-011 §2), the seconds visual only.
+    await vi.waitFor(() => expect(el.shadowRoot?.querySelector('[part="badge"] b')?.textContent).toBe('Live'));
+    expect(el.shadowRoot?.querySelector('[part="badge"] [part="behind"]')?.textContent).toBe('−3.0 s');
+    expect(el.shadowRoot?.querySelector('[part="behind"]')?.getAttribute('aria-hidden')).toBe('true');
     store.setState({ latency: 30 });
     await vi.waitFor(() => expect(el.hasAttribute('behind')).toBe(true));
+    // "Behind" counts from the engine's target: 7 s behind a 6 s HOLD-BACK is at the target.
+    store.setState({ latency: 7, targetLatency: 6 });
+    await vi.waitFor(() => expect(el.hasAttribute('behind')).toBe(false));
   });
 
   it('behind the live edge the badge becomes a "Back to live" button: seek-to-live, then play', async () => {
@@ -208,7 +214,8 @@ describe('M2 primitives', () => {
     await vi.waitFor(() => expect(button.hidden).toBe(true));
     store.setState({ latency: 12, paused: true });
     await vi.waitFor(() => expect(button.hidden).toBe(false));
-    expect(button.textContent).toBe('Back to live');
+    expect(button.querySelector('span')?.textContent).toBe('Back to live');
+    expect(button.querySelector('[part="behind"]')?.textContent).toBe('−12.0 s');
     button.click();
     expect(got).toEqual(['seek-to-live', 'play']);
   });

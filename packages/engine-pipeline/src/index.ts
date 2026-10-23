@@ -183,6 +183,18 @@ export function createPipelineEngine(ctx: EngineContext, options: PipelineEngine
         }
         const lc = createLiveController(options.targetLatency === undefined ? {} : { targetLatency: options.targetLatency });
         controller = lc;
+        // DVR window = what is buffered (one long stream: nothing before the back buffer can be
+        // fetched again). Without it MSE reports 0..buffered end for an infinite duration.
+        const window = (): void => {
+          const b = media.buffered;
+          if (b.length === 0 || s.mediaSource.readyState !== 'open') return;
+          try {
+            s.mediaSource.setLiveSeekableRange(b.start(0), b.end(b.length - 1));
+          } catch {
+            // Engines without the API: seekable stays MSE's default.
+          }
+        };
+        listen('progress', window);
         listen('timeupdate', () => apply(lc.sample(sample())));
         listen('progress', () => apply(lc.sample(sample())));
         listen('canplay', () => apply(lc.sample(sample(), { canPlay: true })));

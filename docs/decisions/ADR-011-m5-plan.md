@@ -29,6 +29,11 @@ M4 于 2026-10-22 验收通过。M4 报告末尾的五个问题由负责人逐�
 
 - **随引擎首批**：引擎调用 `MediaSource.setLiveSeekableRange`；`PlaybackSnapshot` 增加 `seekableStart` / `seekableEnd`（点播为 0 与 duration，直播为可拖窗口，没有时为 null）。
 - **第二批（UI）**：直播时时间条可拖，显示落后秒数（「−12 s」），有「回到直播」。
+  - 实现（2026-10-23）：
+    - 时间条在直播时以 `[seekableStart, seekableEnd]` 为范围，窗口不足 1 s 时禁用。直播的渲染、预览卡标签（「−14.0 s」）、读屏「Behind live 14 seconds」都在 `live-view` 按需块里，首屏不增加（25.98 KB）。
+    - 直播标签后显示落后秒数，取引擎修正后的 edge（`state.latency`）。「回到直播」胶囊的触发条件改为比引擎的目标延迟（`state.targetLatency`，新增）多落后 3 s 以上。
+    - backend-mse 的延迟采样从每秒 1 次改为 4 次。FLV / TS 管线的可拖窗口就是已缓冲范围（`setLiveSeekableRange`）。
+    - e2e `e2e/dvr.spec.ts`：落后秒数与画面帧号算出的墙钟延迟之差 < 0.5 s，在目标延迟处和拖到窗口起点后各核对一次，三个项目通过。
 
 ### 3. 画布 SDR 色彩管理（第二批）
 

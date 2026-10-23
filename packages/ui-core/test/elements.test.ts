@@ -45,7 +45,7 @@ describe('M1 elements', () => {
     expect(calls[0]?.[0]).toBe('toggle-muted');
   });
 
-  it('time display and slider follow the playhead; slider seeks on change only', () => {
+  it('time display and slider follow the playhead; slider seeks on change only', async () => {
     const { store, calls, shadow } = mount('<otter-time-display></otter-time-display><otter-time-slider></otter-time-slider>');
     const input = shadow('otter-time-slider').querySelector('input') as HTMLInputElement;
     expect(input.disabled).toBe(true);
@@ -61,6 +61,19 @@ describe('M1 elements', () => {
     store.setState({ live: true, duration: Number.POSITIVE_INFINITY });
     expect(shadow('otter-time-display').querySelector('span')?.textContent).toBe('Live');
     expect(input.disabled).toBe(true);
+    // DVR (ADR-011 §2): the seekable window is the range, labels are distance behind the edge.
+    store.setState({ seekableStart: 100, seekableEnd: 130, currentTime: 118, latency: 6 });
+    await vi.waitFor(() => expect(input.disabled).toBe(false));
+    expect([input.min, input.max, input.value]).toEqual(['100', '130', '118']);
+    expect(input.getAttribute('aria-valuetext')).toBe('Behind live 6 seconds');
+    input.value = '110';
+    input.dispatchEvent(new Event('input'));
+    await vi.waitFor(() => expect(input.getAttribute('aria-valuetext')).toBe('Behind live 14 seconds'));
+    input.dispatchEvent(new Event('change'));
+    expect(calls.at(-1)).toEqual(['seek', { time: 110 }, 'change']);
+    // Less than a second of window: nothing to drag.
+    store.setState({ seekableStart: 129.5, seekableEnd: 130 });
+    await vi.waitFor(() => expect(input.disabled).toBe(true));
   });
 
   it('stats panel shows QoE and the route explanation (its view loads on first show)', async () => {
