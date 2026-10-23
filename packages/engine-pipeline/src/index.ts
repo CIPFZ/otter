@@ -199,6 +199,7 @@ export function createPipelineEngine(ctx: EngineContext, options: PipelineEngine
         listen('progress', () => apply(lc.sample(sample())));
         listen('canplay', () => apply(lc.sample(sample(), { canPlay: true })));
         listen('stalled', () => apply(lc.sample(sample(), { stalled: true })));
+        listen('seeking', () => lc.seeking(media.currentTime));
       }
 
       const t = options.type === 'flv' ? createFlvTransmuxer() : createTsTransmuxer();

@@ -69,7 +69,8 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
       let lastSample = Number.NEGATIVE_INFINITY;
       const sample = (): void => {
         const now = performance.now();
-        if (engine === undefined || target.readyState < 2 || now - lastSample < LATENCY_SAMPLE_MS) return;
+        // Throttle with slack: a timer / timeupdate a hair early must not skip to the next tick.
+        if (engine === undefined || target.readyState < 2 || now - lastSample < LATENCY_SAMPLE_MS * 0.8) return;
         const latency = engine.latency;
         if (latency === undefined || !Number.isFinite(latency) || latency < 0 || latency > MAX_PLAUSIBLE_LATENCY_S) return;
         lastSample = now;

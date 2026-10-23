@@ -96,6 +96,8 @@ export function startLive(h: LiveHooks): Live {
     onTime();
   };
   const onStalled = (): void => apply(lc.sample(sample(), { stalled: true, canPlay }));
+  const onSeeking = (): void => lc.seeking(media.currentTime);
+  media.addEventListener('seeking', onSeeking);
   media.addEventListener('timeupdate', onTime);
   media.addEventListener('canplay', onCanPlay);
   media.addEventListener('stalled', onStalled);
@@ -136,6 +138,7 @@ export function startLive(h: LiveHooks): Live {
     destroy() {
       stopped = true;
       clearTimeout(timer);
+      media.removeEventListener('seeking', onSeeking);
       media.removeEventListener('timeupdate', onTime);
       media.removeEventListener('canplay', onCanPlay);
       media.removeEventListener('stalled', onStalled);

@@ -72,3 +72,41 @@ describe('LiveController: HLS edge and target (ADR-010 §4)', () => {
     expect(lc.targetLatency).toBe(0.3);
   });
 });
+
+describe('LiveController: DVR, a user seek behind the target', () => {
+  it('keeps the position: no chase, normal speed, until back to live', () => {
+    const lc = createLiveController({ targetLatency: 6 });
+    lc.sample(s(94, 100, { edge: 100 }), { canPlay: true });
+    // Catching up a little at 1.2x when the user drags 12 s back.
+    expect(lc.sample(s(93.4, 100, { edge: 100 }))).toEqual({ type: 'rate', rate: 1.2, reason: 'catch-up' });
+    lc.seeking(88);
+    expect(lc.sample(s(88, 100, { edge: 100, playbackRate: 1.2 }))).toEqual({ type: 'rate', rate: 1, reason: 'user-seek' });
+    expect(lc.sample(s(89, 101, { edge: 101 }))).toBeUndefined();
+    // Back to live releases it: the controller's own seek is not a user seek.
+    const back = lc.seekToLive(s(89, 101, { edge: 101 }));
+    expect(back).toEqual({ type: 'seek', to: 95, reason: 'seek-to-live' });
+    lc.seeking(95);
+    expect(lc.sample(s(95, 108, { edge: 108 }))).toEqual({ type: 'seek', to: 102, reason: 'chase' });
+  });
+
+  it('is released when the user seeks near the target again', () => {
+    const lc = createLiveController({ targetLatency: 6 });
+    lc.sample(s(94, 100, { edge: 100 }), { canPlay: true });
+    lc.seeking(80);
+    expect(lc.sample(s(80, 100, { edge: 100 }))).toBeUndefined();
+    lc.seeking(94.5);
+    expect(lc.sample(s(94.5, 100.5, { edge: 100.5 }))).toBeUndefined();
+    expect(lc.sample(s(94.5, 102, { edge: 102 }))).toEqual({ type: 'seek', to: 96, reason: 'chase' });
+  });
+
+  it('with an edge, a seek before the buffer is loaded by the engine, not jumped over', () => {
+    const lc = createLiveController({ targetLatency: 6 });
+    lc.sample(s(94, 100, { edge: 100, buffered: [[90, 100]] }), { canPlay: true });
+    lc.seeking(84);
+    expect(lc.sample(s(84, 100, { edge: 100, buffered: [[90, 100]], readyState: 1 }), { stalled: true })).toBeUndefined();
+    // Seeks before playable (the start position) are not the user's.
+    const fresh = createLiveController({ targetLatency: 6 });
+    fresh.seeking(50);
+    expect(fresh.sample(s(50, 60, { edge: 60, buffered: [[52, 60]], readyState: 1 }))).toEqual({ type: 'seek', to: 52, reason: 'startup-stall' });
+  });
+});

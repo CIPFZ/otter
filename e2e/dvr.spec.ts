@@ -4,45 +4,41 @@
 // The shown distance is checked against the wall latency read from the frame number painted in
 // the picture (e2e/live-hls.ts: the 30 s numbered ladder looped, /live-hls/clock the live point).
 
+import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
 
-/** Frame number in the picture (hls-ladder: 10 bits across the top). */
-async function frameOnPlayer(page: Page): Promise<number> {
-  const style = await page.addStyleTag({ content: '[data-otter-top], [data-otter-controls], [data-otter-center] { visibility: hidden !important; }' });
-  const png = (await page.locator('video').screenshot({ animations: 'disabled' })).toString('base64');
-  await style.evaluate((el) => (el as Element).remove());
-  return page.evaluate(async (b64) => {
-    const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
-    const c = new OffscreenCanvas(img.width, img.height);
-    const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
-    ctx.drawImage(img, 0, 0);
-    const h = Math.min(img.height, (img.width * 9) / 16);
-    const w = (h * 16) / 9;
-    const x0 = (img.width - w) / 2;
-    const y0 = (img.height - h) / 2;
+/**
+ * The indicator's "−6.0 s" as seconds, with the wall latency of the same moment: the frame
+ * number painted in the picture (hls-ladder: 10 bits across the top), read from the video in the
+ * page right where the indicator is read, against the source's live point. Not a screenshot:
+ * on WebKit a screenshot takes 0.5-0.9 s, which a playing stream adds to the wall latency.
+ */
+async function shownAndWall(page: Page): Promise<{ shown: number; wall: number }> {
+  const { live, text, frame } = await page.evaluate(async () => {
+    const video = document.querySelector('video') as HTMLVideoElement;
+    const c = new OffscreenCanvas(video.videoWidth, video.videoHeight);
+    const ctx = c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
+    ctx.drawImage(video, 0, 0);
     let bits = 0;
     for (let i = 0; i < 10; i++) {
-      const d = ctx.getImageData(Math.floor(x0 + ((i * 48 + 24) / 640) * w), Math.floor(y0 + (24 / 360) * h), 1, 1).data;
+      const d = ctx.getImageData(Math.floor(((i * 48 + 24) / 640) * c.width), Math.floor((24 / 360) * c.height), 1, 1).data;
       if ((d[0] as number) + (d[1] as number) + (d[2] as number) > 384) bits |= 1 << i;
     }
-    return bits;
-  }, png);
-}
-
-/** The indicator's "−6.0 s" as seconds, read with the paused picture's wall latency. */
-async function shownAndWall(page: Page): Promise<{ shown: number; wall: number }> {
-  // Paused: the picture, the display and the clock agree on one moment (the live point moves on;
-  // the clock is read right after the screenshot, ~0.1 s).
-  const frame = await frameOnPlayer(page);
-  const { live, text } = await page.evaluate(async () => {
-    const clock = (await (await fetch('/live-hls/clock')).json()) as { live: number };
     const el = document.querySelector('otter-live-indicator')?.shadowRoot?.querySelector('i');
-    return { live: clock.live, text: el?.textContent ?? '' };
+    const shownText = el?.textContent ?? '';
+    const clock = (await (await fetch('/live-hls/clock')).json()) as { live: number };
+    return { live: clock.live, text: shownText, frame: bits };
   });
   return { shown: Number(text.replace(/[−\s]|s$/g, '')), wall: (((live - frame / 30) % 30) + 30) % 30 };
 }
+
+/** One line for the CI run page (the workflow turns test-results/ci-notices.txt into notices). */
+const ciNotice = (text: string): void => {
+  mkdirSync('test-results', { recursive: true });
+  appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
+};
 
 const state = (page: Page) =>
   page.evaluate(async () => {
@@ -69,8 +65,10 @@ test('live DVR: window on the slider, distance behind live checked against the p
   expect(s.slider.text).toMatch(/^Behind live \d/);
 
   // At the target (~6 s, HOLD-BACK): the shown distance is the wall latency (±0.5 s).
+  const checks: string[] = [];
   for (let k = 0; k < 2; k++) {
     const { shown, wall } = await shownAndWall(page);
+    checks.push(`${shown} / ${wall.toFixed(2)}`);
     expect(Math.abs(shown - wall), `shown ${shown} s, wall ${wall.toFixed(2)} s`).toBeLessThan(0.5);
     await page.waitForTimeout(1000);
   }
@@ -87,8 +85,18 @@ test('live DVR: window on the slider, distance behind live checked against the p
   await page.waitForTimeout(500);
   {
     const { shown, wall } = await shownAndWall(page);
+    checks.push(`after the drag ${shown} / ${wall.toFixed(2)}`);
+    ciNotice(`dvr: shown / wall latency (s): ${checks.join(', ')}`);
     expect(Math.abs(shown - wall), `after the drag: shown ${shown} s, wall ${wall.toFixed(2)} s`).toBeLessThan(0.5);
   }
+  // Playing from there keeps the position (no chase back to the target), at normal speed.
+  const dragged = (await state(page)).latency as number;
+  await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('play', undefined));
+  await page.waitForTimeout(3000);
+  s = await state(page);
+  expect(s.paused).toBe(false);
+  expect(Math.abs((s.latency as number) - dragged), `latency ${dragged} -> ${s.latency} while playing`).toBeLessThan(1);
+  expect(await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).playbackRate)).toBe(1);
   // Behind the target by more than 3 s: Back to live, one click.
   const back = page.locator('otter-live-indicator').getByRole('button');
   await expect(back).toBeVisible();

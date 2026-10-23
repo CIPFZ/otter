@@ -183,8 +183,11 @@ test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it 
   await page.waitForTimeout(1500);
   const r = await page.evaluate(async () => {
     const f = await (window.wc as Promise<WebCodecsFixture>);
-    return { t: f.state().currentTime, paused: f.state().paused, errors: f.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string } }).error.details) };
+    const errors = f.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string; message?: string } }).error);
+    return { t: f.state().currentTime, paused: f.state().paused, errors: errors.map((e) => e.details), messages: errors.map((e) => `${e.details}: ${e.message ?? ''}`) };
   });
+  // Which way the clock fell back (suspended context / frozen time), for an occasional failure.
+  if (r.errors.length > 0) ciNotice(`AudioContext resume: ${JSON.stringify(r.messages)}, ${(r.t - before).toFixed(2)} s played in 1.5 s`);
   expect(await states()).toContain('running');
   expect(r.paused).toBe(false);
   expect(r.t - before).toBeGreaterThan(1);
