@@ -6,6 +6,7 @@ import { createError, createEventBus, type Unsubscribe } from '@otter-player/cor
 import {
   EMPTY_TIME_RANGES,
   EMPTY_TRACKS,
+  NO_CODEC_RANKING,
   observeMediaElement,
   type BackendContext,
   type BackendEvents,
@@ -112,6 +113,7 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         media: m,
         mms,
         allowCodecSwitch: options.allowCodecSwitch ?? false,
+        codecs: ctx.codecs ?? NO_CODEC_RANKING,
         ...(ctx.cmcd === undefined ? {} : { cmcd: ctx.cmcd }),
       });
       engine = e;

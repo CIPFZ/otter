@@ -26,6 +26,7 @@ export type {
   CmcdRequestInfo,
   CmcdState,
 } from './cmcd.js';
+export { FAMILY_PROBES, NO_CODEC_RANKING, type CodecCarrier, type CodecCriterion, type CodecFamily, type CodecPolicy, type EngineCodecs } from './codec-families.js';
 export type { Decoder, DecoderConfig, DecoderInstance, EncodedChunk } from './decoder.js';
 export type { DemuxAudioTrack, DemuxDownload, DemuxInfo, DemuxTrack, DemuxVideoTrack, DecodeSetup, PacketStream, PositionedStream } from './demux.js';
 export { closeFrame, frameTransferables, i420Size, isI420, type DecodedFrame, type FrameSink, type I420Frame } from './frames.js';

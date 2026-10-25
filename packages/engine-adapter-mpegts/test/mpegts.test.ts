@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createQoeHook } from '@otter-player/core';
-import { NO_CAPABILITIES, type EngineContext, type EngineEvents } from '@otter-player/media';
+import { NO_CAPABILITIES, NO_CODEC_RANKING, type EngineContext, type EngineEvents } from '@otter-player/media';
 
 type Listener = (...args: unknown[]) => void;
 
@@ -51,6 +51,7 @@ const ctx = (live: boolean): EngineContext => ({
   source: { src: 'https://e.test/live.flv', live, headers: { 'x-token': 't' } },
   options: {},
   caps: NO_CAPABILITIES,
+  codecs: NO_CODEC_RANKING,
   backend: 'mse',
   qoe: createQoeHook(),
   media,

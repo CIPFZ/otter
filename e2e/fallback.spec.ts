@@ -52,11 +52,12 @@ async function play(page: Page, query: string, src: string): Promise<Run> {
 
 /**
  * The selected / failed steps of the chain, in order. Format and platform lines are left out, and
- * so are details a backend annotates onto its own step (decoder build, MMS handling).
+ * so are details a backend annotates onto its own step (decoder build, MMS handling), and the
+ * codec probing / choice steps (codecs-prefs.spec.ts).
  */
 const chain = (r: Run): string[] =>
   r.steps
-    .filter((s) => s.outcome !== 'rejected' && !s.candidate.startsWith('format:') && s.candidate !== 'platform')
+    .filter((s) => s.outcome !== 'rejected' && !s.candidate.startsWith('format:') && !s.candidate.startsWith('codec ') && s.candidate !== 'platform')
     .map((s) => `${s.candidate} ${s.outcome}`)
     .filter((s, i, all) => s !== all[i - 1]);
 

@@ -91,6 +91,9 @@ describe('stall watchdog', () => {
   });
 });
 
+// The session loads the codec ranking chunk on every load: warm it (fake timers below).
+await import('../src/codecs.js');
+
 describe('session stall handling', () => {
   afterEach(() => vi.useRealTimers());
 

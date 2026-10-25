@@ -17,6 +17,7 @@ import {
 import type { BackendEvents, BackendFactory, BackendKind, MediaBackend, PlaybackSnapshot } from './backend.js';
 import { detectCapabilities, type Capabilities, type CapabilityProbeOptions } from './capabilities.js';
 import type { CmcdConfig, CmcdDecorator } from './cmcd.js';
+import { FAMILY_PROBES, type CodecFamily, type CodecPolicy, type EngineCodecs } from './codec-families.js';
 import type { Decoder } from './decoder.js';
 import type { ThumbnailProvider } from './thumbnails.js';
 import type { FormatPlugin } from './format.js';
@@ -44,6 +45,10 @@ export interface MediaState extends PlaybackSnapshot {
   /** ManagedMediaSource in use (iPhone / preferManagedMediaSource). */
   readonly mms: boolean;
   readonly remotePlayback: 'enabled' | 'disabled' | null;
+  /** The user's video codec order (persisted by @otter-player/preferences), null for the host's. */
+  readonly codecPreference: readonly CodecFamily[] | null;
+  /** Video codec family the engine plays, null before it chose (or for a stream naming none). */
+  readonly codec: CodecFamily | null;
   readonly error: OtterError | null;
 }
 
@@ -73,6 +78,8 @@ export interface MediaActionMap {
   'select-audio-track': { readonly id: string };
   /** Live: back to the live edge (the "Back to live" capsule). */
   'seek-to-live': Record<string, never>;
+  /** The user's video codec order, best first (null: the host's policy); applies from the next load. */
+  'set-codec-preference': { readonly order: readonly CodecFamily[] | null };
 }
 
 const PLAYBACK_RESET: PlaybackSnapshot = {
@@ -108,6 +115,8 @@ export const INITIAL_MEDIA_STATE: MediaState = {
   route: null,
   mms: false,
   remotePlayback: null,
+  codecPreference: null,
+  codec: null,
   error: null,
 };
 
@@ -127,6 +136,12 @@ export interface MediaPluginOptions {
   readonly cmcd?: CmcdConfig;
   /** Same-backend retries and stall handling before the fallback chain (ADR-005 §3). */
   readonly recovery?: Partial<RecoveryPolicy>;
+  /**
+   * Video codec ranking (ADR-011 batch 3): AV1 / HEVC / VP9 / H.264 are probed with
+   * MediaCapabilities.decodingInfo on every load and ranked; default power efficiency, then
+   * smoothness, then AV1 > HEVC > VP9 > H.264. A user preference (`set-codec-preference`) comes first.
+   */
+  readonly codecs?: CodecPolicy;
 }
 
 export interface MediaPlugin<S extends MediaState = MediaState, A extends MediaActionMap = MediaActionMap>
@@ -186,6 +201,8 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   let starvedSinceRequest = false;
   let firstFrameSeen = false;
   let cmcd: CmcdDecorator | undefined;
+  /** This load's codec ranking, for the engines (BackendContext.codecs). */
+  let codecs: EngineCodecs | undefined;
   // In-band text: survives backend rebuilds and fallbacks within a load.
   let textTrack: string | null = null;
   const cueListeners = new Set<(cues: InbandCues) => void>();
@@ -328,6 +345,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         qoe: qoe as QoeHook,
         ...(cmcd === undefined ? {} : { cmcd }),
         ...(options.decoders === undefined ? {} : { decoders: options.decoders }),
+        ...(codecs === undefined ? {} : { codecs }),
       });
     } catch (err) {
       return toError(err, 'backendCreateFailed');
@@ -345,6 +363,9 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       backend.setPlaybackRate(prefs.playbackRate);
       await backend.load(source, opts);
       if (loadToken !== token) return null;
+      // Loading a resource resets the element's playbackRate to defaultPlaybackRate (HTML): the
+      // viewer's speed again (the element's ratechange then mirrors it into the store).
+      if (prefs.playbackRate !== 1) backend.setPlaybackRate(prefs.playbackRate);
       if (prefs.quality !== 'auto') backend.selectQuality(prefs.quality);
       if (textTrack !== null) backend.selectTextTrack?.(textTrack);
       set({ status: 'ready', tracks: backend.tracks, error: null });
@@ -517,22 +538,29 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     budget.reset();
     if (retryTimer !== undefined) clearTimeout(retryTimer);
     retryTimer = undefined;
-    const { volume, muted, playbackRate } = state();
+    const { volume, muted, playbackRate, codecPreference } = state();
     set({
       ...INITIAL_MEDIA_STATE,
       volume,
       muted,
       playbackRate,
+      codecPreference,
       status: 'loading',
       source,
       live: source.live ?? false,
     });
     let caps: Capabilities;
+    let ranker: typeof import('./codecs.js');
     try {
-      caps = await detect({
-        ...(source.codecs === undefined ? {} : { codecs: codecProbes(source) }),
-        ...(source.drm === undefined ? {} : { keySystems: keySystemsOf(source) }),
-      });
+      // The four video families every load, plus the source's hinted codecs; the ranking chunk
+      // loads meanwhile (on demand: pages without loads do not carry it).
+      [caps, ranker] = await Promise.all([
+        detect({
+          codecs: [...Object.values(FAMILY_PROBES), ...codecProbes(source)],
+          ...(source.drm === undefined ? {} : { keySystems: keySystemsOf(source) }),
+        }),
+        import('./codecs.js'),
+      ]);
     } catch (err) {
       if (loadToken === token) set({ status: 'error', error: toError(err, 'capabilityDetectionFailed') });
       return;
@@ -567,7 +595,23 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       set({ status: 'error', error });
       return;
     }
-    publishRoute(decision.explanation);
+    const probes = Object.fromEntries(Object.entries(FAMILY_PROBES).map(([f, type]) => [f, caps.codecs[type]]));
+    const ranking = ranker.rankCodecs(probes, options.codecs, state().codecPreference);
+    for (const step of ranking.steps) router.annotate(step);
+    codecs = {
+      order: ranking.order,
+      entries: ranking.entries,
+      pick: (tracks) => {
+        const choice = ranker.chooseCodec(ranking.order, tracks);
+        if (loadToken === token) {
+          set({ codec: choice.family ?? null });
+          router.annotate({ candidate: `codec ${choice.family ?? 'any'}`, outcome: 'selected', reason: choice.reason });
+          publishRoute(router.explain());
+        }
+        return ranker.keepFamily(tracks, choice.family);
+      },
+    };
+    publishRoute(router.explain());
     await run(decision, source, opts, caps, loadToken);
   };
 
@@ -577,8 +621,8 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     token++;
     if (retryTimer !== undefined) clearTimeout(retryTimer);
     retryTimer = undefined;
-    const { volume, muted, playbackRate } = state();
-    set({ ...INITIAL_MEDIA_STATE, volume, muted, playbackRate });
+    const { volume, muted, playbackRate, codecPreference } = state();
+    set({ ...INITIAL_MEDIA_STATE, volume, muted, playbackRate, codecPreference });
   };
 
   const play = (): void => {
@@ -657,6 +701,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         s.handle('volume-by', ({ delta }) => setVolume(state().volume + delta)),
         s.handle('select-audio-track', ({ id }) => active?.backend.selectAudioTrack?.(id)),
         s.handle('seek-to-live', () => active?.backend.seekToLive?.()),
+        s.handle('set-codec-preference', ({ order }) => set({ codecPreference: order === null || order.length === 0 ? null : [...order] })),
         s.handle('set-text-track', ({ id }) => {
           textTrack = id;
           active?.backend.selectTextTrack?.(id);

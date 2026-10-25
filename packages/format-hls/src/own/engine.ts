@@ -123,7 +123,10 @@ function mediaSourceCtor(preferManaged: boolean): { Ctor: typeof MediaSource; ma
 const segEnd = (s: Segment): number => s.startTime + s.duration;
 /** `{ [key]: value }` when the value is there (exactOptionalPropertyTypes). */
 const opt = <K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } => (value === undefined ? {} : ({ [key]: value } as { [P in K]: V }));
-const lastEnd = (t: ResolvedTrack): number => (t.segments.length === 0 ? 0 : segEnd(t.segments[t.segments.length - 1] as Segment));
+const lastEnd = (t: ResolvedTrack): number => {
+  const last = t.segments.at(-1);
+  return last === undefined ? 0 : segEnd(last);
+};
 
 /** `fresh`'s segments moved onto `ref`'s timeline by a segment both have (same media sequence id). */
 function align(fresh: ResolvedTrack, ref: ResolvedTrack | undefined): ResolvedTrack {
@@ -137,7 +140,7 @@ function align(fresh: ResolvedTrack, ref: ResolvedTrack | undefined): ResolvedTr
 export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOptions, core: CoreHelpers): Engine & { seekToLive(): void } {
   const { createError, createEventBus, isOtterError } = core;
   const fatal = (type: OtterError['type'], details: string, message: string, cause?: unknown): OtterError =>
-    createError({ type, details, fatal: true, recoverable: type === 'network', message, ...(cause === undefined ? {} : { cause }) });
+    createError({ type, details, fatal: true, recoverable: type === 'network', message, ...opt('cause', cause) });
   const unsupported = (why: string): OtterError => createError({ type: 'media', details: 'ownEngineUnsupported', fatal: true, recoverable: false, message: why });
   const forwardS = options.forwardBufferS ?? DEFAULT_FORWARD_S;
   const bus = createEventBus<EngineEvents>();
@@ -336,7 +339,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       if (lane.track !== before) ({ inLedger, next } = plan());
     }
     if (next === undefined) {
-      const last = lane.track.segments[lane.track.segments.length - 1];
+      const last = lane.track.segments.at(-1);
       if (!isLive && last !== undefined && inLedger.has(last.id)) {
         lane.ended = true;
         if (!endSignalled && lanes.every((l) => l.ended)) {
@@ -467,7 +470,8 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       const MS = mediaSourceCtor(ctx.mms);
       if (MS === undefined) throw fatal('media', 'engineUnsupported', 'no MediaSource here');
       const playable = (t: { mimeType: string; codecs?: string[] }): boolean => MS.Ctor.isTypeSupported(buildMimeCodec(t));
-      variants = allVariants.filter(playable);
+      // One video codec family: the best-ranked one offered (ADR-011 batch 3).
+      variants = ctx.codecs.pick(allVariants.filter(playable));
       if (variants.length === 0) throw unsupported('no variant MSE plays');
       audios = of<PartiallyResolvedAudioTrack>('audio').filter((a) => a.url !== '' && (a.codecs.length === 0 || playable(a)));
       texts = of<PartiallyResolvedTextTrack>('text');

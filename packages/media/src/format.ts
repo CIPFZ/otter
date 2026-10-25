@@ -4,6 +4,7 @@
 import type { OtterError, QoeHook, Unsubscribe } from '@otter-player/core';
 import type { BackendKind } from './backend.js';
 import type { Capabilities } from './capabilities.js';
+import type { EngineCodecs } from './codec-families.js';
 import type { CmcdDecorator } from './cmcd.js';
 import type { DemuxDownload, DemuxInfo, PacketStream, PositionedStream } from './demux.js';
 import type { LoadOptions, Source } from './source.js';
@@ -22,6 +23,8 @@ export interface EngineContext {
   readonly mms: boolean;
   /** Allow cross-codec quality switches through `changeType` (SPEC §6.2). */
   readonly allowCodecSwitch: boolean;
+  /** Video codec ranking; engines keep one family with `codecs.pick` (ADR-011 batch 3). */
+  readonly codecs: EngineCodecs;
   /** CMCD request decorator; engines apply it in their request hooks (ADR-005 §2). */
   readonly cmcd?: CmcdDecorator;
 }

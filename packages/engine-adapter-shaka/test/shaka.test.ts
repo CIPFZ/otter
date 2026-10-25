@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createQoeHook } from '@otter-player/core';
-import { NO_CAPABILITIES, type EngineContext, type EngineEvents } from '@otter-player/media';
+import { NO_CAPABILITIES, NO_CODEC_RANKING, type EngineContext, type EngineEvents } from '@otter-player/media';
 
 type Listener = (event: { detail?: unknown }) => void;
 
@@ -86,6 +86,7 @@ const ctx = (overrides: Partial<EngineContext> = {}): EngineContext => ({
   source: { src: 'https://e.test/a.mpd', drm: { servers: { 'com.widevine.alpha': 'https://lic' }, clearKeys: { aa: 'bb' } } },
   options: { startTime: 3 },
   caps: NO_CAPABILITIES,
+  codecs: NO_CODEC_RANKING,
   backend: 'mse',
   qoe: createQoeHook(),
   media: {} as HTMLMediaElement,

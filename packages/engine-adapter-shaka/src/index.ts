@@ -196,12 +196,13 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
         throw createError({ type: 'other', details: 'unsupportedSource', fatal: true, recoverable: false, message: 'Shaka needs a URL' });
       }
       // ABR rule stack and CMCD glue load together with Shaka (ADR-004 §2).
-      const [shakaModule, pipeline, abrGlue, cmcdGlue, textGlue] = await Promise.all([
+      const [shakaModule, pipeline, abrGlue, cmcdGlue, textGlue, codecGlue] = await Promise.all([
         import('shaka-player'),
         options.abr === 'engine' ? undefined : import('@otter-player/pipeline'),
         options.abr === 'engine' ? undefined : import('./abr.js'),
         ctx.cmcd === undefined ? undefined : import('./cmcd.js'),
         import('./text.js'),
+        ctx.codecs.order.length === 0 ? undefined : import('./codecs.js'),
       ]);
       const shaka = resolveShakaNamespace(shakaModule);
       driver = pipeline?.createAbrDriver();
@@ -253,6 +254,13 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
             (cues) => bus.emit('text-cues', cues),
           ),
         ...(drm === undefined ? {} : { drm: { servers: { ...drm.servers }, clearKeys: { ...drm.clearKeys } } }),
+        // One video codec family (ADR-011 batch 3).
+        ...(codecGlue === undefined
+          ? {}
+          : {
+              preferredVideo: codecGlue.preferredVideo(ctx.codecs),
+              manifest: { dash: { manifestPreprocessorTXml: (mpd: unknown) => codecGlue.filterMpd(mpd as Parameters<typeof codecGlue.filterMpd>[0], ctx.codecs) } },
+            }),
       });
       if (options.config !== undefined) p.configure(options.config);
       const headers = ctx.source.headers;

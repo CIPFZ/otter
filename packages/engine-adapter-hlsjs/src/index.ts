@@ -206,13 +206,18 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
       const abrController = driver === undefined || Base === undefined || abrGlue === undefined ? undefined : abrGlue.createOtterAbrController(Base, driver, ctx.media);
       // CMCD through fLoader / pLoader (hls.js' own CMCD controller stays off, ADR-005 §2).
       const loaders = ctx.cmcd === undefined || cmcdGlue === undefined ? undefined : cmcdGlue.cmcdLoaders(HlsCtor.DefaultConfig.loader, ctx.cmcd, () => hls);
+      // One video codec family (ADR-011 batch 3): levels of the others are removed once the
+      // manifest is parsed, before anything loads; hls.js' own start-tier heuristics never see them.
+      const prune = ctx.codecs.order.length > 0;
+      const autoStart = options.config?.autoStartLoad !== false;
+      const startPosition = ctx.options.startTime ?? -1;
       const instance = new HlsCtor({
         ...(abrController === undefined ? {} : { abrController }),
         ...(loaders ?? {}),
         preferManagedMediaSource: ctx.mms,
         // The text package renders cues itself (ADR-005 §4); hls.js only parses them.
         renderTextTracksNatively: false,
-        startPosition: ctx.options.startTime ?? -1,
+        startPosition,
         ...(headers === undefined
           ? {}
           : {
@@ -221,6 +226,7 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
               },
             }),
         ...options.config,
+        ...(prune ? { autoStartLoad: false } : {}),
       });
       hls = instance;
       const { Events } = HlsCtor;
@@ -228,6 +234,12 @@ export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOption
       await new Promise<void>((resolve, reject) => {
         let settled = false;
         instance.on(Events.MANIFEST_PARSED, () => {
+          if (prune) {
+            const levels = instance.levels.map((l, index) => ({ index, codecs: l.videoCodec ?? null }));
+            const keep = new Set(ctx.codecs.pick(levels).map((l) => l.index));
+            for (let i = levels.length - 1; i >= 0; i--) if (!keep.has(i)) instance.removeLevel(i);
+            if (autoStart) instance.startLoad(startPosition);
+          }
           refresh();
           if (!settled) {
             settled = true;

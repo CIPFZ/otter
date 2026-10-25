@@ -72,6 +72,8 @@ const hls: FormatPlugin = {
 };
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+// The session loads the codec ranking chunk on every load: warm it so one macrotask still covers a load.
+await import('../src/codecs.js');
 const target = {} as HTMLMediaElement;
 
 // No backoff by default so `flush()` covers a retry; stall watchdog off unless a test enables it.

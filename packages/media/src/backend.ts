@@ -4,6 +4,7 @@
 
 import type { OtterError, QoeHook, Unsubscribe } from '@otter-player/core';
 import type { Capabilities } from './capabilities.js';
+import type { EngineCodecs } from './codec-families.js';
 import type { CmcdDecorator } from './cmcd.js';
 import type { Decoder } from './decoder.js';
 import type { FormatPlugin } from './format.js';
@@ -104,6 +105,8 @@ export interface BackendContext {
   readonly cmcd?: CmcdDecorator;
   /** Decoder plugins the host registered; the WebCodecs backend picks one by `step.decoder`. */
   readonly decoders?: readonly Decoder[];
+  /** Video codec ranking for the engine (ADR-011 batch 3); none: every track stays. */
+  readonly codecs?: EngineCodecs;
 }
 
 export interface BackendFactory {
