@@ -3,6 +3,7 @@
 #   codecs/               one set of segments, two manifests
 #     master.m3u8         HLS: H.264 360p + 180p, HEVC 360p, VP9 360p, AV1 360p; audio en / fr
 #                         (AAC, separate renditions), WebVTT en / de
+#     video.m3u8          the same video variants only
 #     (manifest.mpd       DASH over the same segments, M5 batch 3 item 2)
 # 6 s, 2 s segments, keyframe every 2 s, testsrc2 with the codec name burnt in. Needs the pinned
 # static ffmpeg of generate-frames.sh (libx265, libsvtav1, libvpx-vp9): FFMPEG=<path>.
@@ -66,4 +67,7 @@ vp9_360.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=350000,RESOLUTION=640x360,CODECS="av01.0.01M.08,mp4a.40.2",AUDIO="aud",SUBTITLES="subs"
 av1_360.m3u8
 M3U
+# The same video variants without audio or subtitles: the own CMAF-HLS engine's codec choice
+# without separate audio renditions (M5 batch 3 report).
+grep -v -e '^#EXT-X-MEDIA' "$OUT/master.m3u8" | sed -e 's/,mp4a.40.2//' -e 's/,AUDIO="aud",SUBTITLES="subs"//' > "$OUT/video.m3u8"
 echo "codecs: $(du -sh "$OUT" | cut -f1)"

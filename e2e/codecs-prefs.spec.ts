@@ -6,7 +6,9 @@
 // - Preferences: codec order, quality, audio and subtitle language, volume and speed are applied
 //   again after a reload (localStorage, `otter:` prefix); the position is not stored.
 // Fixture: e2e/media/codecs (generate-codecs.sh): H.264 360p / 180p, HEVC, VP9, AV1 360p; audio
-// en / fr; WebVTT en / de.
+// en / fr; WebVTT en / de. The codec test plays video.m3u8 (the video variants only): the own
+// engine does not yet start separate audio renditions on Chromium (M5 batch 3 report), and the
+// codec choice is checked without that; the preference test plays master.m3u8.
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
@@ -14,6 +16,7 @@ import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
 
 const SRC = '/codecs/master.m3u8';
+const VIDEO_ONLY = '/codecs/video.m3u8';
 const FAMILY_PROBES: Record<string, string> = {
   av1: 'video/mp4; codecs="av01.0.05M.08"',
   hevc: 'video/mp4; codecs="hvc1.1.6.L93.B0"',
@@ -30,21 +33,22 @@ const ciNotice = (text: string): void => {
 
 const otter = (page: Page) => page.evaluate(async () => ((await window.otter) as OtterFixture).state());
 
-async function loadCodecs(page: Page): Promise<void> {
-  await page.evaluate(async (src) => {
+async function loadCodecs(page: Page, src = SRC): Promise<void> {
+  await page.evaluate(async (s) => {
     const o = (await window.otter) as OtterFixture;
     o.dispatch('set-muted', { muted: true });
-    o.load({ src }, { autoplay: true });
-  }, SRC);
+    o.load({ src: s }, { autoplay: true });
+  }, src);
   await expect.poll(async () => (await otter(page)).status, { timeout: 20_000 }).toBe('ready');
 }
 
 for (const engine of ['otter', 'hlsjs'] as const) {
   test(`${engine === 'otter' ? 'own engine' : 'hls.js'}: decodingInfo per codec family in router.explain(), the best-ranked family offered plays`, async ({ page }) => {
     await page.goto(`/player.html?idle=0${engine === 'hlsjs' ? '&hls=hlsjs' : ''}`);
-    await loadCodecs(page);
+    await loadCodecs(page, VIDEO_ONLY);
     try {
-      await expect.poll(async () => (await otter(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(1);
+      // A family that gives no picture is dropped after the startup stall (~3 s) and reloaded.
+      await expect.poll(async () => (await otter(page)).currentTime, { timeout: 25_000 }).toBeGreaterThan(1);
     } catch (err) {
       // For engines we cannot run locally (WebKit): what was chosen and where playback stands.
       const d = await page.evaluate(async () => {
@@ -86,9 +90,13 @@ for (const engine of ['otter', 'hlsjs'] as const) {
       expect(step?.outcome).toBe(m.supported ? 'selected' : 'rejected');
       if (m.supported) expect(step?.reason).toContain(`${m.smooth ? 'smooth' : 'not smooth'}, ${m.powerEfficient ? 'power efficient' : 'not power efficient'}`);
     }
-    // The ranking the steps state, and the family chosen from what the stream offers (all four).
+    // The ranking the steps state, and the family chosen from what the stream offers (all four);
+    // a family that decoded no picture (WebKit vouches for AV1 without decoding it on some Macs)
+    // is out, with its own step.
     const rankOf = (f: string): number => Number(/rank (\d+)/.exec(steps.find((x) => x.candidate === `codec ${f}`)?.reason ?? '')?.[1] ?? 99);
-    const supported = Object.keys(measured).filter((f) => measured[f]?.supported === true);
+    const failed = steps.filter((x) => x.candidate.startsWith('codec ') && x.outcome === 'failed').map((x) => x.candidate.slice(6));
+    for (const f of failed) expect(steps.find((x) => x.candidate === `codec ${f}` && x.outcome === 'failed')?.reason).toMatch(/^no picture \(.+\) although decodingInfo said supported; next family$/);
+    const supported = Object.keys(measured).filter((f) => measured[f]?.supported === true && !failed.includes(f));
     const expected = [...supported].sort((a, b) => rankOf(a) - rankOf(b))[0];
     expect(s.codec).toBe(expected);
     const choice = steps.find((x) => x.candidate === `codec ${expected}` && x.reason.startsWith('stream offers'));
@@ -97,7 +105,10 @@ for (const engine of ['otter', 'hlsjs'] as const) {
     expect(s.tracks.video.length).toBeGreaterThan(0);
     for (const t of s.tracks.video) expect(familyOf(t.codec)).toBe(expected);
     expect(s.error).toBeNull();
-    ciNotice(`codecs (${engine}): ${Object.entries(measured).map(([f, m]) => `${f} ${m.supported ? `${m.smooth ? 'smooth' : '-'}/${m.powerEfficient ? 'efficient' : '-'}` : 'no'}`).join(', ')}; plays ${expected}`);
+    // The own engine plays every family itself (no hand-off to hls.js).
+    const handedOff = await page.evaluate(async () => ((await window.otter) as OtterFixture).events.some((e) => e.type === 'error' && (e.payload as { error: { details: string } }).error.details === 'pipelineFallback'));
+    if (engine === 'otter') expect(handedOff, 'own engine handed the stream to hls.js').toBe(false);
+    ciNotice(`codecs (${engine}): ${Object.entries(measured).map(([f, m]) => `${f} ${m.supported ? `${m.smooth ? 'smooth' : '-'}/${m.powerEfficient ? 'efficient' : '-'}` : 'no'}`).join(', ')}; ${failed.length > 0 ? `no picture from ${failed.join(', ')}; ` : ''}plays ${expected}`);
   });
 }
 
@@ -138,6 +149,7 @@ test('preferences: codec order, quality, audio / subtitle language, volume and s
     const s = await otter(page);
     return {
       codec: s.codec,
+      // The requested rendition, by the playing engine's ids (a runtime switch renames them).
       height: s.tracks.video.find((t) => t.id === s.quality)?.height ?? null,
       audio: s.tracks.audio.find((t) => t.selected)?.language ?? null,
       text: s.textTracks.find((t) => t.id === s.textTrack)?.language ?? null,
