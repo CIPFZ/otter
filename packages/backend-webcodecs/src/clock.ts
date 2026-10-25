@@ -77,8 +77,17 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
     media = now();
     base = host();
   };
+  /**
+   * The watchdog's baseline is only valid while the context runs: after a suspension (idle, or
+   * the autoplay policy) its time stood still on purpose, and a tick landing before it moves again
+   * would read the whole suspension as frozen time (seen on WebKit, ADR-008 §2).
+   */
+  const rebaseWatchdog = (): void => {
+    lastCtx = -1;
+  };
   const switchTo = (next: 'audio' | 'performance', reason: string): void => {
     if (next === source) return;
+    if (next === 'audio') rebaseWatchdog();
     media = now();
     source = next;
     base = host();
@@ -110,6 +119,7 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
       if (playing) return;
       base = host();
       playing = true;
+      rebaseWatchdog();
       // Inside a user gesture this lets a suspended context run (autoplay policy). performance.now()
       // keeps time until it does; the statechange takes the clock back seamlessly whenever the
       // resume lands. Only a rejection, or no result within the grace (a context with no output

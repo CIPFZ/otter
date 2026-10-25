@@ -177,6 +177,35 @@ describe('shared AudioContext lifecycle', () => {
     releaseAudioContext(ctx as unknown as AudioContext);
   });
 
+  it('a resume is not read as frozen time: the watchdog does not count the suspension (WebKit)', async () => {
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    clock.start();
+    ctx.currentTime = 7.2;
+    clock.check();
+    clock.stop();
+    // Idle: suspended for 6 s, its time standing still.
+    ctx.set('suspended');
+    vi.advanceTimersByTime(6000);
+    // The resume lands; a render tick checks before the context's time has moved.
+    clock.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(clock.source).toBe('audio');
+    clock.check();
+    expect(clock.source).toBe('audio');
+    expect(clock.unavailable).toBeUndefined();
+    vi.advanceTimersByTime(50);
+    ctx.currentTime = 7.25;
+    clock.check();
+    expect(clock.source).toBe('audio');
+    // A context that then really stops advancing is still caught.
+    vi.advanceTimersByTime(600);
+    clock.check();
+    expect(clock.unavailable).toBe('AudioContext time frozen for 0.5 s');
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
   it('a running context whose time stands still is left for performance.now()', () => {
     const ctx = acquireAudioContext() as unknown as FakeAudioContext;
     const clock = createClock(ctx as unknown as AudioContext);
