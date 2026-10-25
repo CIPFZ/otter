@@ -419,6 +419,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     while (current !== null) {
       const error = await attempt(current, source, opts, caps, loadToken);
       if (loadToken !== token || error === null) return;
+      if (dropFamily(current, error)) continue;
       // Load failures fall back at once (ADR-003) unless the network is to blame.
       if (error.type === 'network' && (await retrySame(current, error, loadToken))) continue;
       if (loadToken !== token) return;
@@ -463,22 +464,30 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     });
   };
 
+  /**
+   * No picture yet on a codec family the platform vouched for, with another one on offer (WebKit
+   * says AV1 decodes on Macs that cannot): the family is what fails, not the backend. Marks it
+   * failed for this load and explains; the caller runs the same step again without it.
+   */
+  const dropFamily = (decision: RouteDecision, error: OtterError): boolean => {
+    const family = state().codec;
+    if (firstFrameSeen || family === null || !offeredCodecs.some((f) => f !== family && !failedCodecs.has(f))) return false;
+    failedCodecs.add(family);
+    router.annotate({ candidate: `codec ${family}`, outcome: 'failed', reason: `no picture (${error.details}) although decodingInfo said supported; next family` });
+    qoe?.emit('error', { error, fallback: [stepLabel(decision.step), ...decision.remaining.map(stepLabel)] });
+    publishRoute(router.explain());
+    return true;
+  };
+
   const recover = async (decision: RouteDecision, error: OtterError, loadToken: number): Promise<void> => {
     const source = state().source;
     if (loadToken !== token || source === null || lastCaps === undefined) return;
     const resumeAt = state().currentTime;
     const autoplay = !state().paused;
-    // No picture yet on a codec family the platform vouched for, with another one on offer: the
-    // family is what fails here, not the backend. The same step again without it, from the start.
-    const family = state().codec;
-    const failedFamily = !firstFrameSeen && family !== null && offeredCodecs.some((f) => f !== family && !failedCodecs.has(f));
+    const dropped = dropFamily(decision, error);
     teardown();
     set({ status: 'loading' });
-    if (failedFamily) {
-      failedCodecs.add(family);
-      router.annotate({ candidate: `codec ${family}`, outcome: 'failed', reason: `no picture (${error.details}) although decodingInfo said supported; next family` });
-      qoe?.emit('error', { error, fallback: [stepLabel(decision.step), ...decision.remaining.map(stepLabel)] });
-      publishRoute(router.explain());
+    if (dropped) {
       await run(decision, source, { ...lastOptions, autoplay }, lastCaps, loadToken);
       return;
     }
@@ -515,6 +524,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         now: now(),
         currentTime: s.currentTime,
         playing: !s.paused && !s.ended && !s.seeking,
+        seeking: !s.paused && !s.ended && s.seeking,
         bufferAhead: s.bufferedEnd - s.currentTime,
       });
       if (action === 'none') return;

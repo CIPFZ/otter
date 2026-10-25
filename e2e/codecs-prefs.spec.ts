@@ -164,3 +164,32 @@ test('preferences: codec order, quality, audio / subtitle language, volume and s
   // Still nothing about where playback was.
   expect(Object.keys(JSON.parse((await page.evaluate(() => localStorage.getItem('otter:preferences'))) ?? '{}')).sort()).toEqual(['audioLanguage', 'codecs', 'playbackRate', 'quality', 'textLanguage', 'volume']);
 });
+
+// WebKit on the CI Mac says AV1 is supported, smooth and power efficient, and never shows a
+// picture. The same situation where it can be made: headless Chromium has no HEVC; the page is
+// told it has (decodingInfo, isTypeSupported) and HEVC is put first. The session must drop the
+// family after the startup stall and play the next one, with the reason in router.explain().
+test('a family the platform vouches for but cannot decode is dropped for the next one', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'needs a browser without HEVC decoding (headless Chromium)');
+  test.setTimeout(60_000);
+  await page.addInitScript(() => {
+    const hevc = (t: string): boolean => /hvc1|hev1/.test(t);
+    const MS = window.MediaSource;
+    const native = MS.isTypeSupported.bind(MS);
+    MS.isTypeSupported = (t: string) => hevc(t) || native(t);
+    const mc = navigator.mediaCapabilities;
+    const decodingInfo = mc.decodingInfo.bind(mc);
+    mc.decodingInfo = async (c: MediaDecodingConfiguration) =>
+      hevc(c.video?.contentType ?? '') ? ({ supported: true, smooth: true, powerEfficient: true, keySystemAccess: null } as MediaCapabilitiesDecodingInfo) : decodingInfo(c);
+  });
+  await page.goto('/player.html?idle=0');
+  await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('set-codec-preference', { order: ['hevc'] }));
+  await loadCodecs(page, VIDEO_ONLY);
+  await expect.poll(async () => (await otter(page)).currentTime, { timeout: 30_000 }).toBeGreaterThan(1);
+  const s = await otter(page);
+  const steps = s.route?.steps ?? [];
+  expect(steps).toContainEqual(expect.objectContaining({ candidate: 'codec hevc', outcome: 'failed', reason: expect.stringMatching(/^no picture \(.+\) although decodingInfo said supported; next family$/) as unknown }));
+  expect(s.codec).not.toBe('hevc');
+  expect(s.error).toBeNull();
+  ciNotice(`codec family drop: ${steps.find((x) => x.candidate === 'codec hevc' && x.outcome === 'failed')?.reason}; plays ${s.codec}`);
+});

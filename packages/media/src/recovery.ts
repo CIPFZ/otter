@@ -87,7 +87,11 @@ export type StallAction = 'none' | 'nudge' | 'escalate';
 
 export interface StallWatchdog {
   /** Feed a sample; returns what to do about a stall. */
-  sample(s: { readonly now: number; readonly currentTime: number; readonly playing: boolean; readonly bufferAhead: number }): StallAction;
+  /**
+   * `playing`: not paused, ended or seeking. `seeking`: a seek in progress. A seek the nudge
+   * started that never completes (no frame decodes there) is still a stall.
+   */
+  sample(s: { readonly now: number; readonly currentTime: number; readonly playing: boolean; readonly bufferAhead: number; readonly seeking?: boolean }): StallAction;
   reset(): void;
 }
 
@@ -110,7 +114,8 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
     nudgedTo = Number.NaN;
   };
   return {
-    sample({ now, currentTime, playing, bufferAhead }) {
+    sample({ now, currentTime, playing: running, bufferAhead, seeking = false }) {
+      const playing = running || (seeking && nudged);
       if (!playing || bufferAhead < 0.5 || currentTime !== lastTime) {
         const byNudge = nudged && Math.abs(currentTime - nudgedTo) < 1e-3;
         if (currentTime !== lastTime && !Number.isNaN(lastTime) && !byNudge) {

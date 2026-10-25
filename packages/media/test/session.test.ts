@@ -372,7 +372,7 @@ describe('media plugin: video codec families (ADR-011 batch 3)', () => {
   const supported = { supported: true, smooth: true, powerEfficient: true };
   const variants = [{ codecs: 'av01.0.01M.08' }, { codecs: 'hvc1.1.6.L63.90' }, { codecs: 'avc1.4d401e' }];
 
-  async function setupCodecs(probe: Record<string, typeof supported>) {
+  async function setupCodecs(probe: Record<string, typeof supported>, refuse?: string) {
     const created: FakeBackend[] = [];
     const picks: string[][] = [];
     const factory: BackendFactory = {
@@ -382,7 +382,10 @@ describe('media plugin: video codec families (ADR-011 batch 3)', () => {
         // Like an engine: keep the ranked family of what the stream offers.
         const load = b.load.bind(b);
         b.load = async (s, o) => {
-          picks.push((ctx.codecs?.pick(variants) ?? variants).map((v) => v.codecs));
+          const kept = (ctx.codecs?.pick(variants) ?? variants).map((v) => v.codecs);
+          picks.push(kept);
+          // Like addSourceBuffer refusing a type isTypeSupported accepted.
+          if (refuse !== undefined && kept.some((c) => c.startsWith(refuse))) throw createError({ type: 'media', details: 'backendLoadFailed', fatal: true, recoverable: false });
           await load(s, o);
         };
         created.push(b);
@@ -437,6 +440,16 @@ describe('media plugin: video codec families (ADR-011 batch 3)', () => {
     await flush();
     await flush();
     expect(picks.at(-1)).toEqual(['hvc1.1.6.L63.90']);
+  });
+
+  it('a family refused at load is dropped the same way (no backend fallback)', async () => {
+    const { view, created, picks } = await setupCodecs(all, 'av01');
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    await flush();
+    expect(created.map((b) => b.kind)).toEqual(['mse', 'mse']);
+    expect(picks).toEqual([['av01.0.01M.08'], ['hvc1.1.6.L63.90']]);
+    expect(view.getState()).toMatchObject({ codec: 'hevc', backend: 'mse', status: 'ready' });
   });
 
   it('a user preference applies from the next load and survives unload', async () => {

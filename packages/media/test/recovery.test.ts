@@ -73,6 +73,18 @@ describe('stall watchdog', () => {
     expect(w.sample(sample(3_100, 0.1))).toBe('escalate');
   });
 
+  it('a seek the nudge started that never completes (nothing decodes there) still escalates', () => {
+    const w = createStallWatchdog(DEFAULT_RECOVERY);
+    expect(w.sample(sample(0, 0))).toBe('none');
+    // Seeking before any nudge is the user's or the engine's: not a stall.
+    expect(w.sample({ ...sample(1_000, 0, { playing: false }), seeking: true })).toBe('none');
+    expect(w.sample(sample(1_100, 0))).toBe('none');
+    expect(w.sample(sample(2_600, 0))).toBe('nudge');
+    expect(w.sample({ ...sample(2_700, 0.1, { playing: false }), seeking: true })).toBe('none');
+    expect(w.sample({ ...sample(4_199, 0.1, { playing: false }), seeking: true })).toBe('none');
+    expect(w.sample({ ...sample(4_200, 0.1, { playing: false }), seeking: true })).toBe('escalate');
+  });
+
   it('nudges after stallTimeoutMs with buffer ahead, escalates if still stuck', () => {
     const w = createStallWatchdog(DEFAULT_RECOVERY);
     expect(w.sample(sample(0, 2))).toBe('none');

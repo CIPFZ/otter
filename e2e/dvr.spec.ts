@@ -97,7 +97,8 @@ test('live DVR: window on the slider, distance behind live checked against the p
     el.dispatchEvent(new Event('change'));
   });
   await expect.poll(async () => (await state(page)).latency as number, { timeout: 10_000 }).toBeGreaterThan(9);
-  await page.evaluate(() => (window as unknown as { presented: Promise<void> }).presented);
+  // At most 2 s: a WebKit run once never fired `seeked` for this seek (it showed the frame).
+  await page.evaluate(() => Promise.race([(window as unknown as { presented: Promise<void> }).presented, new Promise((r) => setTimeout(r, 2000))]));
   await page.waitForTimeout(300);
   {
     const { shown, wall } = await shownAndWall(page);
