@@ -2,12 +2,13 @@
 // AudioContext: suspended IDLE_SUSPEND_MS after the last player stops, resumed on the next play,
 // performance.now() while it cannot run.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { acquireAudioContext, createClock, IDLE_SUSPEND_MS, playingOnSharedContext, releaseAudioContext, setPlaying } from '../src/clock.js';
+import { acquireAudioContext, createClock, IDLE_SUSPEND_MS, playingOnSharedContext, releaseAudioContext, RESUME_GRACE_MS, setPlaying } from '../src/clock.js';
 
 class FakeAudioContext extends EventTarget {
   static instances: FakeAudioContext[] = [];
-  /** How resume() behaves: settle and run, reject, or never settle. */
-  static resumeMode: 'ok' | 'reject' | 'hang' = 'ok';
+  /** How resume() behaves: settle and run, reject, never settle, or run after `resumeDelayMs`. */
+  static resumeMode: 'ok' | 'reject' | 'hang' | 'slow' = 'ok';
+  static resumeDelayMs = 0;
   state: AudioContextState = 'running';
   currentTime = 0;
   suspend = vi.fn(() => {
@@ -17,6 +18,14 @@ class FakeAudioContext extends EventTarget {
   resume = vi.fn(() => {
     if (FakeAudioContext.resumeMode === 'reject') return Promise.reject(new DOMException('not allowed', 'NotAllowedError'));
     if (FakeAudioContext.resumeMode === 'hang') return new Promise<void>(() => undefined);
+    if (FakeAudioContext.resumeMode === 'slow') {
+      return new Promise<void>((r) =>
+        setTimeout(() => {
+          this.set('running');
+          r();
+        }, FakeAudioContext.resumeDelayMs),
+      );
+    }
     this.set('running');
     return Promise.resolve();
   });
@@ -38,6 +47,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   FakeAudioContext.instances = [];
   FakeAudioContext.resumeMode = 'ok';
+  FakeAudioContext.resumeDelayMs = 0;
   vi.stubGlobal('AudioContext', FakeAudioContext);
 });
 
@@ -112,6 +122,57 @@ describe('shared AudioContext lifecycle', () => {
     expect(clock.source).toBe('performance');
     expect(clock.now()).toBeGreaterThan(4.4);
     expect(clock.now()).toBeLessThan(4.6);
+    // A rejection is final at once; a pending resume only after the grace.
+    if (mode === 'reject') expect(clock.unavailable).toBe('AudioContext resume() failed: NotAllowedError');
+    else {
+      expect(clock.unavailable).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(RESUME_GRACE_MS);
+      expect(clock.unavailable).toBe('AudioContext resume() not done after 3 s');
+    }
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('a slow resume that succeeds within the grace takes the clock back seamlessly, nothing to report', async () => {
+    FakeAudioContext.resumeMode = 'slow';
+    FakeAudioContext.resumeDelayMs = 2500;
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    ctx.set('suspended');
+    const clock = createClock(ctx as unknown as AudioContext);
+    const sources: string[] = [];
+    clock.onSource((s) => sources.push(s));
+    clock.set(10);
+    clock.start();
+    await vi.advanceTimersByTimeAsync(2000);
+    // Still within the grace: on the stand-in, keeping time, not reported.
+    expect(clock.source).toBe('performance');
+    expect(clock.unavailable).toBeUndefined();
+    expect(clock.now()).toBeCloseTo(12, 1);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(clock.source).toBe('audio');
+    expect(sources).toEqual(['audio']);
+    // Seamless: media time carries on from the stand-in, then follows the context.
+    expect(clock.now()).toBeCloseTo(12.5, 1);
+    ctx.currentTime += 1;
+    expect(clock.now()).toBeCloseTo(13.5, 1);
+    await vi.advanceTimersByTimeAsync(RESUME_GRACE_MS);
+    expect(clock.unavailable).toBeUndefined();
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('a resume that lands after the grace still takes the clock back and withdraws the report', async () => {
+    FakeAudioContext.resumeMode = 'slow';
+    FakeAudioContext.resumeDelayMs = 4000;
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    ctx.set('suspended');
+    const clock = createClock(ctx as unknown as AudioContext);
+    clock.start();
+    await vi.advanceTimersByTimeAsync(RESUME_GRACE_MS + 10);
+    expect(clock.unavailable).toBe('AudioContext resume() not done after 3 s');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(clock.source).toBe('audio');
+    expect(clock.unavailable).toBeUndefined();
     clock.destroy();
     releaseAudioContext(ctx as unknown as AudioContext);
   });
@@ -124,6 +185,7 @@ describe('shared AudioContext lifecycle', () => {
     vi.advanceTimersByTime(600);
     clock.check();
     expect(clock.source).toBe('performance');
+    expect(clock.unavailable).toBe('AudioContext time frozen for 0.5 s');
     clock.destroy();
     releaseAudioContext(ctx as unknown as AudioContext);
   });

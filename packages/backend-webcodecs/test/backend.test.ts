@@ -189,6 +189,7 @@ describe('backend-webcodecs', () => {
       backend.on('error', (e) => errors.push(e.details));
       await backend.load({ src: new Blob() }, { startTime: 2 });
       await backend.play();
+      // A rejected resume() is final at once: reported on the next tick, not after the grace.
       await new Promise((r) => setTimeout(r, 1300));
       expect(errors).toEqual(['audioClockUnavailable']);
       // Time still advanced with the fallback clock.

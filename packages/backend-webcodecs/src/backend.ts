@@ -67,8 +67,6 @@ const AUDIO_AHEAD_S = 1;
 /** Frames queued before playback resumes after running dry. */
 const RESUME_FRAMES = 3;
 const TIME_UPDATE_MS = 250;
-/** Playing this long without the AudioContext clock is reported (audioClockUnavailable). */
-const PERF_REPORT_MS = 1000;
 /** A decoder that has output before and then holds packets this long without a frame has stalled. */
 const STALL_MS = 3000;
 /** How often automatic quality is reconsidered (and not within this after a switch). */
@@ -242,8 +240,6 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   /** After a video restart: frames before this (µs) are not shown or counted. */
   let discardBeforeUs = Number.NEGATIVE_INFINITY;
   // Playing on performance.now() instead of the AudioContext (QoE once, after PERF_REPORT_MS).
-  let sourceReason = '';
-  let perfSince: number | undefined;
   let perfReported = false;
 
   const fail = (error: OtterError): void => {
@@ -718,16 +714,15 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     if (destroyed || clock === undefined || info === undefined) return;
     clock.check();
     const playing = clock.playing;
-    // Before a gesture the context is suspended by autoplay policy; that only matters (and is
-    // reported) when playback keeps running without it.
-    if (playing && clock.source === 'performance' && !perfReported) {
-      perfSince ??= performance.now();
-      if (performance.now() - perfSince > PERF_REPORT_MS) {
-        perfReported = true;
-        bus.emit('error', createError({ type: 'media', details: 'audioClockUnavailable', fatal: false, recoverable: true, message: `clock on performance.now(): ${sourceReason}` }));
-      }
+    // Playing on the performance.now() stand-in is reported only once the AudioContext clock is
+    // settled as out (resume rejected or past its grace, frozen time, no context); a resume that
+    // lands takes the clock back and withdraws the stand-in (a later loss is reported again).
+    const unavailable = clock.unavailable;
+    if (playing && unavailable !== undefined && !perfReported) {
+      perfReported = true;
+      bus.emit('error', createError({ type: 'media', details: 'audioClockUnavailable', fatal: false, recoverable: true, message: `clock on performance.now(): ${unavailable}` }));
     } else if (clock.source === 'audio') {
-      perfSince = undefined;
+      perfReported = false;
     }
     checkStalls();
     const t = clock.now();
@@ -860,10 +855,6 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         const s = sink;
         clock.onAnchor((anchor) => s.setAnchor(anchor));
       }
-      clock.onSource((_source, reason) => {
-        sourceReason = reason;
-      });
-      sourceReason = `AudioContext ${audioCtx?.state ?? 'unavailable'}`;
       if (destroyed) return;
 
       tracks = trackList();

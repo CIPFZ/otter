@@ -135,7 +135,10 @@ for (const clip of CLIPS) {
     if (audioRuns) {
       expect(run.errors, JSON.stringify(run.messages)).toEqual([]);
     } else {
-      expect(run.errors).toEqual(['audioClockUnavailable']);
+      // Reported once resume() has had its 3 s grace (RESUME_GRACE_MS), not before.
+      await expect
+        .poll(async () => page.evaluate(async () => ((await (window.wc as Promise<WebCodecsFixture>)).events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string } }).error.details))), { timeout: 5000 })
+        .toEqual(['audioClockUnavailable']);
       ciNotice(`${clip.name}: no running AudioContext here; played on performance.now(), reported as audioClockUnavailable`);
     }
     // Paused, the picture is the frame of the clock's position.

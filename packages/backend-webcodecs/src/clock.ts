@@ -15,6 +15,13 @@ export interface ClockAnchor {
 export interface MediaClock {
   /** Where the time comes from right now. */
   readonly source: 'audio' | 'performance';
+  /**
+   * Why the AudioContext clock is not coming back, once that is settled: resume() rejected or
+   * did not finish within RESUME_GRACE_MS, the context's time froze, or there is no context.
+   * Undefined on the AudioContext clock, and while a resume is still within its grace (the
+   * performance.now() stand-in keeps time meanwhile, nothing to report).
+   */
+  readonly unavailable: string | undefined;
   readonly playing: boolean;
   readonly rate: number;
   /** Media time in seconds. */
@@ -35,8 +42,11 @@ export interface MediaClock {
 
 /** A running context whose currentTime is frozen this long (s) is treated as broken. */
 const STUCK_S = 0.5;
-/** resume() that has not settled by then is left behind (an unwaitable device). */
-const RESUME_TIMEOUT_MS = 1000;
+/**
+ * A resume() still pending after this is reported (an unwaitable device). A slow one that
+ * succeeds later still takes the clock back.
+ */
+export const RESUME_GRACE_MS = 3000;
 
 export function createClock(ctx: AudioContext | undefined): MediaClock {
   let stuck = false;
@@ -52,6 +62,9 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
   // Watchdog for a running context that does not advance.
   let lastCtx = -1;
   let lastPerf = 0;
+  /** The pending resume (within its grace), and why the context clock is out once settled. */
+  let resuming = false;
+  let failure: string | undefined;
 
   const now = (): number => (playing ? media + (host() - base) * rate : media);
   const anchor = (): void => {
@@ -72,12 +85,19 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
     sourceListener?.(next, reason);
     anchor();
   };
-  const onState = (): void => switchTo(usable() ? 'audio' : 'performance', `AudioContext ${ctx?.state ?? 'missing'}`);
+  const onState = (): void => {
+    if (usable()) failure = undefined;
+    switchTo(usable() ? 'audio' : 'performance', `AudioContext ${ctx?.state ?? 'missing'}`);
+  };
   ctx?.addEventListener('statechange', onState);
 
   return {
     get source() {
       return source;
+    },
+    get unavailable() {
+      if (source === 'audio' || resuming) return undefined;
+      return failure ?? (ctx === undefined ? 'no AudioContext' : `AudioContext ${ctx.state}`);
     },
     get playing() {
       return playing;
@@ -90,11 +110,31 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
       if (playing) return;
       base = host();
       playing = true;
-      // Inside a user gesture this lets a suspended context run (autoplay policy). Bounded: a
-      // context with no output device can leave resume() pending (headless Firefox), and the
-      // clock must keep time either way (performance.now() until it starts).
-      if (ctx !== undefined && ctx.state === 'suspended') {
-        void Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, RESUME_TIMEOUT_MS))]).catch(() => undefined);
+      // Inside a user gesture this lets a suspended context run (autoplay policy). performance.now()
+      // keeps time until it does; the statechange takes the clock back seamlessly whenever the
+      // resume lands. Only a rejection, or no result within the grace (a context with no output
+      // device can leave it pending, headless Firefox), makes the stand-in final.
+      if (ctx !== undefined && ctx.state === 'suspended' && !resuming) {
+        const c = ctx;
+        resuming = true;
+        failure = undefined;
+        const grace = setTimeout(() => {
+          if (!resuming) return;
+          resuming = false;
+          failure = `AudioContext resume() not done after ${RESUME_GRACE_MS / 1000} s`;
+        }, RESUME_GRACE_MS);
+        c.resume().then(
+          () => {
+            clearTimeout(grace);
+            resuming = false;
+            onState();
+          },
+          (err: unknown) => {
+            clearTimeout(grace);
+            resuming = false;
+            failure = `AudioContext resume() failed: ${(err as { name?: string } | null)?.name ?? String(err)}`;
+          },
+        );
       }
       anchor();
     },
@@ -125,7 +165,8 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
       }
       if (p - lastPerf > STUCK_S) {
         stuck = true;
-        switchTo('performance', `AudioContext time frozen for ${STUCK_S} s`);
+        failure = `AudioContext time frozen for ${STUCK_S} s`;
+        switchTo('performance', failure);
       }
     },
     onAnchor(h) {
