@@ -50,6 +50,17 @@ M4 于 2026-10-22 验收通过。M4 报告末尾的五个问题由负责人逐�
 - 目标：Edge 与 WebKit 上画面面与 `<video>` 的色差回到 e2e 原阈值（平均差 < 6，差值 > 40 的像素 < 3%），删掉 `e2e/surfaces.spec.ts` 里的颜色映射拟合。
 - 只做 SDR；HDR（PQ / HLG、色调映射）不做。
 
+### 5. 多编码探测与偏好持久化（第三批第一项，2026-10-25）
+
+- **探测**：每次加载对 AV1 / HEVC / VP9 / H.264 各跑一次 `MediaCapabilities.decodingInfo`（同时要求 `isTypeSupported`），每个编码族一条 `router.explain()`（supported、smooth、powerEfficient、名次）。
+- **排序**：宿主可配（`MediaPluginOptions.codecs { order, rank }`），默认先 powerEfficient、再 smooth、再 AV1 > HEVC > VP9 > H.264；用户偏好（`set-codec-preference`，`state.codecPreference`）排在宿主规则之前。排序逻辑是按需块（0.88 KB），与能力探测并行加载。
+- **引擎**：`EngineContext.codecs { order, entries, pick }`，引擎在流提供的编码族里只保留排名最高的一族（不做跨编码切档，SPEC §6.2），这一选择也进 `router.explain()` 和 `state.codec`。自研 HLS 引擎过滤 variant；hls.js 在 `MANIFEST_PARSED` 后、开始加载前 `removeLevel`；Shaka 在 TXml 预处理里删掉 MPD 中其他编码族的视频 Representation，并设 `preferredVideo`（Shaka 播 HLS 时）。
+- **平台虚报**：CI 的 Mac 上 WebKit 说 AV1 supported、smooth、powerEfficient，实际解不出画面。首帧之前出现致命错误（加载被拒或启动卡住），且流里还有别的编码族时，本次加载剔除该族，同一后端重新加载下一族，`router.explain()` 记「no picture (…) although decodingInfo said supported; next family」。
+- **偏好持久化**：新包 `@otter-player/preferences`，`createPreferencesPlugin({ storage?, key? })`。
+  - 存储适配器可替换（`get` / `set`，同步或异步）；默认 `localStoragePreferences('otter:')`，导入时不碰任何全局（SSR 安全），只在读写时访问 `localStorage`，抛错时静默。
+  - 只存：编码偏好、清晰度（存画面高度，换片源也适用）、音轨语言、字幕语言（含「关」）、音量、倍速；不存播放位置。读出时逐项校验，非法值丢弃。
+  - 只记录用户动作（ABR 切档、长按 2 倍速、直播追帧不算）；音量、倍速、编码偏好在启动时恢复（编码偏好从下一次加载生效），清晰度和语言在每个片源的轨道就绪后恢复一次。
+
 ### 4. M4 收尾
 
 - **WHEP**：以本地夹具（视频 + Opus 音轨）为验收依据；另在真机 Edge 上手动播一次、人耳确认有声，一句话记进 M4 报告。

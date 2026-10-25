@@ -148,6 +148,8 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
 
 一次性探测并缓存：`MediaSource` / `ManagedMediaSource` / `VideoDecoder` / `canPlayType('application/vnd.apple.mpegurl')` / `MediaCapabilities.decodingInfo` / `requestMediaKeySystemAccess` 各 key system / `documentPictureInPicture` / `pictureInPictureEnabled` / `screen.orientation.lock` / `wakeLock` / `SharedArrayBuffer` / `OffscreenCanvas` / WebGL2 / WebGPU / `pointer: coarse` / `dynamic-range` / `color-gamut`。
 
+- **视频编码族（M5，ADR-011 §5）**：每次加载探测 AV1 / HEVC / VP9 / H.264（`decodingInfo` + `isTypeSupported`），按宿主策略排序（默认 powerEfficient > smooth > AV1、HEVC、VP9、H.264，用户偏好优先），结果逐族进 `router.explain()`；引擎在流提供的编码族里只保留排名最高的一族。平台虚报（首帧前失败）时剔除该族、同后端重载下一族。
+
 ### 5.2 选路算法（确定性）
 
 1. 探测能力。
