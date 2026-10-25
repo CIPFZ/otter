@@ -63,6 +63,16 @@ describe('stall watchdog', () => {
     expect(w.sample(sample(10_000, 0.2))).toBe('nudge');
   });
 
+  it('the nudge itself is not progress: still stuck where it put the playhead escalates at the startup pace', () => {
+    const w = createStallWatchdog(DEFAULT_RECOVERY);
+    expect(w.sample(sample(0, 0))).toBe('none');
+    expect(w.sample(sample(1_500, 0))).toBe('nudge');
+    // The element reports the nudged position (0.1) and stays there: no picture is decoding.
+    expect(w.sample(sample(1_600, 0.1))).toBe('none');
+    expect(w.sample(sample(3_099, 0.1))).toBe('none');
+    expect(w.sample(sample(3_100, 0.1))).toBe('escalate');
+  });
+
   it('nudges after stallTimeoutMs with buffer ahead, escalates if still stuck', () => {
     const w = createStallWatchdog(DEFAULT_RECOVERY);
     expect(w.sample(sample(0, 2))).toBe('none');

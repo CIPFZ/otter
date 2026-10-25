@@ -141,7 +141,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   const { createError, createEventBus, isOtterError } = core;
   const fatal = (type: OtterError['type'], details: string, message: string, cause?: unknown): OtterError =>
     createError({ type, details, fatal: true, recoverable: type === 'network', message, ...opt('cause', cause) });
-  const unsupported = (why: string): OtterError => createError({ type: 'media', details: 'ownEngineUnsupported', fatal: true, recoverable: false, message: why });
+  const unsupported = (why: string): OtterError => fatal('media', 'ownEngineUnsupported', why);
   const forwardS = options.forwardBufferS ?? DEFAULT_FORWARD_S;
   const bus = createEventBus<EngineEvents>();
   const media = ctx.media;
@@ -171,6 +171,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   let forced: number | undefined;
   let abandon: import('./abandon.js').Abandon | undefined;
   let endSignalled = false;
+
 
   // --- network ---------------------------------------------------------------------------------
 
@@ -302,7 +303,8 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   const chooseVariant = async (lane: Lane, run: number): Promise<void> => {
     let target = requested ?? forced ?? lane.index;
     forced = undefined;
-    if (target === lane.index && requested === undefined && driver !== undefined && driver.canEstimate && variants.length > 1) {
+    // A driver exists only with more than one variant.
+    if (target === lane.index && requested === undefined && driver?.canEstimate === true) {
       const meta = getMediaPlaylistMetadata(lane.track);
       const d = driver.decide({ levels: levels(), current: lane.index, bufferLevel: aheadOf('video'), segmentDuration: meta?.targetDuration ?? 6, live: isLive, lowLatency: false, bufferTarget: forwardS });
       if (d.engineLevel >= 0) target = d.engineLevel;

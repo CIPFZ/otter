@@ -203,6 +203,14 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   let cmcd: CmcdDecorator | undefined;
   /** This load's codec ranking, for the engines (BackendContext.codecs). */
   let codecs: EngineCodecs | undefined;
+  /**
+   * Families that produced no picture on this load although decodingInfo vouched for them (WebKit
+   * on a Mac without AV1 decoding says AV1 is supported, smooth and power efficient): left out of
+   * the ranking for the rest of the load.
+   */
+  let failedCodecs = new Set<CodecFamily>();
+  /** Families the stream offers, from the engine's last pick. */
+  let offeredCodecs: readonly CodecFamily[] = [];
   // In-band text: survives backend rebuilds and fallbacks within a load.
   let textTrack: string | null = null;
   const cueListeners = new Set<(cues: InbandCues) => void>();
@@ -276,7 +284,11 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       on('tracks-change', (tracks) => {
         // Engines do not always announce the initial rendition; take it from the track list.
         const initial = state().activeQuality === null ? tracks.video.find((v) => v.selected)?.id : undefined;
-        set(initial === undefined ? { tracks } : { tracks, activeQuality: initial });
+        // A requested rendition the engine no longer lists (a runtime switch to the adapter, whose
+        // ids differ): the engine's own record of the request, which it re-applied.
+        const q = state().quality;
+        const renamed = q !== 'auto' && !tracks.video.some((v) => v.id === q) && tracks.video.some((v) => v.id === tracks.requestedQuality) ? tracks.requestedQuality : undefined;
+        set({ tracks, ...(initial === undefined ? {} : { activeQuality: initial }), ...(renamed === undefined ? {} : { quality: renamed }) });
       }),
       on('quality-change', ({ id, auto, reason }) => {
         const from = state().activeQuality;
@@ -456,8 +468,20 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     if (loadToken !== token || source === null || lastCaps === undefined) return;
     const resumeAt = state().currentTime;
     const autoplay = !state().paused;
+    // No picture yet on a codec family the platform vouched for, with another one on offer: the
+    // family is what fails here, not the backend. The same step again without it, from the start.
+    const family = state().codec;
+    const failedFamily = !firstFrameSeen && family !== null && offeredCodecs.some((f) => f !== family && !failedCodecs.has(f));
     teardown();
     set({ status: 'loading' });
+    if (failedFamily) {
+      failedCodecs.add(family);
+      router.annotate({ candidate: `codec ${family}`, outcome: 'failed', reason: `no picture (${error.details}) although decodingInfo said supported; next family` });
+      qoe?.emit('error', { error, fallback: [stepLabel(decision.step), ...decision.remaining.map(stepLabel)] });
+      publishRoute(router.explain());
+      await run(decision, source, { ...lastOptions, autoplay }, lastCaps, loadToken);
+      return;
+    }
     if (await retrySame(decision, error, loadToken)) {
       await run(decision, source, { ...lastOptions, startTime: resumeAt, autoplay }, lastCaps, loadToken);
       return;
@@ -598,11 +622,19 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     const probes = Object.fromEntries(Object.entries(FAMILY_PROBES).map(([f, type]) => [f, caps.codecs[type]]));
     const ranking = ranker.rankCodecs(probes, options.codecs, state().codecPreference);
     for (const step of ranking.steps) router.annotate(step);
+    failedCodecs = new Set();
+    offeredCodecs = [];
+    const usable = (): CodecFamily[] => ranking.order.filter((f) => !failedCodecs.has(f));
     codecs = {
-      order: ranking.order,
-      entries: ranking.entries,
+      get order() {
+        return usable();
+      },
+      get entries() {
+        return usable().flatMap((f) => ranker.FAMILY_ENTRIES[f]);
+      },
       pick: (tracks) => {
-        const choice = ranker.chooseCodec(ranking.order, tracks);
+        const choice = ranker.chooseCodec(usable(), tracks);
+        offeredCodecs = choice.offered;
         if (loadToken === token) {
           set({ codec: choice.family ?? null });
           router.annotate({ candidate: `codec ${choice.family ?? 'any'}`, outcome: 'selected', reason: choice.reason });

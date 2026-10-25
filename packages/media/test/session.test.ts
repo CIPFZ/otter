@@ -367,3 +367,104 @@ describe('fallback source (Source.fallback)', () => {
     expect(view.getState()).toMatchObject({ status: 'error', error: { details: 'iceFailed' } });
   });
 });
+
+describe('media plugin: video codec families (ADR-011 batch 3)', () => {
+  const supported = { supported: true, smooth: true, powerEfficient: true };
+  const variants = [{ codecs: 'av01.0.01M.08' }, { codecs: 'hvc1.1.6.L63.90' }, { codecs: 'avc1.4d401e' }];
+
+  async function setupCodecs(probe: Record<string, typeof supported>) {
+    const created: FakeBackend[] = [];
+    const picks: string[][] = [];
+    const factory: BackendFactory = {
+      kind: 'mse',
+      create: (ctx) => {
+        const b = fakeBackend('mse');
+        // Like an engine: keep the ranked family of what the stream offers.
+        const load = b.load.bind(b);
+        b.load = async (s, o) => {
+          picks.push((ctx.codecs?.pick(variants) ?? variants).map((v) => v.codecs));
+          await load(s, o);
+        };
+        created.push(b);
+        return b;
+      },
+    };
+    const plugin = createMediaPlugin({
+      target,
+      formats: [hls],
+      backends: [factory, { kind: 'native', create: () => fakeBackend('native') }],
+      detect: async (o) => ({ ...NO_CAPABILITIES, mediaSource: true, codecs: Object.fromEntries((o.codecs ?? []).map((t) => [t, probe[t] ?? { supported: false, smooth: false, powerEfficient: false }])) }),
+      recovery: { backoffMs: () => 0, stallTimeoutMs: 0 },
+    });
+    const core = createCore<MediaState, MediaActionMap>({ slices: [MEDIA_SLICE], plugins: [plugin] });
+    await core.start();
+    return { view: core.store.view(), created, picks };
+  }
+  const all = Object.fromEntries(['av01.0.05M.08', 'hvc1.1.6.L93.B0', 'vp09.00.31.08', 'avc1.640028'].map((c) => [`video/mp4; codecs="${c}"`, supported]));
+
+  it('ranks the probed families, explains each, and the engine keeps the first one offered', async () => {
+    const { view, picks } = await setupCodecs(all);
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    expect(picks).toEqual([['av01.0.01M.08']]);
+    expect(view.getState().codec).toBe('av1');
+    const steps = view.getState().route?.steps ?? [];
+    expect(steps.filter((s) => s.candidate.startsWith('codec ')).map((s) => `${s.candidate} ${s.outcome}`)).toEqual([
+      'codec av1 selected',
+      'codec hevc selected',
+      'codec vp9 selected',
+      'codec h264 selected',
+      'codec av1 selected',
+    ]);
+    expect(steps.at(-1)?.reason).toBe('stream offers av1, hevc, h264: av1 ranks first');
+  });
+
+  it('a family that gives no picture is dropped for the load: the same backend again with the next one', async () => {
+    const { view, created, picks } = await setupCodecs(all);
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    // No first frame, then the stall watchdog / a decode error ends it (fatal media error).
+    created[0]?.emit('error', createError({ type: 'media', details: 'playbackStalled', fatal: true, recoverable: true }));
+    await flush();
+    await flush();
+    expect(created.map((b) => b.kind)).toEqual(['mse', 'mse']);
+    expect(picks).toEqual([['av01.0.01M.08'], ['hvc1.1.6.L63.90']]);
+    expect(view.getState()).toMatchObject({ codec: 'hevc', backend: 'mse', status: 'ready' });
+    expect(view.getState().route?.steps).toContainEqual({ candidate: 'codec av1', outcome: 'failed', reason: 'no picture (playbackStalled) although decodingInfo said supported; next family' });
+    // After a first frame, an error is the backend's again (retry / fallback as before).
+    created[1]?.emit('first-frame', { at: 1 });
+    created[1]?.emit('error', createError({ type: 'media', details: 'bufferAppendError', fatal: true, recoverable: true }));
+    await flush();
+    await flush();
+    expect(picks.at(-1)).toEqual(['hvc1.1.6.L63.90']);
+  });
+
+  it('a user preference applies from the next load and survives unload', async () => {
+    const { view, picks } = await setupCodecs(all);
+    view.dispatch('set-codec-preference', { order: ['h264'] });
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    expect(picks.at(-1)).toEqual(['avc1.4d401e']);
+    view.dispatch('unload', undefined);
+    expect(view.getState().codecPreference).toEqual(['h264']);
+  });
+});
+
+describe('media plugin: requested quality across a runtime engine switch', () => {
+  it('a requested id the engine no longer lists becomes the engine-recorded request', async () => {
+    const { view, created } = await setup();
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    view.dispatch('select-quality', { id: 'video-1' });
+    created[0]?.emit('tracks-change', {
+      ...EMPTY_TRACKS,
+      quality: 'selectable',
+      requestedQuality: 'level-0',
+      video: [
+        { kind: 'video', id: 'level-0', height: 180, selected: true },
+        { kind: 'video', id: 'level-1', height: 360, selected: false },
+      ],
+    });
+    expect(view.getState().quality).toBe('level-0');
+  });
+});

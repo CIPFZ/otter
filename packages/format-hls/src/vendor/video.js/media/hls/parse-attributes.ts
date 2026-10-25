@@ -74,7 +74,8 @@ export function parseCodecs(codecs: string): { video?: string; audio?: string } 
   for (const codec of parts) {
     const lower = codec.toLowerCase();
 
-    if (codec.startsWith('avc1.') || codec.startsWith('hvc1.') || codec.startsWith('hev1.')) {
+    // Otter: VP9 / AV1 / avc3 are video too (upstream: avc1 / hvc1 / hev1 only).
+    if (/^(avc[13]|hvc1|hev1|vp09|av01)\./.test(codec)) {
       result.video = codec;
     } else if (AUDIO_CODEC_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
       result.audio = codec;

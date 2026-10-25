@@ -158,6 +158,7 @@
     "Relative imports carry .js extensions (NodeNext); tests import the copies from packages/format-hls/test/vendor/video.js (listed under \"tests\", same headers) and use vitest instead of vite-plus/test.",
     "@videojs/utils isUndefined and generateId inlined (generateId is a page-unique counter).",
     "Strict TS: MediaPlaylistMetadata.playlistType / holdBack allow undefined (exactOptionalPropertyTypes); explicit types on defaulted parameters and NON_FMP4_CONTAINER_MIMES (isolatedDeclarations). No behaviour change.",
-    "parse-media-playlist.ts: the diagnostic console.warn calls (media-sequence / URL mismatch, sequence going backwards, full window turnover) are dropped: no console output from the engine, and about 200 B of the engine chunk budget (ADR-010 §3). Behaviour unchanged."
+    "parse-media-playlist.ts: the diagnostic console.warn calls (media-sequence / URL mismatch, sequence going backwards, full window turnover) are dropped: no console output from the engine, and about 200 B of the engine chunk budget (ADR-010 §3). Behaviour unchanged.",
+    "parse-attributes.ts parseCodecs: avc3 / vp09 / av01 are video codecs too (upstream recognises avc1 / hvc1 / hev1 only, so a VP9 or AV1 variant parsed with no codecs and the own engine refused the stream). One regex instead of the three prefixes; found by the multi-codec fixture (ADR-011 batch 3)."
   ]
 }

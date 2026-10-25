@@ -100,16 +100,20 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
   let since = Number.NaN;
   let nudged = false;
   let progressed = false;
+  /** Where our nudge put the playhead: getting there is not playback progress. */
+  let nudgedTo = Number.NaN;
   const reset = (): void => {
     lastTime = Number.NaN;
     since = Number.NaN;
     nudged = false;
     progressed = false;
+    nudgedTo = Number.NaN;
   };
   return {
     sample({ now, currentTime, playing, bufferAhead }) {
       if (!playing || bufferAhead < 0.5 || currentTime !== lastTime) {
-        if (currentTime !== lastTime && !Number.isNaN(lastTime)) {
+        const byNudge = nudged && Math.abs(currentTime - nudgedTo) < 1e-3;
+        if (currentTime !== lastTime && !Number.isNaN(lastTime) && !byNudge) {
           nudged = false;
           if (playing) progressed = true;
         }
@@ -121,6 +125,7 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
       since = now;
       if (!nudged) {
         nudged = true;
+        nudgedTo = currentTime + policy.nudgeS;
         return 'nudge';
       }
       return 'escalate';

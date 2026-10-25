@@ -15,6 +15,13 @@ describe('parseCodecs', () => {
     expect(parseCodecs('hev1.2.4.L120.B0')).toEqual({ video: 'hev1.2.4.L120.B0' });
   });
 
+  // Otter local change (UPSTREAM.json): VP9 / AV1 / avc3 are video too.
+  it('recognizes VP9, AV1 and avc3 video codecs', () => {
+    expect(parseCodecs('vp09.00.21.08,mp4a.40.2')).toEqual({ video: 'vp09.00.21.08', audio: 'mp4a.40.2' });
+    expect(parseCodecs('av01.0.01M.08')).toEqual({ video: 'av01.0.01M.08' });
+    expect(parseCodecs('avc3.4d401e')).toEqual({ video: 'avc3.4d401e' });
+  });
+
   it('recognizes Dolby audio codecs (ac-3 / ec-3 / ac-4), including muxed with video', () => {
     expect(parseCodecs('ac-3')).toEqual({ audio: 'ac-3' });
     expect(parseCodecs('ec-3')).toEqual({ audio: 'ec-3' });
