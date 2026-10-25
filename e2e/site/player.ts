@@ -37,6 +37,7 @@ import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMa
 import { bindCanvasPip, canvasPipSupported, type CanvasPip } from '@otter-player/presentation/canvas-pip';
 import { createPicturePlugin, PICTURE_SLICE, type PictureActionMap, type PictureSliceState } from '@otter-player/presentation/picture';
 import { createSingleAudioPlugin } from '@otter-player/presentation/single-audio';
+import { createPreferencesPlugin } from '@otter-player/preferences';
 import {
   bindActivity,
   CHROME_SLICE,
@@ -226,6 +227,8 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
       }),
       // One tab of the origin plays with sound (the latest to start).
       createSingleAudioPlugin<State, Actions>(),
+      // ?prefs=1: the viewer's choices remembered across reloads (localStorage, `otter:` prefix).
+      ...(params.get('prefs') === '1' ? [createPreferencesPlugin<State, Actions>()] : []),
     ],
   });
   await core.start();

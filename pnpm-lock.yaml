@@ -553,6 +553,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/preferences:
+    dependencies:
+      '@otter-player/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/presentation:
     dependencies:
       '@otter-player/core':

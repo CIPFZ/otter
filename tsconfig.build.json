@@ -101,6 +101,9 @@
       "path": "packages/presentation"
     },
     {
+      "path": "packages/preferences"
+    },
+    {
       "path": "packages/presets"
     },
     {
