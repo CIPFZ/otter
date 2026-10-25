@@ -104,7 +104,13 @@ describe('withAdapterFallback', () => {
     };
     const own = fakeEngine('own', undefined, ownTracks);
     const adapter = fakeEngine('hls.js', undefined, adapterTracks);
-    const media = { currentTime: 42.5, paused: false, play: vi.fn(async () => undefined) } as unknown as HTMLMediaElement;
+    const media = { currentTime: 42.5, paused: false, playbackRate: 1.5, play: vi.fn(async () => undefined) } as unknown as HTMLMediaElement;
+    // The adapter's MediaSource reloads the element: its speed goes back to 1.
+    const load = adapter.load.bind(adapter);
+    adapter.load = async () => {
+      (media as { playbackRate: number }).playbackRate = 1;
+      await load();
+    };
     const starts: (number | undefined)[] = [];
     const e = withAdapterFallback(
       own,
@@ -128,6 +134,8 @@ describe('withAdapterFallback', () => {
     expect(own.calls).toContain('destroy');
     // Not back to auto: the matching level, and the same languages, by the adapter's ids.
     expect(adapter.calls).toEqual(['load', 'quality:level-0', 'text:subs-0', 'audio:audio-1']);
+    // And the viewer's speed.
+    expect(media.playbackRate).toBe(1.5);
     expect(errors).toEqual([{ details: 'pipelineFallback', fatal: false }]);
     // Once only: a fatal error from the adapter goes to the session.
     adapter.emit('error', createError({ type: 'media', details: 'bufferAppendError', fatal: true, recoverable: false }));

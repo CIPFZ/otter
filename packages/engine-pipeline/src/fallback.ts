@@ -3,7 +3,7 @@
 // - at load, when the own engine fails for a media reason (a codec it does not carry, a demux
 //   error) or reports `ownEngineUnsupported` (HLS features it leaves to hls.js);
 // - at runtime, on a fatal media error after the start: from the current position, keeping the
-//   user's quality (a manual choice stays manual), text and audio track.
+//   user's quality (a manual choice stays manual), text and audio track, and the playback speed.
 // Network errors do not fall back: the adapter would fail the same way, and the session's retry
 // policy (ADR-005 §3) handles them. The switch is reported as a non-fatal `pipelineFallback` whose
 // message gives the reason (backend-mse records it in router.explain()).
@@ -101,6 +101,8 @@ export function withAdapterFallback(
     const media = options.media;
     const at = media?.currentTime;
     const playing = media !== undefined && !media.paused;
+    // The adapter's MediaSource reloads the element, which resets its speed (HTML load algorithm).
+    const rate = media?.playbackRate;
     const before = primary.tracks;
     primary.destroy();
     usingFallback = true;
@@ -114,6 +116,7 @@ export function withAdapterFallback(
       return;
     }
     reapply(before);
+    if (media !== undefined && rate !== undefined && media.playbackRate !== rate) media.playbackRate = rate;
     bus.emit('tracks-change', current.tracks);
     if (playing) void media?.play().catch(() => undefined);
   };
