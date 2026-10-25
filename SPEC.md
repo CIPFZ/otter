@@ -185,6 +185,7 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
 ### 6.3 backend-webcodecs
 - 架构：Demuxer → `VideoDecoder`/`AudioDecoder` → 渲染缓冲 → `GPUSurface`；音频走 `AudioWorklet`，以 `AudioContext.currentTime` 为主时钟，视频被动对齐（找 ≤ 当前时间的最新帧，允许跳帧/丢帧）。
 - 无音轨时仍用 AudioContext 时钟保持一致。
+- AudioContext 恢复期间 `performance.now()` 作备用时钟，宽限 3 s；resume 完成即无缝切回。只有 resume 明确失败或 3 s 未完成才报 `audioClockUnavailable`（ADR-008 §2）。
 - 多实例共享 Worker 解码池，限制同时解码路数。
 - PiP：`canvas.captureStream()` 喂隐藏 `<video>`。
 - 三级降级：WebCodecs 硬解 → WASM 软解 → MSE（Jessibuca / EasyPlayer 模式）。
@@ -199,8 +200,10 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
 | Buffer | 前后缓冲目标、空洞跳过、stall 检测 | hls.js buffer-controller、gap-controller |
 | ABR | 规则叠加加权投票：Throughput、BOLA、InsufficientBuffer、ServerHint、自定义 | hls.js EWMA、dash.js 规则 |
 | DRM | 仅通过 Shaka 适配器 | Shaka |
-| LiveController | 追帧、动态倍速、多层看门狗（waiting / stalled / init stall）、回到直播 | mpegts.js |
+| LiveController | 追帧、动态倍速、多层看门狗（waiting / stalled / init stall）、回到直播；用户 seek 后暂停追帧（见下） | mpegts.js |
 | Text extractor | CEA-608/708、ID3、SEI | hls.js |
+
+- **DVR 与追帧**：LiveController 区分自己发起的 seek 和用户的 seek。可播放之后的用户 seek（拖时间条、键盘）暂停追帧、倍速同步与起播卡顿跳转，倍速回到 1，保持在用户选的位置，直到「回到直播」或播放头回到目标延迟 + 1 s 以内。有 edge 的引擎（HLS）卡顿跳转只用于起播（ADR-008 §6，ADR-011 §2）。
 
 ## 8. formats
 
@@ -261,6 +264,8 @@ interface Surface {
 | `VideoSurface` | native / mse | 浏览器合成、硬解、原生 PiP、AirPlay、省电 | 滤镜只能 CSS `filter`；iPhone 全屏被系统接管；snapshot 需同源或 CORS |
 | `CanvasSurface` (2D) | WebCodecs 兜底、截图、低端机 | 简单、兼容 | 大分辨率吃 CPU |
 | `GPUSurface` (WebGL2 / WebGPU) | WebCodecs 主路径、多宫格、HDR、色彩校正、超分 | YUV 直传 shader、tone mapping、锐化/降噪、一张画布多视口 | 上下文数量约 16 个上限，多路共享一个 canvas 分视口 |
+
+- **色彩管理（SDR）**：画面面（GPUSurface / CanvasSurface）**按平台是否对 `<video>` 做色彩管理决定是否转换**。平台转换（WebKit；Chromium 的 GPU 合成）时，按帧的原色（无标签的 YUV 按高度推定：SD 用 SMPTE 170M，HD 用 BT.709）转到 sRGB；平台不转换（Chromium 软件合成）时不转换；绘制路径自己已转换的不重复。目标是同一路视频在画面面与 `<video>` 上颜色一致（ADR-008 §6，ADR-011 §3）。HDR 不在此列。
 
 尺寸全部靠 `ResizeObserver` + CSS `aspect-ratio`，不监听 `window.resize`。
 
