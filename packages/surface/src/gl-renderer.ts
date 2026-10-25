@@ -8,7 +8,7 @@
 // an OffscreenCanvas (render worker).
 
 import { framePrimaries, gamutMatrix, i420Matrix, platformManagesVideo, probeConverted, probeFrame, yuvMatrix } from './color.js';
-import { colorMatrix } from './filters.js';
+import { colorPasses } from './filters.js';
 import type { SurfaceFilters, SurfaceTransform } from './surface.js';
 
 /** Planar 4:2:0 picture: Y (width x height), then U and V (half size, rounded up). */
@@ -92,8 +92,9 @@ uniform mat3 u_yuvMatrix;
 uniform vec3 u_yuvOffset;
 uniform int u_gamut;      // 1: convert the primaries (u_toSrgb, linear light) to sRGB
 uniform mat3 u_toSrgb;
-uniform mat3 u_color;     // colour matrix (filters.ts), column-major
-uniform vec3 u_offset;
+uniform mat3 u_color[3];  // colour passes (filters.ts), column-major, clamped after each
+uniform vec3 u_offset[3];
+uniform int u_passes;
 uniform float u_sharpen;
 uniform vec2 u_step;      // one output pixel in texture units
 in vec2 v_uv;
@@ -120,7 +121,11 @@ void main() {
     vec3 n = src(v_uv + vec2(u_step.x, 0.0)) + src(v_uv - vec2(u_step.x, 0.0)) + src(v_uv + vec2(0.0, u_step.y)) + src(v_uv - vec2(0.0, u_step.y));
     c = clamp(c * (1.0 + 4.0 * u_sharpen) - clamp(n, 0.0, 4.0) * u_sharpen, 0.0, 1.0);
   }
-  o = vec4(clamp(u_color * c + u_offset, 0.0, 1.0), 1.0);
+  for (int i = 0; i < 3; i++) {
+    if (i >= u_passes) break;
+    c = clamp(u_color[i] * c + u_offset[i], 0.0, 1.0);
+  }
+  o = vec4(c, 1.0);
 }`;
 
 interface Picture {
@@ -208,6 +213,7 @@ export function createGlRenderer(canvas: HTMLCanvasElement | OffscreenCanvas): G
     toSrgb: at('u_toSrgb'),
     color: at('u_color'),
     offset: at('u_offset'),
+    passes: at('u_passes'),
     sharpen: at('u_sharpen'),
     step: at('u_step'),
   };
@@ -323,10 +329,13 @@ export function createGlRenderer(canvas: HTMLCanvasElement | OffscreenCanvas): G
         gl.uniform3fv(u.yuvOffset, p.yuv.offset);
         gl.uniform1i(u.gamut, p.gamut === undefined ? 0 : 1);
         if (p.gamut !== undefined) gl.uniformMatrix3fv(u.toSrgb, false, p.gamut);
-        const m = colorMatrix(v.filters);
-        // Row-major 3x4 -> column-major mat3 + offset.
-        gl.uniformMatrix3fv(u.color, false, [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]]);
-        gl.uniform3f(u.offset, m[3], m[7], m[11]);
+        const passes = colorPasses(v.filters);
+        // Row-major 3x4 -> column-major mat3 + offset, per pass.
+        gl.uniform1i(u.passes, passes.length);
+        if (passes.length > 0) {
+          gl.uniformMatrix3fv(u.color, false, passes.flatMap((m) => [m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10]]));
+          gl.uniform3fv(u.offset, passes.flatMap((m) => [m[3], m[7], m[11]]));
+        }
         gl.uniform1f(u.sharpen, Math.max(0, v.filters.sharpen));
         const turned = v.transform.rotate === 90 || v.transform.rotate === 270;
         gl.uniform2f(u.step, 1 / (turned ? c.height : c.width), 1 / (turned ? c.width : c.height));

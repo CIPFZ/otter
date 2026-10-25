@@ -28,10 +28,10 @@ function compose(a: ColorMatrix, b: ColorMatrix): ColorMatrix {
 }
 
 /**
- * The colour part of the filters, in the order the CSS functions apply them: brightness,
- * contrast, saturate (Filter Effects §11 matrices), then temperature.
+ * The colour part of the filters as one matrix per step, in the order the CSS functions apply
+ * them: brightness, contrast, saturate (Filter Effects §11 matrices, in sRGB), then temperature.
  */
-export function colorMatrix(f: SurfaceFilters): ColorMatrix {
+export function colorSteps(f: SurfaceFilters): ColorMatrix[] {
   const b = f.brightness;
   const c = f.contrast;
   const s = f.saturate;
@@ -46,8 +46,20 @@ export function colorMatrix(f: SurfaceFilters): ColorMatrix {
     ],
     [1 + TEMPERATURE_GAIN * t, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 - TEMPERATURE_GAIN * t, 0],
   ];
-  return steps.reduce((m, step) => compose(step, m), IDENTITY);
+  return steps;
 }
+
+/** The colour part of the filters as one matrix (the SVG filter's feColorMatrix). */
+export const colorMatrix = (f: SurfaceFilters): ColorMatrix => colorSteps(f).reduce((m, step) => compose(step, m), IDENTITY);
+
+/**
+ * The matrices a Surface applies, clamping to 0..1 after each: the CSS shorthand functions
+ * (brightness / contrast / saturate only) are separate filter primitives, so compositors clamp
+ * between them (Chromium, WebKit, Firefox measured); the SVG filter (temperature / sharpen) is one
+ * feColorMatrix, clamped once.
+ */
+export const colorPasses = (f: SurfaceFilters): ColorMatrix[] =>
+  f.temperature === 0 && f.sharpen === 0 ? colorSteps(f).slice(0, 3).filter((m) => m.some((v, i) => v !== IDENTITY[i])) : [colorMatrix(f)];
 
 /** 3x3 sharpen kernel (unsharp, cross shape), row-major; identity for amount 0. */
 export function sharpenKernel(amount: number): readonly number[] {
