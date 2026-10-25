@@ -182,6 +182,22 @@ test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it 
   await page.waitForTimeout(6000);
   expect(await states()).not.toContain('running');
   const before = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).state().currentTime);
+  // What the context does after the resuming click (state, currentTime every 50 ms), for the
+  // notice: when it says running, and when its time starts to move (ADR-008 §2).
+  await page.evaluate(() => {
+    const w = window as unknown as { contexts: AudioContext[]; ctxTrace: string[] };
+    const c = w.contexts[0] as AudioContext;
+    const t0 = performance.now();
+    w.ctxTrace = [];
+    let last = '';
+    const id = setInterval(() => {
+      const ms = Math.round(performance.now() - t0);
+      const now = `${c.state} ${c.currentTime.toFixed(3)}`;
+      if (now !== last) w.ctxTrace.push(`${ms}ms ${now}`);
+      last = now;
+      if (ms > 1500) clearInterval(id);
+    }, 50);
+  });
   await page.locator('#play').click();
   await page.waitForTimeout(1500);
   const r = await page.evaluate(async () => {
@@ -189,8 +205,10 @@ test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it 
     const errors = f.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string; message?: string } }).error);
     return { t: f.state().currentTime, paused: f.state().paused, errors: errors.map((e) => e.details), messages: errors.map((e) => `${e.details}: ${e.message ?? ''}`) };
   });
-  // Which way the clock fell back (suspended context / frozen time), for an occasional failure.
-  if (r.errors.length > 0) ciNotice(`AudioContext resume: ${JSON.stringify(r.messages)}, ${(r.t - before).toFixed(2)} s played in 1.5 s`);
+  // Which way the clock fell back (suspended context / frozen time), for an occasional failure;
+  // the context's trace after the click either way (first 12 changes).
+  const trace = await page.evaluate(() => (window as unknown as { ctxTrace: string[] }).ctxTrace.slice(0, 12));
+  ciNotice(`AudioContext resume: ${r.errors.length > 0 ? JSON.stringify(r.messages) : 'no clock fallback'}, ${(r.t - before).toFixed(2)} s played in 1.5 s; context ${trace.join(' | ')}`);
   expect(await states()).toContain('running');
   expect(r.paused).toBe(false);
   expect(r.t - before).toBeGreaterThan(1);
@@ -236,3 +254,52 @@ test(`hevc-720p.mp4 (${build} WASM build): no HEVC in WebCodecs here, so the rou
   ciNotice(`hevc-720p.mp4 via ${loaded.route?.backend} (${wasm.build}, crossOriginIsolated ${wasm.crossOriginIsolated}): 5 seeks frame-exact, slowest ${Math.round(Math.max(...times))} ms, ${video?.frames} frames in worker ${video?.worker}, ${Math.round(video?.busyMs ?? 0)} ms decoding`);
 });
 }
+
+// Diagnostics while locating an occasional audioClockUnavailable after an idle resume on WebKit
+// ("AudioContext time frozen for 0.5 s", ADR-008 §2): five suspend / resume cycles, each traced
+// (state and currentTime every 50 ms after the click). Records only; removed once located.
+test('diagnostics: AudioContext after five idle resumes (WebKit)', async ({ page, browserName }) => {
+  test.skip(browserName !== 'webkit', 'the occasional failure is on WebKit');
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    const Native = window.AudioContext;
+    const made: AudioContext[] = [];
+    (window as unknown as { contexts: AudioContext[] }).contexts = made;
+    window.AudioContext = class extends Native {
+      constructor(options?: AudioContextOptions) {
+        super(options);
+        made.push(this);
+      }
+    };
+  });
+  await page.goto('/webcodecs.html');
+  await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).load('h264.mp4', 1));
+  await page.locator('#play').click();
+  await page.waitForTimeout(2000);
+  for (let k = 0; k < 5; k++) {
+    await page.locator('#play').click();
+    await page.waitForTimeout(6000);
+    await page.evaluate(() => {
+      const w = window as unknown as { contexts: AudioContext[]; ctxTrace: string[] };
+      const c = w.contexts[0] as AudioContext;
+      const t0 = performance.now();
+      w.ctxTrace = [`before ${c.state} ${c.currentTime.toFixed(3)}`];
+      let last = '';
+      const id = setInterval(() => {
+        const ms = Math.round(performance.now() - t0);
+        const now = `${c.state} ${c.currentTime.toFixed(3)}`;
+        if (now !== last) w.ctxTrace.push(`${ms}ms ${now}`);
+        last = now;
+        if (ms > 2000) clearInterval(id);
+      }, 50);
+    });
+    await page.locator('#play').click();
+    await page.waitForTimeout(2100);
+    const r = await page.evaluate(async () => {
+      const f = await (window.wc as Promise<WebCodecsFixture>);
+      const errors = f.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string; message?: string } }).error);
+      return { trace: (window as unknown as { ctxTrace: string[] }).ctxTrace.slice(0, 10), errors: errors.map((e) => `${e.details}: ${e.message ?? ''}`) };
+    });
+    ciNotice(`AudioContext resume diag ${k + 1}/5: errors ${JSON.stringify(r.errors)}; context ${r.trace.join(' | ')}`);
+  }
+});
