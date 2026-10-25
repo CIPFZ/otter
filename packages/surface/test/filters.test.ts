@@ -38,7 +38,7 @@ describe('filter passes (clamped after each, like the compositors)', () => {
     expect(colorPasses({ ...NEUTRAL_FILTERS, brightness: 1.3, saturate: 1.6 })).toHaveLength(2);
     expect(colorPasses({ ...NEUTRAL_FILTERS, brightness: 1.3, contrast: 0.8, saturate: 1.6, temperature: 0.2 })).toEqual([colorMatrix({ ...NEUTRAL_FILTERS, brightness: 1.3, contrast: 0.8, saturate: 1.6, temperature: 0.2 })]);
     // brightness 1.3 clips a bright red before contrast: the composed matrix would not.
-    const [b, c] = colorPasses({ ...NEUTRAL_FILTERS, brightness: 1.3, contrast: 0.8 }) as [readonly number[], readonly number[]];
+    const [b, c] = colorPasses({ ...NEUTRAL_FILTERS, brightness: 1.3, contrast: 0.8 }) as unknown as [readonly number[], readonly number[]];
     const clip = (x: number[]) => x.map((v) => Math.min(1, Math.max(0, v)));
     const passed = clip(apply(c, clip(apply(b, [0.9, 0.1, 0.1])) as [number, number, number]));
     expect(passed[0]).toBeCloseTo(0.9);
