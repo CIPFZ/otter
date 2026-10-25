@@ -76,13 +76,29 @@ test('live DVR: window on the slider, distance behind live checked against the p
   // Drag to the start of the window: about window-length behind, still checked against the picture.
   await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('pause', undefined));
   const slider = page.locator('otter-time-slider').locator('input');
+  // WebKit fires `seeked` before a paused element shows (and drawImage reads) the new frame
+  // (RESEARCH §1): wait for the presented frame, as the surfaces fixture does.
+  await page.evaluate(() => {
+    const v = document.querySelector('video') as HTMLVideoElement;
+    (window as unknown as { presented: Promise<void> }).presented = new Promise<void>((resolve) => {
+      v.addEventListener(
+        'seeked',
+        () => {
+          const shown = typeof v.requestVideoFrameCallback === 'function' ? new Promise<void>((r) => v.requestVideoFrameCallback(() => r())) : Promise.resolve();
+          void Promise.race([shown, new Promise((r) => setTimeout(r, 1000))]).then(() => resolve());
+        },
+        { once: true },
+      );
+    });
+  });
   await slider.evaluate((el: HTMLInputElement) => {
     el.value = String(Number(el.min) + 1);
     el.dispatchEvent(new Event('input'));
     el.dispatchEvent(new Event('change'));
   });
   await expect.poll(async () => (await state(page)).latency as number, { timeout: 10_000 }).toBeGreaterThan(9);
-  await page.waitForTimeout(500);
+  await page.evaluate(() => (window as unknown as { presented: Promise<void> }).presented);
+  await page.waitForTimeout(300);
   {
     const { shown, wall } = await shownAndWall(page);
     checks.push(`after the drag ${shown} / ${wall.toFixed(2)}`);

@@ -43,7 +43,26 @@ for (const engine of ['otter', 'hlsjs'] as const) {
   test(`${engine === 'otter' ? 'own engine' : 'hls.js'}: decodingInfo per codec family in router.explain(), the best-ranked family offered plays`, async ({ page }) => {
     await page.goto(`/player.html?idle=0${engine === 'hlsjs' ? '&hls=hlsjs' : ''}`);
     await loadCodecs(page);
-    await expect.poll(async () => (await otter(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(1);
+    try {
+      await expect.poll(async () => (await otter(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(1);
+    } catch (err) {
+      // For engines we cannot run locally (WebKit): what was chosen and where playback stands.
+      const d = await page.evaluate(async () => {
+        const o = (await window.otter) as OtterFixture;
+        const s = o.state();
+        const v = document.querySelector('video') as HTMLVideoElement;
+        return {
+          codec: s.codec,
+          steps: s.route?.steps.filter((x) => x.candidate.startsWith('codec ')).map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`),
+          tracks: s.tracks.video.map((t) => t.codec),
+          error: s.error?.details ?? null,
+          errors: o.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string; message?: string } }).error).map((e) => `${e.details}: ${e.message ?? ''}`),
+          video: { readyState: v.readyState, paused: v.paused, t: v.currentTime, w: v.videoWidth, buffered: Array.from({ length: v.buffered.length }, (_, i) => `${v.buffered.start(i).toFixed(2)}-${v.buffered.end(i).toFixed(2)}`) },
+        };
+      });
+      ciNotice(`codecs (${engine}) stalled: ${JSON.stringify(d)}`);
+      throw err;
+    }
     // What the page itself measures, the way the session probes (decodingInfo and isTypeSupported).
     const measured = await page.evaluate(async (probes) => {
       const out: Record<string, { supported: boolean; smooth: boolean; powerEfficient: boolean }> = {};

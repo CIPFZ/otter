@@ -125,7 +125,7 @@ jobs:
         # A step shows at most 10 notices (the measurements first): all of them also go to the job summary.
         run: |
           if [ -f test-results/ci-notices.txt ]; then
-            KEY='AudioContext resume|surfaces|dvr'
+            KEY='codecs \(|AudioContext resume|surfaces|dvr'
             { grep -E "$KEY" test-results/ci-notices.txt || true; grep -vE "$KEY" test-results/ci-notices.txt || true; } | sed 's/^/::notice title=e2e::/'
             { echo '### e2e notices'; echo '```'; cat test-results/ci-notices.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
