@@ -146,6 +146,25 @@ describe('Shaka adapter', () => {
     expect(p.calls.slice(before)).not.toContain('select:1');
   });
 
+  it('a reload on the same element attaches only after the previous player finished detaching', async () => {
+    const media = {} as HTMLMediaElement;
+    const first = createShakaEngine(ctx({ media }));
+    await first.load();
+    const p1 = FakePlayer.instances.at(-1) as FakePlayer;
+    let finish: () => void = () => undefined;
+    p1.destroy = () => new Promise<void>((r) => (finish = r));
+    first.destroy();
+    const second = createShakaEngine(ctx({ media }));
+    const loading = second.load();
+    await vi.waitFor(() => expect(FakePlayer.instances.at(-1)).not.toBe(p1));
+    const p2 = FakePlayer.instances.at(-1) as FakePlayer;
+    await new Promise((r) => setTimeout(r, 10));
+    expect(p2.calls).not.toContain('attach');
+    finish();
+    await loading;
+    expect(p2.calls.slice(0, 2)).toEqual(['attach', 'load:https://e.test/a.mpd@3']);
+  });
+
   it('maps Shaka errors and rejects load with them', async () => {
     expect(mapShakaError({ severity: 2, category: 6, code: 6007 })).toMatchObject({ type: 'drm', details: 'shaka6007', fatal: true });
     expect(mapShakaError({ severity: 1, category: 1, code: 1001 })).toMatchObject({ type: 'network', fatal: false, recoverable: true });

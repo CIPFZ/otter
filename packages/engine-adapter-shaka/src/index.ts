@@ -126,6 +126,13 @@ export function mapShakaTracks(variants: readonly ShakaTrack[], textTracks: read
   };
 }
 
+/**
+ * Shaka's destroy() is asynchronous and detaches the element at its end (src removed, load()):
+ * a new player attached meanwhile (a reload on the same element) would lose its MediaSource,
+ * which ManagedMediaSource never reopens (WebKit). Per element, the last pending destroy.
+ */
+const detaching = new WeakMap<HTMLMediaElement, Promise<unknown>>();
+
 export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOptions = {}): Engine {
   const bus = createEventBus<EngineEvents>();
   let player: ShakaPlayer | undefined;
@@ -281,6 +288,9 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
         });
       }
 
+      // A previous player on this element finishes detaching first.
+      await detaching.get(ctx.media)?.catch(() => undefined);
+      if (destroyed) return;
       await p.attach(ctx.media);
       try {
         await p.load(src, ctx.options.startTime ?? null, ctx.source.type ?? null);
@@ -341,7 +351,10 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
     destroy() {
       destroyed = true;
       bus.clear();
-      void player?.destroy();
+      if (player !== undefined) {
+        const done = player.destroy().catch(() => undefined);
+        detaching.set(ctx.media, done);
+      }
       player = undefined;
     },
   };
