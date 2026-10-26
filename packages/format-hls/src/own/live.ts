@@ -29,12 +29,23 @@ export interface LiveHooks {
 }
 
 export interface Live {
+  /** `fresh`'s segments moved onto `ref`'s timeline (a rendition loaded for the first time while live). */
+  align(fresh: ResolvedTrack, ref: ResolvedTrack | undefined): ResolvedTrack;
   /** Playlist time to start at: HOLD-BACK behind the edge, inside the window. */
   readonly startAt: number;
   readonly latency: number | undefined;
   readonly targetLatency: number;
   seekToLive(): void;
   destroy(): void;
+}
+
+/** `fresh`'s segments moved onto `ref`'s timeline by a segment both have (same media sequence id). */
+function align(fresh: ResolvedTrack, ref: ResolvedTrack | undefined): ResolvedTrack {
+  if (ref === undefined) return fresh;
+  const byId = new Map(ref.segments.map((s) => [s.id, s.startTime]));
+  const common = fresh.segments.find((s) => byId.has(s.id));
+  const shift = common === undefined ? (ref.segments[0]?.startTime ?? 0) - (fresh.segments[0]?.startTime ?? 0) : (byId.get(common.id) as number) - common.startTime;
+  return shift === 0 ? fresh : { ...fresh, segments: fresh.segments.map((s) => ({ ...s, startTime: s.startTime + shift })) };
 }
 
 const ranges = (t: TimeRanges): [number, number][] => Array.from({ length: t.length }, (_, i) => [t.start(i), t.end(i)]);
@@ -126,6 +137,7 @@ export function startLive(h: LiveHooks): Live {
   tick(mediaPlaylistReloadDelay(first, undefined) ?? 2000);
 
   return {
+    align,
     startAt,
     get latency() {
       const e = edge();

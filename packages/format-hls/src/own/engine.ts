@@ -128,15 +128,6 @@ const lastEnd = (t: ResolvedTrack): number => {
   return last === undefined ? 0 : segEnd(last);
 };
 
-/** `fresh`'s segments moved onto `ref`'s timeline by a segment both have (same media sequence id). */
-function align(fresh: ResolvedTrack, ref: ResolvedTrack | undefined): ResolvedTrack {
-  if (ref === undefined) return fresh;
-  const byId = new Map(ref.segments.map((s) => [s.id, s.startTime]));
-  const common = fresh.segments.find((s) => byId.has(s.id));
-  const shift = common === undefined ? (ref.segments[0]?.startTime ?? 0) - (fresh.segments[0]?.startTime ?? 0) : (byId.get(common.id) as number) - common.startTime;
-  return shift === 0 ? fresh : { ...fresh, segments: fresh.segments.map((s) => ({ ...s, startTime: s.startTime + shift })) };
-}
-
 export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOptions, core: CoreHelpers): Engine & { seekToLive(): void } {
   const { createError, createEventBus, isOtterError } = core;
   const fatal = (type: OtterError['type'], details: string, message: string, cause?: unknown): OtterError =>
@@ -216,7 +207,8 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     // A reload of the same rendition carries SPF's own timeline forward; another rendition is
     // aligned to the playing one by media sequence.
     const parsed = parseMediaPlaylist(text, (prev ?? partial) as Partial) as ResolvedTrack;
-    const track = prev === undefined && isLive ? align(parsed, ref) : parsed;
+    // Live only, from the live chunk (the first renditions are the reference: nothing to align yet).
+    const track = prev === undefined && isLive && live !== undefined ? live.align(parsed, ref) : parsed;
     resolved.set(partial.id, track);
     return track;
   };
@@ -282,20 +274,26 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
 
   // --- lanes -----------------------------------------------------------------------------------
 
-  const appendInit = async (lane: Lane, run: number): Promise<boolean> => {
-    const init = lane.track.initialization;
-    if (init === undefined || init.url === '') throw unsupported('no EXT-X-MAP');
-    const key = `${init.url}#${init.byteRange?.start ?? ''}`;
-    if (lane.initKey !== key || lane.init === undefined) {
-      const { data } = await get(init, 'init');
-      if (run !== epoch) return false;
-      lane.init = new Uint8Array(data);
-      lane.initKey = key;
-      const info = findMediaTrack(data, lane.type === 'video' && lane.track.type === 'video' ? 'vide' : 'soun');
-      lane.timing = info;
+  /**
+   * Init segments of `batch` into the sink together. Until the first media append that is every
+   * lane: a separate audio rendition's SourceBuffer must exist before any video data (Chromium
+   * refuses addSourceBuffer after that).
+   */
+  const appendInit = async (batch: Lane[], run: number): Promise<boolean> => {
+    for (const lane of batch) {
+      lane.needsInit = false;
+      const init = lane.track.initialization;
+      if (init === undefined || init.url === '') throw unsupported('no EXT-X-MAP');
+      const key = `${init.url}#${init.byteRange?.start ?? ''}`;
+      if (lane.initKey !== key || lane.init === undefined) {
+        const { data } = await get(init, 'init');
+        if (run !== epoch) return false;
+        lane.init = new Uint8Array(data);
+        lane.initKey = key;
+        lane.timing = findMediaTrack(data, lane.type === 'video' && lane.track.type === 'video' ? 'vide' : 'soun');
+      }
     }
-    await (sink as MseSink).init([{ type: lane.type, mimeType: buildMimeCodec(lane.track), data: lane.init }]);
-    lane.needsInit = false;
+    await (sink as MseSink).init(batch.map((lane) => ({ type: lane.type, mimeType: buildMimeCodec(lane.track), data: lane.init as Uint8Array })));
     return true;
   };
 
@@ -351,7 +349,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       }
       return false;
     }
-    if (lane.needsInit && !(await appendInit(lane, run))) return true;
+    if (lane.needsInit && !(await appendInit(offset === undefined ? lanes : [lane], run))) return true;
     const kind: CmcdObjectKind = lane.type === 'audio' ? 'audio' : lane.track.codecs !== undefined && lane.track.codecs.length > 1 ? 'muxed' : 'video';
     const { data, ms, ttfbMs } = await get(next, kind, { durationS: next.duration, bitrateBps: lane.track.bandwidth }, lane.type === 'video' && requested === undefined ? lane.index : undefined);
     if (run !== epoch) return true;
