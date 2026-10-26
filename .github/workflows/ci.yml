@@ -114,7 +114,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps ${{ matrix.browsers }}
       # Public streams (@network) are not deterministic; they run in network-nightly.
-      - run: pnpm e2e ${{ matrix.projects }} --grep-invert "@network|@bench"
+      - run: pnpm e2e ${{ matrix.projects }} --grep-invert "@network|@bench|@solo"
+      # Frame-timing checks (danmaku mask alignment) with the runner to themselves.
+      - run: pnpm e2e ${{ matrix.projects }} --grep @solo --workers=1
       # Benchmarks need the runner to themselves (one worker); they skip, with a notice, where the
       # runner is too small (e2e/multiview.spec.ts: 8+ cores).
       - if: matrix.name == 'chromium + firefox'

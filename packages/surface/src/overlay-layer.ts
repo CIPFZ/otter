@@ -13,6 +13,39 @@ export interface OverlayLayerOptions<S extends object, A extends object> {
   readonly store: StoreView<S, A>;
   /** Media clock for ticks, seconds (the shell reads it from the backend element). */
   readonly mediaTime: () => number;
+  /** Media time of the picture on screen, seconds (`trackFrameTime`), for frame-exact overlays (masks). */
+  readonly frameTime?: () => number | undefined;
+}
+
+/**
+ * Media time of the frame `video` presents, from requestVideoFrameCallback (`mediaTime`), carried
+ * on by the time since that frame was due on screen while playing (a callback can come late on a
+ * loaded page; the video itself is composited on time). Where the callback is missing, its
+ * currentTime. For OverlayLayerOptions.frameTime.
+ */
+export function trackFrameTime(video: HTMLVideoElement): { time(): number; stop(): void } {
+  let presented: number | undefined;
+  let due = 0;
+  let handle = 0;
+  const rvfc = typeof video.requestVideoFrameCallback === 'function';
+  const on = (_now: number, meta: { mediaTime: number; expectedDisplayTime: number }): void => {
+    presented = meta.mediaTime;
+    due = meta.expectedDisplayTime;
+    handle = video.requestVideoFrameCallback(on);
+  };
+  if (rvfc) handle = video.requestVideoFrameCallback(on);
+  return {
+    time: () => {
+      const ct = video.currentTime;
+      // None yet, or far from the element's clock (a seek before its frame is presented).
+      if (presented === undefined || Math.abs(presented - ct) >= 0.5) return ct;
+      if (video.paused) return presented;
+      return Math.min(ct + 0.05, presented + (Math.max(0, performance.now() - due) / 1000) * video.playbackRate);
+    },
+    stop: () => {
+      if (rvfc) video.cancelVideoFrameCallback(handle);
+    },
+  };
 }
 
 export interface OverlayLayer {
@@ -27,7 +60,7 @@ export interface OverlayLayer {
 const NO_INSETS: Insets = { top: 0, right: 0, bottom: 0, left: 0 };
 
 export function createOverlayLayer<S extends object, A extends object>(options: OverlayLayerOptions<S, A>): OverlayLayer {
-  const { container, surface, store, mediaTime } = options;
+  const { container, surface, store, mediaTime, frameTime } = options;
   const doc = container.ownerDocument;
   const win = doc.defaultView;
   const element = doc.createElement('div');
@@ -44,7 +77,8 @@ export function createOverlayLayer<S extends object, A extends object>(options: 
   const loop = (now: number): void => {
     frame = win?.requestAnimationFrame(loop);
     const t = mediaTime();
-    for (const overlay of mounted.keys()) overlay.tick?.(now, t);
+    const f = frameTime?.();
+    for (const overlay of mounted.keys()) overlay.tick?.(now, t, f);
   };
   const start = (): void => {
     if (frame === undefined && win !== null && mounted.size > 0) frame = win.requestAnimationFrame(loop);

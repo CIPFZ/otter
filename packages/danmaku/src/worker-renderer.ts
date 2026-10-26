@@ -6,6 +6,13 @@
 import type { Comment, DanmakuRenderer } from './renderer.js';
 import type { WorkerAdd, WorkerMessage } from './worker.js';
 
+/** A transferable copy of an OffscreenCanvas mask (its own content stays for reuse). */
+function copyBitmap(c: OffscreenCanvas): ImageBitmap {
+  const copy = new OffscreenCanvas(c.width, c.height);
+  (copy.getContext('2d') as OffscreenCanvasRenderingContext2D).drawImage(c, 0, 0);
+  return copy.transferToImageBitmap();
+}
+
 export function createWorkerRenderer(doc: Document, onError: (reason: string) => void): DanmakuRenderer | undefined {
   const canvas = doc.createElement('canvas');
   if (typeof canvas.transferControlToOffscreen !== 'function' || typeof Worker !== 'function') return undefined;
@@ -17,14 +24,27 @@ export function createWorkerRenderer(doc: Document, onError: (reason: string) =>
   let busy = false;
   let add: WorkerAdd[] = [];
   let remove: number[] = [];
+  let maskVersion = -1;
+  /** When each frame in flight was posted (the Worker answers in order). */
+  const posted: number[] = [];
+  /** Round trip post -> drawn: smoothed, up at once on a slower one. */
+  let roundTrip = 16;
   worker.onmessage = (e: MessageEvent<{ t: string; reason?: string }>) => {
-    if (e.data.t === 'drawn') busy = false;
+    if (e.data.t === 'drawn') {
+      busy = false;
+      const rt = performance.now() - (posted.shift() ?? performance.now());
+      roundTrip = rt > roundTrip ? rt : roundTrip + (rt - roundTrip) * 0.1;
+    }
     else if (e.data.t === 'error') onError(e.data.reason ?? 'Worker failed');
   };
   worker.onerror = () => onError('Worker failed to start');
   return {
     kind: 'worker',
     element: canvas,
+    // The round trip, then one more display frame until the Worker canvas is composited (measured).
+    get latencyMs() {
+      return roundTrip + 16.7;
+    },
     resize(width, height, dpr) {
       post({ t: 'resize', width, height, dpr });
     },
@@ -36,8 +56,9 @@ export function createWorkerRenderer(doc: Document, onError: (reason: string) =>
       if (c.sprite === true) remove.push(c.index);
       c.sprite = undefined;
     },
-    draw(running) {
-      if (busy && add.length === 0 && remove.length === 0) return;
+    draw(running, mask) {
+      const v = mask?.version ?? -1;
+      if (busy && add.length === 0 && remove.length === 0 && v === maskVersion) return;
       const items = new Float32Array(running.length * 3);
       running.forEach((c, i) => {
         items[i * 3] = c.index;
@@ -45,7 +66,15 @@ export function createWorkerRenderer(doc: Document, onError: (reason: string) =>
         items[i * 3 + 2] = c.y;
       });
       busy = true;
-      post({ t: 'frame', add, remove, items, count: running.length }, [items.buffer]);
+      posted.push(performance.now());
+      // A changed mask goes over as a bitmap (a copy of the mask canvas, transferred).
+      let bitmap: ImageBitmap | null | undefined;
+      if (v !== maskVersion) {
+        maskVersion = v;
+        const c = mask?.canvas;
+        bitmap = c === undefined ? null : 'transferToImageBitmap' in c ? copyBitmap(c) : null;
+      }
+      post({ t: 'frame', add, remove, items, count: running.length, ...(bitmap === undefined ? {} : { mask: bitmap }) }, bitmap ? [items.buffer, bitmap] : [items.buffer]);
       add = [];
       remove = [];
     },

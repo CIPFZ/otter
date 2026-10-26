@@ -28,7 +28,7 @@ const isExternal = (id: string): boolean =>
 
 /**
  * dist keeps tsc's .d.ts (emptyOutDir: false), so old hashed chunks would pile up and be counted by
- * the size report. Drop previous JS output before each build.
+ * the size report. Drop previous JS output (and the hashed Worker scripts in assets/) before each build.
  */
 const cleanJs = {
   name: 'otter-clean-js',
@@ -36,6 +36,9 @@ const cleanJs = {
     const dist = resolve(pkgDir, 'dist');
     if (!existsSync(dist)) return;
     for (const f of readdirSync(dist)) if (/\.(js|js\.map)$/.test(f)) rmSync(resolve(dist, f));
+    // Worker scripts (`new Worker(new URL(...))`) are emitted, hashed, under assets/.
+    const assets = resolve(dist, 'assets');
+    if (existsSync(assets)) for (const f of readdirSync(assets)) if (/\.(js|js\.map)$/.test(f)) rmSync(resolve(assets, f));
   },
 };
 

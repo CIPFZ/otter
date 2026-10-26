@@ -3,17 +3,17 @@
   "windowS": 20,
   "frames": 1200,
   "drawn": 1201,
-  "p50": 17.07999999999811,
-  "p95": 17.100000000000364,
-  "max": 17.279999999998836,
+  "p50": 17.040000000000873,
+  "p95": 17.11999999999898,
+  "max": 17.56000000000131,
   "gapsOver50": 0,
   "longTasks": null,
   "longestTask": 0,
   "onStage": 133,
-  "peakOnStage": 152,
+  "peakOnStage": 151,
   "renderer": "canvas2d",
   "cost": {
     "p50": 2,
-    "p95": 3
+    "p95": 4
   }
 }

@@ -46,6 +46,8 @@ export interface DanmakuStatus {
   /** The renderer drawing now, and why it was chosen (ADR-012). */
   readonly renderer: string | null;
   readonly reason: string | null;
+  /** The mask in use ('svg: 900 frames', 'webm: 30 fps'), why there is none, or null. */
+  readonly mask: string | null;
   /** Renderer decisions, oldest first (last 20), in router.explain()'s step shape. */
   readonly steps: readonly { readonly candidate: string; readonly outcome: 'selected' | 'rejected' | 'failed'; readonly reason: string }[];
 }
@@ -57,7 +59,7 @@ export interface DanmakuState {
 
 export const INITIAL_DANMAKU_STATE: DanmakuState = {
   danmaku: DEFAULT_DANMAKU,
-  danmakuStatus: { status: 'idle', count: 0, skipped: 0, renderer: null, reason: null, steps: [] },
+  danmakuStatus: { status: 'idle', count: 0, skipped: 0, renderer: null, reason: null, mask: null, steps: [] },
 };
 
 /** A comment as given to the engine (parsed lists, `send-danmaku`, the host). */
@@ -82,6 +84,12 @@ export interface DanmakuActionMap {
   /** The viewer's comment at the current media time (shown at once, marked as own). */
   'send-danmaku': { readonly text: string; readonly mode?: Mode; readonly color?: number };
   'clear-danmaku': Record<string, never>;
+  /**
+   * A mask over the picture (ADR-012 §6): per-frame SVG (`frames`, or JSON {frames} at `url`), or a
+   * WebM with alpha at `url` (`fps`, default 30). Comments are erased where the subject is.
+   */
+  'load-danmaku-mask': { readonly kind: 'svg' | 'webm'; readonly url?: string; readonly frames?: readonly { readonly time: number; readonly svg: string }[]; readonly fps?: number };
+  'clear-danmaku-mask': Record<string, never>;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));

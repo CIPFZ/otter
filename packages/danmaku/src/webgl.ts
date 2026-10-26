@@ -12,6 +12,7 @@ export function createWebGlRenderer(doc: Document, paintText: typeof PaintText):
   if (stage === undefined) return undefined;
   let dpr = 1;
   let items = new Float32Array(3 * 256);
+  let maskVersion = -1;
   return {
     kind: 'webgl',
     element: canvas,
@@ -20,17 +21,18 @@ export function createWebGlRenderer(doc: Document, paintText: typeof PaintText):
       stage.resize(Math.round(w * ratio), Math.round(h * ratio));
     },
     prepare(c: Comment) {
-      const sprite = doc.createElement('canvas');
-      sprite.width = Math.max(1, Math.ceil(c.width * dpr));
-      sprite.height = Math.max(1, Math.ceil(c.height * dpr));
-      paintText(sprite.getContext('2d') as CanvasRenderingContext2D, c, 0, 0, dpr);
-      c.sprite = stage.add(c.index, sprite);
+      c.sprite = stage.paint(c.index, Math.max(1, Math.ceil(c.width * dpr)), Math.max(1, Math.ceil(c.height * dpr)), (ctx) => paintText(ctx, c, 0, 0, dpr));
     },
     release(c: Comment) {
       if (c.sprite === true) stage.remove(c.index);
       c.sprite = undefined;
     },
-    draw(running) {
+    draw(running, mask) {
+      const v = mask?.version ?? -1;
+      if (v !== maskVersion) {
+        maskVersion = v;
+        stage.setMask(mask?.canvas ?? null);
+      }
       if (items.length < running.length * 3) items = new Float32Array(Math.ceil(running.length * 1.5) * 3);
       running.forEach((c, i) => {
         items[i * 3] = c.index;

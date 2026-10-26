@@ -15,10 +15,15 @@ void main() {
 const FRAGMENT = `#version 300 es
 precision mediump float;
 uniform sampler2D u_atlas;
+uniform sampler2D u_mask;
+uniform int u_masked;
+uniform highp vec2 u_size;
 in vec2 v_uv;
 out vec4 o;
 void main() {
   o = texture(u_atlas, v_uv);
+  // The mask covers the stage; its alpha is the subject: comments erased there.
+  if (u_masked == 1) o *= 1.0 - texture(u_mask, vec2(gl_FragCoord.x / u_size.x, 1.0 - gl_FragCoord.y / u_size.y)).a;
 }`;
 
 interface Slot {
@@ -26,6 +31,9 @@ interface Slot {
   readonly x: number;
   readonly w: number;
   readonly h: number;
+  /** Size drawn on the stage (device px): the sprite's, also when it was scaled down to fit the atlas. */
+  dw: number;
+  dh: number;
 }
 
 interface Row {
@@ -38,14 +46,25 @@ interface Row {
 /** A picture source the atlas can take (a canvas of either kind). */
 export type SpriteSource = HTMLCanvasElement | OffscreenCanvas;
 
+/** A mask picture for the stage (alpha = erase). */
+export type MaskSourceImage = HTMLCanvasElement | OffscreenCanvas | ImageBitmap;
+
 export interface GlStage {
   /** Device px. */
   resize(width: number, height: number): void;
   /** Packs `sprite` (device px) under `id`; false when the atlas is full (the comment is not drawn). */
   add(id: number, sprite: SpriteSource): boolean;
+  /**
+   * Rasterises `paint` into a `width` x `height` (device px) picture and packs it under `id`, like
+   * `add`. Painted on one CPU-backed scratch canvas and uploaded as pixels: WebKit reads a
+   * GPU-backed canvas back for every texture upload (a new canvas per comment cost several ms).
+   */
+  paint(id: number, width: number, height: number, paint: (ctx: OffscreenCanvasRenderingContext2D) => void): boolean;
   remove(id: number): void;
   /** One frame: [id, x, y] triples in device px (ids not in the atlas are skipped). */
   draw(items: ArrayLike<number>, count: number): void;
+  /** The mask for the next frames (uploaded once per call), or none. */
+  setMask(mask: MaskSourceImage | null): void;
   readonly atlasSize: number;
   destroy(): void;
 }
@@ -86,8 +105,21 @@ export function createGlStage(canvas: HTMLCanvasElement | OffscreenCanvas): GlSt
   gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 16, 0);
   gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 16, 8);
   const uSize = gl.getUniformLocation(program, 'u_size');
+  gl.uniform1i(gl.getUniformLocation(program, 'u_atlas'), 0);
+  gl.uniform1i(gl.getUniformLocation(program, 'u_mask'), 1);
+  const uMasked = gl.getUniformLocation(program, 'u_masked');
+  const maskTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, maskTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+  let scratch: OffscreenCanvasRenderingContext2D | undefined;
 
   const rows: Row[] = [];
   const slots = new Map<number, Slot>();
@@ -99,7 +131,7 @@ export function createGlStage(canvas: HTMLCanvasElement | OffscreenCanvas): GlSt
       if (row.h !== rh) continue;
       if (row.live === 0) row.cursor = 0;
       if (row.cursor + w <= size) {
-        const slot = { row, x: row.cursor, w, h };
+        const slot = { row, x: row.cursor, w, h, dw: w, dh: h };
         row.cursor += w;
         row.live++;
         return slot;
@@ -115,10 +147,10 @@ export function createGlStage(canvas: HTMLCanvasElement | OffscreenCanvas): GlSt
     }
     row.cursor = w;
     row.live = 1;
-    return { row, x: 0, w, h };
+    return { row, x: 0, w, h, dw: w, dh: h };
   };
 
-  return {
+  const stage: GlStage = {
     atlasSize: size,
     resize(w, h) {
       canvas.width = Math.max(1, w);
@@ -126,11 +158,49 @@ export function createGlStage(canvas: HTMLCanvasElement | OffscreenCanvas): GlSt
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.uniform2f(uSize, canvas.width, canvas.height);
     },
+    setMask(mask) {
+      gl.uniform1i(uMasked, mask === null ? 0 : 1);
+      if (mask === null) return;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, mask);
+      gl.activeTexture(gl.TEXTURE0);
+    },
     add(id, sprite) {
-      const slot = place(sprite.width, sprite.height);
+      // Wider than the atlas (a long comment on a high-density screen): kept at a lower
+      // resolution, drawn at its full size.
+      let source: SpriteSource = sprite;
+      if (sprite.width > size) {
+        const k = size / sprite.width;
+        const small = new OffscreenCanvas(size, Math.max(1, Math.round(sprite.height * k)));
+        (small.getContext('2d') as OffscreenCanvasRenderingContext2D).drawImage(sprite, 0, 0, small.width, small.height);
+        source = small;
+      }
+      const slot = place(source.width, source.height);
+      if (slot === undefined) return false;
+      slot.dw = sprite.width;
+      slot.dh = sprite.height;
+      slots.set(id, slot);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, slot.x, slot.row.y, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      return true;
+    },
+    paint(id, width, height, paint) {
+      if (width > size) {
+        const big = new OffscreenCanvas(width, height);
+        paint(big.getContext('2d') as OffscreenCanvasRenderingContext2D);
+        return stage.add(id, big);
+      }
+      if (scratch === undefined || scratch.canvas.width < width || scratch.canvas.height < height) {
+        const c = new OffscreenCanvas(Math.max(width, scratch?.canvas.width ?? 512), Math.max(height, scratch?.canvas.height ?? 64));
+        scratch = c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
+      }
+      scratch.clearRect(0, 0, width, height);
+      scratch.save();
+      paint(scratch);
+      scratch.restore();
+      const slot = place(width, height);
       if (slot === undefined) return false;
       slots.set(id, slot);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, slot.x, slot.row.y, gl.RGBA, gl.UNSIGNED_BYTE, sprite);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, slot.x, slot.row.y, gl.RGBA, gl.UNSIGNED_BYTE, scratch.getImageData(0, 0, width, height));
       return true;
     },
     remove(id) {
@@ -149,8 +219,8 @@ export function createGlStage(canvas: HTMLCanvasElement | OffscreenCanvas): GlSt
         if (slot === undefined) continue;
         const x0 = items[i * 3 + 1] as number;
         const y0 = items[i * 3 + 2] as number;
-        const x1 = x0 + slot.w;
-        const y1 = y0 + slot.h;
+        const x1 = x0 + slot.dw;
+        const y1 = y0 + slot.dh;
         const u0 = slot.x / size;
         const v0 = slot.row.y / size;
         const u1 = (slot.x + slot.w) / size;
@@ -165,9 +235,11 @@ export function createGlStage(canvas: HTMLCanvasElement | OffscreenCanvas): GlSt
     destroy() {
       slots.clear();
       gl.deleteTexture(tex);
+      gl.deleteTexture(maskTex);
       gl.deleteBuffer(buf);
       gl.deleteProgram(program);
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     },
   };
+  return stage;
 }

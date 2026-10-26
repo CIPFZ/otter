@@ -2,6 +2,7 @@
 // where; a renderer turns them into pixels. Canvas 2D is in the main chunk; WebGL (a text atlas,
 // one draw call) and its OffscreenCanvas Worker variant are on-demand chunks.
 
+import type { MaskFrame } from './mask.js';
 import type { Placed } from './vendor/danmaku/frame.js';
 
 /** A comment on its way through the engine. */
@@ -23,6 +24,11 @@ export interface Comment extends Placed {
 
 export interface DanmakuRenderer {
   readonly kind: string;
+  /**
+   * ms from draw() to the picture on screen beyond the usual frame (the Worker: its round trip and
+   * its own frame); the engine draws that far ahead while playing, so masks keep to their frame.
+   */
+  readonly latencyMs?: number;
   /** The element on the stage (positioned by the engine over the picture). */
   readonly element: HTMLElement;
   /** CSS px and device-pixel ratio of the stage. */
@@ -30,8 +36,8 @@ export interface DanmakuRenderer {
   /** Builds the comment's text picture (its width / height are already measured). */
   prepare(c: Comment): void;
   release(c: Comment): void;
-  /** One frame: exactly these comments at their x / y (CSS px). */
-  draw(running: readonly Comment[]): void;
+  /** One frame: exactly these comments at their x / y (CSS px), erased under `mask`'s alpha. */
+  draw(running: readonly Comment[], mask?: MaskFrame): void;
   destroy(): void;
 }
 
@@ -96,13 +102,17 @@ export function createCanvasRenderer(doc: Document): DanmakuRenderer {
     release(c) {
       c.sprite = undefined;
     },
-    draw(running) {
+    draw(running, mask) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       for (const c of running) {
         if (c.x > cssW || c.x + c.width < 0 || c.y > cssH) continue;
         // Whole device pixels: no resampling blur on the text.
         ctx.drawImage(c.sprite as HTMLCanvasElement, Math.round(c.x * dpr), Math.round(c.y * dpr));
       }
+      if (mask === undefined) return;
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.drawImage(mask.canvas, 0, 0, canvas.width, canvas.height);
+      ctx.globalCompositeOperation = 'source-over';
     },
     destroy() {
       canvas.remove();

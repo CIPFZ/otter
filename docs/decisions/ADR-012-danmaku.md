@@ -1,6 +1,6 @@
 # ADR-012：弹幕引擎与水印（M5 第四批）
 
-- 状态：第一、二项已实现（2026-10-26）；蒙版与水印随第三项补充
+- 状态：已实现（2026-10-26，第四批三项）
 - 日期：2026-10-26
 - 关联：`SPEC.md` §1.1、§13.2、§13.3、§19；ADR-011（M5 批次）；`REUSE.md` §4
 
@@ -51,7 +51,28 @@ M5 第四批：新包 `@otter-player/danmaku`（按需加载，首屏不变）�
 - 宿主可固定渲染器（`renderer: 'canvas2d' | 'webgl' | 'worker'`），不可用时退回 Canvas 2D 并记 `rejected`。
 - 阈值在 `src/policy.ts` 的 `POLICY` 里，单测覆盖每一条。
 
+### 6. 蒙版（防遮挡）
+
+- **输入两种**，都是逐帧的、按需块 `mask`：
+  - **SVG 帧**：`[{time, svg}]` 的 JSON，每帧一个带 `viewBox` 的 `<svg>`，主体是 `<path d>`。不用 DOM：正则取 `viewBox` 与各 `d`，直接 `new Path2D(d)` 画进 320 宽的小画布（按需，换帧才重画）。按 `time` 二分查找，留 1 ms 余量（时间常被取整到毫秒）。
+  - **WebM alpha**（VP8 / VP9 `alpha_mode=1`）：一个隐藏的 1 px `<video>`（放进文档，否则有的引擎不呈现帧），提前 2 s 逐帧 seek 到帧中点 `(n + 0.5) / fps`，画进 320 宽小画布缓存（保留身后 0.5 s）。seek 落在哪一帧以 `requestVideoFrameCallback` 的 `mediaTime` 为准：Chromium 报该帧起点（取整到毫秒，取最近帧），Firefox 报所 seek 的时间（帧中点，取 floor）；落到别的帧时那一帧记为不可达，宁可不画蒙版也不用邻帧。第一帧没有透明像素即报 `rejected`（该浏览器不解码 alpha）。需要全 I 帧或短 GOP 的文件。
+- **取哪一帧**：按**画面上正在显示的那一帧**的媒体时间（`@otter-player/surface` 的 `trackFrameTime(video)`：rVFC 的 `mediaTime` 加上自 `expectedDisplayTime` 以来的播放时间，不超过 `currentTime + 0.05`），经 `Overlay.tick(now, mediaTime, frameTime)` 传入；没有 rVFC 时用媒体时间。播放中再提前「一个显示帧 + 渲染器延迟」×倍速：本帧画的弹幕要到下一次合成才上屏，Worker 还要加上一次往返（按最近的发送时间队列量出）。
+- **擦除**：Canvas 2D 用 `destination-out` 把蒙版画在整块舞台上；WebGL 片元着色器 `o *= 1 − mask.a`（`u_size` 用 highp，移动端 mediump 不够）；Worker 收到蒙版的 ImageBitmap 副本，版本不变不重发。蒙版覆盖画面矩形（`contentRect`），与舞台同位。
+- **动作与状态**：`load-danmaku-mask {kind: 'svg' | 'webm', url | frames, fps}`、`clear-danmaku-mask`；`danmakuStatus.mask` 为 `svg: N frames` / `webm: 30 fps` / `rejected: 原因`；换片源时清掉。
+- **对齐验收**：`e2e/danmaku-mask.spec.ts`（`@solo`，单独一步、一个 worker 跑：并行套件共享软件合成器时帧会迟到，测的就不是我们了）。编号阶梯片（顶部 10 位帧号）上叠一条每帧右移 1/30 画面宽的带状蒙版（第 k 带 = 帧号 mod 30），底部铺满绿色弹幕；每张截图里读帧号与绿色缺口所在的带：暂停时必须完全一致，播放中 ≤ 1 帧。SVG × 三种渲染器、WebM × 解码 VP9 alpha 的浏览器。
+
+### 7. 水印
+
+- `@otter-player/overlay-watermark` 的 `createWatermark({mode, ...})`，两种模式，都是叠加层（z 400，在字幕与弹幕之上），挂在播放器容器里：
+  - **static**：角标（文字或图片 URL，默认右上，不透明度 0.6），DOM 元素按画面矩形定位，字号随画面高度缩放。
+  - **moving**：防录屏的文字（如用户 ID），画在 canvas 上，每 `interval` 秒（默认 8）换到画面内的随机位置（留 2 % 边距，不出画面），不透明度 0.25。MutationObserver 守着：被移除、`display:none`、`visibility`、改 `opacity`、`hidden` 都立即还原。
+- **跟随**：挂在容器里，所以原生 / 伪全屏与 Document PiP（容器整体搬进 PiP 窗口）自然跟随。视频 PiP 窗口里只有一个 `<video>`：`createPipComposite(doc, picture, watermark)` 把画面与水印按画面原尺寸画进一个 canvas（PiP 打开时每个显示帧画，平时每秒两次保持流就绪），交给 `@otter-player/presentation/canvas-pip` 的 `bindCanvasPip`，PiP 打开的就是这条合成流。合成画布创建时先画一帧：没有帧的流视频会一直拖住页面的 load 事件（Chromium），也拿不到元数据进 PiP。
+- 旧的 `createWatermarkOverlay(options)` 保留，等于 static 模式的 `overlay`。
+- e2e `e2e/watermark.spec.ts`：角标位置与像素、移动水印换位且不出画面并在移除 / 隐藏后还原、全屏里在全屏元素内并可见、视频 PiP 的合成流帧里有水印像素、Document PiP 窗口里有水印。
+
 ## 代价
 
 - 显示区域满时直接丢弃弹幕，高密度片段会少显示一些（与 B 站「防重叠」一致）。
 - 按媒体时间定位意味着暂停时弹幕也停（与 B 站一致）；直播中的实时弹幕不在本批。
+- 蒙版要求全 I 帧或短 GOP 的 WebM（逐帧 seek），长 GOP 文件解码跟不上时那几帧不画蒙版；SVG 帧 JSON 体积随帧数线性增长。
+- 移动水印的还原只防页面脚本与扩展的 DOM 改动，挡不住截屏工具对整页的处理；视频 PiP 加水印要多一路 canvas 合成（PiP 打开期间每帧一次 drawImage）。

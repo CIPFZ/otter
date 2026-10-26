@@ -4,6 +4,8 @@
 // @bench: never in the parallel suite. Asserted with OTTER_BENCH=1 on a machine of its own (run
 // with --workers=1; writes docs/reports/m5/bench-danmaku-<renderer>-<project>.json); on CI (one
 // worker: Chrome in the bench step, WebKit in its own step) the numbers are only a notice.
+// `none` is the baseline: the same page and video with no comments, i.e. what the machine itself
+// gives (a VM's rAF pacing is not the engine's).
 
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures';
@@ -17,12 +19,13 @@ const ciNotice = (text: string): void => {
 const PER_MINUTE = 5000;
 const WINDOW_S = 20;
 
-for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
-  test(`danmaku ${PER_MINUTE}/min on ${renderer}: rAF p95 < 20 ms, no long tasks @bench`, async ({ page }) => {
+for (const renderer of ['none', 'canvas2d', 'webgl', 'worker'] as const) {
+  const perMinute = renderer === 'none' ? 0 : PER_MINUTE;
+  test(`danmaku ${perMinute}/min on ${renderer}: rAF p95 < 20 ms, no long tasks @bench`, async ({ page }) => {
     test.skip(test.info().project.name.startsWith('emulated'), 'desktop browsers (phones: M7 real devices)');
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1400, height: 900 });
-    await page.goto(`/player.html?idle=0&danmaku=1&renderer=${renderer}`);
+    await page.goto(`/player.html?idle=0&danmaku=1&renderer=${renderer === 'none' ? 'canvas2d' : renderer}`);
     await page.evaluate(async (perMinute) => {
       const o = (await window.otter) as OtterFixture;
       o.dispatch('set-muted', { muted: true });
@@ -37,11 +40,11 @@ for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
         const r = rnd();
         return { time: (i * 60) / perMinute, text, mode: r < 0.08 ? 'top' : r < 0.14 ? 'bottom' : 'rtl', color: [0xffffff, 0xfe0302, 0xffff00, 0x00cd00][i % 4] as number } as const;
       });
-      o.dispatch('load-danmaku', { comments });
-    }, PER_MINUTE);
+      if (comments.length > 0) o.dispatch('load-danmaku', { comments });
+    }, perMinute);
     await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().currentTime), { timeout: 20_000 }).toBeGreaterThan(2);
     const st = await page.evaluate(async () => ((await window.otter) as OtterFixture).state().danmakuStatus);
-    if (st.renderer !== renderer) {
+    if (renderer !== 'none' && st.renderer !== renderer) {
       const why = [...st.steps].reverse().find((x) => x.candidate === renderer)?.reason ?? 'not selected';
       ciNotice(`danmaku bench ${renderer}: not available here (${why})`);
       test.skip(true, `${renderer}: ${why}`);
@@ -92,11 +95,11 @@ for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
     }, WINDOW_S);
     const bench = process.env['OTTER_BENCH'] === '1';
     mkdirSync('docs/reports/m5', { recursive: true });
-    if (bench) writeFileSync(`docs/reports/m5/bench-danmaku-${renderer}-${test.info().project.name}.json`, `${JSON.stringify({ perMinute: PER_MINUTE, windowS: WINDOW_S, ...r }, null, 2)}\n`);
+    if (bench) writeFileSync(`docs/reports/m5/bench-danmaku-${renderer}-${test.info().project.name}.json`, `${JSON.stringify({ perMinute, windowS: WINDOW_S, ...r }, null, 2)}\n`);
     ciNotice(
-      `danmaku bench ${renderer}: ${PER_MINUTE}/min, ${r.onStage} on stage (peak ${r.peakOnStage}); rAF p50 ${r.p50.toFixed(1)} ms, p95 ${r.p95.toFixed(1)} ms, max ${r.max.toFixed(1)} ms; main-thread cost per frame p50 ${r.cost.p50.toFixed(2)} / p95 ${r.cost.p95.toFixed(2)} ms; ${r.gapsOver50} gaps > 50 ms; long tasks ${r.longTasks ?? 'n/a'}`,
+      `danmaku bench ${renderer}: ${perMinute}/min, ${r.onStage} on stage (peak ${r.peakOnStage}); rAF p50 ${r.p50.toFixed(1)} ms, p95 ${r.p95.toFixed(1)} ms, max ${r.max.toFixed(1)} ms; main-thread cost per frame p50 ${r.cost.p50.toFixed(2)} / p95 ${r.cost.p95.toFixed(2)} ms; ${r.gapsOver50} gaps > 50 ms; long tasks ${r.longTasks ?? 'n/a'}`,
     );
-    expect(r.renderer).toBe(renderer);
+    if (renderer !== 'none') expect(r.renderer).toBe(renderer);
     if (!bench) return;
     expect(r.p95).toBeLessThan(20);
     if (r.longTasks !== null) expect(r.longTasks).toBe(0);

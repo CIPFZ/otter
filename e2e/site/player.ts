@@ -28,7 +28,7 @@ import {
   type Source,
 } from '@otter-player/media';
 import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
-import { createOverlayLayer, createVideoSurface, type OverlayLayer, type Surface } from '@otter-player/surface';
+import { createOverlayLayer, createVideoSurface, trackFrameTime, type OverlayLayer, type Surface } from '@otter-player/surface';
 import { createFrameSurface, type FrameSurface } from '@otter-player/surface/gpu';
 import { createText, TEXT_SLICE, type TextActionMap, type TextState } from '@otter-player/text';
 import { createInputController } from '@otter-player/input';
@@ -38,6 +38,7 @@ import { bindCanvasPip, canvasPipSupported, type CanvasPip } from '@otter-player
 import { createPicturePlugin, PICTURE_SLICE, type PictureActionMap, type PictureSliceState } from '@otter-player/presentation/picture';
 import { createSingleAudioPlugin } from '@otter-player/presentation/single-audio';
 import { createPreferencesPlugin } from '@otter-player/preferences';
+import { createPipComposite, createWatermark, type PipComposite, type Watermark } from '@otter-player/overlay-watermark';
 import { createDanmaku, DANMAKU_SLICE, type DanmakuActionMap, type DanmakuInspection, type DanmakuState } from '@otter-player/danmaku';
 import {
   bindActivity,
@@ -245,16 +246,28 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
   });
   await core.start();
   // The WebCodecs canvas, while it shows the picture.
-  canvasPip = bindCanvasPip(document, core.store, () => {
+  const framesCanvas = (): HTMLCanvasElement | undefined => {
     const frames = (root as HTMLElement & { otterFrames?: FrameSurface }).otterFrames?.element;
     return frames !== undefined && !frames.hidden ? frames : undefined;
-  });
+  };
+  // ?watermark=static|moving (ADR-012 §7): a green test mark; video PiP shows the picture with it
+  // (a composite canvas), Document PiP and fullscreen carry the overlay itself.
+  const wmMode = params.get('watermark');
+  const watermark: Watermark | undefined =
+    wmMode === 'static' || wmMode === 'moving'
+      ? createWatermark({ mode: wmMode, text: 'OTTER-WM', color: '#00ff00', opacity: 1, fontSize: 40, interval: Number(params.get('wminterval') ?? 8) })
+      : undefined;
+  const composite: PipComposite | undefined = watermark === undefined ? undefined : createPipComposite(document, () => framesCanvas() ?? video, watermark);
+  canvasPip = bindCanvasPip(document, core.store, composite === undefined ? framesCanvas : () => composite.canvas);
   watchPicture(core.store, picture, shown);
   const view = bind(core.store.view());
   root.querySelector('[data-otter-overlays]')?.remove();
-  const layer = createOverlayLayer({ container: root, surface, store: view, mediaTime: () => video.currentTime });
+  // The picture's own frame time for frame-exact overlays (danmaku masks).
+  const presented = trackFrameTime(video);
+  const layer = createOverlayLayer({ container: root, surface, store: view, mediaTime: () => video.currentTime, frameTime: presented.time });
   layer.add(text.overlay);
   if (danmaku !== undefined) layer.add(danmaku.overlay);
+  if (watermark !== undefined) layer.add(watermark.overlay);
   provideStore(root, view);
   // Preview card pictures: the source's WebVTT sprite track, else the engine's I-frame playlist.
   provideThumbnails(root, createThumbnails({ store: view, media }));
@@ -271,6 +284,8 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
     picture,
     danmaku,
     dispose: () => {
+      presented.stop();
+      composite?.destroy();
       canvasPip?.destroy();
       input.destroy();
       offActivity();

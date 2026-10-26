@@ -117,7 +117,8 @@ const ownHlsEngine = [
 ];
 
 // Danmaku (ADR-012): the main entry has its budget above (SPEC §1.1, ≤ 10 KB); the WebGL renderer
-// and the Worker (its main-thread chunk plus the Worker script) load only when chosen, listed apart.
+// and the Worker (its main-thread chunk plus the Worker script) load only when chosen, the masks
+// (SVG / WebM alpha) only when one is loaded: listed apart.
 const danmakuFile = (dir, prefix) => {
   const d = `packages/danmaku/dist${dir}`;
   const f = existsSync(d) ? readdirSync(d).find((x) => x.startsWith(`${prefix}-`) && x.endsWith('.js')) : undefined;
@@ -126,6 +127,7 @@ const danmakuFile = (dir, prefix) => {
 const danmakuChunks = [
   { name: 'danmaku WebGL renderer chunk (ADR-012, report)', path: danmakuFile('', 'webgl'), gzip: true, modifyEsbuildConfig: firstScreenOnly },
   { name: 'danmaku Worker renderer: chunk + Worker script (ADR-012, report)', path: [danmakuFile('', 'worker-renderer'), danmakuFile('/assets', 'worker')], gzip: true, modifyEsbuildConfig: firstScreenOnly },
+  { name: 'danmaku mask chunk (ADR-012 §6, report)', path: danmakuFile('', 'mask'), gzip: true, modifyEsbuildConfig: firstScreenOnly },
 ];
 
 const reports = readdirSync('packages')

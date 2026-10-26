@@ -10,6 +10,7 @@
 
 import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@otter-player/core';
 import type { Overlay, OverlayHost } from '@otter-player/surface';
+import type { MaskFrame, MaskSource } from './mask.js';
 import { decide, type FrameSample, type RendererKind } from './policy.js';
 import { createCanvasRenderer, font, lineHeight, paintText, type Comment, type DanmakuRenderer } from './renderer.js';
 import {
@@ -33,6 +34,8 @@ export { POLICY as RENDERER_POLICY, type FrameSample, type RendererKind } from '
 export const SCROLL_S = 8;
 /** Seconds a top / bottom comment stays. */
 export const FIXED_S = 4;
+/** One display frame at 60 Hz, ms. */
+const DISPLAY_FRAME_MS = 16.7;
 
 export const DANMAKU_SLICE: StoreSlice<DanmakuState> = { id: 'danmaku', initialState: INITIAL_DANMAKU_STATE };
 
@@ -60,6 +63,11 @@ export interface DanmakuOptions {
 export interface DanmakuInspection {
   /** Media time of the last frame drawn. */
   readonly time: number;
+  /** Media time of the picture the last frame was drawn for (the mask lookup), and the mask frame used. */
+  readonly frameTime: number;
+  readonly maskIndex: number | null;
+  /** Frames drawn while the mask frame was not decoded yet (drawn unmasked). */
+  readonly maskMissing: number;
   /** Frames drawn (none while paused and unchanged, hidden, or disabled). */
   readonly frames: number;
   readonly renderer: string | null;
@@ -105,6 +113,12 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
   let switchedAt = 0;
   let switching = false;
   const unavailable = new Set<RendererKind>();
+  // Mask (ADR-012 §6).
+  let mask: MaskSource | undefined;
+  let maskSeq = 0;
+  let maskShown: MaskFrame | undefined;
+  let maskMissing = 0;
+  let drawnFrameTime = 0;
 
   const state = (): Readonly<S> => (store as Store<S, DanmakuActionMap>).getState();
 
@@ -257,6 +271,40 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
           status({ count: list.length });
           dirty = true;
         }),
+        s.handle('load-danmaku-mask', (req) => {
+          const seq = ++maskSeq;
+          mask?.destroy();
+          mask = undefined;
+          const doc = host?.root.ownerDocument ?? (globalThis as { document?: Document }).document;
+          if (doc === undefined) return;
+          status({ mask: `${req.kind}: loading` });
+          void import('./mask.js')
+            .then(async (m) => {
+              if (req.kind === 'webm') {
+                const fps = req.fps ?? 30;
+                return { source: m.createWebmMask(doc, req.url as string, fps, (why) => seq === maskSeq && status({ mask: `webm rejected: ${why}` })), what: `webm: ${fps} fps` };
+              }
+              const frames = req.frames ?? ((await (await (options.fetch ?? ((u) => fetch(u)))(req.url as string)).json()) as { frames: { time: number; svg: string }[] }).frames;
+              return { source: m.createSvgMask(doc, frames), what: `svg: ${frames.length} frames` };
+            })
+            .then(
+              ({ source, what }) => {
+                if (seq !== maskSeq) return source.destroy();
+                mask = source;
+                maskMissing = 0;
+                dirty = true;
+                if (!/rejected/.test(state().danmakuStatus.mask ?? '')) status({ mask: what });
+              },
+              (err: unknown) => seq === maskSeq && status({ mask: `${req.kind} rejected: ${String(err)}` }),
+            );
+        }),
+        s.handle('clear-danmaku-mask', () => {
+          maskSeq++;
+          mask?.destroy();
+          mask = undefined;
+          dirty = true;
+          status({ mask: null });
+        }),
         s.handle('clear-danmaku', () => {
           loadSeq++;
           setComments([]);
@@ -267,8 +315,11 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
           (st) => st.source,
           () => {
             loadSeq++;
+            maskSeq++;
+            mask?.destroy();
+            mask = undefined;
             setComments([]);
-            status({ status: 'idle', count: 0, skipped: 0 });
+            status({ status: 'idle', count: 0, skipped: 0, mask: null });
           },
         ),
       ];
@@ -302,7 +353,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       hostOffs = [h.onContentRectChange(layout)];
       layout();
     },
-    tick(now, mediaTime) {
+    tick(now, mediaTime, frameTime) {
       if (store === undefined || renderer === undefined || !settings.enabled) return;
       const doc = host?.root.ownerDocument;
       // A hidden page draws nothing (SPEC §15 后台).
@@ -325,13 +376,24 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
           dirty = true;
         }
       }
-      const t = running ? Math.max(drawnTime, mediaTime + Math.min(0.25, ((now - reportedAt) / 1000) * rate)) : mediaTime;
+      // The stage reaches the screen a display frame after the video's own frame (the video is
+      // composited apart from the page); a renderer that shows its frame later still (the Worker)
+      // adds its latency. Drawn that far ahead while playing, so masks keep to their frame.
+      const lead = running ? ((DISPLAY_FRAME_MS + (renderer.latencyMs ?? 0)) / 1000) * rate : 0;
+      const t = running ? Math.max(drawnTime, mediaTime + Math.min(0.25, ((now - reportedAt) / 1000) * rate) + lead) : mediaTime;
+      // The mask of the picture on screen (its own frame time when the shell tracks it).
+      const ft = (frameTime ?? mediaTime) + lead;
+      const m = mask?.at(ft);
+      if (m?.version !== maskShown?.version) dirty = true;
       if (t === drawnTime && !dirty) return;
+      maskShown = m;
+      drawnFrameTime = ft;
+      if (mask !== undefined && m === undefined) maskMissing++;
       drawnTime = t;
       dirty = false;
       const t0 = performance.now();
       frame(fs, t, stage, hooks);
-      renderer.draw(fs.running);
+      renderer.draw(fs.running, m);
       frames++;
       samples.push({ onStage: fs.running.length, drawMs: performance.now() - t0, intervalMs: interval });
       if (samples.length > 600) samples.splice(0, samples.length - 600);
@@ -358,6 +420,9 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
     overlay,
     inspect: () => ({
       time: drawnTime,
+      frameTime: drawnFrameTime,
+      maskIndex: maskShown?.index ?? null,
+      maskMissing,
       frames,
       renderer: renderer?.kind ?? null,
       cost: (() => {

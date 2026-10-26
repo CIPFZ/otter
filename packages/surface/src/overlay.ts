@@ -31,8 +31,11 @@ export interface Overlay {
   readonly id: string;
   readonly zIndex: number;
   mount(host: OverlayHost): void;
-  /** Called from the shared rAF. `now` is the rAF timestamp, `mediaTime` in seconds. */
-  tick?(now: number, mediaTime: number): void;
+  /**
+   * Called from the shared rAF. `now` is the rAF timestamp, `mediaTime` in seconds; `frameTime`:
+   * media time of the picture on screen (requestVideoFrameCallback), when the shell tracks it.
+   */
+  tick?(now: number, mediaTime: number, frameTime?: number): void;
   setSafeArea?(insets: Insets): void;
   destroy(): void;
 }

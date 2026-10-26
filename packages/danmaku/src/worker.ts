@@ -3,14 +3,22 @@
 // (to rasterise here) or left, and every running comment's position; text rasterisation, atlas
 // uploads and drawing happen here, off the main thread.
 
-import { createGlStage, type GlStage } from './gl-stage.js';
+import { createGlStage, type GlStage, type MaskSourceImage } from './gl-stage.js';
 import { paintText, type Comment } from './renderer.js';
 
 export type WorkerAdd = Pick<Comment, 'index' | 'text' | 'color' | 'px' | 'width' | 'height' | 'own'>;
 export type WorkerMessage =
   | { readonly t: 'init'; readonly canvas: OffscreenCanvas }
   | { readonly t: 'resize'; readonly width: number; readonly height: number; readonly dpr: number }
-  | { readonly t: 'frame'; readonly add: readonly WorkerAdd[]; readonly remove: readonly number[]; readonly items: Float32Array; readonly count: number };
+  | {
+      readonly t: 'frame';
+      readonly add: readonly WorkerAdd[];
+      readonly remove: readonly number[];
+      readonly items: Float32Array;
+      readonly count: number;
+      /** A new mask (null: none), absent: unchanged. */
+      readonly mask?: MaskSourceImage | null;
+    };
 
 let stage: GlStage | undefined;
 let dpr = 1;
@@ -29,11 +37,15 @@ scope.onmessage = (e) => {
     stage.resize(Math.round(m.width * m.dpr), Math.round(m.height * m.dpr));
     return;
   }
+  if (m.mask !== undefined) {
+    stage.setMask(m.mask);
+    if (m.mask !== null && 'close' in m.mask) m.mask.close();
+  }
   for (const id of m.remove) stage.remove(id);
   for (const a of m.add) {
-    const sprite = new OffscreenCanvas(Math.max(1, Math.ceil(a.width * dpr)), Math.max(1, Math.ceil(a.height * dpr)));
-    paintText(sprite.getContext('2d') as OffscreenCanvasRenderingContext2D, { ...a, size: a.px, mode: 'rtl', time: 0, x: 0, y: 0, sprite: undefined }, 0, 0, dpr);
-    stage.add(a.index, sprite);
+    stage.paint(a.index, Math.max(1, Math.ceil(a.width * dpr)), Math.max(1, Math.ceil(a.height * dpr)), (ctx) =>
+      paintText(ctx, { ...a, size: a.px, mode: 'rtl', time: 0, x: 0, y: 0, sprite: undefined }, 0, 0, dpr),
+    );
   }
   // CSS px to whole device px.
   for (let i = 0; i < m.count; i++) {
