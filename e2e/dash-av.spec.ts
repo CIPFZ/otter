@@ -116,8 +116,31 @@ test('Shaka, separate audio and video: the audio language switches, video goes o
 test('Shaka: video AdaptationSets filtered by the codec ranking; one family loads, explained', async ({ page }) => {
   test.setTimeout(60_000);
   const log = logSegments(page);
-  await load(page, '/dash-av/codecs.mpd');
-  await expect.poll(async () => (await state(page)).currentTime, { timeout: 25_000 }).toBeGreaterThan(1);
+  await page.goto('/player.html?idle=0');
+  await page.evaluate(async () => {
+    const o = (await window.otter) as OtterFixture;
+    o.dispatch('set-muted', { muted: true });
+    o.load({ src: '/dash-av/codecs.mpd' }, { autoplay: true });
+  });
+  try {
+    await expect.poll(async () => (await state(page)).currentTime, { timeout: 25_000 }).toBeGreaterThan(1);
+  } catch (err) {
+    // For engines we cannot run locally (WebKit): the choice, errors and the element's state.
+    const d = await page.evaluate(async () => {
+      const o = (await window.otter) as OtterFixture;
+      const st = o.state();
+      const v = document.querySelector('video') as HTMLVideoElement;
+      return {
+        codec: st.codec,
+        excluded: st.codecExcluded,
+        steps: st.route?.steps.filter((x) => !x.candidate.startsWith('format:')).map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`),
+        errors: o.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string; message?: string } }).error).map((e) => `${e.details}: ${(e.message ?? '').slice(0, 120)}`),
+        video: { rs: v.readyState, t: v.currentTime, h: v.videoHeight, frames: v.getVideoPlaybackQuality().totalVideoFrames, buffered: Array.from({ length: v.buffered.length }, (_, i) => `${v.buffered.start(i).toFixed(2)}-${v.buffered.end(i).toFixed(2)}`) },
+      };
+    });
+    ciNotice(`dash-av codecs stalled: ${JSON.stringify(d)} requests ${JSON.stringify(log.slice(0, 30).map((f) => `${f.rep}:${f.n}`))}`);
+    throw err;
+  }
   const s = await state(page);
   const steps = s.route?.steps ?? [];
   const failed = steps.filter((x) => x.candidate.startsWith('codec ') && x.outcome === 'failed').map((x) => x.candidate.slice(6));
