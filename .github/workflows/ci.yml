@@ -114,26 +114,29 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps ${{ matrix.browsers }}
       # Public streams (@network) are not deterministic; they run in network-nightly.
-      - run: pnpm e2e ${{ matrix.projects }} --grep-invert "@network|@bench|@solo"
-      # Frame-timing checks (danmaku mask alignment) with the runner to themselves.
-      - run: pnpm e2e ${{ matrix.projects }} --grep @solo --workers=1
+      # Each step keeps its notices (tooling/e2e-step.sh: Playwright empties test-results/ per run).
+      - run: sh tooling/e2e-step.sh ${{ matrix.projects }} --grep-invert "@network|@bench|@solo"
+      # Frame-timing checks (danmaku mask alignment) with the runner to themselves; they and the
+      # benchmarks run (and report) even when the main suite failed.
+      - if: ${{ !cancelled() }}
+        run: sh tooling/e2e-step.sh ${{ matrix.projects }} --grep @solo --workers=1
       # Benchmarks need the runner to themselves (one worker); they skip, with a notice, where the
       # runner is too small (e2e/multiview.spec.ts: 8+ cores).
-      - if: matrix.name == 'chromium + firefox'
-        run: pnpm e2e --project=desktop-chrome --grep @bench --workers=1
+      - if: ${{ !cancelled() && matrix.name == 'chromium + firefox' }}
+        run: sh tooling/e2e-step.sh --project=desktop-chrome --grep @bench --workers=1
       # The danmaku benchmark on WebKit (the only WebKit there is), alone on the runner: numbers as a
       # notice, not gated (ADR-012).
-      - if: matrix.name == 'webkit'
-        run: pnpm e2e --project=desktop-safari --grep "danmaku.*@bench" --workers=1
+      - if: ${{ !cancelled() && matrix.name == 'webkit' }}
+        run: sh tooling/e2e-step.sh --project=desktop-safari --grep "danmaku.*@bench" --workers=1
       # Per-environment facts the tests record (capabilities, refusals) as run-page notices.
       - name: Test notices
         if: always()
-        # A step shows at most 10 notices (the measurements first): all of them also go to the job summary.
+        # A step shows at most 10 notices: one per topic, the measurements first; all lines also go to the job summary.
         run: |
-          if [ -f test-results/ci-notices.txt ]; then
-            KEY='danmaku bench|dash-av|codecs \(|AudioContext resume|surfaces|dvr'
-            { grep -E "$KEY" test-results/ci-notices.txt || true; grep -vE "$KEY" test-results/ci-notices.txt || true; } | sed 's/^/::notice title=e2e::/'
-            { echo '### e2e notices'; echo '```'; cat test-results/ci-notices.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          N="$RUNNER_TEMP/ci-notices.txt"
+          if [ -f "$N" ]; then
+            python3 tooling/ci-notices.py "$N" 'danmaku|watermark|dash-av|codecs|AudioContext|surfaces|dvr'
+            { echo '### e2e notices'; echo '```'; cat "$N"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/upload-artifact@v7
         if: always()

@@ -132,7 +132,7 @@ for (const kind of ['svg', 'webm'] as const) {
       expect(playing.length).toBeGreaterThanOrEqual(8);
       expect(Math.max(...playing), `band - frame ${signed.join(',')}; shot - ct / ft - ct / lead (frames) ${parts.join(' ')}`).toBeLessThanOrEqual(1);
       const d = await inspect();
-      ciNotice(`danmaku mask ${kind} on ${renderer}: paused frame/band ${paused.join(' ')}; playing band - frame ${signed.join(',')} frames; ${d?.maskMissing ?? 0} frames drawn before the mask frame was ready; shot - ct / ft - ct / lead (frames) ${parts.join(' ')}`);
+      ciNotice(`danmaku mask ${kind} on ${renderer}: paused frame/band ${paused.join(' ')}; playing band - frame ${signed.join(',')} frames; ${d?.maskMissing ?? 0} frames drawn before the mask frame was ready; lead ${((d?.lead ?? 0) * 1000).toFixed(0)} ms`);
     });
   }
 }
