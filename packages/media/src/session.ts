@@ -476,12 +476,24 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   const dropFamily = (decision: RouteDecision, error: OtterError): boolean => {
     const family = state().codec;
     const excluded = state().codecExcluded;
-    if (firstFrameSeen || family === null || !offeredCodecs.some((f) => f !== family && excluded[f] === undefined)) return false;
+    if (!noPicture() || family === null || !offeredCodecs.some((f) => f !== family && excluded[f] === undefined)) return false;
     set({ codecExcluded: { ...excluded, [family]: `no picture on this device (${error.details}) although decodingInfo said supported` } });
     router.annotate({ candidate: `codec ${family}`, outcome: 'failed', reason: `no picture (${error.details}) although decodingInfo said supported; next family` });
     qoe?.emit('error', { error, fallback: [stepLabel(decision.step), ...decision.remaining.map(stepLabel)] });
     publishRoute(router.explain());
     return true;
+  };
+
+  /**
+   * No picture decoded yet. `loadeddata` (first-frame) is not proof: WebKit fires it for AV1 it
+   * cannot decode, and Shaka's gap jump moves the playhead; the element's decoded-frame count is.
+   */
+  const noPicture = (): boolean => {
+    if (!firstFrameSeen) return true;
+    // Only where the element shows the picture (MSE / native); WebCodecs draws on a canvas.
+    if (active?.decision.step.backend !== 'mse' && active?.decision.step.backend !== 'native') return false;
+    const q = (options.target as Partial<HTMLVideoElement>).getVideoPlaybackQuality?.();
+    return q !== undefined && q.totalVideoFrames === 0 && state().videoHeight > 0;
   };
 
   const recover = async (decision: RouteDecision, error: OtterError, loadToken: number): Promise<void> => {
@@ -530,6 +542,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         currentTime: s.currentTime,
         playing: !s.paused && !s.ended && !s.seeking,
         seeking: !s.paused && !s.ended && s.seeking,
+        picture: !noPicture(),
         bufferAhead: s.bufferedEnd - s.currentTime,
       });
       if (action === 'none') return;

@@ -471,6 +471,33 @@ describe('media plugin: video codec families (ADR-011 batch 3)', () => {
     expect(picks.at(-1)).toEqual(['avc1.4d401e']);
   });
 
+  it('loadeddata without decoded frames is no picture: the family is still dropped', async () => {
+    const quality = { totalVideoFrames: 0 };
+    const t = target as HTMLMediaElement & { getVideoPlaybackQuality?: () => typeof quality };
+    t.getVideoPlaybackQuality = () => quality;
+    try {
+      const { view, created, picks } = await setupCodecs(all);
+      view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+      await flush();
+      created[0]?.emit('playback-change', { videoHeight: 360, videoWidth: 640 });
+      created[0]?.emit('first-frame', { at: 1 });
+      created[0]?.emit('error', createError({ type: 'media', details: 'playbackStalled', fatal: true, recoverable: true }));
+      await flush();
+      await flush();
+      expect(picks.at(-1)).toEqual(['hvc1.1.6.L63.90']);
+      // With decoded frames it is the backend's error again.
+      quality.totalVideoFrames = 30;
+      created.at(-1)?.emit('playback-change', { videoHeight: 360, videoWidth: 640 });
+      created.at(-1)?.emit('first-frame', { at: 2 });
+      created.at(-1)?.emit('error', createError({ type: 'media', details: 'bufferAppendError', fatal: true, recoverable: true }));
+      await flush();
+      await flush();
+      expect(picks.at(-1)).toEqual(['hvc1.1.6.L63.90']);
+    } finally {
+      delete t.getVideoPlaybackQuality;
+    }
+  });
+
   it('a user preference applies from the next load and survives unload', async () => {
     const { view, picks } = await setupCodecs(all);
     view.dispatch('set-codec-preference', { order: ['h264'] });

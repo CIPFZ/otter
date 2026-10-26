@@ -85,6 +85,14 @@ describe('stall watchdog', () => {
     expect(w.sample({ ...sample(4_200, 0.1, { playing: false }), seeking: true })).toBe('escalate');
   });
 
+  it('a playhead moved before any picture (a gap jump) keeps the startup pace', () => {
+    const w = createStallWatchdog(DEFAULT_RECOVERY);
+    expect(w.sample({ ...sample(0, 0), picture: false })).toBe('none');
+    expect(w.sample({ ...sample(100, 0.3), picture: false })).toBe('none');
+    expect(w.sample({ ...sample(1_600, 0.3), picture: false })).toBe('nudge');
+    expect(w.sample({ ...sample(3_100, 0.3), picture: false })).toBe('escalate');
+  });
+
   it('nudges after stallTimeoutMs with buffer ahead, escalates if still stuck', () => {
     const w = createStallWatchdog(DEFAULT_RECOVERY);
     expect(w.sample(sample(0, 2))).toBe('none');

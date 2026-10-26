@@ -101,7 +101,13 @@ test('live DVR: window on the slider, distance behind live checked against the p
   await page.evaluate(() => Promise.race([(window as unknown as { presented: Promise<void> }).presented, new Promise((r) => setTimeout(r, 2000))]));
   await page.waitForTimeout(300);
   {
-    const { shown, wall } = await shownAndWall(page);
+    // WebKit may still draw the frame from before the seek for a moment (even after its
+    // presentation callback): read again until the picture is the sought one, up to 5 s.
+    let { shown, wall } = await shownAndWall(page);
+    for (let i = 0; i < 10 && Math.abs(shown - wall) >= 0.5; i++) {
+      await page.waitForTimeout(500);
+      ({ shown, wall } = await shownAndWall(page));
+    }
     checks.push(`after the drag ${shown} / ${wall.toFixed(2)}`);
     ciNotice(`dvr: shown / wall latency (s): ${checks.join(', ')}`);
     expect(Math.abs(shown - wall), `after the drag: shown ${shown} s, wall ${wall.toFixed(2)} s`).toBeLessThan(0.5);

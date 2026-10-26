@@ -91,7 +91,15 @@ export interface StallWatchdog {
    * `playing`: not paused, ended or seeking. `seeking`: a seek in progress. A seek the nudge
    * started that never completes (no frame decodes there) is still a stall.
    */
-  sample(s: { readonly now: number; readonly currentTime: number; readonly playing: boolean; readonly bufferAhead: number; readonly seeking?: boolean }): StallAction;
+  sample(s: {
+    readonly now: number;
+    readonly currentTime: number;
+    readonly playing: boolean;
+    readonly bufferAhead: number;
+    readonly seeking?: boolean;
+    /** A picture was decoded; until then a moving playhead (a gap jump) is not progress. Default true. */
+    readonly picture?: boolean;
+  }): StallAction;
   reset(): void;
 }
 
@@ -114,13 +122,13 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
     nudgedTo = Number.NaN;
   };
   return {
-    sample({ now, currentTime, playing: running, bufferAhead, seeking = false }) {
+    sample({ now, currentTime, playing: running, bufferAhead, seeking = false, picture = true }) {
       const playing = running || (seeking && nudged);
       if (!playing || bufferAhead < 0.5 || currentTime !== lastTime) {
         const byNudge = nudged && Math.abs(currentTime - nudgedTo) < 1e-3;
         if (currentTime !== lastTime && !Number.isNaN(lastTime) && !byNudge) {
           nudged = false;
-          if (playing) progressed = true;
+          if (playing && picture) progressed = true;
         }
         lastTime = currentTime;
         since = now;
