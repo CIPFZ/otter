@@ -82,6 +82,8 @@ for (const engine of ['otter', 'hlsjs'] as const) {
       }
       return out;
     }, FAMILY_PROBES);
+    // Pictures, not just a moving clock (audio drives it): the element decoded video frames.
+    await expect.poll(async () => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).getVideoPlaybackQuality().totalVideoFrames), { timeout: 10_000 }).toBeGreaterThan(0);
     const s = await otter(page);
     const steps = s.route?.steps ?? [];
     for (const [f, m] of Object.entries(measured)) {

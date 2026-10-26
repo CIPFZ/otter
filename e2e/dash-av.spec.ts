@@ -141,6 +141,8 @@ test('Shaka: video AdaptationSets filtered by the codec ranking; one family load
     ciNotice(`dash-av codecs stalled: ${JSON.stringify(d)} requests ${JSON.stringify(log.slice(0, 30).map((f) => `${f.rep}:${f.n}`))}`);
     throw err;
   }
+  // Pictures, not just a moving clock (audio drives it): the element decoded video frames.
+  await expect.poll(async () => page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).getVideoPlaybackQuality().totalVideoFrames), { timeout: 10_000 }).toBeGreaterThan(0);
   const s = await state(page);
   const steps = s.route?.steps ?? [];
   const failed = steps.filter((x) => x.candidate.startsWith('codec ') && x.outcome === 'failed').map((x) => x.candidate.slice(6));

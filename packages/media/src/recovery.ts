@@ -114,18 +114,30 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
   let progressed = false;
   /** Where our nudge put the playhead: getting there is not playback progress. */
   let nudgedTo = Number.NaN;
+  /** Since when playback runs with no picture decoded (the clock may run on audio alone). */
+  let blindSince = Number.NaN;
   const reset = (): void => {
     lastTime = Number.NaN;
     since = Number.NaN;
     nudged = false;
     progressed = false;
     nudgedTo = Number.NaN;
+    blindSince = Number.NaN;
   };
   return {
     sample({ now, currentTime, playing: running, bufferAhead, seeking = false, picture = true }) {
       // A seek that never completes is a stall too when the nudge started it, or before any
       // picture (an engine's seek into media nothing decodes: WebKit and AV1 through Shaka).
       const playing = running || (seeking && (nudged || !picture));
+      // Playing (even moving: audio drives the clock) with no picture decoded for twice the
+      // startup allowance: the video is not decoding at all.
+      if (playing && !picture) {
+        if (Number.isNaN(blindSince)) blindSince = now;
+        else if (now - blindSince >= 2 * Math.min(policy.startupStallMs, policy.stallTimeoutMs)) {
+          blindSince = now;
+          return 'escalate';
+        }
+      } else if (picture) blindSince = Number.NaN;
       if (!playing || bufferAhead < 0.5 || currentTime !== lastTime) {
         const byNudge = nudged && Math.abs(currentTime - nudgedTo) < 1e-3;
         if (currentTime !== lastTime && !Number.isNaN(lastTime) && !byNudge) {

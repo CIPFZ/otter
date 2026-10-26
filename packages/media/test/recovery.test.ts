@@ -85,6 +85,19 @@ describe('stall watchdog', () => {
     expect(w.sample({ ...sample(4_200, 0.1, { playing: false }), seeking: true })).toBe('escalate');
   });
 
+  it('playing with no picture decoded escalates after twice the startup allowance, even with the clock moving', () => {
+    const w = createStallWatchdog(DEFAULT_RECOVERY);
+    expect(w.sample({ ...sample(0, 0), picture: false })).toBe('none');
+    expect(w.sample({ ...sample(1_000, 1), picture: false })).toBe('none');
+    expect(w.sample({ ...sample(2_000, 2), picture: false })).toBe('none');
+    expect(w.sample({ ...sample(3_000, 3), picture: false })).toBe('escalate');
+    // Once a picture decodes, the clock moving is progress again.
+    const ok = createStallWatchdog(DEFAULT_RECOVERY);
+    ok.sample({ ...sample(0, 0), picture: false });
+    expect(ok.sample(sample(1_000, 1))).toBe('none');
+    expect(ok.sample(sample(4_000, 4))).toBe('none');
+  });
+
   it('before any picture, an engine seek that never completes is a startup stall', () => {
     const w = createStallWatchdog(DEFAULT_RECOVERY);
     const stuck = (t: number) => ({ ...sample(t, 0.3, { playing: false }), seeking: true, picture: false });
