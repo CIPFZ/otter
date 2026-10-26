@@ -173,6 +173,8 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
 
 ## 6. backends
 
+- **用户倍速跨加载保留**（M5，2026-10-26 负责人确认）：元素加载新资源会把 `playbackRate` 重置为 `defaultPlaybackRate`（HTML 加载算法）。会话在每次加载完成后重新应用用户倍速（换片源、回退到下一个后端）；`withAdapterFallback` 运行时换到适配器时，倍速与清晰度、字幕、音轨一起恢复。
+
 ### 6.1 backend-native
 - `<video src>`；Safari HLS、AirPlay、原生 PiP、省电。
 - 轨道：读 `videoTracks/audioTracks/textTracks`；画质切换不可用时上报 `quality: 'opaque'`。

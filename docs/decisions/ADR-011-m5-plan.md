@@ -56,6 +56,7 @@ M4 于 2026-10-22 验收通过。M4 报告末尾的五个问题由负责人逐�
 - **排序**：宿主可配（`MediaPluginOptions.codecs { order, rank }`），默认先 powerEfficient、再 smooth、再 AV1 > HEVC > VP9 > H.264；用户偏好（`set-codec-preference`，`state.codecPreference`）排在宿主规则之前。排序逻辑是按需块（0.88 KB），与能力探测并行加载。
 - **引擎**：`EngineContext.codecs { order, entries, pick }`，引擎在流提供的编码族里只保留排名最高的一族（不做跨编码切档，SPEC §6.2），这一选择也进 `router.explain()` 和 `state.codec`。自研 HLS 引擎过滤 variant；hls.js 在 `MANIFEST_PARSED` 后、开始加载前 `removeLevel`；Shaka 在 TXml 预处理里删掉 MPD 中其他编码族的视频 Representation，并设 `preferredVideo`（Shaka 播 HLS 时）。
 - **平台虚报**：CI 的 Mac 上 WebKit 说 AV1 supported、smooth、powerEfficient，实际解不出画面。首帧之前出现致命错误（加载被拒或启动卡住），且流里还有别的编码族时，本次加载剔除该族，同一后端重新加载下一族，`router.explain()` 记「no picture (…) although decodingInfo said supported; next family」。
+- **编码族剔除（2026-10-26 负责人确认，接受为第 1 项的一部分）**：剔除的编码族进 `state.codecExcluded`（编码族 → 原因），同一页面之后的加载不再尝试；`@otter-player/preferences` 把它按「编码族 + UA」单独存一个 key（`codec-failures`，与用户偏好分开），30 天过期，下次访问起播前就排除（`exclude-codecs`），`router.explain()` 记「excluded: no picture on this device on <日期>, remembered until <日期>」。同一设备上这 3 s 左右的代价只付一次。不在 WebKit 上默认把 AV1 排到后面（M3 起的 Mac 能解 AV1）。
 - **偏好持久化**：新包 `@otter-player/preferences`，`createPreferencesPlugin({ storage?, key? })`。
   - 存储适配器可替换（`get` / `set`，同步或异步）；默认 `localStoragePreferences('otter:')`，导入时不碰任何全局（SSR 安全），只在读写时访问 `localStorage`，抛错时静默。
   - 只存：编码偏好、清晰度（存画面高度，换片源也适用）、音轨语言、字幕语言（含「关」）、音量、倍速；不存播放位置。读出时逐项校验，非法值丢弃。
