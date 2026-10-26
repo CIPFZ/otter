@@ -47,6 +47,12 @@ export interface MediaState extends PlaybackSnapshot {
   readonly remotePlayback: 'enabled' | 'disabled' | null;
   /** The user's video codec order (persisted by @otter-player/preferences), null for the host's. */
   readonly codecPreference: readonly CodecFamily[] | null;
+  /**
+   * Families left out of the ranking, with why: one that gave no picture on this page although
+   * decodingInfo vouched for it, or one remembered from an earlier visit (`exclude-codecs`,
+   * @otter-player/preferences). Kept across loads.
+   */
+  readonly codecExcluded: Readonly<Partial<Record<CodecFamily, string>>>;
   /** Video codec family the engine plays, null before it chose (or for a stream naming none). */
   readonly codec: CodecFamily | null;
   readonly error: OtterError | null;
@@ -80,6 +86,8 @@ export interface MediaActionMap {
   'seek-to-live': Record<string, never>;
   /** The user's video codec order, best first (null: the host's policy); applies from the next load. */
   'set-codec-preference': { readonly order: readonly CodecFamily[] | null };
+  /** Leaves `families` out of the ranking from the next load, with `reason` in router.explain(). */
+  'exclude-codecs': { readonly families: readonly CodecFamily[]; readonly reason: string };
 }
 
 const PLAYBACK_RESET: PlaybackSnapshot = {
@@ -116,6 +124,7 @@ export const INITIAL_MEDIA_STATE: MediaState = {
   mms: false,
   remotePlayback: null,
   codecPreference: null,
+  codecExcluded: {},
   codec: null,
   error: null,
 };
@@ -203,12 +212,6 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   let cmcd: CmcdDecorator | undefined;
   /** This load's codec ranking, for the engines (BackendContext.codecs). */
   let codecs: EngineCodecs | undefined;
-  /**
-   * Families that produced no picture on this load although decodingInfo vouched for them (WebKit
-   * on a Mac without AV1 decoding says AV1 is supported, smooth and power efficient): left out of
-   * the ranking for the rest of the load.
-   */
-  let failedCodecs = new Set<CodecFamily>();
   /** Families the stream offers, from the engine's last pick. */
   let offeredCodecs: readonly CodecFamily[] = [];
   // In-band text: survives backend rebuilds and fallbacks within a load.
@@ -467,12 +470,14 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   /**
    * No picture yet on a codec family the platform vouched for, with another one on offer (WebKit
    * says AV1 decodes on Macs that cannot): the family is what fails, not the backend. Marks it
-   * failed for this load and explains; the caller runs the same step again without it.
+   * excluded (state.codecExcluded: for this page, and for @otter-player/preferences to remember)
+   * and explains; the caller runs the same step again without it.
    */
   const dropFamily = (decision: RouteDecision, error: OtterError): boolean => {
     const family = state().codec;
-    if (firstFrameSeen || family === null || !offeredCodecs.some((f) => f !== family && !failedCodecs.has(f))) return false;
-    failedCodecs.add(family);
+    const excluded = state().codecExcluded;
+    if (firstFrameSeen || family === null || !offeredCodecs.some((f) => f !== family && excluded[f] === undefined)) return false;
+    set({ codecExcluded: { ...excluded, [family]: `no picture on this device (${error.details}) although decodingInfo said supported` } });
     router.annotate({ candidate: `codec ${family}`, outcome: 'failed', reason: `no picture (${error.details}) although decodingInfo said supported; next family` });
     qoe?.emit('error', { error, fallback: [stepLabel(decision.step), ...decision.remaining.map(stepLabel)] });
     publishRoute(router.explain());
@@ -572,13 +577,14 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     budget.reset();
     if (retryTimer !== undefined) clearTimeout(retryTimer);
     retryTimer = undefined;
-    const { volume, muted, playbackRate, codecPreference } = state();
+    const { volume, muted, playbackRate, codecPreference, codecExcluded } = state();
     set({
       ...INITIAL_MEDIA_STATE,
       volume,
       muted,
       playbackRate,
       codecPreference,
+      codecExcluded,
       status: 'loading',
       source,
       live: source.live ?? false,
@@ -630,11 +636,10 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       return;
     }
     const probes = Object.fromEntries(Object.entries(FAMILY_PROBES).map(([f, type]) => [f, caps.codecs[type]]));
-    const ranking = ranker.rankCodecs(probes, options.codecs, state().codecPreference);
+    const ranking = ranker.rankCodecs(probes, options.codecs, state().codecPreference, state().codecExcluded);
     for (const step of ranking.steps) router.annotate(step);
-    failedCodecs = new Set();
     offeredCodecs = [];
-    const usable = (): CodecFamily[] => ranking.order.filter((f) => !failedCodecs.has(f));
+    const usable = (): CodecFamily[] => ranking.order.filter((f) => state().codecExcluded[f] === undefined);
     codecs = {
       get order() {
         return usable();
@@ -663,8 +668,8 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     token++;
     if (retryTimer !== undefined) clearTimeout(retryTimer);
     retryTimer = undefined;
-    const { volume, muted, playbackRate, codecPreference } = state();
-    set({ ...INITIAL_MEDIA_STATE, volume, muted, playbackRate, codecPreference });
+    const { volume, muted, playbackRate, codecPreference, codecExcluded } = state();
+    set({ ...INITIAL_MEDIA_STATE, volume, muted, playbackRate, codecPreference, codecExcluded });
   };
 
   const play = (): void => {
@@ -743,6 +748,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         s.handle('volume-by', ({ delta }) => setVolume(state().volume + delta)),
         s.handle('select-audio-track', ({ id }) => active?.backend.selectAudioTrack?.(id)),
         s.handle('seek-to-live', () => active?.backend.seekToLive?.()),
+        s.handle('exclude-codecs', ({ families, reason }) => set({ codecExcluded: { ...state().codecExcluded, ...Object.fromEntries(families.map((f) => [f, reason])) } })),
         s.handle('set-codec-preference', ({ order }) => set({ codecPreference: order === null || order.length === 0 ? null : [...order] })),
         s.handle('set-text-track', ({ id }) => {
           textTrack = id;

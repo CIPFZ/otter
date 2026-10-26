@@ -165,31 +165,69 @@ test('preferences: codec order, quality, audio / subtitle language, volume and s
   expect(Object.keys(JSON.parse((await page.evaluate(() => localStorage.getItem('otter:preferences'))) ?? '{}')).sort()).toEqual(['audioLanguage', 'codecs', 'playbackRate', 'quality', 'textLanguage', 'volume']);
 });
 
-// WebKit on the CI Mac says AV1 is supported, smooth and power efficient, and never shows a
-// picture. The same situation where it can be made: headless Chromium has no HEVC; the page is
-// told it has (decodingInfo, isTypeSupported) and HEVC is put first. The session must drop the
-// family after the startup stall and play the next one, with the reason in router.explain().
-test('a family the platform vouches for but cannot decode is dropped for the next one', async ({ page, browserName }) => {
-  test.skip(browserName !== 'chromium', 'needs a browser without HEVC decoding (headless Chromium)');
-  test.setTimeout(60_000);
-  await page.addInitScript(() => {
-    const hevc = (t: string): boolean => /hvc1|hev1/.test(t);
-    const MS = window.MediaSource;
-    const native = MS.isTypeSupported.bind(MS);
-    MS.isTypeSupported = (t: string) => hevc(t) || native(t);
-    const mc = navigator.mediaCapabilities;
-    const decodingInfo = mc.decodingInfo.bind(mc);
-    mc.decodingInfo = async (c: MediaDecodingConfiguration) =>
-      hevc(c.video?.contentType ?? '') ? ({ supported: true, smooth: true, powerEfficient: true, keySystemAccess: null } as MediaCapabilitiesDecodingInfo) : decodingInfo(c);
+// A family the platform vouches for but cannot decode. WebKit on the CI Mac says AV1 is supported,
+// smooth and power efficient and never shows a picture; headless Chromium has no HEVC and is told
+// it has (decodingInfo, isTypeSupported), with HEVC preferred. The session drops the family and
+// plays the next one, explained; with the preferences plugin the failure is remembered for this
+// user agent, so the next visit does not try it again (the cost is paid once per device).
+test('a family the platform vouches for but cannot decode is dropped, and not tried again on the next visit', async ({ page, browserName }) => {
+  test.skip(browserName === 'firefox', 'no family to fake or failing here');
+  test.setTimeout(90_000);
+  const family = browserName === 'chromium' ? 'hevc' : 'av1';
+  const init = family === 'hevc' ? 'hevc_360_init.mp4' : 'av1_360_init.mp4';
+  if (family === 'hevc') {
+    await page.addInitScript(() => {
+      const hevc = (t: string): boolean => /hvc1|hev1/.test(t);
+      const MS = window.MediaSource;
+      const native = MS.isTypeSupported.bind(MS);
+      MS.isTypeSupported = (t: string) => hevc(t) || native(t);
+      const mc = navigator.mediaCapabilities;
+      const decodingInfo = mc.decodingInfo.bind(mc);
+      mc.decodingInfo = async (c: MediaDecodingConfiguration) =>
+        hevc(c.video?.contentType ?? '') ? ({ supported: true, smooth: true, powerEfficient: true, keySystemAccess: null } as MediaCapabilitiesDecodingInfo) : decodingInfo(c);
+    });
+  }
+  const inits: string[] = [];
+  page.on('request', (r) => {
+    const m = /\/codecs\/(\w+_init\.mp4)/.exec(r.url());
+    if (m !== null) inits.push(m[1] as string);
   });
-  await page.goto('/player.html?idle=0');
-  await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('set-codec-preference', { order: ['hevc'] }));
-  await loadCodecs(page, VIDEO_ONLY);
-  await expect.poll(async () => (await otter(page)).currentTime, { timeout: 30_000 }).toBeGreaterThan(1);
-  const s = await otter(page);
-  const steps = s.route?.steps ?? [];
-  expect(steps).toContainEqual(expect.objectContaining({ candidate: 'codec hevc', outcome: 'failed', reason: expect.stringMatching(/^no picture \(.+\) although decodingInfo said supported; next family$/) as unknown }));
-  expect(s.codec).not.toBe('hevc');
-  expect(s.error).toBeNull();
-  ciNotice(`codec family drop: ${steps.find((x) => x.candidate === 'codec hevc' && x.outcome === 'failed')?.reason}; plays ${s.codec}`);
+  const visit = async (): Promise<{ ms: number; steps: { candidate: string; outcome: string; reason: string }[]; codec: string | null }> => {
+    inits.length = 0;
+    await page.goto('/player.html?idle=0&prefs=1');
+    if (family === 'hevc') await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('set-codec-preference', { order: ['hevc'] }));
+    const t0 = Date.now();
+    await loadCodecs(page, VIDEO_ONLY);
+    await expect.poll(async () => (await otter(page)).currentTime, { timeout: 30_000 }).toBeGreaterThan(0.5);
+    const s = await otter(page);
+    return { ms: Date.now() - t0, steps: (s.route?.steps ?? []).filter((x) => x.candidate.startsWith('codec ')), codec: s.codec };
+  };
+  if (browserName === 'webkit') {
+    // Only where AV1 fails here (not every Mac): otherwise there is nothing to remember.
+    const first = await visit();
+    if (!first.steps.some((x) => x.candidate === 'codec av1' && x.outcome === 'failed')) {
+      ciNotice(`codec failure memory: AV1 decodes here (${first.codec}), nothing to remember`);
+      return;
+    }
+    await checkSecond(first);
+    return;
+  }
+  await checkSecond(await visit());
+
+  async function checkSecond(first: Awaited<ReturnType<typeof visit>>): Promise<void> {
+    expect(first.steps).toContainEqual(expect.objectContaining({ candidate: `codec ${family}`, outcome: 'failed', reason: expect.stringMatching(/^no picture \(.+\) although decodingInfo said supported; next family$/) as unknown }));
+    expect(first.codec).not.toBe(family);
+    expect(inits).toContain(init);
+    const stored = JSON.parse((await page.evaluate(() => localStorage.getItem('otter:codec-failures'))) ?? '[]') as { family: string; userAgent: string; until: number }[];
+    expect(stored.map((f) => f.family)).toEqual([family]);
+    expect(stored[0]?.userAgent).toBe(await page.evaluate(() => navigator.userAgent));
+    expect((stored[0]?.until ?? 0) - Date.now()).toBeGreaterThan(29 * 86_400_000);
+    // Next visit: excluded from the start, never loaded, explained.
+    const second = await visit();
+    expect(second.steps.some((x) => x.outcome === 'failed')).toBe(false);
+    expect(second.steps.find((x) => x.candidate === `codec ${family}`)).toMatchObject({ outcome: 'rejected', reason: expect.stringMatching(/^decodingInfo: supported, excluded: no picture on this device on \d{4}-\d\d-\d\d, remembered until \d{4}-\d\d-\d\d$/) as unknown });
+    expect(second.codec).toBe(first.codec);
+    expect(inits).not.toContain(init);
+    ciNotice(`codec failure memory: ${family} dropped on the first visit (${first.ms} ms to play), excluded on the second (${second.ms} ms); plays ${second.codec}`);
+  }
 });

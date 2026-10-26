@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createCore, type Plugin, type PluginContext, type Store } from '@otter-player/core';
 import { createPreferencesPlugin, localStoragePreferences, sanitize, type PreferencesActionMap, type PreferencesState, type PreferenceStorage } from '@otter-player/preferences';
 
-type S = PreferencesState & { codecPreference: readonly string[] | null };
+type S = PreferencesState & { codecPreference: readonly string[] | null; codecExcluded: Record<string, string> };
 const memory = (initial: Record<string, string> = {}): PreferenceStorage & { data: Record<string, string> } => {
   const data = { ...initial };
   return { data, get: (k) => data[k] ?? null, set: (k, v) => void (data[k] = v) };
@@ -18,6 +18,7 @@ const fakeMedia = (): Plugin<S, PreferencesActionMap> => ({
     s.handle('set-playback-rate', ({ rate }) => s.setState({ playbackRate: rate }));
     s.handle('select-quality', ({ id }) => s.setState({ quality: id }));
     s.handle('set-codec-preference', ({ order }) => s.setState({ codecPreference: order }));
+    s.handle('exclude-codecs', ({ families, reason }) => s.setState({ codecExcluded: { ...s.getState().codecExcluded, ...Object.fromEntries(families.map((f) => [f, reason])) } }));
     s.handle('select-audio-track', ({ id }) => {
       const t = s.getState().tracks;
       if (t !== undefined) s.setState({ tracks: { ...t, audio: t.audio.map((a) => ({ ...a, selected: a.id === id })) } });
@@ -27,7 +28,7 @@ const fakeMedia = (): Plugin<S, PreferencesActionMap> => ({
   uninstall: () => undefined,
 });
 
-const INITIAL: S = { source: null, tracks: { video: [], audio: [] }, quality: 'auto', volume: 1, playbackRate: 1, textTracks: [], textTrack: null, codecPreference: null };
+const INITIAL: S = { codecExcluded: {}, source: null, tracks: { video: [], audio: [] }, quality: 'auto', volume: 1, playbackRate: 1, textTracks: [], textTrack: null, codecPreference: null };
 const tracks = {
   video: [
     { id: 'v0', height: 1080 },
@@ -44,8 +45,8 @@ const texts = [
   { id: 't1', language: 'de' },
 ];
 
-async function player(storage: PreferenceStorage) {
-  const prefs = createPreferencesPlugin<S, PreferencesActionMap>({ storage });
+async function player(storage: PreferenceStorage, extra: { userAgent?: () => string; now?: () => number } = {}) {
+  const prefs = createPreferencesPlugin<S, PreferencesActionMap>({ storage, ...extra });
   const core = createCore<S, PreferencesActionMap>({ slices: [{ id: 'state', initialState: INITIAL }], plugins: [prefs, fakeMedia()] });
   await core.start();
   return { core, prefs, store: core.store as Store<S, PreferencesActionMap> };
@@ -131,5 +132,42 @@ describe('preferences (ADR-011 batch 3)', () => {
     expect(() => s.set('k', 'v')).not.toThrow();
     if (before === undefined) delete g.localStorage;
     else g.localStorage = before;
+  });
+});
+
+describe('codec failures of the device (separate key, per user agent, 30 days)', () => {
+  const DAY = 86_400_000;
+  const T0 = Date.UTC(2026, 9, 26);
+
+  it('a family the session dropped is remembered for this user agent and excluded on the next visit', async () => {
+    const storage = memory();
+    const first = await player(storage, { userAgent: () => 'Safari/Mac', now: () => T0 });
+    // The session found AV1 gives no picture (dropFamily).
+    first.store.setState({ codecExcluded: { av1: 'no picture on this device (playbackStalled) although decodingInfo said supported' } });
+    expect(JSON.parse(storage.data['codec-failures'] as string)).toEqual([{ family: 'av1', userAgent: 'Safari/Mac', until: T0 + 30 * DAY }]);
+    // Apart from the viewer's choices.
+    expect(storage.data['preferences']).toBeUndefined();
+
+    const next = await player(storage, { userAgent: () => 'Safari/Mac', now: () => T0 + 10 * DAY });
+    expect(next.store.getState().codecExcluded).toEqual({ av1: 'no picture on this device on 2026-10-26, remembered until 2026-11-25' });
+    // Not re-recorded (its 30 days still run from the first time).
+    expect(JSON.parse(storage.data['codec-failures'] as string)).toHaveLength(1);
+  });
+
+  it('another user agent, or after 30 days, tries the family again', async () => {
+    const storage = memory({ 'codec-failures': JSON.stringify([{ family: 'av1', userAgent: 'Safari/Mac', until: T0 + 30 * DAY }]) });
+    const other = await player(storage, { userAgent: () => 'Chrome/Win', now: () => T0 });
+    expect(other.store.getState().codecExcluded).toEqual({});
+    const later = await player(storage, { userAgent: () => 'Safari/Mac', now: () => T0 + 31 * DAY });
+    expect(later.store.getState().codecExcluded).toEqual({});
+    // A new failure then replaces the expired entry.
+    later.store.setState({ codecExcluded: { av1: 'again' } });
+    expect(JSON.parse(storage.data['codec-failures'] as string)).toEqual([{ family: 'av1', userAgent: 'Safari/Mac', until: T0 + 61 * DAY }]);
+  });
+
+  it('a broken entry is ignored', async () => {
+    const storage = memory({ 'codec-failures': '[{"family":"mpeg2","userAgent":"x","until":1}, 7' });
+    const p = await player(storage, { userAgent: () => 'x', now: () => 0 });
+    expect(p.store.getState().codecExcluded).toEqual({});
   });
 });

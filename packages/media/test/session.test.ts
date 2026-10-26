@@ -452,6 +452,25 @@ describe('media plugin: video codec families (ADR-011 batch 3)', () => {
     expect(view.getState()).toMatchObject({ codec: 'hevc', backend: 'mse', status: 'ready' });
   });
 
+  it('a dropped family stays out on the next load of the page; exclude-codecs adds remembered ones', async () => {
+    const { view, created, picks } = await setupCodecs(all, 'av01');
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    await flush();
+    expect(Object.keys(view.getState().codecExcluded)).toEqual(['av1']);
+    view.dispatch('load', { source: { src: 'https://e.test/b.m3u8' } });
+    await flush();
+    // Straight to HEVC: no AV1 attempt, the exclusion explained.
+    expect(picks.at(-1)).toEqual(['hvc1.1.6.L63.90']);
+    expect(created).toHaveLength(3);
+    expect(view.getState().route?.steps.find((x) => x.candidate === 'codec av1')?.reason).toMatch(/^decodingInfo: supported, excluded: no picture on this device \(backendLoadFailed\)/);
+    view.dispatch('exclude-codecs', { families: ['hevc'], reason: 'remembered' });
+    view.dispatch('unload', undefined);
+    view.dispatch('load', { source: { src: 'https://e.test/c.m3u8' } });
+    await flush();
+    expect(picks.at(-1)).toEqual(['avc1.4d401e']);
+  });
+
   it('a user preference applies from the next load and survives unload', async () => {
     const { view, picks } = await setupCodecs(all);
     view.dispatch('set-codec-preference', { order: ['h264'] });

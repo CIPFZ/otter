@@ -2,7 +2,10 @@
 // remembered across visits through a storage adapter the host can replace (default:
 // localStorage under a prefix). Only these are kept: the video codec order, the quality (as a
 // picture height, so it carries over between streams), the audio and subtitle languages, the
-// volume and the playback speed. Never the playback position.
+// volume and the playback speed. Never the playback position. Separately (its own key), the
+// device's codec failures: a family that gave no picture although decodingInfo vouched for it
+// (WebKit and AV1) is remembered per user agent for 30 days, so the ~3 s it costs to find out is
+// paid once per device, not on every visit.
 //
 // Importing touches no global (SSR-safe): the default adapter reaches localStorage only when it
 // reads or writes, and gives up quietly where it throws (sandboxed iframes, privacy modes).
@@ -86,6 +89,33 @@ export interface PreferencesOptions {
   readonly storage?: PreferenceStorage;
   /** Key inside the storage (default `preferences`): one JSON entry. */
   readonly key?: string;
+  /** Key of the codec failure entry (default `codec-failures`), apart from the viewer's choices. */
+  readonly codecFailuresKey?: string;
+  /** How long a codec failure is remembered (default 30 days). */
+  readonly codecFailureTtlMs?: number;
+  /** The device a codec failure belongs to (default navigator.userAgent, read on use). */
+  readonly userAgent?: () => string;
+  /** Wall clock (default Date.now). */
+  readonly now?: () => number;
+}
+
+/** One remembered codec failure: a family that gave no picture with this user agent. */
+export interface CodecFailure {
+  readonly family: CodecFamily;
+  readonly userAgent: string;
+  /** Date.now() it is forgotten at. */
+  readonly until: number;
+}
+
+const DAY_MS = 86_400_000;
+
+/** The entries that parse; expired ones and other user agents stay stored (until they expire). */
+export function sanitizeFailures(raw: unknown): CodecFailure[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (f): f is CodecFailure =>
+      typeof f === 'object' && f !== null && FAMILIES.includes((f as CodecFailure).family) && typeof (f as CodecFailure).userAgent === 'string' && typeof (f as CodecFailure).until === 'number',
+  );
 }
 
 interface Track {
@@ -97,6 +127,8 @@ interface Track {
 
 /** The media and text state this reads (MediaState, TextState). */
 export interface PreferencesState {
+  /** Families the session left out, with why (MediaState.codecExcluded). */
+  readonly codecExcluded?: Readonly<Partial<Record<CodecFamily, string>>>;
   readonly source?: object | null;
   readonly tracks?: { readonly video: readonly Track[]; readonly audio: readonly Track[] };
   readonly quality?: string;
@@ -109,6 +141,7 @@ export interface PreferencesState {
 /** The actions this watches and dispatches (MediaActionMap, TextActionMap). */
 export interface PreferencesActionMap {
   'set-codec-preference': { readonly order: readonly CodecFamily[] | null };
+  'exclude-codecs': { readonly families: readonly CodecFamily[]; readonly reason: string };
   'select-quality': { readonly id: string };
   'select-audio-track': { readonly id: string };
   'select-text-track': { readonly id: string | null };
@@ -206,6 +239,37 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
       if (prefs.volume !== undefined) dispatch('set-volume', { volume: prefs.volume });
       if (prefs.playbackRate !== undefined) dispatch('set-playback-rate', { rate: prefs.playbackRate });
       if (prefs.codecs !== undefined) dispatch('set-codec-preference', { order: prefs.codecs });
+
+      // Codec failures of this device (user agent), not expired: out of the ranking from the start.
+      const ua = options.userAgent ?? (() => (typeof navigator === 'object' ? navigator.userAgent : ''));
+      const now = options.now ?? Date.now;
+      const ttl = options.codecFailureTtlMs ?? 30 * DAY_MS;
+      const failuresKey = options.codecFailuresKey ?? 'codec-failures';
+      let failures: CodecFailure[] = [];
+      try {
+        const raw = await storage.get(failuresKey);
+        failures = raw == null ? [] : sanitizeFailures(JSON.parse(raw));
+      } catch {
+        failures = [];
+      }
+      const day = (t: number): string => new Date(t).toISOString().slice(0, 10);
+      const mine = (): CodecFailure[] => failures.filter((f) => f.userAgent === ua() && f.until > now());
+      for (const f of mine()) {
+        dispatch('exclude-codecs', { families: [f.family], reason: `no picture on this device on ${day(f.until - ttl)}, remembered until ${day(f.until)}` });
+      }
+      // New failures the session found: remembered (expired entries go when the list is written).
+      offs.push(
+        store.select(
+          (st) => st.codecExcluded ?? {},
+          (excluded) => {
+            const known = new Set(mine().map((f) => f.family));
+            const added = (Object.keys(excluded) as CodecFamily[]).filter((f) => !known.has(f));
+            if (added.length === 0) return;
+            failures = [...failures.filter((f) => f.until > now()), ...added.map((family) => ({ family, userAgent: ua(), until: now() + ttl }))];
+            void Promise.resolve(storage.set(failuresKey, JSON.stringify(failures))).catch(() => undefined);
+          },
+        ),
+      );
 
       // Per source, once its tracks are known: quality, audio language, subtitle language.
       let applied: { source: object | null | undefined; quality: boolean; audio: boolean; text: boolean } = { source: undefined, quality: false, audio: false, text: false };

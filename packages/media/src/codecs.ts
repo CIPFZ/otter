@@ -40,12 +40,14 @@ const describe = (i: CodecDecodingInfo): string =>
 
 /**
  * Ranks the families by their probe results. A user preference (`preferred`, persisted) comes
- * first among the supported families; then the host's criteria. Unsupported families are out.
+ * first among the supported families; then the host's criteria. Unsupported and `excluded` families
+ * (no picture on this device, with why) are out.
  */
 export function rankCodecs(
   probes: Readonly<Partial<Record<CodecFamily, CodecDecodingInfo>>>,
   policy: CodecPolicy = {},
   preferred: readonly CodecFamily[] | null = null,
+  excluded: Readonly<Partial<Record<CodecFamily, string>>> = {},
 ): CodecRanking {
   const order = [...(policy.order ?? CODEC_FAMILIES), ...CODEC_FAMILIES];
   const rank = policy.rank ?? DEFAULT_CODEC_RANK;
@@ -54,7 +56,7 @@ export function rankCodecs(
     const i = list.indexOf(f);
     return i < 0 ? list.length : i;
   };
-  const supported = CODEC_FAMILIES.filter((f) => info(f).supported);
+  const supported = CODEC_FAMILIES.filter((f) => info(f).supported && excluded[f] === undefined);
   const ranked = [...supported].sort((a, b) => {
     if (preferred !== null && pos(preferred, a) !== pos(preferred, b)) return pos(preferred, a) - pos(preferred, b);
     for (const c of rank) {
@@ -67,6 +69,8 @@ export function rankCodecs(
   const steps: RouteStep[] = CODEC_FAMILIES.map((f) => {
     const i = info(f);
     const at = ranked.indexOf(f);
+    const why = excluded[f];
+    if (i.supported && why !== undefined) return { candidate: `codec ${f}`, outcome: 'rejected', reason: `decodingInfo: supported, excluded: ${why}` };
     return i.supported
       ? { candidate: `codec ${f}`, outcome: 'selected', reason: `decodingInfo: supported, ${describe(i)}; rank ${at + 1} (${by})` }
       : { candidate: `codec ${f}`, outcome: 'rejected', reason: 'decodingInfo: not supported' };

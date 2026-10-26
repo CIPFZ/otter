@@ -54,3 +54,11 @@ describe('video codec ranking (ADR-011 batch 3)', () => {
     expect(chooseCodec(['h264'], [{ codecs: ['avc1.42c01e'] }]).reason).toBe('stream offers h264 only');
   });
 });
+
+describe('excluded families', () => {
+  it('are out of the ranking, with the reason in their step', () => {
+    const r = rankCodecs({ av1: yes(), hevc: yes(), vp9: no, h264: yes() }, {}, null, { av1: 'no picture on this device' });
+    expect(r.order).toEqual(['hevc', 'h264']);
+    expect(r.steps[0]).toEqual({ candidate: 'codec av1', outcome: 'rejected', reason: 'decodingInfo: supported, excluded: no picture on this device' });
+  });
+});
