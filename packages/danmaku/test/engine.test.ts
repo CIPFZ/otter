@@ -140,6 +140,10 @@ describe('renderer policy (ADR-012 §5)', async () => {
   it('the Worker when the page keeps frames late and our own cost is small; not where it cannot run', () => {
     const busy = frames(60, { onStage: 80, drawMs: 1, intervalMs: 33 });
     expect(decide('webgl', busy, 10_000, all)).toEqual({ to: 'worker', reason: 'main thread busy: frame interval p90 33.0 ms (≥ 25), own cost p90 1.0 ms' });
+    // WebGL that costs the main thread as much: off the main thread, or back; not tried again.
+    const costly = frames(60, { onStage: 130, drawMs: 6, intervalMs: 16.7 });
+    expect(decide('webgl', costly, 10_000, all)).toEqual({ to: 'worker', reason: 'WebGL frame cost p90 6.0 ms (≥ 4): drawing off the main thread', reject: 'webgl' });
+    expect(decide('webgl', costly, 10_000, new Set(['canvas2d', 'webgl'] as const))).toEqual({ to: 'canvas2d', reason: 'WebGL frame cost p90 6.0 ms (≥ 4): back to Canvas 2D', reject: 'webgl' });
     expect(decide('canvas2d', busy, 10_000, new Set(['canvas2d', 'webgl'] as const))).toBeUndefined();
     // Dense and late: WebGL first.
     expect(decide('canvas2d', frames(60, { onStage: 130, drawMs: 1, intervalMs: 33 }), 10_000, all)?.to).toBe('webgl');

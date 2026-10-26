@@ -156,7 +156,8 @@ test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when
     });
     await expect.poll(async () => (await steps()).map((x) => `${x.candidate} ${x.outcome}`), { timeout: 40_000 }).toContainEqual(expect.stringMatching(/^worker (selected|rejected)$/));
     const busy = (await steps()).find((x) => x.candidate === 'worker');
-    if (busy?.outcome === 'selected') expect(busy.reason).toMatch(BUSY);
+    // Or WebGL itself cost the main thread too much (ADR-012 §5): off it, WebGL not tried again.
+    if (busy?.outcome === 'selected') expect(busy.reason).toMatch(new RegExp(`${BUSY.source}|^WebGL frame cost p90 [\\d.]+ ms \\(≥ 4\\): drawing off the main thread$`));
   } else {
     expect(first?.reason).toBe('no WebGL2 context');
   }

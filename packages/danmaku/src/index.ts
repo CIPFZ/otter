@@ -412,7 +412,12 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       if ((options.renderer ?? 'auto') !== 'auto') return;
       const available = new Set<RendererKind>((['canvas2d', 'webgl', 'worker'] as const).filter((k) => !unavailable.has(k)));
       const d = decide(renderer.kind as RendererKind, samples, performance.now() - switchedAt, available);
-      if (d !== undefined) switchTo(d.to, d.reason);
+      if (d === undefined) return;
+      if (d.reject !== undefined) {
+        unavailable.add(d.reject);
+        step(d.reject, 'rejected', `slower here: ${d.reason}`);
+      }
+      switchTo(d.to, d.reason);
     },
     destroy() {
       for (const off of hostOffs) off();

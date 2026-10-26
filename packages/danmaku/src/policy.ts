@@ -1,6 +1,6 @@
 // Which renderer draws the danmaku (ADR-012 §5): Canvas 2D by default; WebGL (atlas, one draw
 // call) when the stage is dense or Canvas drawing gets slow; the OffscreenCanvas Worker when the
-// page's own work leaves frames late. Decided over a window of drawn frames, with hysteresis, and
+// page's own work leaves frames late, or WebGL turns out no cheaper on the main thread. Decided over a window of drawn frames, with hysteresis, and
 // explained like router.explain().
 
 export type RendererKind = 'canvas2d' | 'webgl' | 'worker';
@@ -37,6 +37,8 @@ export const POLICY = {
 export interface Decision {
   readonly to: RendererKind;
   readonly reason: string;
+  /** Not to be chosen again on this page (it was measured slower here). */
+  readonly reject?: RendererKind;
 }
 
 const p90 = (xs: readonly number[]): number => [...xs].sort((a, b) => a - b)[Math.floor(xs.length * 0.9)] ?? 0;
@@ -58,6 +60,13 @@ export function decide(current: RendererKind, recent: readonly FrameSample[], si
       to: 'webgl',
       reason: onStage >= POLICY.denseOnStage ? `dense: ${Math.round(onStage)} comments on stage (≥ ${POLICY.denseOnStage})` : `Canvas 2D frame cost p90 ${draw.toFixed(1)} ms (≥ ${POLICY.slowDrawMs})`,
     };
+  }
+  // WebGL no cheaper than the threshold that brought it (some engines' WebGL costs the main
+  // thread more than Canvas 2D: CI's macOS WebKit 6 ms a frame): drawing off the main thread, or
+  // back to Canvas 2D; WebGL is not tried again here.
+  if (current === 'webgl' && draw >= POLICY.slowDrawMs) {
+    const why = `WebGL frame cost p90 ${draw.toFixed(1)} ms (≥ ${POLICY.slowDrawMs})`;
+    return available.has('worker') ? { to: 'worker', reason: `${why}: drawing off the main thread`, reject: 'webgl' } : { to: 'canvas2d', reason: `${why}: back to Canvas 2D`, reject: 'webgl' };
   }
   const busy = interval >= POLICY.busyIntervalMs && draw < POLICY.slowDrawMs && onStage >= POLICY.busyMinOnStage;
   if (busy && current !== 'worker' && available.has('worker')) {

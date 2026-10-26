@@ -45,6 +45,7 @@ M5 第四批：新包 `@otter-player/danmaku`（按需加载，首屏不变）�
 - **观察窗口**：最近 60 个实际绘制的帧，每帧记录在屏条数、主线程本帧耗时（定位 + 绘制）、与上一个 rAF 的间隔。切换后 5 s 内不再切换。
 - **升到 WebGL**（当前为 Canvas 2D 时，先于 Worker 判断）：窗口平均在屏 ≥ 120 条，或主线程本帧耗时 p90 ≥ 4 ms。理由：120 条约是 1080p 全屏铺满的量；4 ms 是 16.7 ms 帧预算的四分之一，给页面其他工作留出余量。
 - **换到 Worker**：rAF 间隔 p90 ≥ 25 ms（掉到 40 fps 以下），而本引擎自己的耗时 p90 < 4 ms（慢的不是我们），并且在屏 ≥ 40 条。
+- **WebGL 不比阈值便宜**（当前为 WebGL，且主线程本帧耗时 p90 仍 ≥ 4 ms）：有 Worker 就换到 Worker（绘制离开主线程），否则回到 Canvas 2D；WebGL 记 `rejected: slower here`，本页不再尝试，避免来回切换。依据：CI 的 macOS WebKit 上 WebGL 主线程每帧 p50 6 ms / p95 19 ms，Canvas 2D 只有 1 ms。
 - **回到 Canvas 2D**：最近 600 帧（约 10 s）平均在屏 ≤ 40 条，且 rAF 间隔 p90 < 25 ms。
 - **不可用**：WebGL2 上下文拿不到、Worker 里没有 WebGL2、没有 OffscreenCanvas 时记 `rejected`，本页不再尝试，留在当前渲染器。
 - **解释输出**：每次选择都记一条 `{candidate, outcome, reason}`（与 `router.explain()` 的步骤同形），在 `danmakuStatus.steps`（最近 20 条），当前渲染器与理由在 `danmakuStatus.renderer / reason`。例如：`canvas2d selected: default: Canvas 2D (auto) | webgl selected: dense: 144 comments on stage (≥ 120) | worker selected: main thread busy: frame interval p90 50.0 ms (≥ 25), own cost p90 0.7 ms`。
