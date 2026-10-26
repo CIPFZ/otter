@@ -3,12 +3,12 @@
 // Level one stays in the main chunk. Helpers the main chunk also uses are handed over (a value
 // import of a shared module would make it a shared, eagerly initialised chunk).
 
-import { Activity, SlidersHorizontal } from 'lucide';
+import { Activity, MessageSquareText, SlidersHorizontal } from 'lucide';
 import type { CaptionStyle } from '@otter-player/text';
 import type { UiState } from './context.js';
 import type { MenuGroup, MenuOption, SettingsView } from './elements.js';
 import type { IconNode } from './icons.js';
-import type { PictureStrings, UiStrings } from './strings.js';
+import type { DanmakuStrings, PictureStrings, UiStrings } from './strings.js';
 
 /** What the settings menu lends the level views. */
 export interface LevelHost {
@@ -57,6 +57,50 @@ export const pictureStrings = (host: LevelHost): PictureStrings => ({
   ...host.strings.picture,
 });
 
+const DANMAKU_EN: DanmakuStrings = {
+  danmaku: 'Danmaku',
+  on: 'On',
+  off: 'Off',
+  opacity: 'Opacity',
+  fontSize: 'Font size',
+  speed: 'Speed',
+  slow: 'Slow',
+  normal: 'Normal',
+  fast: 'Fast',
+  area: 'Display area',
+  density: 'Density',
+  low: 'Low',
+  high: 'High',
+  hide: 'Hide',
+  scroll: 'Scrolling',
+  top: 'Top',
+  bottom: 'Bottom',
+};
+const DANMAKU_ZH: DanmakuStrings = {
+  danmaku: '弹幕',
+  on: '开',
+  off: '关',
+  opacity: '不透明度',
+  fontSize: '字号',
+  speed: '速度',
+  slow: '慢',
+  normal: '正常',
+  fast: '快',
+  area: '显示区域',
+  density: '弹幕密度',
+  low: '低',
+  high: '高',
+  hide: '屏蔽类型',
+  scroll: '滚动',
+  top: '顶部',
+  bottom: '底部',
+};
+
+const danmakuStrings = (host: LevelHost): DanmakuStrings => ({
+  ...(/^zh\b/i.test(host.el.closest('[lang]')?.getAttribute('lang') ?? '') ? DANMAKU_ZH : DANMAKU_EN),
+  ...host.strings.danmakuPage,
+});
+
 /** A picture action as an item value: the menu dispatches it as it is. */
 const pictureValue = (type: string, payload: object): string => JSON.stringify([type, payload]);
 
@@ -66,6 +110,7 @@ const pictureValue = (type: string, payload: object): string => JSON.stringify([
  */
 export function extraRows(host: LevelHost, s: Readonly<UiState>, deps: LevelDeps, stats: HTMLElement | null): HTMLElement[] {
   const out = [pictureRow(host, s, deps)];
+  if (s.danmaku !== undefined) out.push(danmakuRow(host, s.danmaku, deps));
   if (stats !== null) {
     const item = host.doc.createElement('div');
     item.setAttribute('role', 'menuitemcheckbox');
@@ -78,6 +123,24 @@ export function extraRows(host: LevelHost, s: Readonly<UiState>, deps: LevelDeps
     out.push(item);
   }
   return out;
+}
+
+function danmakuRow(host: LevelHost, d: NonNullable<UiState['danmaku']>, deps: LevelDeps): HTMLElement {
+  const t = danmakuStrings(host);
+  const value = d.enabled ? t.on : t.off;
+  const item = host.doc.createElement('div');
+  item.setAttribute('role', 'menuitem');
+  item.setAttribute('aria-haspopup', 'menu');
+  item.dataset['action'] = 'open';
+  item.dataset['view'] = 'danmaku';
+  item.dataset['key'] = 'row:danmaku';
+  item.tabIndex = -1;
+  item.innerHTML = `<span class="ic">${deps.icon(MessageSquareText)}</span><span class="lb"></span><span class="val"></span><span class="chev">${deps.icon(deps.ChevronRight)}</span>`;
+  (item.querySelector('.lb') as HTMLElement).textContent = t.danmaku;
+  (item.querySelector('.val') as HTMLElement).textContent = value;
+  item.querySelector('.val')?.toggleAttribute('data-on', d.enabled);
+  item.setAttribute('aria-label', `${t.danmaku}, ${value}`);
+  return item;
 }
 
 function pictureRow(host: LevelHost, s: Readonly<UiState>, deps: LevelDeps): HTMLElement {
@@ -141,7 +204,8 @@ export function buildLevel(host: LevelHost, view: Exclude<SettingsView, 'root'>,
   back.dataset['key'] = 'back';
   back.tabIndex = -1;
   const ps = pictureStrings(host);
-  const title = view === 'quality' ? t.quality : view === 'audio' ? t.audio : view === 'captions' ? t.captions : view === 'picture' ? ps.picture : t.captionStyle;
+  const ds = danmakuStrings(host);
+  const title = view === 'quality' ? t.quality : view === 'audio' ? t.audio : view === 'captions' ? t.captions : view === 'picture' ? ps.picture : view === 'danmaku' ? ds.danmaku : t.captionStyle;
   back.innerHTML = `<span class="ic">${deps.icon(deps.ChevronLeft)}</span><span class="lb"></span>`;
   (back.querySelector('.lb') as HTMLElement).textContent = title;
   back.setAttribute('aria-label', `${t.back}: ${title}`);
@@ -221,6 +285,59 @@ export function buildLevel(host: LevelHost, view: Exclude<SettingsView, 'root'>,
     row('picture-sharpen', ps.sharpness, 'sharpen', [[0, ps.reset], [0.3, '30%'], [0.6, '60%']]);
     const neutral = s.picture === undefined || (s.picture.zoom === 1 && JSON.stringify(s.picture.filters) === JSON.stringify({ brightness: 1, contrast: 1, saturate: 1, temperature: 0, sharpen: 0 }));
     out.push(item('picture-reset', ps.resetPicture, pictureValue('reset-picture', {}), neutral));
+    return out;
+  }
+  if (view === 'danmaku') {
+    const d = s.danmaku;
+    if (d === undefined) return out;
+    // One segmented control per setting; the hide types are switches.
+    const seg = (id: string, label: string, options: readonly [string, object, boolean][], role = 'menuitemradio'): void => {
+      const group = doc.createElement('div');
+      group.setAttribute('role', 'group');
+      group.dataset['group'] = 'danmaku';
+      const head = doc.createElement('div');
+      head.className = 'gh';
+      head.setAttribute('role', 'presentation');
+      head.id = `${host.menuId}-${id}`;
+      head.textContent = label;
+      group.setAttribute('aria-labelledby', head.id);
+      const row = doc.createElement('div');
+      row.className = 'seg';
+      options.forEach(([text, patch, checked], i) => {
+        const b = doc.createElement('div');
+        b.setAttribute('role', role);
+        b.setAttribute('aria-checked', String(checked));
+        b.setAttribute('value', pictureValue('set-danmaku', patch));
+        b.dataset['group'] = 'danmaku';
+        b.dataset['key'] = `${id}:${i}`;
+        b.tabIndex = -1;
+        b.textContent = text;
+        row.append(b);
+      });
+      group.append(head, row);
+      out.push(group);
+    };
+    const near = (a: number, b: number): boolean => Math.abs(a - b) < 1e-6;
+    const steps = (key: keyof typeof d, values: readonly [string, number][]): [string, object, boolean][] => values.map(([text, v]) => [text, { [key]: v }, near(d[key] as number, v)]);
+    seg('danmaku-enabled', ds.danmaku, [
+      [ds.on, { enabled: true }, d.enabled],
+      [ds.off, { enabled: false }, !d.enabled],
+    ]);
+    seg('danmaku-opacity', ds.opacity, steps('opacity', [['25%', 0.25], ['50%', 0.5], ['75%', 0.75], ['100%', 1]]));
+    seg('danmaku-size', ds.fontSize, steps('fontScale', [['75%', 0.75], ['100%', 1], ['125%', 1.25], ['150%', 1.5]]));
+    seg('danmaku-speed', ds.speed, steps('speed', [[ds.slow, 0.75], [ds.normal, 1], [ds.fast, 1.5]]));
+    seg('danmaku-area', ds.area, steps('area', [['1/4', 0.25], ['1/2', 0.5], ['3/4', 0.75], ['100%', 1]]));
+    seg('danmaku-density', ds.density, steps('density', [[ds.low, 0.3], [ds.normal, 0.6], [ds.high, 1]]));
+    seg(
+      'danmaku-hide',
+      ds.hide,
+      [
+        [ds.scroll, { hideScroll: !d.hideScroll }, d.hideScroll],
+        [ds.top, { hideTop: !d.hideTop }, d.hideTop],
+        [ds.bottom, { hideBottom: !d.hideBottom }, d.hideBottom],
+      ],
+      'menuitemcheckbox',
+    );
     return out;
   }
   const g = groups.find((x) => x.id === view);

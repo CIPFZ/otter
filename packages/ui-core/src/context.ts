@@ -20,8 +20,27 @@ export type UiState = MediaState &
   Partial<ChromeState> &
   Partial<PresentationState> &
   /** The picture plugin's state, when the host installs it (picture controls). */
-  Partial<{ readonly picture: PictureState }>;
-export type UiActions = MediaActionMap & ChromeActionMap & TextActionMap & PresentationActionMap & Partial<PictureActionMap>;
+  Partial<{ readonly picture: PictureState }> &
+  /** Danmaku settings, when the host installs @otter-player/danmaku (structural: no dependency). */
+  Partial<{ readonly danmaku: DanmakuView }>;
+/** The part of @otter-player/danmaku's DanmakuSettings the settings page shows. */
+export interface DanmakuView {
+  readonly enabled: boolean;
+  readonly opacity: number;
+  readonly fontScale: number;
+  readonly speed: number;
+  readonly area: number;
+  readonly density: number;
+  readonly hideScroll: boolean;
+  readonly hideTop: boolean;
+  readonly hideBottom: boolean;
+}
+export type UiActions = MediaActionMap &
+  ChromeActionMap &
+  TextActionMap &
+  PresentationActionMap &
+  Partial<PictureActionMap> &
+  Partial<{ 'set-danmaku': Partial<DanmakuView> }>;
 export type UiStore = StoreView<UiState, UiActions>;
 
 const stores = new WeakMap<Node, UiStore>();

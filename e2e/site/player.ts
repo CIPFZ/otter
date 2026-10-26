@@ -38,6 +38,7 @@ import { bindCanvasPip, canvasPipSupported, type CanvasPip } from '@otter-player
 import { createPicturePlugin, PICTURE_SLICE, type PictureActionMap, type PictureSliceState } from '@otter-player/presentation/picture';
 import { createSingleAudioPlugin } from '@otter-player/presentation/single-audio';
 import { createPreferencesPlugin } from '@otter-player/preferences';
+import { createDanmaku, DANMAKU_SLICE, type DanmakuActionMap, type DanmakuInspection, type DanmakuState } from '@otter-player/danmaku';
 import {
   bindActivity,
   CHROME_SLICE,
@@ -49,8 +50,8 @@ import {
   type ChromeState,
 } from '@otter-player/ui-core';
 
-type State = MediaState & QoeState & TextState & ChromeState & PresentationState & PictureSliceState;
-type Actions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap & PictureActionMap;
+type State = MediaState & QoeState & TextState & ChromeState & PresentationState & PictureSliceState & DanmakuState;
+type Actions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap & PictureActionMap & DanmakuActionMap;
 
 export interface OtterFixture {
   load(source: Source, options?: LoadOptions): void;
@@ -65,6 +66,8 @@ export interface OtterFixture {
   /** Blob of a same-origin URL, for the local-file scenario. */
   fetchBlob(url: string): Promise<Blob>;
   setPolicy(policy: RoutePolicy): Promise<void>;
+  /** ?danmaku=1: the danmaku engine's frame state. */
+  danmaku(): DanmakuInspection | null;
 }
 
 export interface WallTile {
@@ -145,6 +148,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
   surface: Surface;
   layer: OverlayLayer;
   picture: { refresh(): void };
+  danmaku: ReturnType<typeof createDanmaku> | undefined;
   dispose: () => void;
 }> {
   const params = new URLSearchParams(location.search);
@@ -207,8 +211,10 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
     controlsInset: () => (controlsBar !== null && !controlsBar.hasAttribute('data-idle') ? controlsBar.offsetHeight : 0),
   });
   let canvasPip: CanvasPip | undefined;
+  // ?danmaku=1: the danmaku engine (SPEC §13.2), its settings page and its overlay.
+  const danmaku = params.get('danmaku') === '1' ? createDanmaku() : undefined;
   const core = createCore<State, Actions>({
-    slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE, PICTURE_SLICE],
+    slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE, PICTURE_SLICE, ...(danmaku === undefined ? [] : [DANMAKU_SLICE])],
     plugins: [
       picture,
       media,
@@ -227,6 +233,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
       }),
       // One tab of the origin plays with sound (the latest to start).
       createSingleAudioPlugin<State, Actions>(),
+      ...(danmaku === undefined ? [] : [danmaku.plugin]),
       // ?prefs=1: the viewer's choices remembered across reloads (localStorage, `otter:` prefix).
       ...(params.get('prefs') === '1' ? [createPreferencesPlugin<State, Actions>()] : []),
     ],
@@ -242,6 +249,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
   root.querySelector('[data-otter-overlays]')?.remove();
   const layer = createOverlayLayer({ container: root, surface, store: view, mediaTime: () => video.currentTime });
   layer.add(text.overlay);
+  if (danmaku !== undefined) layer.add(danmaku.overlay);
   provideStore(root, view);
   // Preview card pictures: the source's WebVTT sprite track, else the engine's I-frame playlist.
   provideThumbnails(root, createThumbnails({ store: view, media }));
@@ -256,6 +264,7 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
     surface,
     layer,
     picture,
+    danmaku,
     dispose: () => {
       canvasPip?.destroy();
       input.destroy();
@@ -412,6 +421,7 @@ async function start(): Promise<OtterFixture> {
     dispatch: (type, payload) => current.core.store.dispatch(type, payload),
     state: () => current.core.store.getState(),
     explain: () => current.media.router.explain(),
+    danmaku: () => current.danmaku?.inspect() ?? null,
     events,
     fetchBlob: async (url) => (await fetch(url)).blob(),
     setControlsVisible,

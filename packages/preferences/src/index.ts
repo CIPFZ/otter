@@ -2,10 +2,10 @@
 // remembered across visits through a storage adapter the host can replace (default:
 // localStorage under a prefix). Only these are kept: the video codec order, the quality (as a
 // picture height, so it carries over between streams), the audio and subtitle languages, the
-// volume and the playback speed. Never the playback position. Separately (its own key), the
-// device's codec failures: a family that gave no picture although decodingInfo vouched for it
-// (WebKit and AV1) is remembered per user agent for 30 days, so the ~3 s it costs to find out is
-// paid once per device, not on every visit.
+// volume, the playback speed and the danmaku settings. Never the playback position.
+// Separately (its own key), the device's codec failures: a family that gave no picture although
+// decodingInfo vouched for it (WebKit and AV1) is remembered per user agent for 30 days, so the
+// ~3 s it costs to find out is paid once per device, not on every visit.
 //
 // Importing touches no global (SSR-safe): the default adapter reaches localStorage only when it
 // reads or writes, and gives up quietly where it throws (sandboxed iframes, privacy modes).
@@ -65,6 +65,8 @@ export interface Preferences {
   /** 0..1 */
   readonly volume?: number;
   readonly playbackRate?: number;
+  /** @otter-player/danmaku settings (the danmaku plugin clamps them again when applied). */
+  readonly danmaku?: Readonly<Record<string, number | boolean | readonly string[]>>;
 }
 
 /** Keeps what parses and is in range; anything else is dropped (a hand-edited or old entry). */
@@ -81,6 +83,13 @@ export function sanitize(raw: unknown): Preferences {
   if (typeof r['textLanguage'] === 'string' && r['textLanguage'] !== '') out.textLanguage = r['textLanguage'];
   if (typeof r['volume'] === 'number' && r['volume'] >= 0 && r['volume'] <= 1) out.volume = r['volume'];
   if (typeof r['playbackRate'] === 'number' && r['playbackRate'] >= 0.25 && r['playbackRate'] <= 4) out.playbackRate = r['playbackRate'];
+  const d = r['danmaku'];
+  if (typeof d === 'object' && d !== null && !Array.isArray(d)) {
+    const kept = Object.entries(d as Record<string, unknown>).filter(
+      ([, v]) => typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)) || (Array.isArray(v) && v.every((w) => typeof w === 'string')),
+    ) as [string, number | boolean | string[]][];
+    if (kept.length > 0) out.danmaku = Object.fromEntries(kept);
+  }
   return out;
 }
 
@@ -136,6 +145,8 @@ export interface PreferencesState {
   readonly playbackRate?: number;
   readonly textTracks?: readonly Track[];
   readonly textTrack?: string | null;
+  /** @otter-player/danmaku settings (DanmakuState.danmaku). */
+  readonly danmaku?: object;
 }
 
 /** The actions this watches and dispatches (MediaActionMap, TextActionMap). */
@@ -148,6 +159,8 @@ export interface PreferencesActionMap {
   'set-volume': { readonly volume: number };
   'volume-by': { readonly delta: number };
   'set-playback-rate': { readonly rate: number };
+  /** @otter-player/danmaku's, when installed. */
+  'set-danmaku'?: object;
 }
 
 export interface PreferencesPlugin<S extends PreferencesState, A extends PreferencesActionMap> extends Plugin<S, A> {
@@ -233,12 +246,18 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
         store.handle('set-volume', () => save({ volume: state().volume })),
         store.handle('volume-by', () => save({ volume: state().volume })),
         store.handle('set-playback-rate', ({ rate }) => save({ playbackRate: rate })),
+        // Danmaku settings as a whole (install the danmaku plugin before this one).
+        store.handle('set-danmaku', () => {
+          const d = state().danmaku;
+          if (d !== undefined) save({ danmaku: d as Preferences['danmaku'] });
+        }),
       ];
 
       // At start: volume, speed, codec order (the session applies it to the next load).
       if (prefs.volume !== undefined) dispatch('set-volume', { volume: prefs.volume });
       if (prefs.playbackRate !== undefined) dispatch('set-playback-rate', { rate: prefs.playbackRate });
       if (prefs.codecs !== undefined) dispatch('set-codec-preference', { order: prefs.codecs });
+      if (prefs.danmaku !== undefined) dispatch('set-danmaku', prefs.danmaku as object);
 
       // Codec failures of this device (user agent), not expired: out of the ranking from the start.
       const ua = options.userAgent ?? (() => ((globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent ?? ''));

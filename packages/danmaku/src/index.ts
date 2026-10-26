@@ -1,21 +1,296 @@
-// Danmaku engine (SPEC §13.2). M0 empty implementation.
+// Danmaku engine (SPEC §13.2, ADR-012): comments over the picture, drawn from the shared overlay
+// tick (one rAF with captions, SPEC §3 rule 4). The timeline is media time: a comment's position
+// is a function of (media time - its time), so pause freezes it, playback rate scales it, a seek
+// rebuilds the stage at the new time, and a hidden page draws nothing. Tracks from `danmaku`
+// (weizhenye), parsers from CommentCoreLibrary (vendor/, L3). Comment lists load on demand
+// (parse.ts); WebGL and the Worker renderer are on-demand chunks too (ADR-012).
+//
+// Not in scope (M5): advanced comments (mode 7 / 8 / 9), CSS tracks, server-side masks, live
+// WebSocket comments.
 
-import { notImplemented } from '@otter-player/core';
-import type { Overlay } from '@otter-player/surface';
+import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@otter-player/core';
+import type { Overlay, OverlayHost } from '@otter-player/surface';
+import { createCanvasRenderer, font, lineHeight, type Comment, type DanmakuRenderer } from './renderer.js';
+import {
+  blockTest,
+  INITIAL_DANMAKU_STATE,
+  mergeSettings,
+  sampled,
+  type DanmakuActionMap,
+  type DanmakuInput,
+  type DanmakuSettings,
+  type DanmakuState,
+} from './settings.js';
+import { resetSpace, type Stage } from './vendor/danmaku/allocate.js';
+import { frame, rebuild, type FrameHooks, type FrameState } from './vendor/danmaku/frame.js';
 
-export interface DanmakuOverlayOptions {
-  /** CSS transform tracks, Canvas 2D, WebGL batch, or OffscreenCanvas in a Worker. */
-  readonly renderer?: 'css' | 'canvas2d' | 'webgl' | 'offscreen';
+export * from './settings.js';
+export type { Comment, DanmakuRenderer } from './renderer.js';
+
+/** Seconds a scrolling comment takes across the stage at speed 1 (B站: about 8 s). */
+export const SCROLL_S = 8;
+/** Seconds a top / bottom comment stays. */
+export const FIXED_S = 4;
+
+export const DANMAKU_SLICE: StoreSlice<DanmakuState> = { id: 'danmaku', initialState: INITIAL_DANMAKU_STATE };
+
+/** Media state the engine reads when present (MediaState). */
+export interface DanmakuHostState extends DanmakuState {
+  readonly source?: object | null;
+  readonly paused?: boolean;
+  readonly seeking?: boolean;
+  readonly waiting?: boolean;
+  readonly ended?: boolean;
+  readonly playbackRate?: number;
 }
 
-export function createDanmakuOverlay(_options: DanmakuOverlayOptions = {}): Overlay {
-  return {
-    id: 'danmaku',
-    // Provisional stacking order inside the overlay layer; settled with the player shell in M1.
-    zIndex: 100,
-    mount() {
-      throw notImplemented('@otter-player/danmaku mount');
+export interface DanmakuOptions {
+  /** Injectable for tests; default fetch. */
+  readonly fetch?: (url: string) => Promise<Response>;
+}
+
+/** What the engine is doing, for tests and diagnostics. */
+export interface DanmakuInspection {
+  /** Media time of the last frame drawn. */
+  readonly time: number;
+  /** Frames drawn (none while paused and unchanged, hidden, or disabled). */
+  readonly frames: number;
+  readonly renderer: string | null;
+  readonly stage: { readonly width: number; readonly height: number; readonly duration: number };
+  readonly running: readonly { readonly text: string; readonly mode: string; readonly time: number; readonly x: number; readonly y: number; readonly width: number }[];
+}
+
+export interface DanmakuController {
+  readonly plugin: Plugin<DanmakuHostState, DanmakuActionMap>;
+  readonly overlay: Overlay;
+  inspect(): DanmakuInspection;
+}
+
+/** Stage px per font px at a picture height (comments grow with the player, within bounds). */
+const scaleFor = (h: number): number => Math.min(1.5, Math.max(0.6, h / 540));
+
+export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
+  type S = DanmakuHostState;
+  let store: Store<S, DanmakuActionMap> | undefined;
+  let host: OverlayHost | undefined;
+  let renderer: DanmakuRenderer | undefined;
+  let stageEl: HTMLElement | undefined;
+  let measure: CanvasRenderingContext2D | undefined;
+  let offs: Unsubscribe[] = [];
+  let hostOffs: Unsubscribe[] = [];
+  const fs: FrameState<Comment> = { comments: [], position: 0, running: [], space: resetSpace() };
+  let stage: Stage = { width: 0, height: 0, duration: SCROLL_S, fixedDuration: FIXED_S };
+  let settings: DanmakuSettings = INITIAL_DANMAKU_STATE.danmaku;
+  let blocked = blockTest([]);
+  let px = 1;
+  let dirty = true;
+  let frames = 0;
+  /** Media time drawn last, and the clock it was reported at (for interpolation). */
+  let drawnTime = 0;
+  let reported = Number.NaN;
+  let reportedAt = 0;
+  let loadSeq = 0;
+
+  const state = (): Readonly<S> => (store as Store<S, DanmakuActionMap>).getState();
+
+  const hooks: FrameHooks<Comment> = {
+    accept: (c) =>
+      !(c.mode === 'top' ? settings.hideTop : c.mode === 'bottom' ? settings.hideBottom : settings.hideScroll) &&
+      (c.own || (sampled(c.index, settings.density) && !blocked(c.text))),
+    setup(c) {
+      c.px = Math.round(c.size * settings.fontScale * px);
+      if (measure !== undefined) {
+        measure.font = font(c.px);
+        c.width = Math.ceil(measure.measureText(c.text).width) + 4;
+      }
+      c.height = lineHeight(c.px);
+      renderer?.prepare(c);
     },
-    destroy: () => undefined,
+    remove: (c) => renderer?.release(c),
   };
+
+  /** Stage geometry from the picture rectangle and the settings; everything enters again. */
+  const layout = (): void => {
+    if (host === undefined || stageEl === undefined || renderer === undefined) return;
+    const r = host.contentRect;
+    Object.assign(stageEl.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.width}px`, height: `${r.height}px`, opacity: String(settings.opacity) });
+    stageEl.hidden = !settings.enabled;
+    px = scaleFor(r.height);
+    stage = { width: r.width, height: r.height * settings.area, duration: SCROLL_S / settings.speed, fixedDuration: FIXED_S };
+    renderer.resize(r.width, r.height, host.root.ownerDocument.defaultView?.devicePixelRatio ?? 1);
+    rebuild(fs, drawnTime, stage, hooks);
+    dirty = true;
+  };
+
+  const setComments = (inputs: readonly DanmakuInput[]): void => {
+    fs.comments = inputs
+      .map((c, index) => ({ c, index }))
+      .sort((a, b) => a.c.time - b.c.time)
+      .map(({ c, index }) => toComment(c, index));
+    rebuild(fs, drawnTime, stage, hooks);
+    dirty = true;
+  };
+  const toComment = (c: DanmakuInput, index: number): Comment => ({
+    index,
+    time: c.time,
+    text: c.text.replace(/\s*\n\s*/g, ' '),
+    mode: c.mode ?? 'rtl',
+    color: c.color ?? 0xffffff,
+    size: c.size ?? 25,
+    own: c.own === true,
+    px: 0,
+    width: 0,
+    height: 0,
+    x: 0,
+    y: 0,
+    sprite: undefined,
+  });
+  const status = (patch: Partial<DanmakuState['danmakuStatus']>): void => {
+    store?.setState({ danmakuStatus: { ...state().danmakuStatus, ...patch } } as Partial<S>);
+  };
+
+  const plugin: DanmakuController['plugin'] = {
+    id: 'danmaku',
+    install(ctx: PluginContext<S, DanmakuActionMap>) {
+      store = ctx.store;
+      const s = ctx.store;
+      offs = [
+        s.handle('set-danmaku', (patch) => {
+          settings = mergeSettings(state().danmaku, patch);
+          blocked = blockTest(settings.blocked);
+          s.setState({ danmaku: settings } as Partial<S>);
+          layout();
+        }),
+        s.handle('load-danmaku', (req) => {
+          const seq = ++loadSeq;
+          if (req.comments !== undefined) {
+            setComments(req.comments);
+            status({ status: 'ready', count: fs.comments.length, skipped: 0 });
+            return;
+          }
+          status({ status: 'loading' });
+          void import('./parse.js')
+            .then((m) => m.loadComments(req, options.fetch ?? ((u) => fetch(u))))
+            .then(
+              (r) => {
+                if (seq !== loadSeq) return;
+                setComments(r.comments);
+                status({ status: 'ready', count: r.comments.length, skipped: r.skipped });
+              },
+              (err: unknown) => {
+                if (seq === loadSeq) status({ status: 'error', reason: String(err) });
+              },
+            );
+        }),
+        s.handle('send-danmaku', ({ text, mode, color }) => {
+          if (text.trim() === '') return;
+          const c = toComment({ time: drawnTime, text, own: true, ...(mode === undefined ? {} : { mode }), ...(color === undefined ? {} : { color }) }, fs.comments.length);
+          // At the next one to enter (upstream emit): shown on the next frame.
+          const list = [...fs.comments];
+          list.splice(fs.position, 0, c);
+          fs.comments = list;
+          status({ count: list.length });
+          dirty = true;
+        }),
+        s.handle('clear-danmaku', () => {
+          loadSeq++;
+          setComments([]);
+          status({ status: 'idle', count: 0, skipped: 0 });
+        }),
+        // Another video: its comments are not this one's.
+        s.select(
+          (st) => st.source,
+          () => {
+            loadSeq++;
+            setComments([]);
+            status({ status: 'idle', count: 0, skipped: 0 });
+          },
+        ),
+      ];
+      settings = state().danmaku;
+      blocked = blockTest(settings.blocked);
+    },
+    uninstall() {
+      for (const off of offs) off();
+      offs = [];
+      store = undefined;
+    },
+  };
+
+  const overlay: Overlay = {
+    id: 'danmaku',
+    // Above captions (200) would hide them: below, as B站 (captions stay readable).
+    zIndex: 100,
+    mount(h) {
+      host = h;
+      const doc = h.root.ownerDocument;
+      renderer = createCanvasRenderer(doc);
+      stageEl = doc.createElement('div');
+      stageEl.dataset['otterDanmaku'] = '';
+      stageEl.style.position = 'absolute';
+      stageEl.append(renderer.element);
+      h.root.append(stageEl);
+      measure = doc.createElement('canvas').getContext('2d') ?? undefined;
+      status({ renderer: renderer.kind, reason: 'Canvas 2D (default)' });
+      hostOffs = [h.onContentRectChange(layout)];
+      layout();
+    },
+    tick(now, mediaTime) {
+      if (store === undefined || renderer === undefined || !settings.enabled) return;
+      const doc = host?.root.ownerDocument;
+      // A hidden page draws nothing (SPEC §15 后台).
+      if (doc?.visibilityState === 'hidden') return;
+      const s = state();
+      const running = s.paused === false && s.seeking !== true && s.waiting !== true && s.ended !== true;
+      const rate = s.playbackRate ?? 1;
+      // Media time between the element's reports (some engines update it per video frame): on
+      // from the last report at the playback rate, at most 0.25 s ahead.
+      if (mediaTime !== reported) {
+        const jumped = mediaTime < drawnTime - 0.3 || mediaTime > drawnTime + 1.5 + (Number.isNaN(reported) ? 0 : ((now - reportedAt) / 1000) * rate);
+        reported = mediaTime;
+        reportedAt = now;
+        if (jumped) {
+          // A seek: the stage as it is at the new time.
+          drawnTime = mediaTime;
+          rebuild(fs, mediaTime, stage, hooks);
+          dirty = true;
+        }
+      }
+      const t = running ? Math.max(drawnTime, mediaTime + Math.min(0.25, ((now - reportedAt) / 1000) * rate)) : mediaTime;
+      if (t === drawnTime && !dirty) return;
+      drawnTime = t;
+      dirty = false;
+      frame(fs, t, stage, hooks);
+      renderer.draw(fs.running);
+      frames++;
+    },
+    destroy() {
+      for (const off of hostOffs) off();
+      hostOffs = [];
+      for (const c of fs.running) renderer?.release(c);
+      fs.running = [];
+      renderer?.destroy();
+      renderer = undefined;
+      stageEl?.remove();
+      stageEl = undefined;
+      host = undefined;
+    },
+  };
+
+  return {
+    plugin,
+    overlay,
+    inspect: () => ({
+      time: drawnTime,
+      frames,
+      renderer: renderer?.kind ?? null,
+      stage: { width: stage.width, height: stage.height, duration: stage.duration },
+      running: fs.running.map((c) => ({ text: c.text, mode: c.mode, time: c.time, x: c.x, y: c.y, width: c.width })),
+    }),
+  };
+}
+
+/** The overlay alone (comments come from a `createDanmaku()` plugin sharing the same controller). */
+export function createDanmakuOverlay(options: DanmakuOptions = {}): Overlay {
+  return createDanmaku(options).overlay;
 }

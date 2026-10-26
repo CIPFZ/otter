@@ -1,0 +1,18 @@
+{
+  "project": "CommentCoreLibrary",
+  "repo": "https://github.com/jabbany/CommentCoreLibrary",
+  "commit": "bc1109997a980f1f8ff2681759925a7ce6729478",
+  "license": "MIT",
+  "level": "L3",
+  "files": [
+    { "upstream": "src/parsers/BilibiliFormat.js", "local": "bilibili.ts" },
+    { "upstream": "src/parsers/CommonDanmakuFormat.js", "local": "bilibili.ts" }
+  ],
+  "localChanges": [
+    "TypeScript; plain functions returning Otter-shaped comments (time in seconds, size, color, mode number) instead of CCL comment objects (stime in ms).",
+    "No DOM: the XML is tokenised with a regular expression over <d p=\"...\">...</d> and the five XML entities plus character references are decoded; upstream parses with DOMParser or, by default, innerHTML into a div after a regex 'escape' (its own comment: do not trust it). Works in Workers and without a document.",
+    "Modes 1-6 only: advanced (7, positioned / rotated / path), code (8) and BAS (9) comments are counted as skipped (out of the M5 scope, ADR-012); their parsing is not copied.",
+    "Invalid size / color fall back to 25 / white; the colour is masked to 24 bits; dbid (or hash) becomes the comment id.",
+    "No console logging of bad comments: they are counted in `skipped`."
+  ]
+}

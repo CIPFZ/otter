@@ -1,0 +1,22 @@
+{
+  "project": "danmaku",
+  "repo": "https://github.com/weizhenye/Danmaku",
+  "commit": "e91bd7ad2ef6c1f8d6bc40d71698594696996e1e",
+  "tag": "v2.0.10",
+  "license": "MIT",
+  "level": "L3",
+  "files": [
+    { "upstream": "src/internal/allocate.js", "local": "allocate.ts" },
+    { "upstream": "src/utils.js", "local": "allocate.ts" },
+    { "upstream": "src/engine/index.js", "local": "frame.ts" },
+    { "upstream": "src/internal/seek.js", "local": "frame.ts" }
+  ],
+  "localChanges": [
+    "TypeScript; functions over explicit state (space, stage, frame state) instead of `this` on the Danmaku instance; no DOM, no requestAnimationFrame (the Otter overlay layer drives frames).",
+    "Media time only: upstream places a running comment by wall-clock time since it entered (cmt._utc) times playbackRate; here x comes from the current media time minus the comment's time, so pause, rate and background need no state (ADR-012). Upstream's media-bound allocation already used media time.",
+    "Separate durations for scrolling and top / bottom comments (upstream: one duration = stage width / speed).",
+    "No room in the display area: the comment is dropped (B站 'no overlap'); upstream wraps the channel modulo the stage height and overlaps.",
+    "Seek / rebuild: the comments still in flight at the new time enter again mid-flight; upstream starts at the new time and drops them.",
+    "binsearch on `time` only; formatMode / raf / now / canvas helpers not copied."
+  ]
+}

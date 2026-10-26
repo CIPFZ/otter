@@ -1,0 +1,15 @@
+{
+  "perMinute": 5000,
+  "windowS": 20,
+  "frames": 1200,
+  "drawn": 1201,
+  "p50": 17.07999999999811,
+  "p95": 17.100000000000364,
+  "max": 17.280000000000655,
+  "gapsOver50": 0,
+  "longTasks": null,
+  "longestTask": 0,
+  "onStage": 132,
+  "peakOnStage": 151,
+  "renderer": "canvas2d"
+}

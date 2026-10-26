@@ -171,3 +171,26 @@ describe('codec failures of the device (separate key, per user agent, 30 days)',
     expect(p.store.getState().codecExcluded).toEqual({});
   });
 });
+
+describe('danmaku settings', () => {
+  it('are remembered as a whole and restored at start; junk dropped', async () => {
+    const storage = memory();
+    const prefs = createPreferencesPlugin<S & { danmaku?: object }, PreferencesActionMap>({ storage });
+    const danmaku: Plugin<S & { danmaku?: object }, PreferencesActionMap> = {
+      id: 'danmaku',
+      install(ctx) {
+        ctx.store.handle('set-danmaku', (patch) => ctx.store.setState({ danmaku: { ...(ctx.store.getState().danmaku ?? {}), ...patch } }));
+      },
+      uninstall: () => undefined,
+    };
+    const core = createCore<S & { danmaku?: object }, PreferencesActionMap>({ slices: [{ id: 'state', initialState: { ...INITIAL, danmaku: { opacity: 1 } } }], plugins: [fakeMedia() as never, danmaku, prefs] });
+    await core.start();
+    core.store.dispatch('set-danmaku', { opacity: 0.5, area: 0.25, hideTop: true, blocked: ['剧透'] });
+    expect(JSON.parse(storage.data['preferences'] as string)).toEqual({ danmaku: { opacity: 0.5, area: 0.25, hideTop: true, blocked: ['剧透'] } });
+
+    storage.data['preferences'] = JSON.stringify({ danmaku: { opacity: 0.75, junk: 'x', bad: [1] } });
+    const again = createCore<S & { danmaku?: object }, PreferencesActionMap>({ slices: [{ id: 'state', initialState: { ...INITIAL, danmaku: {} } }], plugins: [fakeMedia() as never, danmaku, createPreferencesPlugin({ storage })] });
+    await again.start();
+    expect(again.store.getState().danmaku).toEqual({ opacity: 0.75 });
+  });
+});

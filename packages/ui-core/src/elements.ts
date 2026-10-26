@@ -134,7 +134,7 @@ export function settingsGroups(s: Readonly<UiState>, strings: UiStrings): MenuGr
       id: 'captions',
       label: strings.captions,
       options: [
-        { value: '', label: strings.captionsOff, checked: (s.textTrack ?? null) === null },
+        { value: '', label: strings.captionsOff, checked: s.textTrack == null },
         ...tracks.map((t) => ({ value: t.id, label: trackLabel(t), checked: s.textTrack === t.id })),
       ],
     });
@@ -281,7 +281,7 @@ const captionsButtonClass = () =>
         this.ui?.dispatch('toggle-captions', {}, { type: e.type, source: 'otter-captions-button' });
       }
       protected render(s: Readonly<UiState>): void {
-        const on = (s.textTrack ?? null) !== null;
+        const on = s.textTrack != null;
         this.show(this.strings.captions, on ? 'on' : 'off');
         unsupported(this, (s.textTracks ?? []).length === 0);
         this.button?.setAttribute('aria-pressed', String(on));
@@ -631,7 +631,7 @@ ${glassFallback('.time')}
         this.style.setProperty('--otter-buffered', `${Math.min(100, (s.bufferedEnd / s.duration) * 100)}%`);
         // Swipe seek preview (chrome slice): where the release would land.
         if (this.#hoverTime === null && !this.#dragging) {
-          this.toggleAttribute('data-active', (s.seekPreview ?? null) !== null);
+          this.toggleAttribute('data-active', s.seekPreview != null);
           this.#preview(this.#swipeTarget());
         }
       }
@@ -1030,9 +1030,9 @@ const menuCss = (): string => `
 .chev svg, .back svg { width: 18px; height: 18px; }
 .back { min-height: 44px; border-bottom: 1px solid ${T.glassBorder}; margin-bottom: 4px; font-weight: 600; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 12px 8px; }
-.seg [role="menuitemradio"] { flex: 1 0 auto; justify-content: center; min-height: 30px; padding: 0 8px; border-radius: 999px;
+.seg [aria-checked] { flex: 1 0 auto; justify-content: center; min-height: 30px; padding: 0 8px; border-radius: 999px;
   background: rgb(255 255 255 / 0.08); font: 600 12px/1 ${T.font}; gap: 0; }
-.seg [role="menuitemradio"][aria-checked="true"] { background: ${T.accent}; color: #0b1b24; }
+.seg [aria-checked="true"] { background: ${T.accent}; color: #0b1b24; }
 .switch { width: 34px; height: 20px; border-radius: 999px; background: rgb(255 255 255 / 0.25); position: relative; flex: none;
   transition: background ${T.fast}; }
 .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff;
@@ -1327,7 +1327,7 @@ const speedMenuClass = () =>
     };
   });
 
-export type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style' | 'picture';
+export type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style' | 'picture' | 'danmaku';
 
 /**
  * Settings (UI-DESIGN §7): a two-level menu. Level one: rows "icon + label + current value +
@@ -1456,7 +1456,7 @@ const settingsMenuClass = () =>
           const seg = item.closest('.seg');
           if (seg !== null) {
             // Inside a segmented control the horizontal arrows move between segments.
-            const segs = [...seg.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+            const segs = [...seg.querySelectorAll<HTMLElement>('[aria-checked]')];
             const i = segs.indexOf(item);
             const next = segs[i + (e.key === 'ArrowRight' ? 1 : -1)];
             e.preventDefault();
@@ -1482,7 +1482,8 @@ const settingsMenuClass = () =>
         const levels = this.#levels;
         if (this.#view !== 'root' && levels === undefined) return;
         const groups = settingsGroups(s, this.strings);
-        const signature = JSON.stringify([this.#view, groups, s.captionStyle ?? null, s.picture ?? null, this.#stats()?.hidden ?? null]);
+        // Absent values stringify as null in an array.
+        const signature = JSON.stringify([this.#view, groups, s.captionStyle, s.picture, s.danmaku, this.#stats()?.hidden]);
         if (signature === this.#signature) return;
         this.#signature = signature;
         const focused = (this.shadowRoot?.activeElement as HTMLElement | null)?.dataset['key'];
@@ -1554,7 +1555,7 @@ const settingsMenuClass = () =>
         if (groups.some((g) => g.id === 'captions')) {
           const captionsRow = this.#row('row:captions', Captions, t.captions, checked('captions'), 'captions');
           // An enabled track reads in the accent colour (UI-DESIGN §10 "selected").
-          captionsRow.querySelector('.val')?.toggleAttribute('data-on', (s.textTrack ?? null) !== null);
+          captionsRow.querySelector('.val')?.toggleAttribute('data-on', s.textTrack != null);
           out.push(captionsRow);
           const custom = Object.keys(s.captionStyle ?? {}).length > 0;
           out.push(this.#row('row:caption-style', Type, t.captionStyle, custom ? '✓' : t.styleDefault, 'caption-style'));

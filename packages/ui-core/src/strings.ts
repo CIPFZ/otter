@@ -2,6 +2,27 @@
 // swaps or extends the table with provideStrings(). `{n}` / `{label}` are placeholders.
 
 /** Texts of the settings menu's Picture page (defaults in settings-level.ts, by language). */
+/** Danmaku settings page texts (level-two chunk), when the host installs @otter-player/danmaku. */
+export interface DanmakuStrings {
+  readonly danmaku: string;
+  readonly on: string;
+  readonly off: string;
+  readonly opacity: string;
+  readonly fontSize: string;
+  readonly speed: string;
+  readonly slow: string;
+  readonly normal: string;
+  readonly fast: string;
+  readonly area: string;
+  readonly density: string;
+  readonly low: string;
+  readonly high: string;
+  readonly hide: string;
+  readonly scroll: string;
+  readonly top: string;
+  readonly bottom: string;
+}
+
 export interface PictureStrings {
   readonly picture: string;
   readonly brightness: string;
@@ -50,6 +71,7 @@ export interface UiStrings {
    * level-two chunk; a host table may override them here.
    */
   readonly picture?: Partial<PictureStrings>;
+  readonly danmakuPage?: Partial<DanmakuStrings>;
   readonly audio: string;
   // Caption display settings (CVAA).
   readonly captionSize: string;

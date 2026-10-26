@@ -57,7 +57,7 @@
 | IMSC1 / TTML | imscJS（BSD-2，npm `imsc`） | L1 | 标准参考实现。M2 用 1.1.5（传递依赖 `sax` 为 ISC），动态加载。imscJS 与 sax 是 CommonJS，sax 会 `require('stream')` / `require('string_decoder')`，webpack 5 与 esbuild 浏览器构建会直接报错，所以 `text` 构建时把两者预打包进 TTML 懒加载块，Node 内置模块换成 `tooling/shims` 里的空实现（`package.json` 的 `otter.bundle`）。2.0 RC 把 puppeteer 列为运行时依赖，暂不升级 |
 | ASS 特效字幕 | `jassub` / `libass-wasm`（LGPL/MIT 包装） | L1 独立加载 | 可选插件 |
 | CEA-608/708 | hls.js `cea-608-parser.ts` + `output-filter.ts` | L3 | 引擎侧解析。M2 复制到 `packages/text/src/vendor/hls.js/`（hls.js@e5ff358），只做 608；M3 移到 `packages/pipeline/src/vendor/hls.js/`：解码属于引擎侧，自研管线从 SEI 取 cc_data、解出 in-band cue 经 `text-cues` 送到渲染器，和 hls.js / Shaka 路径一致（渲染层不再带 608 代码）。屏幕到 cue 的映射按 W3C 608-to-WebVTT 定位自写 |
-| 弹幕引擎 | CommentCoreLibrary（MIT，B 站格式与高级弹幕参考实现）、DPlayer `danmaku.js`、`danmaku`（weizhenye，MIT，DOM/Canvas 双渲染） | L2 / L3 | Canvas 轨道算法拿 `danmaku`，高级弹幕脚本解析拿 CCL，WebGL 批渲染自写 |
+| 弹幕引擎 | CommentCoreLibrary（MIT，B 站格式与高级弹幕参考实现）、DPlayer `danmaku.js`、`danmaku`（weizhenye，MIT，DOM/Canvas 双渲染） | L3 | M5 第四批：轨道分配与逐帧推进拷 `danmaku`（weizhenye@e91bd7a = v2.0.10，`packages/danmaku/src/vendor/danmaku/`，改为按媒体时间定位），B 站 XML 解析拷 CCL（CommentCoreLibrary@bc11099，`vendor/CommentCoreLibrary/`，去掉 DOM 解析）；高级弹幕不在 M5 范围；WebGL 批渲染自写（ADR-012） |
 | 蒙版弹幕 | B 站公开的 `mask-image` 做法 | L4 | 只借思路 |
 | 伪全屏 / iPhone 特判 | xgplayer `cssfullscreen`、Vidstack `fullscreen` 控制器 | L3 | |
 | Document PiP | Chrome 官方示例 + Vidstack 实验分支 | L3 | |
