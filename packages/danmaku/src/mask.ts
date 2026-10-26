@@ -92,7 +92,10 @@ export function createSvgMask(doc: Document, input: readonly SvgMaskFrame[]): Ma
 const AHEAD_S = 2;
 const BEHIND_S = 0.5;
 
-export function createWebmMask(doc: Document, url: string, fps: number, onError: (reason: string) => void): MaskSource {
+/** No frame decoded this long after loading: the browser does not decode the file here. */
+const DECODE_TIMEOUT_MS = 10_000;
+
+export function createWebmMask(doc: Document, url: string, fps: number, onError: (reason: string) => void, onReady: () => void): MaskSource {
   const video = doc.createElement('video');
   video.muted = true;
   video.preload = 'auto';
@@ -151,8 +154,13 @@ export function createWebmMask(doc: Document, url: string, fps: number, onError:
         (c.getContext('2d') as Ctx).drawImage(video, 0, 0, MASK_W, height);
         if (frames.size === 0 && !hasAlpha(c)) {
           failed = true;
+          clearTimeout(timeout);
           onError('the WebM has no alpha here (VP8 / VP9 alpha not decoded)');
           return;
+        }
+        if (frames.size === 0 && version === 0) {
+          clearTimeout(timeout);
+          onReady();
         }
         frames.set(index, { canvas: c, version: ++version });
         // A seek that lands elsewhere: that frame is not asked for again (no mask for it rather
@@ -164,6 +172,11 @@ export function createWebmMask(doc: Document, url: string, fps: number, onError:
       busy = false;
     }
   };
+  const timeout = setTimeout(() => {
+    if (version > 0 || failed) return;
+    failed = true;
+    onError(`no frame decoded in ${DECODE_TIMEOUT_MS / 1000} s`);
+  }, DECODE_TIMEOUT_MS);
   video.addEventListener(
     'loadeddata',
     () => {
@@ -175,6 +188,7 @@ export function createWebmMask(doc: Document, url: string, fps: number, onError:
   );
   video.addEventListener('error', () => {
     failed = true;
+    clearTimeout(timeout);
     onError(`mask video: ${video.error?.message || `error ${video.error?.code ?? ''}`}`);
   });
 
@@ -191,6 +205,7 @@ export function createWebmMask(doc: Document, url: string, fps: number, onError:
     },
     destroy() {
       failed = true;
+      clearTimeout(timeout);
       video.removeAttribute('src');
       video.load();
       video.remove();

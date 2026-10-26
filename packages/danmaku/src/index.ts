@@ -65,6 +65,8 @@ export interface DanmakuInspection {
   readonly time: number;
   /** Media time of the picture the last frame was drawn for (the mask lookup), and the mask frame used. */
   readonly frameTime: number;
+  /** Seconds `frameTime` was drawn ahead of the picture (one display frame + renderer latency, while playing). */
+  readonly lead: number;
   readonly maskIndex: number | null;
   /** Frames drawn while the mask frame was not decoded yet (drawn unmasked). */
   readonly maskMissing: number;
@@ -119,6 +121,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
   let maskShown: MaskFrame | undefined;
   let maskMissing = 0;
   let drawnFrameTime = 0;
+  let drawnLead = 0;
 
   const state = (): Readonly<S> => (store as Store<S, DanmakuActionMap>).getState();
 
@@ -282,7 +285,15 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
             .then(async (m) => {
               if (req.kind === 'webm') {
                 const fps = req.fps ?? 30;
-                return { source: m.createWebmMask(doc, req.url as string, fps, (why) => seq === maskSeq && status({ mask: `webm rejected: ${why}` })), what: `webm: ${fps} fps` };
+                // Ready once the first frame decoded with its alpha.
+                const source = m.createWebmMask(
+                  doc,
+                  req.url as string,
+                  fps,
+                  (why) => seq === maskSeq && status({ mask: `webm rejected: ${why}` }),
+                  () => seq === maskSeq && status({ mask: `webm: ${fps} fps` }),
+                );
+                return { source, what: undefined };
               }
               const frames = req.frames ?? ((await (await (options.fetch ?? ((u) => fetch(u)))(req.url as string)).json()) as { frames: { time: number; svg: string }[] }).frames;
               return { source: m.createSvgMask(doc, frames), what: `svg: ${frames.length} frames` };
@@ -293,7 +304,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
                 mask = source;
                 maskMissing = 0;
                 dirty = true;
-                if (!/rejected/.test(state().danmakuStatus.mask ?? '')) status({ mask: what });
+                if (what !== undefined) status({ mask: what });
               },
               (err: unknown) => seq === maskSeq && status({ mask: `${req.kind} rejected: ${String(err)}` }),
             );
@@ -388,6 +399,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       if (t === drawnTime && !dirty) return;
       maskShown = m;
       drawnFrameTime = ft;
+      drawnLead = lead;
       if (mask !== undefined && m === undefined) maskMissing++;
       drawnTime = t;
       dirty = false;
@@ -421,6 +433,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
     inspect: () => ({
       time: drawnTime,
       frameTime: drawnFrameTime,
+      lead: drawnLead,
       maskIndex: maskShown?.index ?? null,
       maskMissing,
       frames,

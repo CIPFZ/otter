@@ -82,7 +82,8 @@ for (const kind of ['svg', 'webm'] as const) {
         o.dispatch('set-muted', { muted: true });
         o.load({ src: '/frames/hls-ladder/master.m3u8' }, { autoplay: false });
         // Full-width green blocks along the bottom, always one in the lowest row.
-        o.dispatch('load-danmaku', { comments: Array.from({ length: 64 }, (_, i) => ({ time: i * 0.5, text: '█'.repeat(40), mode: 'bottom' as const, color: 0x00ff00 })) });
+        // 80 blocks: wider than the picture with any font (CI's Linux font draws █ narrower).
+        o.dispatch('load-danmaku', { comments: Array.from({ length: 64 }, (_, i) => ({ time: i * 0.5, text: '█'.repeat(80), mode: 'bottom' as const, color: 0x00ff00 })) });
         o.dispatch('load-danmaku-mask', k === 'svg' ? { kind: 'svg', url: '/danmaku/mask-band.json' } : { kind: 'webm', url: '/danmaku/mask-band.webm', fps: 30 });
       }, kind);
       await expect.poll(async () => (await page.evaluate(async () => ((await window.otter) as OtterFixture).state().danmakuStatus.mask)) ?? '', { timeout: 15_000 }).toMatch(new RegExp(`^${kind}: (\\d+ frames|30 fps)$|rejected`));
@@ -114,17 +115,24 @@ for (const kind of ['svg', 'webm'] as const) {
       const playing: number[] = [];
       /** Band minus frame: negative, the mask is behind the picture. */
       const signed: number[] = [];
+      /** Per screenshot: shot frame - currentTime frame, and (frame time without the lead - currentTime) in frames. */
+      const parts: string[] = [];
       for (let i = 0; i < 12; i++) {
         await page.waitForTimeout(250);
+        const before = await page.evaluate(async () => {
+          const d = ((await window.otter) as OtterFixture).danmaku();
+          return { ct: (document.querySelector('video') as HTMLVideoElement).currentTime, ft: d?.frameTime ?? 0, lead: d?.lead ?? 0 };
+        });
         const r = await readShot(page);
+        parts.push(`${r.frame - Math.floor(before.ct * 30)}/${((before.ft - before.lead - before.ct) * 30).toFixed(1)}/${(before.lead * 30).toFixed(1)}`);
         if (r.band === null) continue;
         playing.push(offBy(r as { frame: number; band: number }));
         signed.push(((((r.band as number) - (r.frame % BANDS)) % BANDS) + BANDS + 15) % BANDS - 15);
       }
       expect(playing.length).toBeGreaterThanOrEqual(8);
-      expect(Math.max(...playing), `band - frame ${signed.join(',')}`).toBeLessThanOrEqual(1);
+      expect(Math.max(...playing), `band - frame ${signed.join(',')}; shot - ct / ft - ct / lead (frames) ${parts.join(' ')}`).toBeLessThanOrEqual(1);
       const d = await inspect();
-      ciNotice(`danmaku mask ${kind} on ${renderer}: paused frame/band ${paused.join(' ')}; playing band - frame ${signed.join(',')} frames; ${d?.maskMissing ?? 0} frames drawn before the mask frame was ready`);
+      ciNotice(`danmaku mask ${kind} on ${renderer}: paused frame/band ${paused.join(' ')}; playing band - frame ${signed.join(',')} frames; ${d?.maskMissing ?? 0} frames drawn before the mask frame was ready; shot - ct / ft - ct / lead (frames) ${parts.join(' ')}`);
     });
   }
 }
