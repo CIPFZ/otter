@@ -62,6 +62,15 @@ M4 于 2026-10-22 验收通过。M4 报告末尾的五个问题由负责人逐�
   - 只存：编码偏好、清晰度（存画面高度，换片源也适用）、音轨语言、字幕语言（含「关」）、音量、倍速；不存播放位置。读出时逐项校验，非法值丢弃。
   - 只记录用户动作（ABR 切档、长按 2 倍速、直播追帧不算）；音量、倍速、编码偏好在启动时恢复（编码偏好从下一次加载生效），清晰度和语言在每个片源的轨道就绪后恢复一次。
 
+### 6. DASH 音视频分离（第三批第二项，2026-10-26，只在 Shaka 上）
+
+- **范围修正（负责人）**：不新建 dash.js 适配器；SPEC 只规划 Shaka 做 DASH。
+- **音频不参与 ABR**：Otter 的 Shaka AbrManager 只在当前音频流对应的视频 Representation 之间选择，带宽不会换音频；换语言时（Shaka 给出不含原音频流的新 variant 集）采用新语言的音频流。
+- **切视频档不重拉音频**：Shaka 对独立流本来如此；但手动选择**当前正在播的** variant 时，Shaka 会强制清空所有流的缓冲（含音频，`Player.switchVariant_`），适配器现在对这种情况只关 ABR、不调用 `selectVariantTrack`。
+- **编码过滤**：视频 AdaptationSet 按 §5 的排序在 Shaka 的 TXml 预处理里过滤（第 1 项已就位，本项补 e2e）。
+- **同一元素上重新加载**：Shaka 的 `destroy()` 是异步的、最后才摘掉 `src`；会话剔除编码族后在同一元素上重建 Shaka 时，新播放器的 MediaSource 被旧播放器的收尾摘掉，ManagedMediaSource（WebKit）不会再打开。适配器现在按元素等待上一个 `destroy()` 完成再 `attach`。
+- **夹具**：`e2e/media/dash-av`（`generate-dash-av.sh`）：视频 H.264 三档（360p / 270p / 180p），英、法两个音频 AdaptationSet；`codecs.mpd` 另加 HEVC 与 AV1 AdaptationSet。§19「B 站式弹幕站」场景改用它。
+
 ### 4. M4 收尾
 
 - **WHEP**：以本地夹具（视频 + Opus 音轨）为验收依据；另在真机 Edge 上手动播一次、人耳确认有声，一句话记进 M4 报告。
