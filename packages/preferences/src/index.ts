@@ -241,7 +241,7 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
       if (prefs.codecs !== undefined) dispatch('set-codec-preference', { order: prefs.codecs });
 
       // Codec failures of this device (user agent), not expired: out of the ranking from the start.
-      const ua = options.userAgent ?? (() => (typeof navigator === 'object' ? navigator.userAgent : ''));
+      const ua = options.userAgent ?? (() => ((globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent ?? ''));
       const now = options.now ?? Date.now;
       const ttl = options.codecFailureTtlMs ?? 30 * DAY_MS;
       const failuresKey = options.codecFailuresKey ?? 'codec-failures';
