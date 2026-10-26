@@ -138,10 +138,15 @@ test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when
     const t0 = o.state().currentTime;
     o.dispatch('load-danmaku', { comments: Array.from({ length: 1000 }, (_, i) => ({ time: t0 + i / 40, text: `弹${i % 100}` })) });
   });
-  await expect.poll(async () => (await steps()).map((x) => `${x.candidate} ${x.outcome}`), { timeout: 30_000 }).toContainEqual(expect.stringMatching(/^webgl (selected|rejected)$/));
-  const dense = (await steps()).find((x) => x.candidate === 'webgl');
-  if (dense?.outcome === 'selected') {
-    expect(dense.reason).toMatch(/^dense: \d+ comments on stage \(≥ 120\)$/);
+  // The first step away from Canvas 2D: WebGL for the density, or, on a machine already busy
+  // (CI's WebKit runner under the parallel suite), the Worker first (ADR-012 §5).
+  const BUSY = /^main thread busy: frame interval p90 [\d.]+ ms \(≥ 25\)/;
+  await expect.poll(async () => (await steps()).map((x) => `${x.candidate} ${x.outcome}`), { timeout: 30_000 }).toContainEqual(expect.stringMatching(/^(webgl|worker) (selected|rejected)$/));
+  const first = (await steps()).find((x) => x.candidate !== 'canvas2d');
+  if (first?.candidate === 'worker') {
+    if (first.outcome === 'selected') expect(first.reason).toMatch(BUSY);
+  } else if (first?.outcome === 'selected') {
+    expect(first.reason).toMatch(/^dense: \d+ comments on stage \(≥ 120\)$/);
     // A busy page: 30 ms of someone else's work every 30 ms.
     await page.evaluate(() => {
       setInterval(() => {
@@ -151,9 +156,9 @@ test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when
     });
     await expect.poll(async () => (await steps()).map((x) => `${x.candidate} ${x.outcome}`), { timeout: 40_000 }).toContainEqual(expect.stringMatching(/^worker (selected|rejected)$/));
     const busy = (await steps()).find((x) => x.candidate === 'worker');
-    if (busy?.outcome === 'selected') expect(busy.reason).toMatch(/^main thread busy: frame interval p90 [\d.]+ ms \(≥ 25\)/);
+    if (busy?.outcome === 'selected') expect(busy.reason).toMatch(BUSY);
   } else {
-    expect(dense?.reason).toBe('no WebGL2 context');
+    expect(first?.reason).toBe('no WebGL2 context');
   }
   const st = (await otter(page)).danmakuStatus;
   expect(st.renderer).toBe(st.steps.filter((x) => x.outcome === 'selected').at(-1)?.candidate);
