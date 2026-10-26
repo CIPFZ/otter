@@ -85,6 +85,18 @@ describe('stall watchdog', () => {
     expect(w.sample({ ...sample(4_200, 0.1, { playing: false }), seeking: true })).toBe('escalate');
   });
 
+  it('before any picture, an engine seek that never completes is a startup stall', () => {
+    const w = createStallWatchdog(DEFAULT_RECOVERY);
+    const stuck = (t: number) => ({ ...sample(t, 0.3, { playing: false }), seeking: true, picture: false });
+    expect(w.sample(stuck(0))).toBe('none');
+    expect(w.sample(stuck(1_500))).toBe('nudge');
+    expect(w.sample(stuck(3_000))).toBe('escalate');
+    // After a picture, a long seek is not the watchdog's business (unless it nudged).
+    const later = createStallWatchdog(DEFAULT_RECOVERY);
+    expect(later.sample({ ...sample(0, 5, { playing: false }), seeking: true })).toBe('none');
+    expect(later.sample({ ...sample(9_000, 5, { playing: false }), seeking: true })).toBe('none');
+  });
+
   it('a playhead moved before any picture (a gap jump) keeps the startup pace', () => {
     const w = createStallWatchdog(DEFAULT_RECOVERY);
     expect(w.sample({ ...sample(0, 0), picture: false })).toBe('none');

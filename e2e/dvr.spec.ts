@@ -92,7 +92,9 @@ test('live DVR: window on the slider, distance behind live checked against the p
     });
   });
   await slider.evaluate((el: HTMLInputElement) => {
-    el.value = String(Number(el.min) + 1);
+    // A segment boundary (2 s segments, a keyframe each): paused WebKit shows the GOP's keyframe
+    // rather than the exact frame after a seek inside it, which the frame-number check would read.
+    el.value = String(Number(el.min) + 2);
     el.dispatchEvent(new Event('input'));
     el.dispatchEvent(new Event('change'));
   });

@@ -123,7 +123,9 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
   };
   return {
     sample({ now, currentTime, playing: running, bufferAhead, seeking = false, picture = true }) {
-      const playing = running || (seeking && nudged);
+      // A seek that never completes is a stall too when the nudge started it, or before any
+      // picture (an engine's seek into media nothing decodes: WebKit and AV1 through Shaka).
+      const playing = running || (seeking && (nudged || !picture));
       if (!playing || bufferAhead < 0.5 || currentTime !== lastTime) {
         const byNudge = nudged && Math.abs(currentTime - nudgedTo) < 1e-3;
         if (currentTime !== lastTime && !Number.isNaN(lastTime) && !byNudge) {
