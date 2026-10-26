@@ -27,13 +27,17 @@ export function createWorkerRenderer(doc: Document, onError: (reason: string) =>
   let maskVersion = -1;
   /** When each frame in flight was posted (the Worker answers in order). */
   const posted: number[] = [];
-  /** Round trip post -> drawn: smoothed, up at once on a slower one. */
-  let roundTrip = 16;
-  worker.onmessage = (e: MessageEvent<{ t: string; reason?: string }>) => {
+  /**
+   * Post -> drawn in the Worker, one way (the reply's own wait on a busy main thread is not
+   * display latency): smoothed, up at once on a slower one.
+   */
+  let drawMs = 8;
+  worker.onmessage = (e: MessageEvent<{ t: string; reason?: string; at?: number }>) => {
     if (e.data.t === 'drawn') {
       busy = false;
-      const rt = performance.now() - (posted.shift() ?? performance.now());
-      roundTrip = rt > roundTrip ? rt : roundTrip + (rt - roundTrip) * 0.1;
+      const at = posted.shift();
+      const ms = at === undefined || e.data.at === undefined ? drawMs : Math.max(0, e.data.at - performance.timeOrigin - at);
+      drawMs = ms > drawMs ? ms : drawMs + (ms - drawMs) * 0.1;
     }
     else if (e.data.t === 'error') onError(e.data.reason ?? 'Worker failed');
   };
@@ -41,9 +45,9 @@ export function createWorkerRenderer(doc: Document, onError: (reason: string) =>
   return {
     kind: 'worker',
     element: canvas,
-    // The round trip, then one more display frame until the Worker canvas is composited (measured).
+    // Drawn in the Worker, then one more display frame until its canvas is composited.
     get latencyMs() {
-      return roundTrip + 16.7;
+      return drawMs + 16.7;
     },
     resize(width, height, dpr) {
       post({ t: 'resize', width, height, dpr });

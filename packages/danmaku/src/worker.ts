@@ -53,5 +53,6 @@ scope.onmessage = (e) => {
     m.items[i * 3 + 2] = Math.round((m.items[i * 3 + 2] as number) * dpr);
   }
   stage.draw(m.items, m.count);
-  scope.postMessage({ t: 'drawn' });
+  // When it was drawn, on the shared wall clock (the main thread converts it to its own timeline).
+  scope.postMessage({ t: 'drawn', at: performance.timeOrigin + performance.now() });
 };
