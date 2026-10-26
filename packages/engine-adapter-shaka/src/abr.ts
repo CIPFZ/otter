@@ -2,6 +2,11 @@
 // Shaka hands us the playable variants and every segment download; we answer chooseVariant() and
 // call switchCallback when the stack picks a different variant. Typed structurally, like the rest
 // of the adapter (shaka-types.ts).
+//
+// Audio is not part of ABR (separate audio and video, SPEC §19 B 站式): the rules choose among
+// the video Representations of the audio stream already playing, so bandwidth never changes the
+// audio and a video switch never makes Shaka fetch audio again. A language change (Shaka hands new
+// variants without that audio stream) picks the audio of the first new variant.
 
 import type { AbrDriver, AbrLevel } from '@otter-player/pipeline';
 
@@ -9,6 +14,7 @@ export interface ShakaVariant {
   readonly id: number;
   readonly bandwidth: number;
   readonly video: { readonly width?: number | null; readonly height?: number | null } | null;
+  readonly audio?: { readonly id: number } | null;
 }
 
 export interface ShakaRestrictions {
@@ -103,13 +109,21 @@ export function createOtterShakaAbr(driver: AbrDriver, options: OtterShakaAbrOpt
     variants = allowed.length > 0 ? allowed : all;
   };
 
+  /** The variants with the audio stream playing (or, at the start / after a language change, the first one's). */
+  const pool = (): readonly ShakaVariant[] => {
+    const playing = current?.audio?.id;
+    const audio = playing !== undefined && variants.some((v) => v.audio?.id === playing) ? playing : variants[0]?.audio?.id;
+    return audio === undefined ? variants : variants.filter((v) => v.audio?.id === audio);
+  };
+
   const choose = (): ShakaVariant | undefined => {
-    if (variants.length === 0) return undefined;
-    const levels = variants.map(levelOf);
-    const currentIndex = current === undefined ? -1 : variants.findIndex((v) => v.id === current?.id);
+    const list = pool();
+    if (list.length === 0) return undefined;
+    const levels = list.map(levelOf);
+    const currentIndex = current === undefined ? -1 : list.findIndex((v) => v.id === current?.id);
     if (!driver.canEstimate) {
       // Before any sample: highest variant that fits the default estimate, else the lowest.
-      const sorted = [...variants].sort((a, b) => a.bandwidth - b.bandwidth);
+      const sorted = [...list].sort((a, b) => a.bandwidth - b.bandwidth);
       let pick = sorted[0] as ShakaVariant;
       for (const v of sorted) if (v.bandwidth <= driver.bandwidth.estimate) pick = v;
       last = { id: `variant-${pick.id}`, reason: `startup: default estimate ${Math.round(driver.bandwidth.estimate / 1000)} kbps` };
@@ -124,7 +138,7 @@ export function createOtterShakaAbr(driver: AbrDriver, options: OtterShakaAbrOpt
       lowLatency,
       bufferTarget: options.bufferTarget ?? 10,
     });
-    const chosen = variants[d.engineLevel];
+    const chosen = list[d.engineLevel];
     if (chosen !== undefined) last = { id: `variant-${chosen.id}`, reason: d.reason };
     return chosen;
   };
@@ -147,7 +161,8 @@ export function createOtterShakaAbr(driver: AbrDriver, options: OtterShakaAbrOpt
     if (next.bandwidth > current.bandwidth && now() - lastSwitchMs < switchIntervalMs) return;
     lastSwitchMs = now();
     current = next;
-    driver.applied(variants.indexOf(next), variants.map(levelOf));
+    const list = pool();
+    driver.applied(list.indexOf(next), list.map(levelOf));
     switchCb(next, false);
   };
 
@@ -172,7 +187,8 @@ export function createOtterShakaAbr(driver: AbrDriver, options: OtterShakaAbrOpt
       const v = choose() ?? (variants[0] as ShakaVariant);
       current = v;
       lastSwitchMs = now();
-      driver.applied(variants.indexOf(v), variants.map(levelOf));
+      const list = pool();
+      driver.applied(list.indexOf(v), list.map(levelOf));
       return v;
     },
     enable() {

@@ -329,6 +329,12 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       if (variant === undefined) return;
       abr = false;
       player.configure({ abr: { enabled: false } });
+      // Shaka forces a clear of every stream, audio too, when the variant asked for is the active
+      // one (Player.switchVariant_): nothing to switch then, the choice only stops ABR.
+      if (variant.active) {
+        refresh();
+        return;
+      }
       player.selectVariantTrack(variant, true);
     },
     on: (e, h) => bus.on(e, (p) => h(p)),

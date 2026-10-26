@@ -43,7 +43,9 @@ export const SCENARIOS: readonly Scenario[] = [
   // decoder (ADR-008 §5); no longer a graceful failure.
   { id: 'surveillance-hevc', row: '监控多路 + HEVC', source: { src: 'https://bitmovin-a.akamaihd.net/content/dataset/multi-codec/hevc/stream_fmp4.m3u8', codecs: 'hvc1.1.6.L93.90,mp4a.40.2' }, format: 'hls', network: true },
   { id: 'surveillance-hevc-local', row: '监控多路 + HEVC', source: { src: '/frames/hls-hevc/master.m3u8', codecs: 'hvc1.1.6.L93.90' }, format: 'hls' },
-  { id: 'danmaku-dash-av', row: 'B 站式弹幕站', source: { src: '/dash/manifest.mpd' }, format: 'dash', later: 'danmaku (M5), codec preference persistence (M5)' },
+  // Separate audio / video, three video tiers, two audio languages (codec choice and audio outside
+  // ABR: dash-av.spec.ts; preferences: codecs-prefs.spec.ts).
+  { id: 'danmaku-dash-av', row: 'B 站式弹幕站', source: { src: '/dash-av/manifest.mpd' }, format: 'dash', later: 'danmaku (M5 batch 4)' },
   // A local file goes to format-file on WebCodecs (frame-accurate seek, ADR-008 §2).
   { id: 'edit-local-file', row: '剪辑 / 标注 / 逐帧', source: { src: '/vod/progressive.mp4' }, asBlob: true, format: 'file' },
   { id: 'background-hero', row: '背景视频 / Hero', source: { src: '/vod/progressive.mp4' }, format: 'mp4-range', later: 'no-UI preset (M6)' },

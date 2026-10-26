@@ -107,3 +107,48 @@ describe('Otter AbrManager for Shaka', () => {
     expect(abr.isInitialized()).toBe(false);
   });
 });
+
+describe('Otter AbrManager for Shaka: audio is not part of ABR (separate audio and video)', () => {
+  // Three video Representations x two audio bitrates of one language: six variants.
+  const av = (id: number, video: number, height: number, audio: number, audioKbps: number): ShakaVariant => ({
+    id,
+    bandwidth: video + audioKbps * 1000,
+    video: { width: Math.round((height * 16) / 9), height },
+    audio: { id: audio },
+  });
+  const grid = [av(1, 2_000_000, 720, 100, 192), av(2, 2_000_000, 720, 101, 64), av(3, 800_000, 480, 100, 192), av(4, 800_000, 480, 101, 64), av(5, 250_000, 240, 100, 192), av(6, 250_000, 240, 101, 64)];
+
+  it('keeps the audio stream it started with while bandwidth moves the video up and down', () => {
+    const driver = createAbrDriver();
+    clock = 0;
+    buffer = 12;
+    const abr = createOtterShakaAbr(driver, { bufferAhead: () => buffer, now: () => clock });
+    const switches: ShakaVariant[] = [];
+    abr.init((variant) => switches.push(variant));
+    abr.setMediaElement(document.createElement('video'));
+    abr.setVariants(grid, false);
+    const start = abr.chooseVariant();
+    expect(start.audio?.id).toBe(100);
+    abr.enable();
+    // Fast: up to 720p; then slow: down. Never the 64 kbps audio (101), though it would fit better.
+    clock = 9000;
+    for (let i = 0; i < 6; i++) abr.segmentDownloaded(1000, 4_000_000, true, undefined, segment);
+    buffer = 1;
+    for (let i = 0; i < 8; i++) abr.segmentDownloaded(4000, 60_000, true, undefined, segment);
+    expect(switches.length).toBeGreaterThan(1);
+    expect(new Set(switches.map((s) => s.video?.height)).size).toBeGreaterThan(1);
+    expect(switches.every((s) => s.audio?.id === 100)).toBe(true);
+  });
+
+  it('a language change (new variants without that audio) takes the new audio, then keeps it', () => {
+    const driver = createAbrDriver();
+    clock = 0;
+    const abr = createOtterShakaAbr(driver, { bufferAhead: () => 12, now: () => clock });
+    abr.init(() => undefined);
+    abr.setVariants(grid, false);
+    abr.chooseVariant();
+    const french = [av(7, 2_000_000, 720, 200, 64), av(8, 800_000, 480, 200, 64), av(9, 250_000, 240, 200, 64)];
+    abr.setVariants(french, false);
+    expect(abr.chooseVariant().audio?.id).toBe(200);
+  });
+});

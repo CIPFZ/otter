@@ -139,6 +139,11 @@ describe('Shaka adapter', () => {
     expect(p.calls.at(-1)).toBe('select:2');
     engine.selectQuality('auto');
     expect(p.configs.at(-1)).toEqual({ abr: { enabled: true } });
+    // The active variant: only ABR off. Shaka would force-clear every stream, audio too.
+    const before = p.calls.length;
+    engine.selectQuality('variant-1');
+    expect(p.configs.at(-1)).toEqual({ abr: { enabled: false } });
+    expect(p.calls.slice(before)).not.toContain('select:1');
   });
 
   it('maps Shaka errors and rejects load with them', async () => {
