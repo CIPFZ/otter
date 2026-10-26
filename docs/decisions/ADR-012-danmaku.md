@@ -1,6 +1,6 @@
 # ADR-012：弹幕引擎与水印（M5 第四批）
 
-- 状态：第一项已实现（2026-10-26）；WebGL 与蒙版、水印随后续两项补充
+- 状态：第一、二项已实现（2026-10-26）；蒙版与水印随第三项补充
 - 日期：2026-10-26
 - 关联：`SPEC.md` §1.1、§13.2、§13.3、§19；ADR-011（M5 批次）；`REUSE.md` §4
 
@@ -35,7 +35,21 @@ M5 第四批：新包 `@otter-player/danmaku`（按需加载，首屏不变）�
 
 - **Canvas 2D**（主块）：每条弹幕的文字只画一次到自己的小画布（粗体、描边，深色字用浅色描边，自己的加边框），每帧整舞台清空后逐条 `drawImage`，坐标取整到设备像素。舞台盖在画面矩形上（`contentRect`），不透明度用元素的 CSS opacity。
 - 字号随画面高度缩放（高度 / 540，限制在 0.6–1.5 倍），滚动时长 8 s / 速度。
-- WebGL 批渲染与 OffscreenCanvas Worker：第二项，切换条件见本 ADR 后续一节。
+- **WebGL 批渲染**（按需块 `webgl`，约 1.8 KB）：弹幕文字仍用 2D 画布光栅化，然后打进一张纹理图集（最大 4096²，按高度分档的行；一行里的弹幕都离场后整行复用），每帧一次缓冲上传、一次 draw call。图集放不下时该条不画（计入可解释的丢弃，实测 5000 条/分钟时远未用满）。
+- **OffscreenCanvas Worker**（按需块 `worker-renderer` + Worker 脚本，合计约 2.8 KB）：舞台画布 `transferControlToOffscreen` 交给 Worker，WebGL 图集与文字光栅化都在 Worker 里做；主线程只保留时间轴与轨道（每帧 O(在屏条数)），每帧把进场 / 离场的弹幕和在屏弹幕的位置发过去。Worker 还在画上一帧时，主线程这一帧不发（取最新位置）。
+- 三种渲染器的弹幕位置都由主线程按媒体时间算出，e2e 对三种分别核对位置、暂停、倍速、seek。
+
+### 5. 渲染器选择（`renderer: 'auto'`，默认）
+
+- **起点**：Canvas 2D（`canvas2d selected: default: Canvas 2D (auto)`）。
+- **观察窗口**：最近 60 个实际绘制的帧，每帧记录在屏条数、主线程本帧耗时（定位 + 绘制）、与上一个 rAF 的间隔。切换后 5 s 内不再切换。
+- **升到 WebGL**（当前为 Canvas 2D 时，先于 Worker 判断）：窗口平均在屏 ≥ 120 条，或主线程本帧耗时 p90 ≥ 4 ms。理由：120 条约是 1080p 全屏铺满的量；4 ms 是 16.7 ms 帧预算的四分之一，给页面其他工作留出余量。
+- **换到 Worker**：rAF 间隔 p90 ≥ 25 ms（掉到 40 fps 以下），而本引擎自己的耗时 p90 < 4 ms（慢的不是我们），并且在屏 ≥ 40 条。
+- **回到 Canvas 2D**：最近 600 帧（约 10 s）平均在屏 ≤ 40 条，且 rAF 间隔 p90 < 25 ms。
+- **不可用**：WebGL2 上下文拿不到、Worker 里没有 WebGL2、没有 OffscreenCanvas 时记 `rejected`，本页不再尝试，留在当前渲染器。
+- **解释输出**：每次选择都记一条 `{candidate, outcome, reason}`（与 `router.explain()` 的步骤同形），在 `danmakuStatus.steps`（最近 20 条），当前渲染器与理由在 `danmakuStatus.renderer / reason`。例如：`canvas2d selected: default: Canvas 2D (auto) | webgl selected: dense: 144 comments on stage (≥ 120) | worker selected: main thread busy: frame interval p90 50.0 ms (≥ 25), own cost p90 0.7 ms`。
+- 宿主可固定渲染器（`renderer: 'canvas2d' | 'webgl' | 'worker'`），不可用时退回 Canvas 2D 并记 `rejected`。
+- 阈值在 `src/policy.ts` 的 `POLICY` 里，单测覆盖每一条。
 
 ## 代价
 

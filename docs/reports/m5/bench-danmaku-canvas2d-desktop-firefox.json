@@ -5,11 +5,15 @@
   "drawn": 1201,
   "p50": 17.07999999999811,
   "p95": 17.100000000000364,
-  "max": 17.280000000000655,
+  "max": 17.279999999998836,
   "gapsOver50": 0,
   "longTasks": null,
   "longestTask": 0,
-  "onStage": 132,
-  "peakOnStage": 151,
-  "renderer": "canvas2d"
+  "onStage": 133,
+  "peakOnStage": 152,
+  "renderer": "canvas2d",
+  "cost": {
+    "p50": 2,
+    "p95": 3
+  }
 }

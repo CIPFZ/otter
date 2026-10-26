@@ -46,6 +46,8 @@ export interface DanmakuStatus {
   /** The renderer drawing now, and why it was chosen (ADR-012). */
   readonly renderer: string | null;
   readonly reason: string | null;
+  /** Renderer decisions, oldest first (last 20), in router.explain()'s step shape. */
+  readonly steps: readonly { readonly candidate: string; readonly outcome: 'selected' | 'rejected' | 'failed'; readonly reason: string }[];
 }
 
 export interface DanmakuState {
@@ -55,7 +57,7 @@ export interface DanmakuState {
 
 export const INITIAL_DANMAKU_STATE: DanmakuState = {
   danmaku: DEFAULT_DANMAKU,
-  danmakuStatus: { status: 'idle', count: 0, skipped: 0, renderer: null, reason: null },
+  danmakuStatus: { status: 'idle', count: 0, skipped: 0, renderer: null, reason: null, steps: [] },
 };
 
 /** A comment as given to the engine (parsed lists, `send-danmaku`, the host). */

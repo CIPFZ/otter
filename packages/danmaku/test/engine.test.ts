@@ -123,3 +123,33 @@ describe('settings', () => {
     expect(Array.from({ length: 50 }, (_, i) => sampled(i, 0.3))).toEqual(Array.from({ length: 50 }, (_, i) => sampled(i, 0.3)));
   });
 });
+
+describe('renderer policy (ADR-012 §5)', async () => {
+  const { decide, POLICY } = await import('../src/policy.js');
+  const all = new Set(['canvas2d', 'webgl', 'worker'] as const);
+  const frames = (n: number, f: { onStage: number; drawMs: number; intervalMs: number }) => Array.from({ length: n }, () => f);
+
+  it('stays on Canvas 2D while light; WebGL when dense or slow; never within the hold time', () => {
+    expect(decide('canvas2d', frames(60, { onStage: 80, drawMs: 1, intervalMs: 16.7 }), 10_000, all)).toBeUndefined();
+    expect(decide('canvas2d', frames(60, { onStage: 130, drawMs: 1, intervalMs: 16.7 }), 10_000, all)).toEqual({ to: 'webgl', reason: 'dense: 130 comments on stage (≥ 120)' });
+    expect(decide('canvas2d', frames(60, { onStage: 60, drawMs: 5, intervalMs: 16.7 }), 10_000, all)?.reason).toBe('Canvas 2D frame cost p90 5.0 ms (≥ 4)');
+    expect(decide('canvas2d', frames(60, { onStage: 130, drawMs: 1, intervalMs: 16.7 }), POLICY.holdMs - 1, all)).toBeUndefined();
+    expect(decide('canvas2d', frames(30, { onStage: 130, drawMs: 1, intervalMs: 16.7 }), 10_000, all)).toBeUndefined();
+  });
+
+  it('the Worker when the page keeps frames late and our own cost is small; not where it cannot run', () => {
+    const busy = frames(60, { onStage: 80, drawMs: 1, intervalMs: 33 });
+    expect(decide('webgl', busy, 10_000, all)).toEqual({ to: 'worker', reason: 'main thread busy: frame interval p90 33.0 ms (≥ 25), own cost p90 1.0 ms' });
+    expect(decide('canvas2d', busy, 10_000, new Set(['canvas2d', 'webgl'] as const))).toBeUndefined();
+    // Dense and late: WebGL first.
+    expect(decide('canvas2d', frames(60, { onStage: 130, drawMs: 1, intervalMs: 33 }), 10_000, all)?.to).toBe('webgl');
+    expect(decide('canvas2d', busy, 10_000, all)?.to).toBe('worker');
+    // Late frames because our own drawing is slow: WebGL, not the Worker.
+    expect(decide('canvas2d', frames(60, { onStage: 80, drawMs: 6, intervalMs: 33 }), 10_000, all)?.to).toBe('webgl');
+  });
+
+  it('back to Canvas 2D after 600 sparse, unhurried frames', () => {
+    expect(decide('webgl', frames(599, { onStage: 10, drawMs: 0.5, intervalMs: 16.7 }), 20_000, all)).toBeUndefined();
+    expect(decide('webgl', frames(600, { onStage: 10, drawMs: 0.5, intervalMs: 16.7 }), 20_000, all)).toEqual({ to: 'canvas2d', reason: 'sparse: 10 comments on stage over 600 frames (≤ 40)' });
+  });
+});

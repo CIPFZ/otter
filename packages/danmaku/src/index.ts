@@ -10,7 +10,8 @@
 
 import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@otter-player/core';
 import type { Overlay, OverlayHost } from '@otter-player/surface';
-import { createCanvasRenderer, font, lineHeight, type Comment, type DanmakuRenderer } from './renderer.js';
+import { decide, type FrameSample, type RendererKind } from './policy.js';
+import { createCanvasRenderer, font, lineHeight, paintText, type Comment, type DanmakuRenderer } from './renderer.js';
 import {
   blockTest,
   INITIAL_DANMAKU_STATE,
@@ -26,6 +27,7 @@ import { frame, rebuild, type FrameHooks, type FrameState } from './vendor/danma
 
 export * from './settings.js';
 export type { Comment, DanmakuRenderer } from './renderer.js';
+export { POLICY as RENDERER_POLICY, type FrameSample, type RendererKind } from './policy.js';
 
 /** Seconds a scrolling comment takes across the stage at speed 1 (B站: about 8 s). */
 export const SCROLL_S = 8;
@@ -47,6 +49,11 @@ export interface DanmakuHostState extends DanmakuState {
 export interface DanmakuOptions {
   /** Injectable for tests; default fetch. */
   readonly fetch?: (url: string) => Promise<Response>;
+  /**
+   * `auto` (default): Canvas 2D, WebGL when the stage is dense, the Worker when the page keeps
+   * frames late (ADR-012 §5). A fixed kind falls back to Canvas 2D where it cannot run.
+   */
+  readonly renderer?: 'auto' | RendererKind;
 }
 
 /** What the engine is doing, for tests and diagnostics. */
@@ -56,6 +63,8 @@ export interface DanmakuInspection {
   /** Frames drawn (none while paused and unchanged, hidden, or disabled). */
   readonly frames: number;
   readonly renderer: string | null;
+  /** Main-thread ms per drawn frame (placement + renderer), over the last drawn frames: p50 / p95. */
+  readonly cost: { readonly p50: number; readonly p95: number };
   readonly stage: { readonly width: number; readonly height: number; readonly duration: number };
   readonly running: readonly { readonly text: string; readonly mode: string; readonly time: number; readonly x: number; readonly y: number; readonly width: number }[];
 }
@@ -90,6 +99,12 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
   let reported = Number.NaN;
   let reportedAt = 0;
   let loadSeq = 0;
+  // Renderer choice (ADR-012 §5).
+  const samples: FrameSample[] = [];
+  let lastTick = Number.NaN;
+  let switchedAt = 0;
+  let switching = false;
+  const unavailable = new Set<RendererKind>();
 
   const state = (): Readonly<S> => (store as Store<S, DanmakuActionMap>).getState();
 
@@ -147,6 +162,56 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
   });
   const status = (patch: Partial<DanmakuState['danmakuStatus']>): void => {
     store?.setState({ danmakuStatus: { ...state().danmakuStatus, ...patch } } as Partial<S>);
+  };
+  const step = (candidate: string, outcome: 'selected' | 'rejected' | 'failed', reason: string): void => {
+    const steps = [...(store === undefined ? [] : state().danmakuStatus.steps), { candidate, outcome, reason }].slice(-20);
+    status(outcome === 'selected' ? { steps, renderer: candidate, reason } : { steps });
+  };
+
+  /** Swaps the renderer: the running comments move over (their pictures are made again). */
+  const use = (next: DanmakuRenderer, reason: string): void => {
+    if (stageEl === undefined) return next.destroy();
+    for (const c of fs.running) renderer?.release(c);
+    renderer?.destroy();
+    renderer = next;
+    stageEl.replaceChildren(next.element);
+    switchedAt = performance.now();
+    samples.length = 0;
+    step(next.kind, 'selected', reason);
+    if (host !== undefined) next.resize(stage.width, host.contentRect.height, host.root.ownerDocument.defaultView?.devicePixelRatio ?? 1);
+    for (const c of fs.running) next.prepare(c);
+    dirty = true;
+  };
+  const switchTo = (kind: RendererKind, reason: string): void => {
+    if (switching || host === undefined || renderer?.kind === kind) return;
+    const doc = host.root.ownerDocument;
+    if (kind === 'canvas2d') return use(createCanvasRenderer(doc), reason);
+    switching = true;
+    const fail = (why: string): void => {
+      unavailable.add(kind);
+      step(kind, 'rejected', why);
+      switchedAt = performance.now();
+    };
+    const made =
+      kind === 'webgl'
+        ? import('./webgl.js').then((m) => m.createWebGlRenderer(doc, paintText))
+        : import('./worker-renderer.js').then((m) =>
+            m.createWorkerRenderer(doc, (why) => {
+              fail(why);
+              if (renderer?.kind === 'worker') use(createCanvasRenderer(doc), `Worker failed (${why}): Canvas 2D`);
+            }),
+          );
+    void made.then(
+      (r) => {
+        switching = false;
+        if (r === undefined) fail(kind === 'webgl' ? 'no WebGL2 context' : 'no OffscreenCanvas / Worker');
+        else use(r, reason);
+      },
+      (err: unknown) => {
+        switching = false;
+        fail(String(err));
+      },
+    );
   };
 
   const plugin: DanmakuController['plugin'] = {
@@ -231,7 +296,9 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       stageEl.append(renderer.element);
       h.root.append(stageEl);
       measure = doc.createElement('canvas').getContext('2d') ?? undefined;
-      status({ renderer: renderer.kind, reason: 'Canvas 2D (default)' });
+      const wanted = options.renderer ?? 'auto';
+      step('canvas2d', 'selected', wanted === 'auto' ? 'default: Canvas 2D (auto)' : wanted === 'canvas2d' ? 'host: Canvas 2D' : `start; host asks for ${wanted}`);
+      if (wanted !== 'auto' && wanted !== 'canvas2d') switchTo(wanted, `host: ${wanted}`);
       hostOffs = [h.onContentRectChange(layout)];
       layout();
     },
@@ -240,6 +307,8 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       const doc = host?.root.ownerDocument;
       // A hidden page draws nothing (SPEC §15 后台).
       if (doc?.visibilityState === 'hidden') return;
+      const interval = Number.isNaN(lastTick) ? 16.7 : now - lastTick;
+      lastTick = now;
       const s = state();
       const running = s.paused === false && s.seeking !== true && s.waiting !== true && s.ended !== true;
       const rate = s.playbackRate ?? 1;
@@ -260,9 +329,16 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       if (t === drawnTime && !dirty) return;
       drawnTime = t;
       dirty = false;
+      const t0 = performance.now();
       frame(fs, t, stage, hooks);
       renderer.draw(fs.running);
       frames++;
+      samples.push({ onStage: fs.running.length, drawMs: performance.now() - t0, intervalMs: interval });
+      if (samples.length > 600) samples.splice(0, samples.length - 600);
+      if ((options.renderer ?? 'auto') !== 'auto') return;
+      const available = new Set<RendererKind>((['canvas2d', 'webgl', 'worker'] as const).filter((k) => !unavailable.has(k)));
+      const d = decide(renderer.kind as RendererKind, samples, performance.now() - switchedAt, available);
+      if (d !== undefined) switchTo(d.to, d.reason);
     },
     destroy() {
       for (const off of hostOffs) off();
@@ -284,6 +360,10 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       time: drawnTime,
       frames,
       renderer: renderer?.kind ?? null,
+      cost: (() => {
+        const xs = samples.map((f) => f.drawMs).sort((a, b) => a - b);
+        return { p50: xs[Math.floor(xs.length * 0.5)] ?? 0, p95: xs[Math.floor(xs.length * 0.95)] ?? 0 };
+      })(),
       stage: { width: stage.width, height: stage.height, duration: stage.duration },
       running: fs.running.map((c) => ({ text: c.text, mode: c.mode, time: c.time, x: c.x, y: c.y, width: c.width })),
     }),

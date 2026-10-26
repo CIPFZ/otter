@@ -17,7 +17,7 @@ const ciNotice = (text: string): void => {
 const PER_MINUTE = 5000;
 const WINDOW_S = 20;
 
-for (const renderer of ['canvas2d'] as const) {
+for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
   test(`danmaku ${PER_MINUTE}/min on ${renderer}: rAF p95 < 20 ms, no long tasks`, async ({ page }) => {
     test.skip(test.info().project.name.startsWith('emulated'), 'desktop browsers (phones: M7 real devices)');
     test.setTimeout(120_000);
@@ -40,6 +40,12 @@ for (const renderer of ['canvas2d'] as const) {
       o.dispatch('load-danmaku', { comments });
     }, PER_MINUTE);
     await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().currentTime), { timeout: 20_000 }).toBeGreaterThan(2);
+    const st = await page.evaluate(async () => ((await window.otter) as OtterFixture).state().danmakuStatus);
+    if (st.renderer !== renderer) {
+      const why = [...st.steps].reverse().find((x) => x.candidate === renderer)?.reason ?? 'not selected';
+      ciNotice(`danmaku bench ${renderer}: not available here (${why})`);
+      test.skip(true, `${renderer}: ${why}`);
+    }
     const r = await page.evaluate(async (windowS) => {
       const o = (await window.otter) as OtterFixture;
       const intervals: number[] = [];
@@ -81,13 +87,14 @@ for (const renderer of ['canvas2d'] as const) {
         onStage: running.length > 0 ? Math.round(running.reduce((a, b) => a + b, 0) / running.length) : 0,
         peakOnStage: Math.max(0, ...running),
         renderer: o.danmaku()?.renderer ?? null,
+        cost: o.danmaku()?.cost ?? { p50: 0, p95: 0 },
       };
     }, WINDOW_S);
     const bench = process.env['OTTER_BENCH'] === '1';
     mkdirSync('docs/reports/m5', { recursive: true });
     if (bench) writeFileSync(`docs/reports/m5/bench-danmaku-${renderer}-${test.info().project.name}.json`, `${JSON.stringify({ perMinute: PER_MINUTE, windowS: WINDOW_S, ...r }, null, 2)}\n`);
     ciNotice(
-      `danmaku bench ${renderer}: ${PER_MINUTE}/min, ${r.onStage} on stage (peak ${r.peakOnStage}); rAF p50 ${r.p50.toFixed(1)} ms, p95 ${r.p95.toFixed(1)} ms, max ${r.max.toFixed(1)} ms; ${r.gapsOver50} gaps > 50 ms; long tasks ${r.longTasks ?? 'n/a'}`,
+      `danmaku bench ${renderer}: ${PER_MINUTE}/min, ${r.onStage} on stage (peak ${r.peakOnStage}); rAF p50 ${r.p50.toFixed(1)} ms, p95 ${r.p95.toFixed(1)} ms, max ${r.max.toFixed(1)} ms; main-thread cost per frame p50 ${r.cost.p50.toFixed(2)} / p95 ${r.cost.p95.toFixed(2)} ms; ${r.gapsOver50} gaps > 50 ms; long tasks ${r.longTasks ?? 'n/a'}`,
     );
     expect(r.renderer).toBe(renderer);
     if (!bench) return;

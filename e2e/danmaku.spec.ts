@@ -34,7 +34,33 @@ async function start(page: Page, query = ''): Promise<void> {
     o.load({ src: '/frames/hls-ladder/master.m3u8' }, { autoplay: true });
     o.dispatch('load-danmaku', { url: '/danmaku/ladder.xml' });
   });
-  await expect.poll(async () => (await otter(page)).danmakuStatus, { timeout: 15_000 }).toMatchObject({ status: 'ready', count: 60, skipped: 3, renderer: 'canvas2d' });
+  await expect.poll(async () => (await otter(page)).danmakuStatus, { timeout: 15_000 }).toMatchObject({ status: 'ready', count: 60, skipped: 3 });
+}
+
+/**
+ * Pixels the danmaku stage changes in a screenshot of the player (any renderer: a WebGL canvas
+ * cannot be read back after compositing).
+ */
+async function stagePixels(page: Page): Promise<number> {
+  const box = page.locator('video');
+  const shot = async (): Promise<string> => (await box.screenshot({ animations: 'disabled' })).toString('base64');
+  const shown = await shot();
+  await page.evaluate(() => ((document.querySelector('[data-otter-danmaku]') as HTMLElement).style.visibility = 'hidden'));
+  const hidden = await shot();
+  await page.evaluate(() => ((document.querySelector('[data-otter-danmaku]') as HTMLElement).style.visibility = ''));
+  return page.evaluate(async ([a, b]) => {
+    const read = async (s: string): Promise<Uint8ClampedArray> => {
+      const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${s}`)).blob());
+      const c = new OffscreenCanvas(img.width, img.height);
+      const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      ctx.drawImage(img, 0, 0);
+      return ctx.getImageData(0, 0, img.width, img.height).data;
+    };
+    const [x, y] = await Promise.all([read(a), read(b)]);
+    let n = 0;
+    for (let i = 0; i < x.length; i += 4) if (Math.abs((x[i] as number) - (y[i] as number)) + Math.abs((x[i + 1] as number) - (y[i + 1] as number)) + Math.abs((x[i + 2] as number) - (y[i + 2] as number)) > 60) n++;
+    return n;
+  }, [shown, hidden] as const);
 }
 
 const dispatch = (page: Page, type: string, payload: unknown) =>
@@ -53,25 +79,22 @@ function checkPositions(d: Awaited<ReturnType<typeof inspect>>): number {
   return n;
 }
 
-test('danmaku follows media time: pause freezes, 2x doubles, positions match the media clock', async ({ page }) => {
+for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
+test(`danmaku on ${renderer} follows media time: pause freezes, 2x doubles, positions match the media clock`, async ({ page }) => {
   test.setTimeout(60_000);
-  await start(page);
+  await start(page, `&renderer=${renderer}`);
   await expect.poll(async () => (await inspect(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(3);
   // Something is drawn, from the comments in flight.
   let d = await inspect(page);
   expect(d.running.length).toBeGreaterThan(2);
   expect(checkPositions(d)).toBeGreaterThan(0);
-  const painted = await page.evaluate(() => {
-    const c = document.querySelector('[data-otter-danmaku] canvas') as HTMLCanvasElement;
-    const copy = new OffscreenCanvas(c.width, c.height);
-    const ctx = copy.getContext('2d') as OffscreenCanvasRenderingContext2D;
-    ctx.drawImage(c, 0, 0);
-    const px = ctx.getImageData(0, 0, c.width, c.height).data;
-    let n = 0;
-    for (let i = 3; i < px.length; i += 4) if ((px[i] as number) > 0) n++;
-    return n;
-  });
-  expect(painted).toBeGreaterThan(500);
+  // The renderer asked for, or Canvas 2D with the reason it could not run (headless Firefox: no WebGL).
+  const st = (await otter(page)).danmakuStatus;
+  if (st.renderer !== renderer) {
+    expect(renderer).not.toBe('canvas2d');
+    expect(st.steps).toContainEqual(expect.objectContaining({ candidate: renderer, outcome: 'rejected' }));
+    expect(st.renderer).toBe('canvas2d');
+  }
 
   // Pause: the stage stays exactly where media time stopped, however long the wall clock runs.
   await dispatch(page, 'pause', undefined);
@@ -83,6 +106,9 @@ test('danmaku follows media time: pause freezes, 2x doubles, positions match the
   const later = await inspect(page);
   expect(later.running).toEqual(paused.running);
   expect(later.frames).toBe(paused.frames);
+  // Drawn: the stage changes the picture where comments are.
+  const changed = await stagePixels(page);
+  expect(changed).toBeGreaterThan(500);
 
   // 2x: media time runs twice as fast, and the comments with it.
   await dispatch(page, 'set-playback-rate', { rate: 2 });
@@ -96,7 +122,42 @@ test('danmaku follows media time: pause freezes, 2x doubles, positions match the
   expect(media / wall).toBeGreaterThan(1.6);
   expect(Math.abs(d.time - d.currentTime)).toBeLessThan(0.3);
   checkPositions(d);
-  ciNotice(`danmaku timeline: paused 1.5 s -> no frame, same positions; 2x -> ${media.toFixed(2)} s media in ${wall.toFixed(2)} s`);
+  ciNotice(`danmaku timeline (${st.renderer}${st.renderer === renderer ? '' : `, ${renderer} rejected`}): paused 1.5 s -> no frame, same positions, ${changed} px drawn; 2x -> ${media.toFixed(2)} s media in ${wall.toFixed(2)} s`);
+});
+}
+
+test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when the page is busy; each step explained', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await start(page);
+  const steps = async () => (await otter(page)).danmakuStatus.steps;
+  expect((await steps())[0]).toEqual({ candidate: 'canvas2d', outcome: 'selected', reason: 'default: Canvas 2D (auto)' });
+  // Dense: 40 comments a second for the rest of the clip.
+  await page.evaluate(async () => {
+    const o = (await window.otter) as OtterFixture;
+    const t0 = o.state().currentTime;
+    o.dispatch('load-danmaku', { comments: Array.from({ length: 1000 }, (_, i) => ({ time: t0 + i / 40, text: `弹${i % 100}` })) });
+  });
+  await expect.poll(async () => (await steps()).map((x) => `${x.candidate} ${x.outcome}`), { timeout: 30_000 }).toContainEqual(expect.stringMatching(/^webgl (selected|rejected)$/));
+  const dense = (await steps()).find((x) => x.candidate === 'webgl');
+  if (dense?.outcome === 'selected') {
+    expect(dense.reason).toMatch(/^dense: \d+ comments on stage \(≥ 120\)$/);
+    // A busy page: 30 ms of someone else's work every 30 ms.
+    await page.evaluate(() => {
+      setInterval(() => {
+        const end = performance.now() + 30;
+        while (performance.now() < end);
+      }, 30);
+    });
+    await expect.poll(async () => (await steps()).map((x) => `${x.candidate} ${x.outcome}`), { timeout: 40_000 }).toContainEqual(expect.stringMatching(/^worker (selected|rejected)$/));
+    const busy = (await steps()).find((x) => x.candidate === 'worker');
+    if (busy?.outcome === 'selected') expect(busy.reason).toMatch(/^main thread busy: frame interval p90 [\d.]+ ms \(≥ 25\)/);
+  } else {
+    expect(dense?.reason).toBe('no WebGL2 context');
+  }
+  const st = (await otter(page)).danmakuStatus;
+  expect(st.renderer).toBe(st.steps.filter((x) => x.outcome === 'selected').at(-1)?.candidate);
+  ciNotice(`danmaku auto renderer: ${st.steps.map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`).join(' | ')}`);
 });
 
 test('danmaku seek rebuilds the stage at the new time, both ways', async ({ page }) => {

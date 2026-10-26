@@ -212,7 +212,12 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
   });
   let canvasPip: CanvasPip | undefined;
   // ?danmaku=1: the danmaku engine (SPEC §13.2), its settings page and its overlay.
-  const danmaku = params.get('danmaku') === '1' ? createDanmaku() : undefined;
+  // ?renderer=canvas2d|webgl|worker fixes the danmaku renderer (default auto, ADR-012 §5).
+  const danmakuRenderer = params.get('renderer');
+  const danmaku =
+    params.get('danmaku') === '1'
+      ? createDanmaku(danmakuRenderer === 'canvas2d' || danmakuRenderer === 'webgl' || danmakuRenderer === 'worker' ? { renderer: danmakuRenderer } : {})
+      : undefined;
   const core = createCore<State, Actions>({
     slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE, PICTURE_SLICE, ...(danmaku === undefined ? [] : [DANMAKU_SLICE])],
     plugins: [
