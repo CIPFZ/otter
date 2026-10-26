@@ -38,6 +38,7 @@
 - 新包一律用 `node scripts/new-package.ts` 生成；包内相对导入带 `.js` 扩展名（NodeNext）。
 - 未实现的能力统一抛出 / reject `notImplemented`（非 fatal），不得静默 no-op（ADR-002）。
 - 提交前跑 `pnpm check`：来源记录、边界、strict TS、Vitest、无顶层副作用、体积预算，任何一项失败都阻断。
+- **`pnpm check` 返回 0 才提交**（2026-10-26）：以退出码为准，不看输出里有没有报错字样；命令链里要显式判断（`pnpm -s check; [ $? -eq 0 ] && git commit …`），检查失败时不得提交或推送。
 
 ## 5. 工作流程
 

@@ -70,6 +70,12 @@
 | 水印 / 防录屏 | 自写 | 自研 | 几十行 |
 | 广告 Overlay | `videojs-contrib-ads` 时间线模型 + Google IMA SDK（闭源免费） | L4 / L1 | |
 
+### Shaka 已知行为（记录，不追）
+
+- **切换音频语言时重复请求一个分片**（shaka-player 5.2.13，Firefox 与 WebKit，2026-10-26 负责人决定不追）：切到新语言的音频流后，Shaka 立即重开一次该流的加载，新语言的 init 与第一个媒体分片各请求两次（间隔约 10 ms），之后正常。多下载约一个音频分片。e2e `dash-av.spec.ts` 允许且只允许这一个分片重复一次，并在通知里记录。
+- **手动选择当前正在播放的 variant 会清空所有流的缓冲**（`Player.switchVariant_` 在 variant 未变时仍以 clearBuffer 调 `StreamingEngine.switchVariant`，音频也被清掉重拉）：适配器对这种情况只关 ABR、不调用 `selectVariantTrack`（ADR-011 §6）。
+- **`destroy()` 异步、最后才摘掉元素的 `src`**：同一元素上紧接着创建的新播放器会失去 MediaSource（WebKit 的 ManagedMediaSource 不再打开）；适配器按元素等待上一个 `destroy()` 完成再 `attach`（ADR-011 §6）。
+
 ## 5. 工程流程
 
 - L2（整个子包）放 `vendor/<project>/`；L3（文件级）放使用它的包内 `packages/<pkg>/src/vendor/<project>/`，测试资产放 `e2e/vendor/<project>/`（ADR-003 第 7 条）。每个目录一个 `UPSTREAM.json`：`{ project, repo, commit, level, files: [{ upstream, local }], localChanges }`，`license` 字段可选，仅作记录。
