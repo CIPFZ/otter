@@ -119,6 +119,10 @@ jobs:
       # runner is too small (e2e/multiview.spec.ts: 8+ cores).
       - if: matrix.name == 'chromium + firefox'
         run: pnpm e2e --project=desktop-chrome --grep @bench --workers=1
+      # The danmaku benchmark on WebKit (the only WebKit there is), alone on the runner: numbers as a
+      # notice, not gated (ADR-012).
+      - if: matrix.name == 'webkit'
+        run: pnpm e2e --project=desktop-safari --grep "danmaku.*@bench" --workers=1
       # Per-environment facts the tests record (capabilities, refusals) as run-page notices.
       - name: Test notices
         if: always()

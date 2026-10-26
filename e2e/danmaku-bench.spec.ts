@@ -1,9 +1,9 @@
 // Danmaku performance (ADR-012, M5 acceptance): 5000 comments a minute over a playing video,
 // 1280x720 player. Frame pacing from requestAnimationFrame intervals (p95 < 20 ms) and main-thread
 // long tasks (PerformanceObserver 'longtask' where the browser has it; elsewhere gaps > 50 ms).
-// Measured on its own machine and asserted with OTTER_BENCH=1 (run with --workers=1; writes
-// docs/reports/m5/bench-danmaku-<renderer>-<project>.json). Otherwise (the suite, CI's shared
-// runners with software GL, the only WebKit here) the numbers are only recorded as a notice.
+// @bench: never in the parallel suite. Asserted with OTTER_BENCH=1 on a machine of its own (run
+// with --workers=1; writes docs/reports/m5/bench-danmaku-<renderer>-<project>.json); on CI (one
+// worker: Chrome in the bench step, WebKit in its own step) the numbers are only a notice.
 
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { expect, test } from './fixtures';
@@ -18,7 +18,7 @@ const PER_MINUTE = 5000;
 const WINDOW_S = 20;
 
 for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
-  test(`danmaku ${PER_MINUTE}/min on ${renderer}: rAF p95 < 20 ms, no long tasks`, async ({ page }) => {
+  test(`danmaku ${PER_MINUTE}/min on ${renderer}: rAF p95 < 20 ms, no long tasks @bench`, async ({ page }) => {
     test.skip(test.info().project.name.startsWith('emulated'), 'desktop browsers (phones: M7 real devices)');
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1400, height: 900 });
