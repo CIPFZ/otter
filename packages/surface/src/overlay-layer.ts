@@ -20,8 +20,8 @@ export interface OverlayLayerOptions<S extends object, A extends object> {
 /**
  * Media time of the frame `video` presents, from requestVideoFrameCallback (`mediaTime`), carried
  * on by the time since that frame was due on screen while playing (a callback can come late on a
- * loaded page; the video itself is composited on time). Where the callback is missing, its
- * currentTime. For OverlayLayerOptions.frameTime.
+ * loaded page; the video itself is composited on time), at most its currentTime. Where the
+ * callback is missing, its currentTime. For OverlayLayerOptions.frameTime.
  */
 export function trackFrameTime(video: HTMLVideoElement): { time(): number; stop(): void } {
   let presented: number | undefined;
@@ -40,7 +40,9 @@ export function trackFrameTime(video: HTMLVideoElement): { time(): number; stop(
       // None yet, or far from the element's clock (a seek before its frame is presented).
       if (presented === undefined || Math.abs(presented - ct) >= 0.5) return ct;
       if (video.paused) return presented;
-      return Math.min(ct + 0.05, presented + (Math.max(0, performance.now() - due) / 1000) * video.playbackRate);
+      // Never past the element's clock: WebKit (MSE) reports as due the time the frame became
+      // available, ahead of the screen, and the carried-on time would run ahead of the picture.
+      return Math.min(ct, presented + (Math.max(0, performance.now() - due) / 1000) * video.playbackRate);
     },
     stop: () => {
       if (rvfc) video.cancelVideoFrameCallback(handle);

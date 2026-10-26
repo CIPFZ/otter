@@ -81,6 +81,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - 已知偶发（未定位，2026-10-22 记为 flaky）：CI 的 macOS WebKit（desktop-safari、emulated-iphone）上，`e2e/fallback.spec.ts` 的运行时降级用例（`?hwfail=150`，WebCodecs 解码器在第 150 个包后报错）偶尔 30 s 内没有切到 WASM，`state().backend` 一直是 `webcodecs`，重试通过；8f1a60b、0f8dbce 两次 CI 各出现一次。Chrome、Firefox、Android 仿真上没有出现，本机没有 WebKit 无法复现。猜测与 CI 的 macOS 虚拟机上 WebKit 解码偏慢、150 个包没在 30 s 内送进解码器有关，未验证。cc100ae 上首跑和重试都失败，CI 变红，所以该用例在 WebKit 上改为 `test.fixme`（跳过，`hwstall` 用例照常在 WebKit 上跑）；Chrome、Firefox、Android 仿真、真机 Edge / Firefox 上照常运行。
 - 一个 `srcObject` 为 `canvas.captureStream()` 的 `<video>` 在页面加载期间放进文档、而画布一直没画过任何东西时，Chromium 的 load 事件一直不触发（视频在等第一帧，延迟了文档的 load），`page.goto` 超时；Firefox 不受影响。建流的画布要先画一帧（哪怕一块黑）。
 - `requestVideoFrameCallback` 的 `mediaTime` 各引擎含义不同：seek 到帧中点 `(n + 0.5) / fps` 后，Chromium 报该帧的起点（容器时间戳，WebM 取整到毫秒），Firefox 报所 seek 的时间本身。用它确认「解出的是哪一帧」时，小数部分≈0.5 按 floor、否则按最近帧取整。不在文档里的 `<video>` 在 Chromium 上不呈现帧，rVFC 不回调，`seeked` 也可能早于新帧可画。
+- WebKit（MSE 播放器，`MediaPlayerPrivateMediaSourceAVFObjC`）的 `requestVideoFrameCallback`：`mediaTime` 是渲染器当前帧的时间戳，`expectedDisplayTime` 却是「有新帧可用」回调的时间（早于真正上屏）。按 `mediaTime + (now − expectedDisplayTime)` 外推会比画面超前约 1–1.5 帧（CI macOS 实测，Chrome 同法约 −0.3 帧）。外推结果不能超过元素的 `currentTime`。
 - 逐帧对齐（蒙版与画面 ≤ 1 帧）在无头浏览器里与并行的其他用例共享软件合成器时测不准：帧会迟到一两帧，误差来自机器而非代码。这类用例单独一步、一个 worker 跑（`@solo`）。
 
 ## 2. 格式 / 协议 / 编码全景
