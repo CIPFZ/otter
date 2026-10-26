@@ -29,15 +29,19 @@ export function createWorkerRenderer(doc: Document, onError: (reason: string) =>
   const posted: number[] = [];
   /**
    * Post -> drawn in the Worker, one way (the reply's own wait on a busy main thread is not
-   * display latency): smoothed, up at once on a slower one.
+   * display latency): the median of the last 15 frames (one slow draw does not move it).
    */
+  const draws: number[] = [];
   let drawMs = 8;
   worker.onmessage = (e: MessageEvent<{ t: string; reason?: string; at?: number }>) => {
     if (e.data.t === 'drawn') {
       busy = false;
       const at = posted.shift();
-      const ms = at === undefined || e.data.at === undefined ? drawMs : Math.max(0, e.data.at - performance.timeOrigin - at);
-      drawMs = ms > drawMs ? ms : drawMs + (ms - drawMs) * 0.1;
+      if (at !== undefined && e.data.at !== undefined) {
+        draws.push(Math.max(0, e.data.at - performance.timeOrigin - at));
+        if (draws.length > 15) draws.shift();
+        drawMs = [...draws].sort((a, b) => a - b)[draws.length >> 1] as number;
+      }
     }
     else if (e.data.t === 'error') onError(e.data.reason ?? 'Worker failed');
   };

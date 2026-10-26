@@ -62,11 +62,11 @@ for (const p of PATHS) {
     // 640 px picture), so a 2x zoom there still fits the box.
     await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('seek', { time: 3 / 30 + 0.01 }));
     await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().seeking), { timeout: 10_000 }).toBe(false);
-    await page.waitForTimeout(300);
     const box = (await page.locator('#player').boundingBox()) as { x: number; y: number; width: number; height: number };
+    // Two 96 px blocks of the 640 px picture, at the player's width. Polled: a paused WebKit can
+    // still show the keyframe for a moment after a seek inside its GOP.
+    await expect.poll(async () => (await blockWidth(page)) / box.width, { message: 'two 1-bits read as one bright run', timeout: 10_000 }).toBeGreaterThan(0.12);
     const base = await blockWidth(page);
-    // Two 96 px blocks of the 640 px picture, at the player's width.
-    expect(base / box.width, 'two 1-bits read as one bright run').toBeGreaterThan(0.12);
     expect(base / box.width).toBeLessThan(0.18);
 
     // Ctrl + wheel at the top-left corner: zoom in there. Playwright has no wheel in mobile
