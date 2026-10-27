@@ -11,9 +11,14 @@
 // Live: e2e/live-hls.ts (HOLD-BACK 6 s). Wall latency from the picture: the frame number painted
 // into the clip gives the presented place in the 30 s loop, against the source's real-time live
 // point (/live-hls/clock), modulo the loop. At start, steady (15..25 s), and after a pause + back to live.
+// With danmaku (M5 close-out): the same VOD runs with 5000 comments a minute on the picture
+// (renderer auto), to see whether TTFF and rebuffering suffer: bench-hls-<test>-danmaku-<project>.json.
+// Each file records the machine's load average at the start and the end (shared machine: a busy
+// one shows there).
 // Writes docs/reports/m5/bench-hls-<test>-<project>.json.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { cpus, loadavg } from 'node:os';
 import type { Browser, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
@@ -34,10 +39,15 @@ const quantile = (xs: readonly number[], q: number): number => {
 };
 const stats = (xs: readonly number[]) => ({ median: Number(quantile(xs, 0.5).toFixed(2)), p90: Number(quantile(xs, 0.9).toFixed(2)), min: Math.min(...xs), max: Math.max(...xs) });
 
-const save = (name: string, data: unknown): void => {
+const load = (): number[] => loadavg().map((x) => Number(x.toFixed(2)));
+const save = (name: string, data: object, loadAtStart: number[]): void => {
   mkdirSync('docs/reports/m5', { recursive: true });
-  writeFileSync(`docs/reports/m5/bench-hls-${name}-${test.info().project.name}.json`, `${JSON.stringify(data, null, 2)}\n`);
+  const machine = { cores: cpus().length, loadAvgAtStart: loadAtStart, loadAvgAtEnd: load() };
+  writeFileSync(`docs/reports/m5/bench-hls-${name}-${test.info().project.name}.json`, `${JSON.stringify({ ...data, machine }, null, 2)}\n`);
 };
+
+/** With danmaku: comments a minute from media time 0 (the danmaku bench's generator). */
+const DANMAKU_PER_MINUTE = 5000;
 
 interface VodRun {
   ttff: number;
@@ -48,18 +58,34 @@ interface VodRun {
   endHeight: number;
   fallback: boolean;
   fatal: string[];
+  /** With danmaku: frames the engine drew and its renderer (proof it ran). */
+  danmaku?: { frames: number; renderer: string | null };
 }
 
-async function vodRun(browser: Browser, engine: EngineId, src: string, kbps: number, playS: number, run: number): Promise<VodRun> {
+async function vodRun(browser: Browser, engine: EngineId, src: string, kbps: number, playS: number, run: number, danmaku: boolean): Promise<VodRun> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto(`/player.html?idle=0${engine === 'hlsjs' ? '&hls=hlsjs' : ''}`);
+  await page.goto(`/player.html?idle=0${engine === 'hlsjs' ? '&hls=hlsjs' : ''}${danmaku ? '&danmaku=1' : ''}`);
   const url = `/t/${kbps}/r${run}-${engine}-${Date.now()}/${src}`;
-  await page.evaluate(async (u) => {
-    const o = (await window.otter) as OtterFixture;
-    o.dispatch('set-muted', { muted: true });
-    o.load({ src: u }, { autoplay: true });
-  }, url);
+  await page.evaluate(
+    async ([u, perMinute, seconds]) => {
+      const o = (await window.otter) as OtterFixture;
+      o.dispatch('set-muted', { muted: true });
+      o.load({ src: u }, { autoplay: true });
+      if (perMinute === 0) return;
+      let seed = 7;
+      const rnd = (): number => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296);
+      const glyphs = '弹幕测试前方高能哈哈哈awesome2333好看再来一遍yyds';
+      const comments = Array.from({ length: Math.round((perMinute / 60) * seconds) }, (_, i) => {
+        const len = 4 + Math.floor(rnd() * 17);
+        const text = Array.from({ length: len }, () => glyphs[Math.floor(rnd() * glyphs.length)]).join('');
+        const r = rnd();
+        return { time: (i * 60) / perMinute, text, mode: r < 0.08 ? 'top' : r < 0.14 ? 'bottom' : 'rtl', color: [0xffffff, 0xfe0302, 0xffff00, 0x00cd00][i % 4] as number } as const;
+      });
+      o.dispatch('load-danmaku', { comments });
+    },
+    [url, danmaku ? DANMAKU_PER_MINUTE : 0, playS + 10] as const,
+  );
   await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().qoe.ttff), { timeout: 60_000 }).not.toBeNull();
   const startHeight = await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).videoHeight);
   // The playing window: wall time, or the end of the clip.
@@ -85,10 +111,15 @@ async function vodRun(browser: Browser, engine: EngineId, src: string, kbps: num
       endHeight: (document.querySelector('video') as HTMLVideoElement).videoHeight,
       fallback: errors.some((e) => e.details === 'pipelineFallback'),
       fatal: errors.filter((e) => e.fatal).map((e) => e.details),
+      drawn: (() => {
+        const d = o.danmaku();
+        return d === null ? null : { frames: d.frames, renderer: d.renderer };
+      })(),
     };
   });
   await context.close();
-  return { ...r, startHeight };
+  const { drawn, ...rest } = r;
+  return { ...rest, startHeight, ...(danmaku && drawn !== null ? { danmaku: drawn } : {}) };
 }
 
 const VOD = [
@@ -101,41 +132,48 @@ const LINKS = [
   { id: '1mbps', kbps: 1000 },
 ] as const;
 
-for (const v of VOD) {
-  for (const link of LINKS) {
-    test(`${v.id} over ${link.id}: own engine vs hls.js, ${RUNS} runs each`, async ({ browser }) => {
-      test.setTimeout(RUNS * 2 * (v.playS + 70) * 1000);
-      const runs: Record<EngineId, VodRun[]> = { otter: [], hlsjs: [] };
-      for (let i = 0; i < RUNS; i++) {
-        // Alternate which engine goes first, so drift (caches, CPU) does not favour one.
-        for (const engine of i % 2 === 0 ? ENGINES : ([...ENGINES].reverse() as EngineId[])) runs[engine].push(await vodRun(browser, engine, v.src, link.kbps, v.playS, i));
-      }
-      const summary = Object.fromEntries(
-        ENGINES.map((e) => {
-          const r = runs[e];
-          return [
-            e,
-            {
-              runs: r.length,
-              ttffMs: stats(r.map((x) => x.ttff)),
-              rebuffers: stats(r.map((x) => x.rebuffers)),
-              rebufferMs: stats(r.map((x) => x.rebufferMs)),
-              runsWithRebuffer: r.filter((x) => x.rebuffers > 0).length,
-              switches: stats(r.map((x) => x.switches)),
-              startHeights: r.map((x) => x.startHeight),
-              endHeights: r.map((x) => x.endHeight),
-              fallbacks: r.filter((x) => x.fallback).length,
-              fatal: r.flatMap((x) => x.fatal),
-              raw: r,
-            },
-          ];
-        }),
-      );
-      save(`${v.id}-${link.id}`, { scenario: v, link, summary });
-      // Only correctness is gated here: both engines play; the own engine never fell back.
-      expect((summary['otter'] as { fallbacks: number }).fallbacks).toBe(0);
-      expect([...runs.otter, ...runs.hlsjs].flatMap((x) => x.fatal)).toEqual([]);
-    });
+for (const danmaku of [false, true]) {
+  for (const v of VOD) {
+    for (const link of LINKS) {
+      const name = `${v.id} over ${link.id}${danmaku ? ` with danmaku ${DANMAKU_PER_MINUTE}/min` : ''}`;
+      test(`${name}: own engine vs hls.js, ${RUNS} runs each`, async ({ browser }) => {
+        test.setTimeout(RUNS * 2 * (v.playS + 70) * 1000);
+        const loadAtStart = load();
+        const runs: Record<EngineId, VodRun[]> = { otter: [], hlsjs: [] };
+        for (let i = 0; i < RUNS; i++) {
+          // Alternate which engine goes first, so drift (caches, CPU) does not favour one.
+          for (const engine of i % 2 === 0 ? ENGINES : ([...ENGINES].reverse() as EngineId[])) runs[engine].push(await vodRun(browser, engine, v.src, link.kbps, v.playS, i, danmaku));
+        }
+        const summary = Object.fromEntries(
+          ENGINES.map((e) => {
+            const r = runs[e];
+            return [
+              e,
+              {
+                runs: r.length,
+                ttffMs: stats(r.map((x) => x.ttff)),
+                rebuffers: stats(r.map((x) => x.rebuffers)),
+                rebufferMs: stats(r.map((x) => x.rebufferMs)),
+                runsWithRebuffer: r.filter((x) => x.rebuffers > 0).length,
+                switches: stats(r.map((x) => x.switches)),
+                startHeights: r.map((x) => x.startHeight),
+                endHeights: r.map((x) => x.endHeight),
+                fallbacks: r.filter((x) => x.fallback).length,
+                fatal: r.flatMap((x) => x.fatal),
+                ...(danmaku ? { danmakuRenderers: r.map((x) => x.danmaku?.renderer ?? null), danmakuFramesMin: Math.min(...r.map((x) => x.danmaku?.frames ?? 0)) } : {}),
+                raw: r,
+              },
+            ];
+          }),
+        );
+        save(`${v.id}-${link.id}${danmaku ? '-danmaku' : ''}`, { scenario: v, link, ...(danmaku ? { danmakuPerMinute: DANMAKU_PER_MINUTE } : {}), summary }, loadAtStart);
+        // Only correctness is gated here: both engines play; the own engine never fell back; with
+        // danmaku, the comments were drawn in every run.
+        expect((summary['otter'] as { fallbacks: number }).fallbacks).toBe(0);
+        expect([...runs.otter, ...runs.hlsjs].flatMap((x) => x.fatal)).toEqual([]);
+        if (danmaku) for (const x of [...runs.otter, ...runs.hlsjs]) expect(x.danmaku?.frames ?? 0).toBeGreaterThan(0);
+      });
+    }
   }
 }
 
@@ -175,6 +213,7 @@ async function wallLatency(page: Page): Promise<number> {
 
 test(`live: wall latency, own engine vs hls.js, ${LIVE_RUNS} runs each`, async ({ browser }) => {
   test.setTimeout(LIVE_RUNS * 2 * 90_000);
+  const loadAtStart = load();
   const runs: Record<EngineId, { startup: number; steady: number; backToLive: number; reportedMinusWall: number }[]> = { otter: [], hlsjs: [] };
   for (let i = 0; i < LIVE_RUNS; i++) {
     for (const engine of i % 2 === 0 ? ENGINES : ([...ENGINES].reverse() as EngineId[])) {
@@ -230,6 +269,6 @@ test(`live: wall latency, own engine vs hls.js, ${LIVE_RUNS} runs each`, async (
       },
     ]),
   );
-  save('live', { holdBackS: 6, summary });
+  save('live', { holdBackS: 6, summary }, loadAtStart);
   for (const e of ENGINES) for (const r of runs[e]) expect(Number.isFinite(r.steady)).toBe(true);
 });
