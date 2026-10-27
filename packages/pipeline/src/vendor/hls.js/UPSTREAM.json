@@ -7,14 +7,6 @@
   "level": "L3",
   "files": [
     {
-      "upstream": "src/utils/ewma.ts",
-      "local": "ewma.ts"
-    },
-    {
-      "upstream": "src/utils/ewma-bandwidth-estimator.ts",
-      "local": "ewma.ts"
-    },
-    {
       "upstream": "src/utils/cea-608-parser.ts",
       "local": "cea-608-parser.ts"
     },
@@ -24,10 +16,6 @@
     }
   ],
   "localChanges": [
-    "EWMA and EwmaBandWidthEstimator merged into one module; class names Ewma / EwmaBandwidthEstimator.",
-    "Private state uses # fields; getters (estimate, totalWeight, canEstimate, ttfb) replace getX() methods.",
-    "The estimator returns { estimate, fast, slow } so QoE can report both EWMAs; destroy() dropped (no resources).",
-    "Math.pow replaced by **; Math.sqrt(2) by Math.SQRT2. Arithmetic unchanged.",
     "cea-608-parser / output-filter (moved from @otter-player/text in M3, ADR-007 §6): hls.js logger and safe-json-stringify replaced by no-op log and JSON.stringify (captions logging is off).",
     "cea-608-parser / output-filter (moved from @otter-player/text in M3, ADR-007 §6): OutputFilter talks to a CaptionsSink interface instead of hls.js' TimelineController.",
     "cea-608-parser / output-filter (moved from @otter-player/text in M3, ADR-007 §6): const enum VerboseLevel replaced by an object + type (erasableSyntaxOnly).",

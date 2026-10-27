@@ -24,7 +24,7 @@ export {
   type InsufficientBufferRuleOptions,
   type ThroughputRuleOptions,
 } from './vendor/dash.js/rules.js';
-export { Ewma, EwmaBandwidthEstimator, type BandwidthEstimate } from './vendor/hls.js/ewma.js';
+export { createBandwidthEstimator, type BandwidthEstimate, type BandwidthEstimator } from './abr/bandwidth.js';
 export {
   createAbrDriverWith,
   type AbrDriver,

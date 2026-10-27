@@ -24,7 +24,7 @@
 | TS → fMP4 转封装 | hls.js `src/demux/tsdemuxer.ts` + `src/remux/mp4-remuxer.ts` + `mp4-generator.ts` | L2 | 去掉事件总线耦合，改纯函数。M3 已复制到 `vendor/hls.js/`（私有 workspace 包 `@otter-vendor/hls.js`，hls.js@e5ff358，ADR-007 §1）；事件总线、config、logger 换成 `src/otter/shims.ts`；SAMPLE-AES 与 AC-3 未复制；严格 TS 由 `scripts/vendor-strictify.ts` 机械处理加人工收尾 |
 | MP4 分段加载（Range + moov） | xgplayer `xgplayer-mp4` + mp4box.js | L3 / L1 | M3：mp4box.js 2.4.1（BSD-3）解析 moov、切关键帧对齐的 fMP4；分段与 Range 读取策略参照 xgplayer-mp4 自写（只读不拷，因此是 L3 参考而非 L2）。mp4box 2.x 的坑：所有轨道必须用同一个 `nbSamples`，否则静默跳过该轨；`appendBuffer(…, last=true)` 会把剩余样本逐个切成单帧分段，文件末尾只用 `flush()` |
 | 通用 demux（MP4/WebM/MKV、HLS）给 WebCodecs | mediabunny（MPL-2.0，TS，无依赖） | L1 | 直接出 `EncodedPacket`；1.61 起也能读 HLS（ADR-008）。M4：`@otter-player/demux-mediabunny` 包一层，format-file（Blob）与 format-hls（HEVC 等 MSE 不能播的 HLS）共用，按需加载 |
-| ABR 带宽估计 | hls.js `src/utils/ewma-bandwidth-estimator.ts` + `src/utils/ewma.ts` | L3 | 几十行直接拿。M2 复制到 `packages/pipeline/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3） |
+| ABR 带宽估计 | hls.js `src/utils/ewma-bandwidth-estimator.ts` + `src/utils/ewma.ts` | L4（原 L3） | M2 时复制到 `packages/pipeline/src/vendor/hls.js/`（hls.js@e5ff358 = v1.7.3）。M5 收尾（2026-10-27，负责人）改为 L4：按同样的设计与算式重写成一个闭包（`packages/pipeline/src/abr/bandwidth.ts`），为自研引擎点播块腾出字节；单测按旧实现记录的数值逐位核对 |
 | ABR 规则 | dash.js `BolaRule`、`ThroughputRule`、`InsufficientBufferRule` | L3 | 改成规则叠加接口。M2 复制到 `packages/pipeline/src/vendor/dash.js/`（dash.js@a9a8542 = v5.2.1，BSD-3，保留许可证全文） |
 | Codec 字符串解析与 MediaCapabilities | hls.js `src/utils/codecs.ts` + `mediacapabilities-helper.ts` | L3 | 直接拿 |
 | MSE 操作队列与配额驱逐 | hls.js `buffer-operation-queue.ts` + `buffer-controller.ts` flush 逻辑 | L3 | 拆出纯操作队列 |

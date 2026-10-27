@@ -5,8 +5,7 @@ import {
   createDefaultAbrController,
   createInsufficientBufferRule,
   createThroughputRule,
-  Ewma,
-  EwmaBandwidthEstimator,
+  createBandwidthEstimator,
   levelForBitrate,
   PRIORITY,
   type AbrContext,
@@ -38,18 +37,31 @@ const ctx = (over: Partial<AbrContext> = {}): AbrContext => ({
   ...over,
 });
 
-describe('EWMA (hls.js port)', () => {
-  it('is unbiased at start and moves toward samples', () => {
-    const e = new Ewma(2);
-    e.sample(1, 100);
-    expect(e.estimate).toBeCloseTo(100);
-    e.sample(2, 200);
-    expect(e.estimate).toBeGreaterThan(100);
-    expect(e.estimate).toBeLessThan(200);
+describe('bandwidth estimator (after hls.js EwmaBandWidthEstimator)', () => {
+  it('matches the hls.js classes it replaced, to the last digit', () => {
+    // Recorded from the vendored hls.js Ewma / EwmaBandwidthEstimator before the rewrite.
+    const b = createBandwidthEstimator(15, 4, 500_000);
+    const ref = [
+      [1000000, 1000000.0000000001, 1000000, 50],
+      [2318353.575165902, 2397692.058413696, 2318353.575165902, 41.736243300943165],
+      [2390998.1382059455, 2482098.2774278214, 2390998.1382059455, 130.82779358740763],
+      [2468508.3581506494, 2544802.8804979525, 2468508.3581506494, 105.33228495979122],
+      [1350354.4812680352, 1350354.4812680352, 1518763.4239391608, 241.4105687470554],
+    ];
+    const samples = [[1000, 125000, 50], [1700, 647452, 34], [30, 32000, 300], [900, 302044, 39], [2000, 1000, 1200]] as const;
+    samples.forEach(([ms, bytes, ttfb], i) => {
+      b.sample(ms, bytes);
+      b.sampleTtfb(ttfb);
+      const r = ref[i] as number[];
+      expect(b.bandwidth.estimate).toBeCloseTo(r[0] as number, 6);
+      expect(b.bandwidth.fast).toBeCloseTo(r[1] as number, 6);
+      expect(b.bandwidth.slow).toBeCloseTo(r[2] as number, 6);
+      expect(b.ttfb).toBeCloseTo(r[3] as number, 9);
+    });
   });
 
-  it('estimator takes min(fast, slow) and falls back to the default', () => {
-    const b = new EwmaBandwidthEstimator(15, 4, 500_000);
+  it('takes min(fast, slow) and falls back to the default', () => {
+    const b = createBandwidthEstimator(15, 4, 500_000);
     expect(b.canEstimate).toBe(false);
     expect(b.bandwidth.estimate).toBe(500_000);
     b.sample(1000, 1_000_000 / 8); // 1 Mbps for 1 s
@@ -161,7 +173,8 @@ describe('AbrController', () => {
     ]);
     const d = c.decide(ctx());
     expect(d.level).toBe(1);
-    expect(d.reason).toBe('up: fast net');
+    // The cap held the winner down: it is named too (router.explain() said only "fast net").
+    expect(d.reason).toBe('up: fast net; capped by cap: low buffer');
     expect(d.votes).toHaveLength(2);
   });
 
@@ -191,7 +204,7 @@ describe('AbrController', () => {
 
   it('default stack: holds a sustainable level, then steps down on a collapse without rebuffering', () => {
     const c = createDefaultAbrController();
-    const est = new EwmaBandwidthEstimator(15, 4, 1_000_000);
+    const est = createBandwidthEstimator(15, 4, 1_000_000);
     let current = -1;
     let buffer = 0;
     let minBufferAfterStart = Number.POSITIVE_INFINITY;

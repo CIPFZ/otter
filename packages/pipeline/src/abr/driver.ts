@@ -3,7 +3,7 @@
 // counters and ladder ordering so hls.js and Shaka integrations stay thin and identical.
 
 import { type AbrController, type AbrDecision, type AbrLevel, type BufferState } from './abr.js';
-import { EwmaBandwidthEstimator, type BandwidthEstimate } from '../vendor/hls.js/ewma.js';
+import { createBandwidthEstimator, type BandwidthEstimate } from './bandwidth.js';
 
 export interface AbrSnapshot {
   /** Engine levels in engine order; the driver sorts by bitrate internally. */
@@ -68,7 +68,7 @@ const orderOf = (levels: readonly AbrLevel[]): number[] =>
  */
 export function createAbrDriverWith(controller: AbrController, options: Omit<AbrDriverOptions, 'controller'> = {}): AbrDriver {
   const now = options.now ?? (() => Date.now());
-  const estimator = new EwmaBandwidthEstimator(options.halfLife?.slow ?? 15, options.halfLife?.fast ?? 4, options.defaultEstimate ?? 500_000);
+  const estimator = createBandwidthEstimator(options.halfLife?.slow ?? 15, options.halfLife?.fast ?? 4, options.defaultEstimate ?? 500_000);
   let appended = 0;
   let last: AbrEngineDecision | undefined;
 

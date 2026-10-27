@@ -135,7 +135,9 @@ export function createAbrController(rules: readonly AbrRule[]): AbrController {
         }
       }
       const winners = votes.filter(({ vote }) => vote.level !== undefined && clamp(vote.level) === level).map(({ rule, vote }) => `${rule}: ${vote.reason}`);
-      return { level, reason: winners.join('; '), votes };
+      // A winner held down by a cap: the cap is the reason too.
+      const cap = votes.find(({ vote }) => vote.maxLevel === max && max < top);
+      return { level, reason: winners.join('; ') + (cap === undefined || !votes.some(({ vote }) => (vote.level ?? -1) > level) ? '' : `; capped by ${cap.rule}: ${cap.vote.reason}`), votes };
     },
     reset() {
       for (const r of rules) r.reset?.();

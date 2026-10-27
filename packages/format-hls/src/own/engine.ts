@@ -356,7 +356,10 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     const kind: CmcdObjectKind = lane.type === 'audio' ? 'audio' : lane.track.codecs !== undefined && lane.track.codecs.length > 1 ? 'muxed' : 'video';
     const { data, ms, ttfbMs } = await get(next, kind, { durationS: next.duration, bitrateBps: lane.track.bandwidth }, lane.type === 'video' && requested === undefined ? lane.index : undefined);
     if (run !== epoch) return true;
-    driver?.sampleDownload(ms, data.byteLength, ttfbMs);
+    // Bandwidth from video segments only, like hls.js (main fragments): a separate audio
+    // rendition's small segments, moving in step with the video, read high and kept a variant
+    // the link could not hold (abandon, then back up: two switches at 3 Mbps).
+    if (lane.type === 'video') driver?.sampleDownload(ms, data.byteLength, ttfbMs);
     if (driver?.canEstimate === true) {
       const b = driver.bandwidth;
       bus.emit('bandwidth', { estimate: b.estimate, fast: b.fast, slow: b.slow });
@@ -496,9 +499,11 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       if (destroyed) return;
       isLive = !Number.isFinite(vTrack.duration);
       // Lean rule stack (Throughput + InsufficientBuffer): the engine chunk budget (ADR-010 §3).
-      // The abandon rules (an on-demand chunk) watch video downloads in auto mode.
+      // The abandon rules (an on-demand chunk) watch video downloads in auto mode. The buffer cap
+      // from the second segment on (dash.js waits for two): after a first segment at the link's
+      // edge it steps down at once instead of starting a second one it then abandons.
       if (variants.length > 1) {
-        driver = createAbrDriverWith(createLeanAbrController());
+        driver = createAbrDriverWith(createLeanAbrController({ insufficientBuffer: { segmentIgnoreCount: 1 } }));
         void import('./abandon.js').then((m) => (abandon = m.createAbandon(inner)));
       }
       await s.ready;
