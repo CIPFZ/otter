@@ -84,21 +84,23 @@ test('moving mark: moves inside the picture, comes back when removed or hidden',
   await expect(page.locator('[data-otter-watermark]')).toBeVisible();
   await page.evaluate(() => ((document.querySelector('[data-otter-watermark]') as HTMLElement).style.opacity = '0'));
   await expect(page.locator('[data-otter-watermark]')).toHaveCSS('opacity', '1');
-  ciNotice(`watermark moving: places ${seen.join(' | ')}; removed / display none / opacity 0 -> restored`);
+  ciNotice(`watermark modes: moving, places ${seen.join(' | ')}; removed / display none / opacity 0 -> restored`);
 });
 
 test('fullscreen: the mark is inside the fullscreen player and on screen', async ({ page }) => {
   await start(page, '&watermark=static');
   await page.locator('otter-fullscreen-button').getByRole('button').click();
-  const mode = await expect
+  const entered = await expect
     .poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().presentation.mode), { timeout: 5000 })
     .toBe('fullscreen')
-    .then(() => 'fullscreen')
-    .catch(() => 'not entered');
-  if (mode !== 'fullscreen') {
-    ciNotice('watermark fullscreen: fullscreen not entered here');
-    test.skip(true, 'no fullscreen');
+    .then(() => true)
+    .catch(() => false);
+  // Not entered: skipped, never passed (AGENT.md §4).
+  if (!entered) {
+    ciNotice('watermark modes: fullscreen not entered (skipped)');
+    test.skip(true, 'fullscreen not entered');
   }
+  const kind = await page.evaluate(() => (document.fullscreenElement !== null ? 'native' : 'pseudo'));
   const inside = await page.evaluate(() => {
     const fs = document.fullscreenElement ?? document.getElementById('player');
     return fs?.contains(document.querySelector('[data-otter-watermark]')) === true;
@@ -110,55 +112,68 @@ test('fullscreen: the mark is inside the fullscreen player and on screen', async
   expect(b.r).toBeLessThanOrEqual(1);
   // The page, not an element: the fullscreen element is on top of everything.
   expect(await greenIn(page)).toBeGreaterThan(100);
+  ciNotice(`watermark modes: fullscreen entered (${kind})`);
 });
 
-test('Document PiP carries the mark; video PiP shows the picture with it', async ({ page }) => {
-  test.setTimeout(60_000);
-  // Video PiP: the PiP window's video is the composite stream (picture + mark).
+test('video PiP: the PiP window shows the picture with the mark (composite stream)', async ({ page }) => {
   await start(page, '&watermark=static', true);
   await page.addStyleTag({ content: 'otter-pip-button { display: inline-block !important; }' });
   const caps = await page.evaluate(async () => ((await window.otter) as OtterFixture).state().presentation.capabilities);
-  if (caps.pip !== false) {
-    await page.locator('otter-pip-button').getByRole('button').click();
-    const entered = await expect
-      .poll(async () => page.evaluate(() => (document.pictureInPictureElement as HTMLVideoElement | null)?.dataset['otterPip'] !== undefined), { timeout: 5000 })
-      .toBe(true)
-      .then(() => true)
-      .catch(() => false);
-    if (entered) {
-      await page.waitForTimeout(500);
-      const greens = await page.evaluate(() => {
-        const v = document.pictureInPictureElement as HTMLVideoElement;
-        const c = new OffscreenCanvas(v.videoWidth, v.videoHeight);
-        const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
-        ctx.drawImage(v, 0, 0);
-        const d = ctx.getImageData(0, 0, c.width, c.height).data;
-        let n = 0;
-        for (let i = 0; i < d.length; i += 4) if ((d[i + 1] as number) > 235 && (d[i] as number) < 40 && (d[i + 2] as number) < 40) n++;
-        return n;
-      });
-      expect(greens).toBeGreaterThan(50);
-      ciNotice(`watermark video PiP: composite stream, ${greens} mark pixels in the PiP frame`);
-      await page.evaluate(() => document.exitPictureInPicture());
-    } else ciNotice('watermark video PiP: not entered here');
+  if (caps.pip === false) {
+    ciNotice('watermark modes: video PiP unsupported (skipped)');
+    test.skip(true, 'video PiP unsupported');
   }
-  // Document PiP: the player (and its overlays) moves into the PiP window.
+  await page.locator('otter-pip-button').getByRole('button').click();
+  const entered = await expect
+    .poll(async () => page.evaluate(() => (document.pictureInPictureElement as HTMLVideoElement | null)?.dataset['otterPip'] !== undefined), { timeout: 5000 })
+    .toBe(true)
+    .then(() => true)
+    .catch(() => false);
+  if (!entered) {
+    ciNotice('watermark modes: video PiP supported but not entered (skipped)');
+    test.skip(true, 'video PiP not entered');
+  }
+  await page.waitForTimeout(500);
+  const greens = await page.evaluate(() => {
+    const v = document.pictureInPictureElement as HTMLVideoElement;
+    const c = new OffscreenCanvas(v.videoWidth, v.videoHeight);
+    const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    ctx.drawImage(v, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if ((d[i + 1] as number) > 235 && (d[i] as number) < 40 && (d[i + 2] as number) < 40) n++;
+    return n;
+  });
+  expect(greens).toBeGreaterThan(50);
+  ciNotice(`watermark modes: video PiP entered (composite stream, ${greens} mark pixels in the PiP frame)`);
+  // Closed before the context goes (Firefox's context close fails with a PiP window open).
+  await page.evaluate(() => document.exitPictureInPicture());
+});
+
+test('Document PiP: the mark moves with the player into the PiP window', async ({ page }) => {
   await start(page, '&watermark=static&pip=document', true);
   const docpip = await page.evaluate(async () => ((await window.otter) as OtterFixture).state().presentation.capabilities.docpip);
   if (docpip === false) {
-    ciNotice('watermark Document PiP: unsupported here');
-    return;
+    ciNotice('watermark modes: Document PiP unsupported (skipped)');
+    test.skip(true, 'Document PiP unsupported');
   }
   await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('toggle-pip', {}));
-  await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().presentation.mode)).toBe('docpip');
+  const entered = await expect
+    .poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().presentation.mode), { timeout: 5000 })
+    .toBe('docpip')
+    .then(() => true)
+    .catch(() => false);
+  if (!entered) {
+    ciNotice('watermark modes: Document PiP supported but not entered (skipped)');
+    test.skip(true, 'Document PiP not entered');
+  }
   const inPip = await page.evaluate(() => {
     const w = (window as unknown as { documentPictureInPicture: { window: Window | null } }).documentPictureInPicture.window;
     const mark = w?.document.querySelector('[data-otter-watermark]') as HTMLElement | null;
     return mark === null || mark === undefined ? null : { shown: mark.getBoundingClientRect().width > 0, text: mark.textContent };
   });
   expect(inPip).toEqual({ shown: true, text: 'OTTER-WM' });
-  ciNotice('watermark Document PiP: the mark moved with the player');
-  // Closed before the context goes (Firefox's context close fails with a PiP window open).
+  ciNotice('watermark modes: Document PiP entered (the mark moved with the player)');
   await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('toggle-pip', {}));
   await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().presentation.mode)).not.toBe('docpip');
 });

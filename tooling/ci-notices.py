@@ -1,20 +1,21 @@
 """CI run-page notices from the e2e notices file (tooling/e2e-step.sh collects it): one notice per
-topic (the first two words after the project, e.g. "danmaku bench"), its lines joined, measurement
-topics first. A step shows at most 10 notices; everything is also in the job summary.
-  python3 tooling/ci-notices.py <file> <measurement-topic-regex>"""
+topic (the first word after the project, e.g. "danmaku"), its lines joined; the topics named in
+the second argument first, in that order. A step shows at most 10 notices; everything is also in
+the job summary.
+  python3 tooling/ci-notices.py <file> 'danmaku|watermark|...'"""
 import re
 import sys
 
-path, key = sys.argv[1], re.compile(sys.argv[2])
+path, first = sys.argv[1], sys.argv[2].split('|')
 groups: dict[str, list[str]] = {}
 for line in open(path, encoding='utf-8'):
     line = line.rstrip('\n')
     if not line:
         continue
     message = line.split(': ', 1)[1] if ': ' in line else line
-    topic = ' '.join(re.split(r'[\s:(]+', message)[:2])
+    topic = re.split(r'[\s:(]+', message)[0]
     groups.setdefault(topic, []).append(line)
-order = sorted(groups, key=lambda t: (0 if key.search(t) else 1, t))
+order = sorted(groups, key=lambda t: (first.index(t) if t in first else len(first), t))
 for topic in order:
     # Long topics in parts of about 4 KB (an annotation's message is cut beyond that).
     part: list[str] = []
