@@ -44,6 +44,11 @@ export interface PlayerOptions {
   readonly title?: string;
   /** The default controls (true) or a bare <video> (false: the host builds its UI on the store). Default true. */
   readonly controls?: boolean;
+  /**
+   * Start muted (before the first load): browsers allow autoplay only without sound, and the mute
+   * must be in place before play(). Default false.
+   */
+  readonly muted?: boolean;
   /** Control bar auto-hide delay, ms; default 3000; 0 keeps the controls shown. */
   readonly idleMs?: number;
   /** Presentation modes: mini window, Document PiP, Media Session... (container and surface are the player's). */
@@ -112,6 +117,7 @@ export function createPlayer(options: PlayerOptions): Player {
   const store = core.store.view();
   const offs: Unsubscribe[] = [];
   const ready = core.start().then(() => {
+    if (options.muted === true) store.dispatch('set-muted', { muted: true });
     root.querySelector('[data-otter-overlays]')?.remove();
     const layer = createOverlayLayer({ container: root, surface, store, mediaTime: () => video.currentTime });
     layer.add(text.overlay);

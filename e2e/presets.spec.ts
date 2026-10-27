@@ -16,7 +16,8 @@ test('vod preset: builds the shell, plays HLS on the own engine, controls drive 
   await page.goto('/presets.html?preset=vod&src=/hls-fmp4/master.m3u8');
   await expect(page.locator('#player[data-otter-player] [data-otter-controls] otter-time-slider')).toHaveCount(1);
   await expect(page.locator('[data-otter-title]')).toHaveText('Preset vod');
-  await page.evaluate(() => (window.preset as Player).store.dispatch('set-muted', { muted: true }));
+  // Muted from the start (the preset's `muted`): WebKit refuses autoplay with sound.
+  expect(await page.locator('#player video').evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
   await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.5);
   const s = await state(page);
   expect(s.format).toBe('hls');
@@ -32,7 +33,6 @@ test('vod preset: builds the shell, plays HLS on the own engine, controls drive 
 
 test('live preset: live HLS near HOLD-BACK, the live indicator shows, back to live works', async ({ page }) => {
   await page.goto('/presets.html?preset=live&src=/live-hls/master.m3u8');
-  await page.evaluate(() => (window.preset as Player).store.dispatch('set-muted', { muted: true }));
   await expect.poll(async () => (await state(page)).live, { timeout: 20_000 }).toBe(true);
   await expect.poll(async () => (await state(page)).latency ?? 0, { timeout: 20_000 }).toBeGreaterThan(3);
   expect((await state(page)).latency).toBeLessThan(9);

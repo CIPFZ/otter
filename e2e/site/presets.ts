@@ -19,7 +19,7 @@ if (kind === 'background') {
   window.preset = createBackgroundPlayer({ target: document.getElementById('hero') as HTMLElement, src });
 } else if (kind === 'vod' || kind === 'live') {
   const container = document.getElementById('player') as HTMLElement;
-  const player = (kind === 'vod' ? createVodPlayer : createLivePlayer)({ container, title: `Preset ${kind}`, idleMs: 0 });
+  const player = (kind === 'vod' ? createVodPlayer : createLivePlayer)({ container, title: `Preset ${kind}`, idleMs: 0, muted: true });
   window.preset = player;
   void player.load(src, { autoplay: true });
 }
