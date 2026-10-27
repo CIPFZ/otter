@@ -10,6 +10,21 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./vod": {
+      "@otter-player/source": "./src/vod.ts",
+      "types": "./dist/vod.d.ts",
+      "default": "./dist/vod.js"
+    },
+    "./live": {
+      "@otter-player/source": "./src/live.ts",
+      "types": "./dist/live.d.ts",
+      "default": "./dist/live.js"
+    },
+    "./background": {
+      "@otter-player/source": "./src/background.ts",
+      "types": "./dist/background.d.ts",
+      "default": "./dist/background.js"
     }
   },
   "files": [
@@ -20,6 +35,26 @@
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
   },
   "dependencies": {
-    "@otter-player/core": "workspace:*"
+    "@otter-player/backend-mse": "workspace:*",
+    "@otter-player/backend-native": "workspace:*",
+    "@otter-player/core": "workspace:*",
+    "@otter-player/format-dash": "workspace:*",
+    "@otter-player/format-hls": "workspace:*",
+    "@otter-player/format-mp4-range": "workspace:*",
+    "@otter-player/input": "workspace:*",
+    "@otter-player/media": "workspace:*",
+    "@otter-player/overlay-thumbnails": "workspace:*",
+    "@otter-player/presentation": "workspace:*",
+    "@otter-player/qoe": "workspace:*",
+    "@otter-player/surface": "workspace:*",
+    "@otter-player/text": "workspace:*",
+    "@otter-player/ui-core": "workspace:*"
+  },
+  "otter": {
+    "entries": {
+      "vod": "src/vod.ts",
+      "live": "src/live.ts",
+      "background": "src/background.ts"
+    }
   }
 }

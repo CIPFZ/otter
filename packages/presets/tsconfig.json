@@ -14,7 +14,46 @@
   ],
   "references": [
     {
+      "path": "../backend-mse"
+    },
+    {
+      "path": "../backend-native"
+    },
+    {
       "path": "../core"
+    },
+    {
+      "path": "../format-dash"
+    },
+    {
+      "path": "../format-hls"
+    },
+    {
+      "path": "../format-mp4-range"
+    },
+    {
+      "path": "../input"
+    },
+    {
+      "path": "../media"
+    },
+    {
+      "path": "../overlay-thumbnails"
+    },
+    {
+      "path": "../presentation"
+    },
+    {
+      "path": "../qoe"
+    },
+    {
+      "path": "../surface"
+    },
+    {
+      "path": "../text"
+    },
+    {
+      "path": "../ui-core"
     }
   ]
 }

@@ -24,6 +24,7 @@
       "@otter-player/presentation/canvas-pip": ["./packages/presentation/src/canvas-pip.ts"],
       "@otter-player/presentation/multiview": ["./packages/presentation/src/multiview.ts"],
       "@otter-player/presentation/picture": ["./packages/presentation/src/picture.ts"],
+      "@otter-player/presets/*": ["./packages/presets/src/*.ts"],
       "@otter-player/presentation/single-audio": ["./packages/presentation/src/single-audio.ts"],
       "@otter-player/*": ["./packages/*/src/index.ts"]
     }

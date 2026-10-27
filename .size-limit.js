@@ -51,9 +51,9 @@ const ENGINES = Object.keys(ENGINE_FILES);
 
 /**
  * id, SPEC §19 row, own-code limit, engines loaded by the scenario's default first playback,
- * and the milestone the limit becomes blocking. The Hero target (< 5 KB, no UI, native mp4) is
- * a dedicated minimal preset that ships in M6 (SPEC §21); until then its general-purpose
- * composition (media session + router, 8.6 KB) is reported, not gated.
+ * and the milestone the limit becomes blocking. Since M6 batch 2 (ADR-013) a scenario with a
+ * preset measures the preset as a host imports it: long-vod = `vod`, live = `live`, Hero =
+ * `background` (gated at 5 KB from then on).
  */
 const SCENARIOS = [
   ['short-vod', '短视频 / 简单点播', '30 KB', []],
@@ -61,7 +61,7 @@ const SCENARIOS = [
   ['live', '直播 + LL-HLS / LL-DASH', '90 KB', ['hls.js']],
   ['cn-live', '国内直播 / 电商', '70 KB', ['mpegts.js']],
   ['danmaku', 'B 站式弹幕站', '120 KB', ['shaka-player']],
-  ['background', '背景视频 / Hero', '5 KB', [], 'M6'],
+  ['background', '背景视频 / Hero', '5 KB', []],
   ['shorts', '沉浸竖屏信息流', '60 KB', []],
   ['tv', '电视遥控器', '90 KB', ['hls.js']],
 ];

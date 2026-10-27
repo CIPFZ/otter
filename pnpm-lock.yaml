@@ -570,9 +570,48 @@ importers:
 
   packages/presets:
     dependencies:
+      '@otter-player/backend-mse':
+        specifier: workspace:*
+        version: link:../backend-mse
+      '@otter-player/backend-native':
+        specifier: workspace:*
+        version: link:../backend-native
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
+      '@otter-player/format-dash':
+        specifier: workspace:*
+        version: link:../format-dash
+      '@otter-player/format-hls':
+        specifier: workspace:*
+        version: link:../format-hls
+      '@otter-player/format-mp4-range':
+        specifier: workspace:*
+        version: link:../format-mp4-range
+      '@otter-player/input':
+        specifier: workspace:*
+        version: link:../input
+      '@otter-player/media':
+        specifier: workspace:*
+        version: link:../media
+      '@otter-player/overlay-thumbnails':
+        specifier: workspace:*
+        version: link:../overlay-thumbnails
+      '@otter-player/presentation':
+        specifier: workspace:*
+        version: link:../presentation
+      '@otter-player/qoe':
+        specifier: workspace:*
+        version: link:../qoe
+      '@otter-player/surface':
+        specifier: workspace:*
+        version: link:../surface
+      '@otter-player/text':
+        specifier: workspace:*
+        version: link:../text
+      '@otter-player/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
 
   packages/qoe:
     dependencies:

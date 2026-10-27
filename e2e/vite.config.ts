@@ -44,6 +44,7 @@ export default defineConfig({
       { find: /^@otter-player\/engine-pipeline\/sink$/, replacement: `${packagesDir}engine-pipeline/src/mse-sink.ts` },
       { find: /^@otter-player\/presentation\/picture$/, replacement: `${packagesDir}presentation/src/picture.ts` },
       { find: /^@otter-player\/presentation\/single-audio$/, replacement: `${packagesDir}presentation/src/single-audio.ts` },
+      { find: /^@otter-player\/presets\/([a-z0-9-]+)$/, replacement: `${packagesDir}presets/src/$1.ts` },
       // OTTER_E2E_DIST=format-hls,...: those packages from their built dist/ (what ships: format-hls
       // renames its internal `_` properties at build time, ADR-013); everything else from source.
       ...(process.env['OTTER_E2E_DIST'] ?? '')
@@ -67,6 +68,7 @@ export default defineConfig({
         transmux: fileURLToPath(new URL('./site/transmux.html', import.meta.url)),
         surfaces: fileURLToPath(new URL('./site/surfaces.html', import.meta.url)),
         webcodecs: fileURLToPath(new URL('./site/webcodecs.html', import.meta.url)),
+        presets: fileURLToPath(new URL('./site/presets.html', import.meta.url)),
       },
     },
   },

@@ -1,5 +1,8 @@
-// Scenario presets (SPEC §2, §19): one pre-composed bundle per typical scenario. The scenario
-// list is fixed by SPEC §3; preset contents and their size budgets ship in M6.
+// Scenario presets (SPEC §2, §19, ADR-013): createPlayer assembles a player around a <video>; one
+// sub-path per scenario composes it (`@otter-player/presets/vod`, `/live`, `/background`, ...), so a
+// page carries only its scenario's formats and backends.
+
+export { createPlayer, type Player, type PlayerActions, type PlayerOptions, type PlayerParts, type PlayerState } from './player.js';
 
 export type PresetId =
   | 'vod'

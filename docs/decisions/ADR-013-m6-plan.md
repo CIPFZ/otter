@@ -33,6 +33,16 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
 - Hero 从 M6 第二批起进门禁（≤ 5 KB），不再只报告。
 - §19 的「含引擎」列随 preset 定稿改口径：默认引擎是自研的（HLS、FLV / TS），按自研块计；第三方引擎单列为回退或不支持的流。
 
+### 4. preset 与 §19 体积条目（第二批，2026-10-27）
+
+- 每个 preset 是 `@otter-player/presets` 的一个 sub-path（`/vod`、`/live`、`/background`……），页面只带自己场景的格式与后端。主入口导出 `createPlayer`。
+- 体积条目量的是宿主导入的 preset 本身：
+  - 长视频点播行 = `vod`；
+  - 直播行 = `live`；
+  - Hero 行 = `background`，从第二批起门禁 ≤ 5 KB。
+- 其余 preset（lowlatency、ott-drm、surveillance、danmaku、shorts、tv）随第二批后续各停接上各自的行。
+- 没有对应 preset 的行（短视频 / 简单点播、国内直播 / 电商）保留原来的组合。
+
 ## 代价
 
 - 体积收口要动 SPF 的 L3 拷贝（候选 1）。本地改动变多，UPSTREAM.json 要记清楚，以后同步上游时要合并。
