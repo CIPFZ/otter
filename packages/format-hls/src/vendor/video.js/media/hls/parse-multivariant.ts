@@ -25,7 +25,7 @@ import type {
 import { MULTIVARIANT_PLAYLIST_METADATA_KEY } from '../types/index.js';
 import { matchTag, parseCodecs } from './parse-attributes.js';
 import { resolveUrl } from './resolve-url.js';
-import { parseSessionData } from './session-data.js';
+import type { parseSessionData } from './session-data.js';
 
 /**
  * Parse HLS multivariant playlist into a Presentation.
@@ -38,7 +38,15 @@ import { parseSessionData } from './session-data.js';
  * @param unresolved - Unresolved presentation (contains URL for base URL resolution)
  * @returns Presentation with partially resolved tracks (duration is undefined)
  */
-export function parseMultivariantPlaylist(text: string, unresolved: AddressableObject): Presentation {
+/**
+ * Otter: `EXT-X-SESSION-DATA` is read only with a `sessionData` parser passed in (parse-full.ts); the own engine has no
+ * use for it, and without it the parser does not carry it (tree-shaken).
+ */
+export interface ParseMultivariantConfig {
+  readonly sessionData?: typeof parseSessionData;
+}
+
+export function parseMultivariantPlaylist(text: string, unresolved: AddressableObject, config: ParseMultivariantConfig = {}): Presentation {
   const baseUrl = unresolved.url;
   const lines = text.split(/\r?\n/);
 
@@ -99,7 +107,7 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
     const sessionDataAttrs = matchTag(trimmed, 'EXT-X-SESSION-DATA');
 
     if (sessionDataAttrs) {
-      const entry = parseSessionData(sessionDataAttrs, baseUrl);
+      const entry = config.sessionData?.(sessionDataAttrs, baseUrl);
 
       if (entry) sessionData.push(entry);
 

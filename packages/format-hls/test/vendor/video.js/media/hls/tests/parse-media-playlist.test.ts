@@ -9,7 +9,11 @@ import {
   type PartiallyResolvedTextTrack,
   type PartiallyResolvedVideoTrack,
 } from '../../../../../../src/vendor/video.js/media/types/index.js';
-import { parseMediaPlaylist } from '../../../../../../src/vendor/video.js/media/hls/parse-media-playlist.js';
+import { parseMediaPlaylist as parse, type ParseMediaPlaylistConfig } from '../../../../../../src/vendor/video.js/media/hls/parse-media-playlist.js';
+import { FULL_MEDIA_PLAYLIST } from '../../../../../../src/vendor/video.js/media/hls/parse-full.js';
+
+// Otter: keys and non-fMP4 relabeling moved to parse-full.ts (ADR-013); upstream's tests run with them.
+const parseMediaPlaylist: typeof parse = (text, previous, config: ParseMediaPlaylistConfig = {}) => parse(text, previous, { ...FULL_MEDIA_PLAYLIST, ...config });
 import drmCmafAudio from './fixtures/drm-cmaf-audio.m3u8?raw';
 import drmCmafVideo from './fixtures/drm-cmaf-video.m3u8?raw';
 import liveCmafAudio from './fixtures/live-cmaf-audio.m3u8?raw';

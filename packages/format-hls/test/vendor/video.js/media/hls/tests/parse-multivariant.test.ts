@@ -5,7 +5,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { PartiallyResolvedAudioTrack, PartiallyResolvedTextTrack, PartiallyResolvedVideoTrack } from '../../../../../../src/vendor/video.js/media/types/index.js';
 import { getMultivariantPlaylistMetadata, getSessionData } from '../../../../../../src/vendor/video.js/media/types/index.js';
-import { parseMultivariantPlaylist } from '../../../../../../src/vendor/video.js/media/hls/parse-multivariant.js';
+import { parseMultivariantPlaylist as parse } from '../../../../../../src/vendor/video.js/media/hls/parse-multivariant.js';
+import { FULL_MULTIVARIANT } from '../../../../../../src/vendor/video.js/media/hls/parse-full.js';
+
+// Otter: session data moved to parse-full.ts (ADR-013); upstream's tests run with it.
+const parseMultivariantPlaylist: typeof parse = (text, unresolved, config = {}) => parse(text, unresolved, { ...FULL_MULTIVARIANT, ...config });
 
 describe('parseMultivariantPlaylist', () => {
   const baseUrl = 'https://example.com/master.m3u8';

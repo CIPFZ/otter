@@ -61,6 +61,10 @@
     {
       "upstream": "packages/spf/src/media/dom/mse/end-of-stream.ts",
       "local": "media/dom/mse/end-of-stream.ts"
+    },
+    {
+      "upstream": "packages/spf/src/media/hls/parse-media-playlist.ts",
+      "local": "media/hls/parse-full.ts"
     }
   ],
   "tests": [
@@ -159,6 +163,7 @@
     "@videojs/utils isUndefined and generateId inlined (generateId is a page-unique counter).",
     "Strict TS: MediaPlaylistMetadata.playlistType / holdBack allow undefined (exactOptionalPropertyTypes); explicit types on defaulted parameters and NON_FMP4_CONTAINER_MIMES (isolatedDeclarations). No behaviour change.",
     "parse-media-playlist.ts: the diagnostic console.warn calls (media-sequence / URL mismatch, sequence going backwards, full window turnover) are dropped: no console output from the engine, and about 200 B of the engine chunk budget (ADR-010 §3). Behaviour unchanged.",
-    "parse-attributes.ts parseCodecs: avc3 / vp09 / av01 are video codecs too (upstream recognises avc1 / hvc1 / hev1 only, so a VP9 or AV1 variant parsed with no codecs and the own engine refused the stream). One regex instead of the three prefixes; found by the multi-codec fixture (ADR-011 batch 3)."
+    "parse-attributes.ts parseCodecs: avc3 / vp09 / av01 are video codecs too (upstream recognises avc1 / hvc1 / hev1 only, so a VP9 or AV1 variant parsed with no codecs and the own engine refused the stream). One regex instead of the three prefixes; found by the multi-codec fixture (ADR-011 batch 3).",
+    "M6 batch 1 (ADR-013): the EXT-X-KEY block and the non-fMP4 container relabeling (containerMimeFromSegment, MPEG_TS_MIME, RAW_AAC_MIME, NON_FMP4_CONTAINER_MIMES) moved, code unchanged, from parse-media-playlist.ts to parse-full.ts, reached through a new ParseMediaPlaylistConfig.extensions seam; EXT-X-SESSION-DATA is read through a new ParseMultivariantConfig.sessionData seam. Without them (the own engine: it hands encrypted and non-fMP4 streams to hls.js before parsing) keys are not read and segments not relabeled; FULL_MEDIA_PLAYLIST / FULL_MULTIVARIANT restore upstream's behaviour, and the copied tests run with them (a wrapper at the top of each test file, test bodies unchanged)."
   ]
 }

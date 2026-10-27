@@ -20,48 +20,8 @@ import {
   type TextTrack,
   type VideoTrack,
 } from '../types/index.js';
-import { matchTag, parseByteRange, parseExtInfDuration } from './parse-attributes.js';
+import { type AttributeList, matchTag, parseByteRange, parseExtInfDuration } from './parse-attributes.js';
 import { type ResolveKeyUri, resolveKeyUri, resolveUrl } from './resolve-url.js';
-
-/**
- * MPEG-2 Transport Stream (IANA `video/MP2T`, lowercased for `isTypeSupported`). Video + audio TS — there is no
- * `audio/mp2t`.
- */
-export const MPEG_TS_MIME = 'video/mp2t';
-/** Raw ADTS AAC packed-audio (HLS `.aac` segments; IANA `audio/aac`). */
-export const RAW_AAC_MIME = 'audio/aac';
-
-// Non-fMP4 container MIMEs keyed by segment file extension. fMP4 (the MSE
-// default) always carries an EXT-X-MAP init segment, so a media playlist with
-// no init segment and one of these extensions is a non-fMP4 rendition,
-// relabeled from the fMP4 default. Extend with `.mp3` → 'audio/mpeg' etc.
-const CONTAINER_MIME_BY_EXTENSION: Record<string, string> = {
-  '.ts': MPEG_TS_MIME,
-  '.aac': RAW_AAC_MIME,
-};
-
-/** The non-fMP4 container MIMEs the parser detects — all currently treated as unplayable. */
-export const NON_FMP4_CONTAINER_MIMES: Set<string> = new Set(Object.values(CONTAINER_MIME_BY_EXTENSION));
-
-/**
- * Non-fMP4 container MIME for a (resolved, absolute) segment URL, by file extension, ignoring the query string.
- * `undefined` for fMP4 / unrecognized.
- */
-function containerMimeFromSegment(url: string | undefined): string | undefined {
-  if (!url) return undefined;
-
-  let path: string;
-
-  try {
-    path = new URL(url).pathname.toLowerCase();
-  } catch {
-    path = url.toLowerCase().split('?')[0] ?? '';
-  }
-
-  const dot = path.lastIndexOf('.');
-
-  return dot === -1 ? undefined : CONTAINER_MIME_BY_EXTENSION[path.slice(dot)];
-}
 
 /** Resolve unresolved track type to its resolved equivalent. */
 type ResolveTrack<T> = T extends PartiallyResolvedVideoTrack
@@ -175,6 +135,20 @@ export interface ParseMediaPlaylistConfig {
    * relative `identity` key files and leaves opaque DRM identifiers (`data:`, `skd://`) alone.
    */
   resolveKeyUri?: ResolveKeyUri;
+  /**
+   * Otter: the parts of the parser a playlist the own engine plays never needs (it hands encrypted and non-fMP4
+   * streams to hls.js before parsing). Absent, `EXT-X-KEY` is not read (`encrypted` stays false) and non-fMP4
+   * segments are not relabeled; {@link FULL_MEDIA_PLAYLIST} (parse-full.ts) restores upstream's behaviour.
+   */
+  extensions?: MediaPlaylistExtensions;
+}
+
+/** Otter: optional parsing, passed in so a composition without it does not carry it (tree-shaken). */
+export interface MediaPlaylistExtensions {
+  /** An `EXT-X-KEY` with a real METHOD: the parsed key and its identity (the raw attributes) for deduping. */
+  key(attrs: AttributeList, baseUrl: string, resolveKey: ResolveKeyUri): { readonly identity: string; readonly key: MediaPlaylistKey } | undefined;
+  /** Non-fMP4 container MIME for a segment URL, `undefined` for fMP4 / unrecognized. */
+  container(url: string | undefined): string | undefined;
 }
 
 export function parseMediaPlaylist<T extends PartiallyResolvedTrack>(
@@ -183,6 +157,7 @@ export function parseMediaPlaylist<T extends PartiallyResolvedTrack>(
   config: ParseMediaPlaylistConfig = {}
 ): ResolveTrack<T> {
   const resolveKey = config.resolveKeyUri ?? resolveKeyUri;
+  const extensions = config.extensions;
   const lines = text.split(/\r?\n/);
 
   // Segments and resources resolve relative to media playlist URL (per HLS spec)
@@ -252,25 +227,11 @@ export function parseMediaPlaylist<T extends PartiallyResolvedTrack>(
     const key = matchTag(trimmed, 'EXT-X-KEY');
 
     if (key) {
-      const method = key.get('METHOD');
+      const parsed = extensions?.key(key, baseUrl, resolveKey);
 
-      if (method !== undefined && method !== 'NONE') {
-        const uri = key.get('URI');
-        const keyFormat = key.get('KEYFORMAT');
-        const keyId = key.get('KEYID');
-        const iv = key.get('IV');
-        const identity = [method, uri, keyFormat, keyId, iv].join(' ');
-
-        if (!seenKeys.has(identity)) {
-          seenKeys.add(identity);
-          keys.push({
-            method,
-            ...(uri !== undefined && { uri: resolveKey(uri, baseUrl) }),
-            ...(keyFormat !== undefined && { keyFormat }),
-            ...(keyId !== undefined && { keyId }),
-            ...(iv !== undefined && { iv }),
-          });
-        }
+      if (parsed && !seenKeys.has(parsed.identity)) {
+        seenKeys.add(parsed.identity);
+        keys.push(parsed.key);
       }
 
       continue;
@@ -431,7 +392,7 @@ export function parseMediaPlaylist<T extends PartiallyResolvedTrack>(
   // trips on fMP4, which mandates the map). Relabel from the fMP4 default
   // `video/mp4` / `audio/mp4` to the container MIME so capability probing prunes
   // it (these containers are currently treated as unplayable; see `canPlayTrack`).
-  const detectedContainer = initSegmentUrl ? undefined : containerMimeFromSegment(placed[0]?.url);
+  const detectedContainer = initSegmentUrl ? undefined : extensions?.container(placed[0]?.url);
   const mimeType = previous.type !== 'text' && detectedContainer ? detectedContainer : previous.mimeType;
 
   // Generic resolution: All type-specific fields already on `previous` track
