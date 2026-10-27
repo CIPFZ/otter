@@ -98,6 +98,15 @@ describe('stall watchdog', () => {
     expect(ok.sample(sample(4_000, 4))).toBe('none');
   });
 
+  it('waiting for the first media with no picture is not blind playback (a slow link, a high first rendition)', () => {
+    const w = createStallWatchdog(DEFAULT_RECOVERY);
+    // Autoplay requested, nothing buffered yet, the clock at 0 for 6 s: no stall action at all.
+    for (let t = 0; t <= 6_000; t += 500) expect(w.sample({ ...sample(t, 0, { bufferAhead: 0 }), picture: false })).toBe('none');
+    // The first segment arrives, the first frame decodes, playback goes on.
+    expect(w.sample(sample(6_500, 0.1))).toBe('none');
+    expect(w.sample(sample(7_500, 1.1))).toBe('none');
+  });
+
   it('before any picture, an engine seek that never completes is a startup stall', () => {
     const w = createStallWatchdog(DEFAULT_RECOVERY);
     const stuck = (t: number) => ({ ...sample(t, 0.3, { playing: false }), seeking: true, picture: false });

@@ -116,6 +116,8 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
   let nudgedTo = Number.NaN;
   /** Since when playback runs with no picture decoded (the clock may run on audio alone). */
   let blindSince = Number.NaN;
+  /** The previous sample's time: the clock moved since then. */
+  let lastSampleAt = Number.NaN;
   const reset = (): void => {
     lastTime = Number.NaN;
     since = Number.NaN;
@@ -123,21 +125,25 @@ export function createStallWatchdog(policy: RecoveryPolicy): StallWatchdog {
     progressed = false;
     nudgedTo = Number.NaN;
     blindSince = Number.NaN;
+    lastSampleAt = Number.NaN;
   };
   return {
     sample({ now, currentTime, playing: running, bufferAhead, seeking = false, picture = true }) {
       // A seek that never completes is a stall too when the nudge started it, or before any
       // picture (an engine's seek into media nothing decodes: WebKit and AV1 through Shaka).
       const playing = running || (seeking && (nudged || !picture));
-      // Playing (even moving: audio drives the clock) with no picture decoded for twice the
-      // startup allowance: the video is not decoding at all.
-      if (playing && !picture) {
-        if (Number.isNaN(blindSince)) blindSince = now;
+      // The clock moving (audio drives it) with no picture decoded for twice the startup
+      // allowance: the video is not decoding at all. Only while the clock moves: before the
+      // first media arrives (a slow link, a high first rendition) the element just waits.
+      const sampledAt = lastSampleAt;
+      lastSampleAt = now;
+      if (playing && !picture && !Number.isNaN(lastTime) && currentTime !== lastTime) {
+        if (Number.isNaN(blindSince)) blindSince = sampledAt;
         else if (now - blindSince >= 2 * Math.min(policy.startupStallMs, policy.stallTimeoutMs)) {
           blindSince = now;
           return 'escalate';
         }
-      } else if (picture) blindSince = Number.NaN;
+      } else if (picture || !playing) blindSince = Number.NaN;
       if (!playing || bufferAhead < 0.5 || currentTime !== lastTime) {
         const byNudge = nudged && Math.abs(currentTime - nudgedTo) < 1e-3;
         if (currentTime !== lastTime && !Number.isNaN(lastTime) && !byNudge) {
