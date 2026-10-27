@@ -116,6 +116,12 @@ jobs:
       # Public streams (@network) are not deterministic; they run in network-nightly.
       # Each step keeps its notices (tooling/e2e-step.sh: Playwright empties test-results/ per run).
       - run: sh tooling/e2e-step.sh ${{ matrix.projects }} --grep-invert "@network|@bench|@solo"
+      # The own HLS engine as it ships: format-hls renames its internal `_` properties at build time
+      # (ADR-013); its e2e also run against the built package, not only the source.
+      - if: ${{ !cancelled() }}
+        run: pnpm --filter @otter-player/format-hls exec vite build --config ../../tooling/vite.lib.config.ts
+      - if: ${{ !cancelled() }}
+        run: OTTER_E2E_DIST=format-hls sh tooling/e2e-step.sh ${{ matrix.projects }} e2e/hls-own.spec.ts e2e/hls-audio.spec.ts e2e/hls-unsupported.spec.ts e2e/hls-abandon.spec.ts e2e/dvr.spec.ts --grep-invert "@network|@bench|@solo"
       # Frame-timing checks (danmaku mask alignment) with the runner to themselves; they and the
       # benchmarks run (and report) even when the main suite failed.
       - if: ${{ !cancelled() }}

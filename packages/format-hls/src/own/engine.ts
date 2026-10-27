@@ -40,18 +40,22 @@ export interface CmafHlsEngineOptions {
 type Partial = PartiallyResolvedVideoTrack | PartiallyResolvedAudioTrack | PartiallyResolvedTextTrack;
 type Kind = 'video' | 'audio';
 
+// `_` fields: objects internal to this package (lanes, the view the on-demand chunks get, core's
+// helpers handed in); the build gives them short names (esbuild mangleProps /^_/, mangle-cache.json;
+// AGENT.md §4, ADR-013). Public API and objects passed to other packages keep their names.
+
 interface Lane {
-  readonly type: Kind;
+  readonly _type: Kind;
   /** Variant (video) or rendition (audio) index. */
-  index: number;
-  track: ResolvedTrack;
+  _index: number;
+  _track: ResolvedTrack;
   /** Init segment bytes of `track` and what they were fetched for. */
-  init: Uint8Array | undefined;
-  initKey: string | undefined;
+  _init: Uint8Array | undefined;
+  _initKey: string | undefined;
   /** Init must go in before the next media segment (start, a seek's abort, a switch). */
-  needsInit: boolean;
-  ended: boolean;
-  timing: { readonly trackId: number; readonly timescale: number } | undefined;
+  _needsInit: boolean;
+  _ended: boolean;
+  _timing: { readonly trackId: number; readonly timescale: number } | undefined;
 }
 
 const DEFAULT_FORWARD_S = 30;
@@ -63,9 +67,9 @@ const RETRIES = 3;
  * entry chunk would make core lazily initialised in single-file bundles (side-effects gate).
  */
 export interface CoreHelpers {
-  readonly createError: typeof CreateError;
-  readonly createEventBus: typeof CreateEventBus;
-  readonly isOtterError: typeof IsOtterError;
+  readonly _createError: typeof CreateError;
+  readonly _createEventBus: typeof CreateEventBus;
+  readonly _isOtterError: typeof IsOtterError;
 }
 const aborted = (e: unknown): boolean => (e as { name?: string } | null)?.name === 'AbortError';
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -88,30 +92,44 @@ export function unsupportedIn(text: string, master: boolean, subtitles = false):
 }
 
 /**
- * What the on-demand chunks (subtitles.ts, abandon.ts) use of the engine: one object, so the engine
- * chunk does not build a hook set per chunk (ADR-010 §3 budget).
+ * What the on-demand chunks (subtitles.ts, abandon.ts, live.ts) use of the engine: one object, so
+ * the engine chunk does not build a hook set per chunk (ADR-010 §3 budget).
  */
 export interface EngineInner {
-  readonly media: HTMLMediaElement;
-  readonly forwardS: number;
-  readonly core: CoreHelpers;
-  readonly bus: { emit<E extends keyof EngineEvents>(e: E, p: EngineEvents[E]): void };
-  isLive(): boolean;
+  readonly _media: HTMLMediaElement;
+  readonly _forwardS: number;
+  readonly _core: CoreHelpers;
+  readonly _bus: { emit<E extends keyof EngineEvents>(e: E, p: EngineEvents[E]): void };
+  _isLive(): boolean;
   /** Media playlist of a rendition (live: aligned to the playing video). */
-  resolve(partial: PartiallyResolvedVideoTrack | PartiallyResolvedAudioTrack | PartiallyResolvedTextTrack): Promise<ResolvedTrack>;
+  _resolve(partial: PartiallyResolvedVideoTrack | PartiallyResolvedAudioTrack | PartiallyResolvedTextTrack): Promise<ResolvedTrack>;
   /** Drops a cached playlist (live subtitles are re-read). */
-  forget(id: string): void;
-  get(o: AddressableObject, kind: CmcdObjectKind): Promise<{ data: ArrayBuffer }>;
-  playlistTime(): number;
-  offset(): number;
+  _forget(id: string): void;
+  _get(o: AddressableObject, kind: CmcdObjectKind): Promise<{ data: ArrayBuffer }>;
+  _playlistTime(): number;
+  _offset(): number;
   /** Seconds of video buffered ahead. */
-  aheadS(): number;
+  _aheadS(): number;
   /** Video variants in manifest order, and whether their playlists are loaded. */
-  readonly variants: readonly PartiallyResolvedVideoTrack[];
-  loaded(id: string): boolean;
-  readonly driver: AbrDriver | undefined;
+  readonly _variants: readonly PartiallyResolvedVideoTrack[];
+  _loaded(id: string): boolean;
+  readonly _driver: AbrDriver | undefined;
   /** The text track selected now (cues of another one are dropped). */
-  textTrack(): string | null;
+  _textTrack(): string | null;
+  // Live (live.ts):
+  readonly _mediaSource: MediaSource;
+  /** Host override of the target latency, seconds. */
+  readonly _targetLatency: number | undefined;
+  /** The playing video rendition (its HOLD-BACK is the target). */
+  _track(): ResolvedTrack;
+  /** The DVR window on the media timeline, undefined before the first segment's timing is known. */
+  _window(): { readonly start: number; readonly end: number } | undefined;
+  /** performance.now() when the playing playlist's response arrived (the first load). */
+  readonly _loadedAt: number;
+  /** Reloads the playing media playlists: [before, after] per rendition. */
+  _refresh(): Promise<readonly (readonly [ResolvedTrack, ResolvedTrack])[]>;
+  /** ENDLIST arrived: no more reloads. */
+  _ended(): void;
 }
 
 function mediaSourceCtor(preferManaged: boolean): { Ctor: typeof MediaSource; managed: boolean } | undefined {
@@ -129,7 +147,7 @@ const lastEnd = (t: ResolvedTrack): number => {
 };
 
 export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOptions, core: CoreHelpers): Engine & { seekToLive(): void } {
-  const { createError, createEventBus, isOtterError } = core;
+  const { _createError: createError, _createEventBus: createEventBus, _isOtterError: isOtterError } = core;
   const fatal = (type: OtterError['type'], details: string, message: string, cause?: unknown): OtterError =>
     createError({ type, details, fatal: true, recoverable: type === 'network', message, ...opt('cause', cause) });
   const unsupported = (why: string): OtterError => fatal('media', 'ownEngineUnsupported', why);
@@ -162,6 +180,8 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   let forced: number | undefined;
   let abandon: import('./abandon.js').Abandon | undefined;
   let endSignalled = false;
+  /** performance.now() when the first media playlist arrived (live edge without PROGRAM-DATE-TIME). */
+  let loadedAt = 0;
 
 
   // --- network ---------------------------------------------------------------------------------
@@ -185,7 +205,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
           if (res.status < 500) break;
           continue;
         }
-        const data = await (abandon !== undefined && variant !== undefined ? abandon.read(res, variant, extra.durationS ?? 0, began, ttfbMs) : res.arrayBuffer());
+        const data = await (abandon !== undefined && variant !== undefined ? abandon._read(res, variant, extra.durationS ?? 0, began, ttfbMs) : res.arrayBuffer());
         return { data, ms: performance.now() - began, ttfbMs };
       } catch (err) {
         if (aborted(err) || (err as { variant?: number }).variant !== undefined) throw err;
@@ -208,7 +228,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     // aligned to the playing one by media sequence.
     const parsed = parseMediaPlaylist(text, (prev ?? partial) as Partial) as ResolvedTrack;
     // Live only, from the live chunk (the first renditions are the reference: nothing to align yet).
-    const track = prev === undefined && isLive && live !== undefined ? live.align(parsed, ref) : parsed;
+    const track = prev === undefined && isLive && live !== undefined ? live._align(parsed, ref) : parsed;
     resolved.set(partial.id, track);
     return track;
   };
@@ -218,8 +238,8 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   const levels = (): AbrLevel[] => variants.map((v, i) => ({ id: `video-${i}`, bitrate: v.bandwidth, ...opt('width', v.width), ...opt('height', v.height) }));
 
   const describe = (): void => {
-    const vIndex = videoLane()?.index;
-    const aIndex = lanes.find((l) => l.type === 'audio')?.index ?? 0;
+    const vIndex = videoLane()?._index;
+    const aIndex = lanes.find((l) => l._type === 'audio')?._index ?? 0;
     const video: VideoTrack[] = variants.map((v, i) => ({
       kind: 'video',
       id: `video-${i}`,
@@ -245,12 +265,12 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   // --- timeline --------------------------------------------------------------------------------
 
   const playlistTime = (): number => (offset === undefined ? startAt : media.currentTime - offset);
-  const videoLane = (): Lane | undefined => lanes.find((l) => l.type === 'video');
+  const videoLane = (): Lane | undefined => lanes.find((l) => l._type === 'video');
   /** DVR window on the media timeline. */
   const window = (): { start: number; end: number } | undefined => {
     const lane = videoLane();
-    if (lane === undefined || offset === undefined || lane.track.segments.length === 0) return undefined;
-    return { start: (lane.track.segments[0] as Segment).startTime + offset, end: lastEnd(lane.track) + offset };
+    if (lane === undefined || offset === undefined || lane._track.segments.length === 0) return undefined;
+    return { start: (lane._track.segments[0] as Segment).startTime + offset, end: lastEnd(lane._track) + offset };
   };
   const aheadOf = (type: Kind): number => {
     const t = media.currentTime;
@@ -259,13 +279,13 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
 
   /** From the first media segment: media - playlist time, and the start position on the element. */
   const establish = (lane: Lane, seg: Segment, data: ArrayBuffer): void => {
-    if (offset !== undefined || lane.timing === undefined) return;
-    const bmdt = readBaseMediaDecodeTime(data, lane.timing.trackId);
-    offset = bmdt === undefined ? 0 : bmdt / lane.timing.timescale - seg.startTime;
+    if (offset !== undefined || lane._timing === undefined) return;
+    const bmdt = readBaseMediaDecodeTime(data, lane._timing.trackId);
+    offset = bmdt === undefined ? 0 : bmdt / lane._timing.timescale - seg.startTime;
     const s = sink as MseSink;
-    if (!isLive && Number.isFinite(lane.track.duration)) {
+    if (!isLive && Number.isFinite(lane._track.duration)) {
       try {
-        s.mediaSource.duration = offset + lane.track.duration;
+        s.mediaSource.duration = offset + lane._track.duration;
       } catch {
         // Set again by the appends.
       }
@@ -281,40 +301,40 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
    */
   const appendInit = async (batch: Lane[], run: number): Promise<boolean> => {
     for (const lane of batch) {
-      lane.needsInit = false;
-      const init = lane.track.initialization;
+      lane._needsInit = false;
+      const init = lane._track.initialization;
       if (init === undefined || init.url === '') throw unsupported('no EXT-X-MAP');
       const key = `${init.url}#${init.byteRange?.start ?? ''}`;
-      if (lane.initKey !== key || lane.init === undefined) {
+      if (lane._initKey !== key || lane._init === undefined) {
         const { data } = await get(init, 'init');
         if (run !== epoch) return false;
-        lane.init = new Uint8Array(data);
-        lane.initKey = key;
-        lane.timing = findMediaTrack(data, lane.type === 'video' && lane.track.type === 'video' ? 'vide' : 'soun');
+        lane._init = new Uint8Array(data);
+        lane._initKey = key;
+        lane._timing = findMediaTrack(data, lane._type === 'video' && lane._track.type === 'video' ? 'vide' : 'soun');
       }
     }
-    await (sink as MseSink).init(batch.map((lane) => ({ type: lane.type, mimeType: buildMimeCodec(lane.track), data: lane.init as Uint8Array })));
+    await (sink as MseSink).init(batch.map((lane) => ({ type: lane._type, mimeType: buildMimeCodec(lane._track), data: lane._init as Uint8Array })));
     return true;
   };
 
   /** ABR or the manual choice, before the next video segment is picked. */
   const chooseVariant = async (lane: Lane, run: number): Promise<void> => {
-    let target = requested ?? forced ?? lane.index;
+    let target = requested ?? forced ?? lane._index;
     forced = undefined;
     // A driver exists only with more than one variant.
-    if (target === lane.index && requested === undefined && driver?.canEstimate === true) {
-      const meta = getMediaPlaylistMetadata(lane.track);
-      const d = driver.decide({ levels: levels(), current: lane.index, bufferLevel: aheadOf('video'), segmentDuration: meta?.targetDuration ?? 6, live: isLive, lowLatency: false, bufferTarget: forwardS });
+    if (target === lane._index && requested === undefined && driver?.canEstimate === true) {
+      const meta = getMediaPlaylistMetadata(lane._track);
+      const d = driver.decide({ levels: levels(), current: lane._index, bufferLevel: aheadOf('video'), segmentDuration: meta?.targetDuration ?? 6, live: isLive, lowLatency: false, bufferTarget: forwardS });
       if (d.engineLevel >= 0) target = d.engineLevel;
-      if (target !== lane.index) switchReason = `abr: ${d.reason}`;
+      if (target !== lane._index) switchReason = `abr: ${d.reason}`;
     }
-    if (target === lane.index) return;
-    const track = await resolve(variants[target] as PartiallyResolvedVideoTrack, lane.track);
+    if (target === lane._index) return;
+    const track = await resolve(variants[target] as PartiallyResolvedVideoTrack, lane._track);
     if (run !== epoch) return;
-    lane.index = target;
-    lane.track = track;
-    lane.needsInit = true;
-    lane.ended = false;
+    lane._index = target;
+    lane._track = track;
+    lane._needsInit = true;
+    lane._ended = false;
     driver?.applied(target, levels());
     describe();
     bus.emit('quality-change', { id: `video-${target}`, auto: requested === undefined, reason: requested === undefined ? switchReason : 'manual' });
@@ -325,41 +345,41 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     const s = sink as MseSink;
     // A separate audio rendition keeps at most one segment ahead of the buffered video, like
     // hls.js: running its own 30 s ahead it took the link from the video (1 Mbps: rebuffering).
-    const ahead = lane.type === 'audio' && videoLane() ? Math.min(forwardS, aheadOf('video') + (lane.track.segments[0]?.duration ?? 6)) : forwardS;
-    if (aheadOf(lane.type) >= ahead) return false;
+    const ahead = lane._type === 'audio' && videoLane() ? Math.min(forwardS, aheadOf('video') + (lane._track.segments[0]?.duration ?? 6)) : forwardS;
+    if (aheadOf(lane._type) >= ahead) return false;
     const plan = () => {
-      const inLedger = new Set(s.segments(lane.type).map((x) => x.id));
-      const buffered = lane.track.segments.filter((x) => inLedger.has(x.id));
-      return { inLedger, next: getSegmentsToLoad(lane.track.segments, buffered, playlistTime(), { bufferDuration: ahead })[0] };
+      const inLedger = new Set(s.segments(lane._type).map((x) => x.id));
+      const buffered = lane._track.segments.filter((x) => inLedger.has(x.id));
+      return { inLedger, next: getSegmentsToLoad(lane._track.segments, buffered, playlistTime(), { bufferDuration: ahead })[0] };
     };
     let { inLedger, next } = plan();
     // ABR only when there is a segment to load: at the end of a VOD the buffer drains and
     // InsufficientBuffer would call it empty. A manual choice applies at once, like hls.js'.
-    if ((next !== undefined || requested !== undefined) && lane.type === 'video') {
-      const before = lane.track;
+    if ((next !== undefined || requested !== undefined) && lane._type === 'video') {
+      const before = lane._track;
       await chooseVariant(lane, run);
       if (run !== epoch) return true;
-      if (lane.track !== before) ({ inLedger, next } = plan());
+      if (lane._track !== before) ({ inLedger, next } = plan());
     }
     if (next === undefined) {
-      const last = lane.track.segments.at(-1);
+      const last = lane._track.segments.at(-1);
       if (!isLive && last !== undefined && inLedger.has(last.id)) {
-        lane.ended = true;
-        if (!endSignalled && lanes.every((l) => l.ended)) {
+        lane._ended = true;
+        if (!endSignalled && lanes.every((l) => l._ended)) {
           endSignalled = true;
           s.endOfStream();
         }
       }
       return false;
     }
-    if (lane.needsInit && !(await appendInit(offset === undefined ? lanes : [lane], run))) return true;
-    const kind: CmcdObjectKind = lane.type === 'audio' ? 'audio' : lane.track.codecs !== undefined && lane.track.codecs.length > 1 ? 'muxed' : 'video';
-    const { data, ms, ttfbMs } = await get(next, kind, { durationS: next.duration, bitrateBps: lane.track.bandwidth }, lane.type === 'video' && requested === undefined ? lane.index : undefined);
+    if (lane._needsInit && !(await appendInit(offset === undefined ? lanes : [lane], run))) return true;
+    const kind: CmcdObjectKind = lane._type === 'audio' ? 'audio' : lane._track.codecs !== undefined && lane._track.codecs.length > 1 ? 'muxed' : 'video';
+    const { data, ms, ttfbMs } = await get(next, kind, { durationS: next.duration, bitrateBps: lane._track.bandwidth }, lane._type === 'video' && requested === undefined ? lane._index : undefined);
     if (run !== epoch) return true;
     // Bandwidth from video segments only, like hls.js (main fragments): a separate audio
     // rendition's small segments, moving in step with the video, read high and kept a variant
     // the link could not hold (abandon, then back up: two switches at 3 Mbps).
-    if (lane.type === 'video') driver?.sampleDownload(ms, data.byteLength, ttfbMs);
+    if (lane._type === 'video') driver?.sampleDownload(ms, data.byteLength, ttfbMs);
     if (driver?.canEstimate === true) {
       const b = driver.bandwidth;
       bus.emit('bandwidth', { estimate: b.estimate, fast: b.fast, slow: b.slow });
@@ -367,10 +387,10 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     const first = offset === undefined;
     establish(lane, next, data);
     const o = offset ?? 0;
-    await s.append(lane.type, new Uint8Array(data), { id: next.id, start: next.startTime + o, end: segEnd(next) + o, level: lane.index });
+    await s.append(lane._type, new Uint8Array(data), { id: next.id, start: next.startTime + o, end: segEnd(next) + o, level: lane._index });
     // The start position, once the first segment is in (so the seek finds it buffered).
     if (first && offset !== undefined && Math.abs(media.currentTime - (startAt + offset)) > 0.01) media.currentTime = startAt + offset;
-    if (lane.type === 'video') driver?.segmentAppended();
+    if (lane._type === 'video') driver?.segmentAppended();
     await s.evict(media.currentTime);
     return true;
   };
@@ -385,7 +405,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       const s = sink as MseSink;
       // ManagedMediaSource not streaming (buffer full, or ended): wait, but look again every 200 ms
       // so a manual choice made meanwhile applies.
-      if (!s.streaming && lane.index === (requested ?? lane.index)) {
+      if (!s.streaming && lane._index === (requested ?? lane._index)) {
         await Promise.race([s.whenStreaming(), wait(200)]);
         continue;
       }
@@ -416,33 +436,54 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     epoch++;
     sink?.abort();
     for (const l of lanes) {
-      l.needsInit = true;
-      l.ended = false;
+      l._needsInit = true;
+      l._ended = false;
     }
     endSignalled = false;
     driver?.reset();
   };
 
   const inner: EngineInner = {
-    media,
-    forwardS,
-    core,
-    bus,
-    isLive: () => isLive,
-    resolve: (p) => resolve(p, videoLane()?.track),
-    forget: (id) => resolved.delete(id),
-    get,
-    playlistTime,
-    offset: () => offset ?? 0,
-    aheadS: () => aheadOf('video'),
-    get variants() {
+    _media: media,
+    _forwardS: forwardS,
+    _core: core,
+    _bus: bus,
+    _isLive: () => isLive,
+    _resolve: (p) => resolve(p, videoLane()?._track),
+    _forget: (id) => resolved.delete(id),
+    _get: get,
+    _playlistTime: playlistTime,
+    _offset: () => offset ?? 0,
+    _aheadS: () => aheadOf('video'),
+    get _variants() {
       return variants;
     },
-    loaded: (id) => resolved.has(id),
-    get driver() {
+    _loaded: (id) => resolved.has(id),
+    get _driver() {
       return driver;
     },
-    textTrack: () => selectedText,
+    _textTrack: () => selectedText,
+    get _mediaSource() {
+      return (sink as MseSink).mediaSource;
+    },
+    _targetLatency: options.targetLatency,
+    _track: () => (videoLane() as Lane)._track,
+    _window: window,
+    get _loadedAt() {
+      return loadedAt;
+    },
+    // Reloads the playing renditions (a switch in flight keeps its new track).
+    _refresh: () =>
+      Promise.all(
+        lanes.map(async (lane) => {
+          const before = lane._track;
+          const next = await resolve((lane._type === 'video' ? variants : audios)[lane._index] as Partial, before);
+          if (lane._track === before) lane._track = next;
+          return [before, next] as const;
+        }),
+      ),
+    // ENDLIST: the event became VOD; endOfStream sets the duration where the media ends.
+    _ended: () => (isLive = false),
   };
 
   return {
@@ -451,10 +492,10 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       return tracks;
     },
     get latency() {
-      return isLive ? live?.latency : undefined;
+      return isLive ? live?._latency : undefined;
     },
     get targetLatency() {
-      return isLive ? live?.targetLatency : undefined;
+      return isLive ? live?._targetLatency : undefined;
     },
     get mms() {
       return managed;
@@ -495,7 +536,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       const audioIndex = audios.findIndex((a) => groups.includes(a.groupId) && a.default === true);
       const startAudio = audioIndex >= 0 ? audioIndex : audios.findIndex((a) => groups.includes(a.groupId));
       const [vTrack, aTrack] = await Promise.all([resolve(first), startAudio >= 0 ? resolve(audios[startAudio] as PartiallyResolvedAudioTrack) : undefined]);
-      const loadedAt = performance.now();
+      loadedAt = performance.now();
       if (destroyed) return;
       isLive = !Number.isFinite(vTrack.duration);
       // Lean rule stack (Throughput + InsufficientBuffer): the engine chunk budget (ADR-010 §3).
@@ -508,7 +549,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       }
       await s.ready;
       if (destroyed) return;
-      const lane = (type: Kind, index: number, track: ResolvedTrack): Lane => ({ type, index, track, init: undefined, initKey: undefined, needsInit: true, ended: false, timing: undefined });
+      const lane = (type: Kind, index: number, track: ResolvedTrack): Lane => ({ _type: type, _index: index, _track: track, _init: undefined, _initKey: undefined, _needsInit: true, _ended: false, _timing: undefined });
       lanes.push(lane('video', 0, vTrack));
       if (aTrack !== undefined) lanes.push(lane('audio', startAudio, aTrack));
       describe();
@@ -521,27 +562,8 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
         }
         const { startLive } = await import('./live.js');
         if (destroyed) return;
-        live = startLive({
-          media,
-          mediaSource: s.mediaSource,
-          ...opt('targetLatency', options.targetLatency),
-          track: () => (videoLane() as Lane).track,
-          window,
-          loadedAt,
-          // Reloads the playing renditions (a switch in flight keeps its new track).
-          refresh: () =>
-            Promise.all(
-              lanes.map(async (lane) => {
-                const before = lane.track;
-                const next = await resolve((lane.type === 'video' ? variants : audios)[lane.index] as Partial, before);
-                if (lane.track === before) lane.track = next;
-                return [before, next] as const;
-              }),
-            ),
-          // ENDLIST: the event became VOD; endOfStream sets the duration where the media ends.
-          ended: () => (isLive = false),
-        });
-        startAt = live.startAt;
+        live = startLive(inner);
+        startAt = live._startAt;
       } else {
         startAt = ctx.options.startTime ?? 0;
       }
@@ -563,29 +585,29 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
       // A manual choice shows soon, like hls.js: the video buffered from the first segment
       // boundary at least a second ahead goes, and the lane refills from there.
       const lane = videoLane();
-      if (requested === undefined || lane === undefined || sink === undefined || requested === lane.index) return;
+      if (requested === undefined || lane === undefined || sink === undefined || requested === lane._index) return;
       const from = sink.segments('video').find((x) => x.start >= media.currentTime + 1)?.start;
       if (from === undefined) return;
       epoch++;
       sink.abort('video');
-      lane.needsInit = true;
-      lane.ended = false;
+      lane._needsInit = true;
+      lane._ended = false;
       endSignalled = false;
       void sink.remove('video', from, Number.POSITIVE_INFINITY).catch(fail);
     },
     selectAudioTrack(id) {
       const index = Number(id.replace(/^audio-/, ''));
-      const lane = lanes.find((l) => l.type === 'audio');
-      if (lane === undefined || !Number.isInteger(index) || index === lane.index || audios[index] === undefined) return;
+      const lane = lanes.find((l) => l._type === 'audio');
+      if (lane === undefined || !Number.isInteger(index) || index === lane._index || audios[index] === undefined) return;
       const run0 = ++epoch;
       sink?.abort('audio');
       void (async () => {
-        const track = await resolve(audios[index] as PartiallyResolvedAudioTrack, videoLane()?.track);
+        const track = await resolve(audios[index] as PartiallyResolvedAudioTrack, videoLane()?._track);
         if (run0 !== epoch) return;
-        lane.index = index;
-        lane.track = track;
-        lane.needsInit = true;
-        lane.ended = false;
+        lane._index = index;
+        lane._track = track;
+        lane._needsInit = true;
+        lane._ended = false;
         endSignalled = false;
         // The old language ahead of the playhead goes; the lane refills from here.
         await sink?.clear('audio');
@@ -603,14 +625,14 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
           if (!destroyed && selectedText === id) stopText = m.loadSubtitles(inner, partial, id as string);
         });
     },
-    seekToLive: () => live?.seekToLive(),
+    seekToLive: () => live?._seekToLive(),
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
       destroyed = true;
       epoch++;
       abort.abort();
       stopText?.();
-      live?.destroy();
+      live?._destroy();
       media.removeEventListener('seeking', onSeeking);
       sink?.destroy();
       sink = undefined;

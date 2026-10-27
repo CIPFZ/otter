@@ -13,20 +13,21 @@ import type { EngineInner } from './engine.js';
 export type AbandonError = OtterError & { readonly variant: number };
 
 export interface Abandon {
+  /** `_`: internal to the package (AGENT.md §4). */
   /**
    * The body of a segment response of `variant`, or an AbandonError. `began`: performance.now() at
    * the request, `ttfbMs`: when the headers arrived.
    */
-  read(res: Response, variant: number, durationS: number, began: number, ttfbMs: number): Promise<ArrayBuffer>;
+  _read(res: Response, variant: number, durationS: number, began: number, ttfbMs: number): Promise<ArrayBuffer>;
 }
 
 export function createAbandon(e: EngineInner): Abandon {
-  const bitrates = e.variants.map((v) => v.bandwidth);
+  const bitrates = e._variants.map((v) => v.bandwidth);
   // Ascending order for the rules: index i -> engine variant order[i].
   const order = bitrates.map((_, i) => i).sort((a, b) => (bitrates[a] as number) - (bitrates[b] as number));
   const ascending = order.map((i) => bitrates[i] as number);
   return {
-    async read(res, variant, durationS, began, ttfbMs) {
+    async _read(res, variant, durationS, began, ttfbMs) {
       const reader = res.body?.getReader();
       if (reader === undefined) return res.arrayBuffer();
       const expected = Number(res.headers.get('content-length')) || (durationS * (bitrates[variant] ?? 0)) / 8;
@@ -34,8 +35,8 @@ export function createAbandon(e: EngineInner): Abandon {
       let loaded = 0;
       let abandoned: AbandonError | undefined;
       const check = (): void => {
-        const media = e.media;
-        const driver = e.driver;
+        const media = e._media;
+        const driver = e._driver;
         // Upstream's gate: only while playing (a paused player is not starving).
         if (abandoned !== undefined || driver === undefined || media.paused || media.playbackRate === 0 || media.readyState === 0) return;
         const timeLoadingMs = performance.now() - began;
@@ -45,13 +46,13 @@ export function createAbandon(e: EngineInner): Abandon {
           loadedBytes: loaded,
           expectedBytes: Math.max(expected, loaded),
           durationS,
-          bufferS: e.aheadS(),
+          bufferS: e._aheadS(),
           playbackRate: media.playbackRate,
           bandwidthBps: driver.bandwidth.estimate,
           ttfbEstimateMs: ttfbMs,
           bitrates: ascending,
           level: order.indexOf(variant),
-          requiresLevelLoad: (i) => e.isLive() || !e.loaded((e.variants[order[i] as number] as { id: string }).id),
+          requiresLevelLoad: (i) => e._isLive() || !e._loaded((e._variants[order[i] as number] as { id: string }).id),
           levelLoadS: ttfbMs / 1000,
         });
         if (d === undefined) return;
@@ -59,7 +60,7 @@ export function createAbandon(e: EngineInner): Abandon {
         if (loaded > 0) driver.sampleDownload(timeLoadingMs - ttfbMs, loaded, ttfbMs);
         const target = order[d.level] as number;
         abandoned = Object.assign(
-          e.core.createError({
+          e._core._createError({
             type: 'network',
             details: 'segmentAbandoned',
             fatal: false,

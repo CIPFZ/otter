@@ -10,33 +10,18 @@
 import { createLiveController, type LiveAction, type LiveSample } from '@otter-player/pipeline';
 import { liveLatencyFor, mediaPlaylistReloadDelay } from '../vendor/video.js/media/hls/reload-policy.js';
 import { getMediaPlaylistMetadata, type ResolvedTrack } from '../vendor/video.js/media/types/index.js';
+import type { EngineInner } from './engine.js';
 
-export interface LiveHooks {
-  readonly media: HTMLMediaElement;
-  readonly mediaSource: MediaSource;
-  /** Host override of the target latency, seconds. */
-  readonly targetLatency?: number;
-  /** The playing video rendition (its HOLD-BACK is the target). */
-  track(): ResolvedTrack;
-  /** The DVR window on the media timeline, undefined before the first segment's timing is known. */
-  window(): { readonly start: number; readonly end: number } | undefined;
-  /** performance.now() when the playing playlist's response arrived (the first load). */
-  readonly loadedAt: number;
-  /** Reloads the playing media playlists: [before, after] per rendition. */
-  refresh(): Promise<readonly (readonly [ResolvedTrack, ResolvedTrack])[]>;
-  /** ENDLIST arrived: no more reloads. */
-  ended(): void;
-}
-
+/** `_` fields: internal to the package, short names in the build (AGENT.md §4, ADR-013). */
 export interface Live {
   /** `fresh`'s segments moved onto `ref`'s timeline (a rendition loaded for the first time while live). */
-  align(fresh: ResolvedTrack, ref: ResolvedTrack | undefined): ResolvedTrack;
+  _align(fresh: ResolvedTrack, ref: ResolvedTrack | undefined): ResolvedTrack;
   /** Playlist time to start at: HOLD-BACK behind the edge, inside the window. */
-  readonly startAt: number;
-  readonly latency: number | undefined;
-  readonly targetLatency: number;
-  seekToLive(): void;
-  destroy(): void;
+  readonly _startAt: number;
+  readonly _latency: number | undefined;
+  readonly _targetLatency: number;
+  _seekToLive(): void;
+  _destroy(): void;
 }
 
 /** `fresh`'s segments moved onto `ref`'s timeline by a segment both have (same media sequence id). */
@@ -50,14 +35,14 @@ function align(fresh: ResolvedTrack, ref: ResolvedTrack | undefined): ResolvedTr
 
 const ranges = (t: TimeRanges): [number, number][] => Array.from({ length: t.length }, (_, i) => [t.start(i), t.end(i)]);
 
-export function startLive(h: LiveHooks): Live {
-  const media = h.media;
-  const holdBack = (): number => liveLatencyFor(h.track());
-  const lc = createLiveController({ targetLatency: h.targetLatency ?? holdBack() });
-  let loadedAt = h.loadedAt;
+export function startLive(h: EngineInner): Live {
+  const media = h._media;
+  const holdBack = (): number => liveLatencyFor(h._track());
+  const lc = createLiveController({ targetLatency: h._targetLatency ?? holdBack() });
+  let loadedAt = h._loadedAt;
   /** The live edge on the playlist timeline, now. */
   const edgeNow = (): number => {
-    const t = h.track();
+    const t = h._track();
     const last = t.segments.at(-1);
     if (last === undefined) return 0;
     const end = last.startTime + last.duration;
@@ -65,7 +50,7 @@ export function startLive(h: LiveHooks): Live {
     const target = getMediaPlaylistMetadata(t)?.targetDuration ?? last.duration;
     return end + Math.min((performance.now() - loadedAt) / 1000, 3 * target);
   };
-  const first = h.track();
+  const first = h._track();
   const startAt = Math.max(first.segments[0]?.startTime ?? 0, edgeNow() - lc.targetLatency);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
@@ -73,8 +58,8 @@ export function startLive(h: LiveHooks): Live {
 
   /** Media time of the edge (window end is the playlist end on the media timeline). */
   const edge = (): number | undefined => {
-    const w = h.window();
-    return w === undefined ? undefined : w.end + edgeNow() - (h.track().segments.at(-1)?.startTime ?? 0) - (h.track().segments.at(-1)?.duration ?? 0);
+    const w = h._window();
+    return w === undefined ? undefined : w.end + edgeNow() - (h._track().segments.at(-1)?.startTime ?? 0) - (h._track().segments.at(-1)?.duration ?? 0);
   };
   const sample = (): LiveSample => {
     const e = edge();
@@ -93,10 +78,10 @@ export function startLive(h: LiveHooks): Live {
     else media.playbackRate = a.rate;
   };
   const seekable = (): void => {
-    const w = h.window();
-    if (w === undefined || h.mediaSource.readyState !== 'open') return;
+    const w = h._window();
+    if (w === undefined || h._mediaSource.readyState !== 'open') return;
     try {
-      h.mediaSource.setLiveSeekableRange(w.start, w.end);
+      h._mediaSource.setLiveSeekableRange(w.start, w.end);
     } catch {
       // Older engines without the API: seekable stays the buffered range.
     }
@@ -115,16 +100,16 @@ export function startLive(h: LiveHooks): Live {
 
   const tick = (delay: number): void => {
     timer = setTimeout(() => {
-      void h.refresh().then(
+      void h._refresh().then(
         (pairs) => {
           if (stopped) return;
           loadedAt = performance.now();
           seekable();
-          if (h.targetLatency === undefined) lc.setTargetLatency(holdBack());
+          if (h._targetLatency === undefined) lc.setTargetLatency(holdBack());
           // SPF's policy: a target duration after a change, half of it after an unchanged reload.
           const delays = pairs.map(([before, after]) => mediaPlaylistReloadDelay(after, before)).filter((d): d is number => d !== null);
           if (delays.length > 0) tick(Math.min(...delays));
-          else h.ended();
+          else h._ended();
         },
         () => {
           // A failed reload is retried at the next interval; the engine reports lasting errors.
@@ -137,17 +122,17 @@ export function startLive(h: LiveHooks): Live {
   tick(mediaPlaylistReloadDelay(first, undefined) ?? 2000);
 
   return {
-    align,
-    startAt,
-    get latency() {
+    _align: align,
+    _startAt: startAt,
+    get _latency() {
       const e = edge();
       return e === undefined ? undefined : Math.max(0, e - media.currentTime);
     },
-    get targetLatency() {
+    get _targetLatency() {
       return lc.targetLatency;
     },
-    seekToLive: () => apply(lc.seekToLive(sample())),
-    destroy() {
+    _seekToLive: () => apply(lc.seekToLive(sample())),
+    _destroy() {
       stopped = true;
       clearTimeout(timer);
       media.removeEventListener('seeking', onSeeking);

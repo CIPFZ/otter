@@ -96,7 +96,8 @@ const onDemand = readdirSync('packages')
 // Own CMAF-HLS engine (ADR-010 §3): the format-hls engine chunk and what it alone brings in (the
 // MSE sink, ABR rule stack; @otter-player/core is on the first screen anyway). VOD: the engine chunk
 // every VOD playback loads; all chunks: also live, the abandon rules of multivariant playlists and
-// the subtitle chunk that loads when a WebVTT track is turned on (revised 2026-10-23: 16.5 KB).
+// the subtitle chunk that loads when a WebVTT track is turned on (revised 2026-10-23: 16.5 KB;
+// 2026-10-27, M6 batch 1: 15.75 KB, the measured 15,666 B rounded up to 0.25 KB, ADR-010 §3).
 const hlsChunk = (prefix) => {
   const f = existsSync('packages/format-hls/dist') ? readdirSync('packages/format-hls/dist').find((x) => x.startsWith(`${prefix}-`) && x.endsWith('.js')) : undefined;
   return f === undefined ? `packages/format-hls/dist/${prefix}.js` : `packages/format-hls/dist/${f}`;
@@ -104,10 +105,10 @@ const hlsChunk = (prefix) => {
 const ownHlsEngine = [
   { name: 'own CMAF-HLS engine chunk, VOD (ADR-010 §3, ≤ 12 KB)', path: hlsChunk('engine'), gzip: true, limit: '12 KB', ignore: ['@otter-player/core'], modifyEsbuildConfig: firstScreenOnly },
   {
-    name: 'own CMAF-HLS engine, all chunks (ADR-010 §3, ≤ 16.5 KB)',
+    name: 'own CMAF-HLS engine, all chunks (ADR-010 §3, ≤ 15.75 KB)',
     path: [hlsChunk('engine'), hlsChunk('subtitles'), hlsChunk('live'), hlsChunk('abandon')],
     gzip: true,
-    limit: '16.5 KB',
+    limit: '15.75 KB',
     ignore: ['@otter-player/core'],
     modifyEsbuildConfig: firstScreenOnly,
   },

@@ -35,7 +35,7 @@ export function lazyCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOpti
       return engine?.mms ?? false;
     },
     async load() {
-      const e = (await import('./engine.js')).createCmafHlsEngine(ctx, options, { createError, createEventBus, isOtterError });
+      const e = (await import('./engine.js')).createCmafHlsEngine(ctx, options, { _createError: createError, _createEventBus: createEventBus, _isOtterError: isOtterError });
       if (destroyed) return e.destroy();
       engine = e;
       for (const type of EVENTS) e.on(type, (p) => handlers.get(type)?.forEach((h) => h(p as never)));

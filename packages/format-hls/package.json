@@ -27,5 +27,8 @@
     "@otter-player/demux-mediabunny": "workspace:*",
     "@otter-player/engine-pipeline": "workspace:*",
     "@otter-player/pipeline": "workspace:*"
+  },
+  "otter": {
+    "mangle": "mangle-cache.json"
   }
 }

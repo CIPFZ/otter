@@ -1,8 +1,9 @@
 // Shared Vite library build for every @otter-player/* JS package.
 // Invoked from a package directory: `vite build --config ../../tooling/vite.lib.config.ts`.
-import { cpSync, existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import { transform } from 'esbuild';
+import { defineConfig, type Plugin } from 'vite';
 
 const pkgDir = process.cwd();
 const shims = resolve(import.meta.dirname, 'shims');
@@ -13,7 +14,7 @@ const shims = resolve(import.meta.dirname, 'shims');
 // break browser bundlers (imscJS -> sax -> stream / string_decoder). They are bundled into the
 // package's lazy chunk, with the Node builtins replaced by stubs (tooling/shims).
 const manifest = JSON.parse(readFileSync(resolve(pkgDir, 'package.json'), 'utf8')) as {
-  otter?: { bundle?: string[]; entries?: Record<string, string>; assets?: string[] };
+  otter?: { bundle?: string[]; entries?: Record<string, string>; assets?: string[]; mangle?: string };
 };
 // Extra entry points (package.json otter.entries: { name: src path }), built next to index, for
 // sub-path exports that must not ride along with the main entry (ADR-007 §2).
@@ -56,11 +57,44 @@ const copyAssets = {
   },
 };
 
+/**
+ * `otter.mangle` in package.json (the file of the mangle cache, committed): properties named `_x`
+ * are internal to the package (AGENT.md §4) and get short names in every chunk of the build, the
+ * same name in all of them (one cache shared by the build's chunks, read from and written back to
+ * the committed file so names stay put between builds). Only this package's chunks: objects that
+ * other packages see never use `_` names. ADR-013 (format-hls, the own HLS engine's budget).
+ */
+function mangleInternal(file: string): Plugin {
+  const path = resolve(pkgDir, file);
+  let cache: Record<string, string | false> = {};
+  let queue = Promise.resolve();
+  return {
+    name: 'otter-mangle-internal',
+    buildStart() {
+      cache = existsSync(path) ? (JSON.parse(readFileSync(path, 'utf8')) as Record<string, string | false>) : {};
+    },
+    renderChunk(code, chunk) {
+      // One chunk at a time: a name new to the cache is assigned once, then shared.
+      const run = queue.then(async () => {
+        const out = await transform(code, { format: 'esm', target: 'es2022', mangleProps: /^_/, mangleCache: cache, sourcemap: true, sourcefile: chunk.fileName });
+        cache = out.mangleCache ?? cache;
+        return { code: out.code, map: out.map };
+      });
+      queue = run.then(() => undefined);
+      return run;
+    },
+    writeBundle() {
+      const sorted = Object.fromEntries(Object.entries(cache).sort(([a], [b]) => a.localeCompare(b)));
+      writeFileSync(path, `${JSON.stringify(sorted, null, 2)}\n`);
+    },
+  };
+}
+
 export default defineConfig({
   root: pkgDir,
   // Worker / asset URLs relative to the module (new URL('./x', import.meta.url)), not to a site root.
   base: './',
-  plugins: [cleanJs, copyAssets],
+  plugins: [cleanJs, copyAssets, ...(manifest.otter?.mangle === undefined ? [] : [mangleInternal(manifest.otter.mangle)])],
   ...(bundled.length > 0
     ? { resolve: { alias: { stream: resolve(shims, 'stream.js'), string_decoder: resolve(shims, 'string_decoder.js') } } }
     : {}),

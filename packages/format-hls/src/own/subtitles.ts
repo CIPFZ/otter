@@ -23,30 +23,30 @@ export function loadSubtitles(e: EngineInner, partial: PartiallyResolvedTextTrac
     busy = true;
     try {
       // Live: the subtitle playlist moves with the stream, so it is re-read each time.
-      if (e.isLive()) e.forget(partial.id);
-      const now = e.playlistTime();
-      for (const seg of (await e.resolve(partial)).segments) {
-        if (stopped || done.has(seg.id) || seg.startTime + seg.duration < now - 1 || seg.startTime > now + e.forwardS) continue;
-        const text = new TextDecoder().decode((await e.get(seg, 'caption')).data);
+      if (e._isLive()) e._forget(partial.id);
+      const now = e._playlistTime();
+      for (const seg of (await e._resolve(partial)).segments) {
+        if (stopped || done.has(seg.id) || seg.startTime + seg.duration < now - 1 || seg.startTime > now + e._forwardS) continue;
+        const text = new TextDecoder().decode((await e._get(seg, 'caption')).data);
         done.add(seg.id);
-        const cues = parseVttSegment(text, e.offset());
-        if (!stopped && e.textTrack() === trackId && cues.length > 0) e.bus.emit('text-cues', { trackId, cues });
+        const cues = parseVttSegment(text, e._offset());
+        if (!stopped && e._textTrack() === trackId && cues.length > 0) e._bus.emit('text-cues', { trackId, cues });
       }
     } catch (err) {
       // Subtitles are not worth stopping playback for.
       if ((err as { name?: string } | null)?.name !== 'AbortError')
-        e.bus.emit('error', e.core.createError({ type: 'other', details: 'subtitleLoadError', fatal: false, recoverable: true, message: String(err), cause: err }));
+        e._bus.emit('error', e._core._createError({ type: 'other', details: 'subtitleLoadError', fatal: false, recoverable: true, message: String(err), cause: err }));
     } finally {
       busy = false;
     }
   };
   const timer = setInterval(() => void pull(), 2000);
-  e.media.addEventListener('seeked', pull);
+  e._media.addEventListener('seeked', pull);
   void pull();
   return () => {
     stopped = true;
     clearInterval(timer);
-    e.media.removeEventListener('seeked', pull);
+    e._media.removeEventListener('seeked', pull);
   };
 }
 

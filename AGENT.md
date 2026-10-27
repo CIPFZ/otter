@@ -35,6 +35,7 @@
 - 错误：统一错误模型（`SPEC.md` §4），禁止吞错；每个 fatal 错误必须附降级路径。
 - 事件：类型安全总线，禁止字符串拼接事件名。
 - 命名：包名 `@otter-player/<name>`，Web Components 前缀 `otter-`，CSS 变量前缀 `--otter-`，事件前缀无（用类型约束）。
+- **`_` 前缀 = 包内部字段**（2026-10-27，ADR-013）：在 package.json 里有 `otter.mangle` 的包（目前只有 format-hls），只在本包内部传递的对象的字段一律以 `_` 开头，构建时 esbuild `mangleProps: /^_/` 把它们改成短名；同一次构建的所有块共用一个 mangle cache（提交在仓库）。公共 API、发给其他包的对象（事件负载、错误、传给 core / media / pipeline 的参数）、模块导出名、动态 import 取的成员，一律不加 `_`。没有 `otter.mangle` 的包不要用 `_` 前缀字段。发布形态由 CI 的 `OTTER_E2E_DIST` 一步验证。
 - 新包一律用 `node scripts/new-package.ts` 生成；包内相对导入带 `.js` 扩展名（NodeNext）。
 - 未实现的能力统一抛出 / reject `notImplemented`（非 fatal），不得静默 no-op（ADR-002）。
 - 提交前跑 `pnpm check`：来源记录、边界、strict TS、Vitest、无顶层副作用、体积预算，任何一项失败都阻断。
