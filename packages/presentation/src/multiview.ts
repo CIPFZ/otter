@@ -246,8 +246,11 @@ export function createFocusStore<S extends object, A extends object>(shell: Stor
   };
   const offShell = shell.subscribe(notify);
   let offTarget = target.subscribe(notify);
+  let initialMerged: Readonly<S> | undefined;
   const view: StoreView<S, A> = {
     getState: state,
+    // The shell's and the first tile's initial states (a wall is rendered on the client anyway).
+    getInitialState: () => (initialMerged ??= { ...shell.getInitialState(), ...initial.getInitialState() }),
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

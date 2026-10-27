@@ -1,6 +1,7 @@
 // Core assembly: the host passes slices (from `features`) and plugins, listens to events and
 // dispatches actions (SPEC §16 host contract).
 
+import { createError } from './errors.js';
 import { createEventBus, type EventBus } from './events.js';
 import { createPluginRegistry, type CoreEventMap, type Plugin, type PluginRegistry } from './plugin.js';
 import { createQoeHook, type QoeHook } from './qoe.js';
@@ -24,8 +25,14 @@ export interface OtterCore<S extends object, A extends object> {
 export function createCore<S extends object, A extends object = Record<never, never>>(
   options: CoreOptions<S, A> = {},
 ): OtterCore<S, A> {
-  const store = createStore<S, A>({ slices: options.slices ?? [] });
   const events = createEventBus<CoreEventMap>();
+  // A state listener that throws (a UI or framework binding) is reported as an error event; the
+  // engine's setState and the other listeners carry on.
+  const store = createStore<S, A>({
+    slices: options.slices ?? [],
+    onListenerError: (cause) =>
+      events.emit('error', createError({ type: 'other', details: 'storeListenerError', fatal: false, recoverable: true, message: `state listener threw: ${String(cause)}`, cause })),
+  });
   const qoe = createQoeHook();
   const plugins = createPluginRegistry<S, A>();
   for (const p of options.plugins ?? []) plugins.register(p);
@@ -42,6 +49,7 @@ export function createCore<S extends object, A extends object = Record<never, ne
       } finally {
         events.clear();
         qoe.clear();
+        store.destroy();
       }
     },
   };

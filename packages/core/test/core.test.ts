@@ -126,6 +126,62 @@ describe('store', () => {
     store.setState({ volume: 0.2 });
     expect(vol).toHaveBeenCalledWith(0.2, 1);
   });
+
+  it('keeps the initial state as the server snapshot: the same object, equal to the first state', () => {
+    const store = createStore<State, Actions>({ slices });
+    const first = store.view().getInitialState();
+    expect(first).toBe(store.getState());
+    store.setState({ paused: false });
+    expect(store.getInitialState()).toBe(first);
+    expect(first.paused).toBe(true);
+    expect(Object.isFrozen(first)).toBe(true);
+  });
+
+  it('a listener that throws stops neither the state change nor the other listeners', () => {
+    const errors: unknown[] = [];
+    const store = createStore<State, Actions>({ slices, onListenerError: (e) => errors.push(e) });
+    const after = vi.fn();
+    store.subscribe(() => {
+      throw new Error('binding broke');
+    });
+    store.subscribe(after);
+    expect(() => store.setState({ paused: false })).not.toThrow();
+    expect(store.getState().paused).toBe(false);
+    expect(after).toHaveBeenCalledOnce();
+    expect(errors).toEqual([new Error('binding broke')]);
+  });
+
+  it('by default rethrows a listener error in a microtask, not into setState', async () => {
+    const store = createStore<State, Actions>({ slices });
+    store.subscribe(() => {
+      throw new Error('late');
+    });
+    const seen = new Promise<unknown>((resolve) => {
+      const orig = globalThis.queueMicrotask;
+      globalThis.queueMicrotask = (cb) => {
+        globalThis.queueMicrotask = orig;
+        try {
+          cb();
+        } catch (e) {
+          resolve(e);
+        }
+      };
+    });
+    expect(() => store.setState({ paused: false })).not.toThrow();
+    expect(await seen).toEqual(new Error('late'));
+  });
+
+  it('destroy drops every listener and handler', () => {
+    const store = createStore<State, Actions>({ slices });
+    const all = vi.fn();
+    const play = vi.fn();
+    store.subscribe(all);
+    store.handle('play', play);
+    store.destroy();
+    store.setState({ paused: false });
+    expect(all).not.toHaveBeenCalled();
+    expect(store.dispatch('play', undefined)).toBe(false);
+  });
 });
 
 describe('plugin registry', () => {
@@ -189,6 +245,24 @@ describe('createCore', () => {
     await core.start();
     expect(installed).toEqual(['p']);
     await core.destroy();
+  });
+
+  it('reports a throwing state listener as an error event, and destroy clears the listeners', async () => {
+    const slice = { id: 's', initialState: { n: 0 } } satisfies StoreSlice;
+    const core = createCore<{ n: number }>({ slices: [slice] });
+    const errors: string[] = [];
+    core.events.on('error', (e) => errors.push(e.details));
+    const later = vi.fn();
+    core.store.subscribe(() => {
+      throw new Error('ui');
+    });
+    core.store.subscribe(later);
+    core.store.setState({ n: 1 });
+    expect(errors).toEqual(['storeListenerError']);
+    expect(later).toHaveBeenCalledOnce();
+    await core.destroy();
+    core.store.setState({ n: 2 });
+    expect(later).toHaveBeenCalledOnce();
   });
 
   it('qoe hook carries the route explanation', () => {
