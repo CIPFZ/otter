@@ -323,11 +323,14 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
   /** One segment for `lane`; false when there is nothing to do right now. */
   const step = async (lane: Lane, run: number): Promise<boolean> => {
     const s = sink as MseSink;
-    if (aheadOf(lane.type) >= forwardS) return false;
+    // A separate audio rendition keeps at most one segment ahead of the buffered video, like
+    // hls.js: running its own 30 s ahead it took the link from the video (1 Mbps: rebuffering).
+    const ahead = lane.type === 'audio' && videoLane() ? Math.min(forwardS, aheadOf('video') + (lane.track.segments[0]?.duration ?? 6)) : forwardS;
+    if (aheadOf(lane.type) >= ahead) return false;
     const plan = () => {
       const inLedger = new Set(s.segments(lane.type).map((x) => x.id));
       const buffered = lane.track.segments.filter((x) => inLedger.has(x.id));
-      return { inLedger, next: getSegmentsToLoad(lane.track.segments, buffered, playlistTime(), { bufferDuration: forwardS })[0] };
+      return { inLedger, next: getSegmentsToLoad(lane.track.segments, buffered, playlistTime(), { bufferDuration: ahead })[0] };
     };
     let { inLedger, next } = plan();
     // ABR only when there is a segment to load: at the end of a VOD the buffer drains and
