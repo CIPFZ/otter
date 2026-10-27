@@ -29,6 +29,11 @@ export interface DanmakuRenderer {
    * its own frame); the engine draws that far ahead while playing, so masks keep to their frame.
    */
   readonly latencyMs?: number;
+  /**
+   * A renderer that presents on its own (the Worker): its last frame intervals (ms), since the
+   * page's rAF pacing does not show a Worker that falls behind.
+   */
+  readonly ownIntervals?: readonly number[];
   /** The element on the stage (positioned by the engine over the picture). */
   readonly element: HTMLElement;
   /** CSS px and device-pixel ratio of the stage. */

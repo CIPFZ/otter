@@ -35,8 +35,6 @@ const budgets = [
     // Caption parsers (media-captions, imscJS) load with the first subtitle file.
     modifyEsbuildConfig: firstScreenOnly,
   },
-  // The danmaku entry chunk (Canvas 2D engine); its on-demand chunks (parsers, WebGL, Worker, masks) are listed apart (ADR-012).
-  { name: 'budget: danmaku (SPEC §1.1, ≤ 10 KB)', path: dist('danmaku'), import: '*', gzip: true, limit: '10 KB', modifyEsbuildConfig: firstScreenOnly },
   { name: 'budget: ui-skin-default CSS (UI-DESIGN §11, ≤ 8 KB)', path: 'packages/ui-skin-default/dist/index.css', gzip: true, limit: '8 KB' },
 ];
 
@@ -116,14 +114,26 @@ const ownHlsEngine = [
   { name: 'own CMAF-HLS engine, abandon chunk (ADR-010 §3, ≤ 1.5 KB)', path: hlsChunk('abandon'), gzip: true, limit: '1.5 KB', ignore: ['@otter-player/core', '@otter-player/pipeline'], modifyEsbuildConfig: firstScreenOnly },
 ];
 
-// Danmaku (ADR-012): the main entry has its budget above (SPEC §1.1, ≤ 10 KB); the WebGL renderer
-// and the Worker (its main-thread chunk plus the Worker script) load only when chosen, the masks
-// (SVG / WebM alpha) only when one is loaded: listed apart.
+// Danmaku (ADR-012): the WebGL renderer and the Worker (its main-thread chunk plus the Worker
+// script) load only when chosen, the masks (SVG / WebM alpha) only when one is loaded: each also
+// listed apart.
 const danmakuFile = (dir, prefix) => {
   const d = `packages/danmaku/dist${dir}`;
   const f = existsSync(d) ? readdirSync(d).find((x) => x.startsWith(`${prefix}-`) && x.endsWith('.js')) : undefined;
   return `${d}/${f ?? `${prefix}.js`}`;
 };
+// Two tiers (SPEC §1.1, owner 2026-10-27): basic = the entry (Canvas 2D engine) + the parsers
+// (loaded with the first comments) ≤ 10 KB; all = with WebGL, the Worker and the masks ≤ 15 KB.
+const danmakuBudgets = [
+  { name: 'budget: danmaku basic, entry + parsers (SPEC §1.1, ≤ 10 KB)', path: [dist('danmaku'), danmakuFile('', 'parse')], gzip: true, limit: '10 KB', modifyEsbuildConfig: firstScreenOnly },
+  {
+    name: 'budget: danmaku all chunks (SPEC §1.1, ≤ 15 KB)',
+    path: [dist('danmaku'), danmakuFile('', 'parse'), danmakuFile('', 'webgl'), danmakuFile('', 'worker-renderer'), danmakuFile('/assets', 'worker'), danmakuFile('', 'mask')],
+    gzip: true,
+    limit: '15 KB',
+    modifyEsbuildConfig: firstScreenOnly,
+  },
+];
 const danmakuChunks = [
   { name: 'danmaku WebGL renderer chunk (ADR-012, report)', path: danmakuFile('', 'webgl'), gzip: true, modifyEsbuildConfig: firstScreenOnly },
   { name: 'danmaku Worker renderer: chunk + Worker script (ADR-012, report)', path: [danmakuFile('', 'worker-renderer'), danmakuFile('/assets', 'worker')], gzip: true, modifyEsbuildConfig: firstScreenOnly },
@@ -135,4 +145,4 @@ const reports = readdirSync('packages')
   .sort()
   .map((name) => ({ name: `@otter-player/${name}`, path: dist(name), import: '*', gzip: true }));
 
-export default [...budgets, ...scenarios, ...engineChunks, ...ownHlsEngine, ...danmakuChunks, ...onDemand, ...reports];
+export default [...budgets, ...danmakuBudgets, ...scenarios, ...engineChunks, ...ownHlsEngine, ...danmakuChunks, ...onDemand, ...reports];

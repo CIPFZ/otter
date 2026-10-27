@@ -18,7 +18,7 @@
 - 覆盖场景：短视频 / 长视频点播、直播与低延迟直播、国内 FLV/TS 直播、OTT 付费 DRM 与离线、监控多路 HEVC、B 站式弹幕站、剪辑/标注逐帧、背景视频、沉浸竖屏信息流、电视遥控器。
 - 双路径架构：非 Apple 走 MSE，Apple 走原生 HLS 或 ManagedMediaSource，运行时确定性选路且可观测、可覆盖。
 - 核心零 DOM 依赖，管线可跑在 Worker；全 ESM、`sideEffects: false`（唯一例外：纯 CSS 皮肤包为 `["*.css"]`，见 §14.4）、tree-shaking 友好。
-- 首屏核心 ≤ 15KB gzip；默认皮肤 + ui-core + presentation + text ≤ 30KB；弹幕另加 ≤ 10KB。
+- 首屏核心 ≤ 15KB gzip；默认皮肤 + ui-core + presentation + text ≤ 30KB；弹幕另加：基本（主块 + 解析块）≤ 10KB，全部块（加 WebGL、Worker、蒙版三个按需块）≤ 15KB，三个按需块单列（2026-10-27，ADR-012）。
 - 无障碍 WCAG 2.2 AA，Vidstack 的 CVAA 清单作为验收标准。
 - QoE 遥测从第一天内建：首帧、卡顿率、切档、错误、退出点、带宽估计、backend 类型。
 

@@ -33,10 +33,18 @@ export function createWorkerRenderer(doc: Document, onError: (reason: string) =>
    */
   const draws: number[] = [];
   let drawMs = 8;
+  /** Intervals between the Worker's frames (its clock), the last 600. */
+  const intervals: number[] = [];
+  let lastAt = 0;
   worker.onmessage = (e: MessageEvent<{ t: string; reason?: string; at?: number }>) => {
     if (e.data.t === 'drawn') {
       busy = false;
       const at = posted.shift();
+      if (e.data.at !== undefined) {
+        if (lastAt > 0) intervals.push(e.data.at - lastAt);
+        if (intervals.length > 600) intervals.shift();
+        lastAt = e.data.at;
+      }
       if (at !== undefined && e.data.at !== undefined) {
         draws.push(Math.max(0, e.data.at - performance.timeOrigin - at));
         if (draws.length > 15) draws.shift();
@@ -53,6 +61,7 @@ export function createWorkerRenderer(doc: Document, onError: (reason: string) =>
     get latencyMs() {
       return drawMs + 16.7;
     },
+    ownIntervals: intervals,
     resize(width, height, dpr) {
       post({ t: 'resize', width, height, dpr });
     },

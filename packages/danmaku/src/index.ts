@@ -75,6 +75,8 @@ export interface DanmakuInspection {
   readonly renderer: string | null;
   /** Main-thread ms per drawn frame (placement + renderer), over the last drawn frames: p50 / p95. */
   readonly cost: { readonly p50: number; readonly p95: number };
+  /** The Worker's own frame interval p95 (ms) over its last 600 frames; null for main-thread renderers. */
+  readonly ownFrameP95: number | null;
   readonly stage: { readonly width: number; readonly height: number; readonly duration: number };
   readonly running: readonly { readonly text: string; readonly mode: string; readonly time: number; readonly x: number; readonly y: number; readonly width: number }[];
 }
@@ -443,6 +445,11 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       maskMissing,
       frames,
       renderer: renderer?.kind ?? null,
+      ownFrameP95: (() => {
+        const xs = renderer?.ownIntervals;
+        if (xs === undefined || xs.length === 0) return null;
+        return [...xs].sort((a, b) => a - b)[Math.floor(xs.length * 0.95)] ?? null;
+      })(),
       cost: (() => {
         const xs = samples.map((f) => f.drawMs).sort((a, b) => a - b);
         return { p50: xs[Math.floor(xs.length * 0.5)] ?? 0, p95: xs[Math.floor(xs.length * 0.95)] ?? 0 };

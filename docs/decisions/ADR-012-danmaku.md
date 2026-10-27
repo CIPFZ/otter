@@ -1,6 +1,6 @@
 # ADR-012：弹幕引擎与水印（M5 第四批）
 
-- 状态：已实现（2026-10-26，第四批三项）
+- 状态：已实现（2026-10-26，第四批三项）；2026-10-27 验收，按负责人答复补 §8（验收口径与体积）、§9（已知限制）
 - 日期：2026-10-26
 - 关联：`SPEC.md` §1.1、§13.2、§13.3、§19；ADR-011（M5 批次）；`REUSE.md` §4
 
@@ -70,6 +70,25 @@ M5 第四批：新包 `@otter-player/danmaku`（按需加载，首屏不变）�
 - **跟随**：挂在容器里，所以原生 / 伪全屏与 Document PiP（容器整体搬进 PiP 窗口）自然跟随。视频 PiP 窗口里只有一个 `<video>`：`createPipComposite(doc, picture, watermark)` 把画面与水印按画面原尺寸画进一个 canvas（PiP 打开时每个显示帧画，平时每秒两次保持流就绪），交给 `@otter-player/presentation/canvas-pip` 的 `bindCanvasPip`，PiP 打开的就是这条合成流。合成画布创建时先画一帧：没有帧的流视频会一直拖住页面的 load 事件（Chromium），也拿不到元数据进 PiP。
 - 旧的 `createWatermarkOverlay(options)` 保留，等于 static 模式的 `overlay`。
 - e2e `e2e/watermark.spec.ts`：角标位置与像素、移动水印换位且不出画面并在移除 / 隐藏后还原、全屏里在全屏元素内并可见、视频 PiP 的合成流帧里有水印像素、Document PiP 窗口里有水印。
+
+### 8. 验收口径与体积（2026-10-27，负责人）
+
+- **60 fps**：本机（独占机器，`OTTER_BENCH=1`）rAF 间隔 p95 < 20 ms，且无长任务（不支持 longtask 的浏览器：无 > 50 ms 的间隔）。Worker 自己上屏，页面的 rAF 看不出它掉帧，所以 Worker 自己的帧间隔 p95 也要 < 20 ms。
+- **CI 的 WebKit（macOS 虚拟机）用相对基线**：
+  - 同一页面先量 6 s 不加弹幕的基线，再量 20 s 加弹幕的数据。
+  - 达标条件：主线程弹幕耗时 p95 < 4 ms，且 rAF p95 不比基线差 30% 以上（Worker 自己的帧间隔同样）。
+  - 只出通知，不进门禁。真机 Safari / iPhone 留 M7。
+- **蒙版对齐 ±1 帧**按截图判（截图与真实上屏的关系各引擎不同）。录屏或高速相机核对留 M7 待办。
+- **体积**两档，进门禁（`.size-limit.js`，SPEC §1.1）：
+  - 基本：主块 + 解析块 ≤ 10 KB。
+  - 全部块：再加 WebGL、Worker（块 + 脚本）、蒙版 ≤ 15 KB。
+  - 三个按需块另外各列一行。
+
+### 9. 已知限制（接受）
+
+- WebKit 不解码 VP9 alpha：WebM 蒙版在 Safari 上报 `rejected`，用 SVG 蒙版。Safari 的透明视频是 HEVC with alpha（MOV），不做。
+- 移动水印的还原只防页面脚本与扩展的 DOM 改动，挡不住对整页做处理的截屏 / 录屏工具。
+- 无头 Firefox 没有 WebGL，WebGL / Worker 两条路径的 Firefox 数字等真实 Firefox（Windows 实例）。
 
 ## 代价
 
