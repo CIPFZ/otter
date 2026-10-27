@@ -2,7 +2,7 @@
 
 - 状态：草案
 - 日期：2026-10-15
-- 代号：Otter（水獭，工作代号，可随时更名；npm scope 建议 `@otter-player/*`，未核验占用）
+- 名称：Otter（2026-10-27 负责人定名，不再是工作代号）；npm scope `@otter-player/*`（同日确定不改；发布前仍要核验是否被占用）
 - 关联：`RESEARCH.md`（调研）、`REUSE.md`（复用来源与等级）、`AGENT.md`（协作规则）、`docs/decisions/ADR-001-typescript-only.md`
 
 ---
@@ -493,7 +493,7 @@ M0 接口落点（ADR-002）：
 
 ## 23. 开放问题
 
-- Q1：正式项目名与 npm scope（当前 Otter 为工作代号）。
+- Q1：正式项目名与 npm scope。**已结案**（2026-10-27）：名称 Otter 不改，scope `@otter-player/*` 不改；改名清单（`docs/reports/M5.md`「M5 → M6 交接」§8）备案，不执行。
 - Q2：video.js v10 GA 后，是 L2 vendoring 其 core store，还是保持自写同形状以避免跟随其 API 变动。
 - ~~Q3：自研轻量 CMAF 引擎与 SPF 的关系，是复用 SPF 组件还是独立实现。~~ 已结案（2026-10-21，ADR-010）：独立实现，不依赖 SPF 运行时；按 L3 拷 SPF 的 m3u8 解析、缓冲计划、重载策略、`tfdt` 读取及其测试。
 - Q4：P2P-CDN 插件是否纳入 v1 范围。

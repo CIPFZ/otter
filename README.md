@@ -1,6 +1,6 @@
 # Otter
 
-通用 Web 播放器（TypeScript），工作代号 Otter，可更名。
+通用 Web 播放器（TypeScript），名称 Otter（2026-10-27 定名），npm scope `@otter-player/*`。
 
 | 文件 | 内容 |
 |---|---|

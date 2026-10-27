@@ -64,6 +64,9 @@ for (const p of PATHS) {
     await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().seeking), { timeout: 10_000 }).toBe(false);
     const box = (await page.locator('#player').boundingBox()) as { x: number; y: number; width: number; height: number };
     // Two 96 px blocks of the 640 px picture, at the player's width.
+    // Known flaky on CI's emulated iPhone (owner 2026-10-27: retried, decided on a real iPhone in
+    // M7; RESEARCH §1): the row reads no bright pixel at all even after the seek is repeated.
+    if (test.info().project.name === 'emulated-iphone') test.info().annotations.push({ type: 'flaky', description: 'emulated iPhone: no frame-number block read (RESEARCH §1), retried; M7' });
     // A paused WebKit sometimes keeps showing the GOP's keyframe (frame 0: no block at all) after
     // a seek inside the GOP (RESEARCH §1; the fixture has a keyframe every 90 frames): the seek
     // is issued again while the reading is still that keyframe.

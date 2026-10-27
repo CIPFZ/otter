@@ -83,6 +83,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - `requestVideoFrameCallback` 的 `mediaTime` 各引擎含义不同：seek 到帧中点 `(n + 0.5) / fps` 后，Chromium 报该帧的起点（容器时间戳，WebM 取整到毫秒），Firefox 报所 seek 的时间本身。用它确认「解出的是哪一帧」时，小数部分≈0.5 按 floor、否则按最近帧取整。不在文档里的 `<video>` 在 Chromium 上不呈现帧，rVFC 不回调，`seeked` 也可能早于新帧可画。
 - WebKit（MSE 播放器，`MediaPlayerPrivateMediaSourceAVFObjC`）的 `requestVideoFrameCallback`：`mediaTime` 是渲染器当前帧的时间戳，`expectedDisplayTime` 却是「有新帧可用」回调的时间（早于真正上屏）。按 `mediaTime + (now − expectedDisplayTime)` 外推会比画面超前约 1–1.5 帧（CI macOS 实测，Chrome 同法约 −0.3 帧）。外推结果不能超过元素的 `currentTime`。
 - WebKit（CI macOS，桌面与 iPhone 仿真都出现过）暂停时 seek 到 GOP 中间，有时画面一直停在该 GOP 的关键帧上，再等 10 s 也不更新（readyState 4，currentTime 已是目标值）。再发一次同样的 seek 后，画面才更新到目标帧。依赖画面帧号的用例要么 seek 到关键帧，要么在读到关键帧时重发 seek。
+- CI 的 iPhone 仿真（WebKit）上，`e2e/picture.spec.ts` 偶发读不到帧号块：取到的行里一个亮像素都没有，15 s 里重发 seek 也没变，重试则通过。桌面 WebKit 上同类的「暂停 seek 后画面停在关键帧」重发 seek 就能解决，这个不行，原因未明。处理：标 flaky，靠重试；M7 在真 iPhone 上再定（2026-10-27 负责人）。
 - 无头 Chrome（SwiftShader）的主线程 WebGL：往一张上一帧还在采样的大纹理（4096² 图集）里 `texSubImage2D`，约 150 个精灵在屏、每帧约 1.4 次上传时，每隔几帧就有一帧赶不上（rAF p95 33 ms）。主线程本帧只用 0.7 ms，时间不在 JS 里。去掉上传或只画一个精灵就恢复 16.7 ms。分页图集（2048 × 512）和 `desynchronized` 上下文都没有稳定改善（8 次里 2 次 16.8 ms）。同一套 GL 代码放进 Worker 后，Worker 自己的帧间隔 p95 约 18 ms，主线程 rAF 16.7 ms。
 - OffscreenCanvas 在 Worker 里自己上屏：页面的 rAF 间隔看不出 Worker 掉帧（Worker 忙时会跳帧，主线程照常 60 fps）。Worker 渲染的流畅度要用 Worker 自己的帧间隔来量。
 - 逐帧对齐（蒙版与画面 ≤ 1 帧）在无头浏览器里与并行的其他用例共享软件合成器时测不准：帧会迟到一两帧，误差来自机器而非代码。这类用例单独一步、一个 worker 跑（`@solo`）。
