@@ -117,7 +117,10 @@ for (const kind of ['svg', 'webm'] as const) {
       const signed: number[] = [];
       /** Per screenshot: shot frame - currentTime frame, and (frame time without the lead - currentTime) in frames. */
       const parts: string[] = [];
-      for (let i = 0; i < 12; i++) {
+      // Until 8 screenshots read a band (a slow VM drops some: a screenshot taken mid-update reads
+      // no single band), at most 24 (CI WebKit Worker: 6 of 12 once, 1f68c1e).
+      let shots = 0;
+      for (; shots < 24 && playing.length < 8; shots++) {
         await page.waitForTimeout(250);
         const before = await page.evaluate(async () => {
           const d = ((await window.otter) as OtterFixture).danmaku();
@@ -129,10 +132,10 @@ for (const kind of ['svg', 'webm'] as const) {
         playing.push(offBy(r as { frame: number; band: number }));
         signed.push(((((r.band as number) - (r.frame % BANDS)) % BANDS) + BANDS + 15) % BANDS - 15);
       }
-      expect(playing.length).toBeGreaterThanOrEqual(8);
+      expect(playing.length, `${playing.length} of ${shots} screenshots read a band`).toBeGreaterThanOrEqual(8);
       expect(Math.max(...playing), `band - frame ${signed.join(',')}; shot - ct / ft - ct / lead (frames) ${parts.join(' ')}`).toBeLessThanOrEqual(1);
       const d = await inspect();
-      ciNotice(`danmaku mask ${kind} on ${renderer}: paused frame/band ${paused.join(' ')}; playing band - frame ${signed.join(',')} frames; ${d?.maskMissing ?? 0} frames drawn before the mask frame was ready; lead ${((d?.lead ?? 0) * 1000).toFixed(0)} ms`);
+      ciNotice(`danmaku mask ${kind} on ${renderer}: paused frame/band ${paused.join(' ')}; playing band - frame ${signed.join(',')} frames (${shots} shots); ${d?.maskMissing ?? 0} frames drawn before the mask frame was ready; lead ${((d?.lead ?? 0) * 1000).toFixed(0)} ms`);
     });
   }
 }
