@@ -24,6 +24,9 @@ import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
 
 test.skip(process.env['OTTER_BENCH'] !== '1', 'set OTTER_BENCH=1 to run the HLS engine benchmark');
+// No trace: a test opens 20 contexts of 10-30 s playing (with danmaku, a screencast of every
+// frame); 'retain-on-failure' still records them all until the test ends (4+ GB, ENOSPC here).
+test.use({ trace: 'off' });
 
 const RUNS = Number(process.env['OTTER_BENCH_RUNS'] ?? 10);
 const LIVE_RUNS = Number(process.env['OTTER_BENCH_LIVE_RUNS'] ?? 5);

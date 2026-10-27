@@ -63,21 +63,21 @@ for (const p of PATHS) {
     await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('seek', { time: 3 / 30 + 0.01 }));
     await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().seeking), { timeout: 10_000 }).toBe(false);
     const box = (await page.locator('#player').boundingBox()) as { x: number; y: number; width: number; height: number };
-    // Two 96 px blocks of the 640 px picture, at the player's width. Polled: a paused WebKit can
-    // still show the keyframe for a moment after a seek inside its GOP.
-    // Intermittent on CI's emulated iPhone (a run of 0: no bright pixel in the row at all): the
-    // screenshot and the element's state go with the failure, to tell a blank picture from a layout.
+    // Two 96 px blocks of the 640 px picture, at the player's width.
+    // A paused WebKit sometimes keeps showing the GOP's keyframe (frame 0: no block at all) after
+    // a seek inside the GOP (RESEARCH §1; the fixture has a keyframe every 90 frames): the seek
+    // is issued again while the reading is still that keyframe.
     await expect
-      .poll(async () => (await blockWidth(page)) / box.width, { message: 'two 1-bits read as one bright run', timeout: 10_000 })
-      .toBeGreaterThan(0.12)
-      .catch(async (err: unknown) => {
-        await test.info().attach('player.png', { body: await page.locator('#player').screenshot(), contentType: 'image/png' });
-        const v = await page.evaluate(() => {
-          const el = document.querySelector('video') as HTMLVideoElement;
-          return { readyState: el.readyState, currentTime: el.currentTime, videoWidth: el.videoWidth, paused: el.paused, rect: el.getBoundingClientRect().toJSON() as unknown };
-        });
-        throw new Error(`${String(err)}; video ${JSON.stringify(v)}`);
-      });
+      .poll(
+        async () => {
+          const w = (await blockWidth(page)) / box.width;
+          if (w <= 0.12) await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('seek', { time: 3 / 30 + 0.01 }));
+          return w;
+        },
+        { message: 'two 1-bits read as one bright run', timeout: 15_000, intervals: [500, 1000, 2000] },
+      )
+      .toBeGreaterThan(0.12);
+    await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().seeking), { timeout: 10_000 }).toBe(false);
     const base = await blockWidth(page);
     expect(base / box.width).toBeLessThan(0.18);
 

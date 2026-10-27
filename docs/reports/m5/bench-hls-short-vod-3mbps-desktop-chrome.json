@@ -12,10 +12,10 @@
     "otter": {
       "runs": 10,
       "ttffMs": {
-        "median": 306.1,
-        "p90": 373.49,
-        "min": 301,
-        "max": 390.5
+        "median": 309.4,
+        "p90": 311.46,
+        "min": 307.5,
+        "max": 316.5
       },
       "rebuffers": {
         "median": 0,
@@ -64,7 +64,7 @@
       "fatal": [],
       "raw": [
         {
-          "ttff": 307.79999999701977,
+          "ttff": 309.5,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -74,7 +74,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 307.19999999552965,
+          "ttff": 309.30000001192093,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -84,7 +84,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 305,
+          "ttff": 310.0999999642372,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -94,7 +94,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 371.6000000014901,
+          "ttff": 310.5999999642372,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -104,7 +104,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 302.20000000298023,
+          "ttff": 307.5,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -114,7 +114,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 302.30000000447035,
+          "ttff": 310.9000000357628,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -124,7 +124,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 309.6000000014901,
+          "ttff": 308.19999998807907,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -134,7 +134,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 301,
+          "ttff": 316.5,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -144,7 +144,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 301.90000000596046,
+          "ttff": 308.10000002384186,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -154,7 +154,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 390.5,
+          "ttff": 309.10000002384186,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -168,10 +168,10 @@
     "hlsjs": {
       "runs": 10,
       "ttffMs": {
-        "median": 345,
-        "p90": 379.45,
-        "min": 338.20000000298023,
-        "max": 463.6000000014901
+        "median": 347.55,
+        "p90": 368.95,
+        "min": 342.4000000357628,
+        "max": 384.69999998807907
       },
       "rebuffers": {
         "median": 0,
@@ -220,7 +220,7 @@
       "fatal": [],
       "raw": [
         {
-          "ttff": 463.6000000014901,
+          "ttff": 384.69999998807907,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -230,7 +230,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 338.20000000298023,
+          "ttff": 349.19999998807907,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -240,7 +240,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 342.29999999701977,
+          "ttff": 347.4000000357628,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -250,7 +250,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 346.09999999403954,
+          "ttff": 367.19999998807907,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -260,7 +260,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 338.70000000298023,
+          "ttff": 347.7000000476837,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -270,7 +270,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 343.8999999985099,
+          "ttff": 345.89999997615814,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -280,7 +280,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 347.6000000014901,
+          "ttff": 342.4000000357628,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -290,7 +290,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 339.69999999552965,
+          "ttff": 354.69999998807907,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -300,7 +300,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 362,
+          "ttff": 345.5999999642372,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -310,7 +310,7 @@
           "startHeight": 360
         },
         {
-          "ttff": 370.1000000014901,
+          "ttff": 344.60000002384186,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -321,5 +321,18 @@
         }
       ]
     }
+  },
+  "machine": {
+    "cores": 8,
+    "loadAvgAtStart": [
+      0.55,
+      1.62,
+      2.26
+    ],
+    "loadAvgAtEnd": [
+      1.44,
+      1.57,
+      2.12
+    ]
   }
 }

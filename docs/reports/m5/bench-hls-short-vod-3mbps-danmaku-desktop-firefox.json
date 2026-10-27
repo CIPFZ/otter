@@ -1,0 +1,445 @@
+{
+  "scenario": {
+    "id": "short-vod",
+    "src": "hls-fmp4/master.m3u8",
+    "playS": 10
+  },
+  "link": {
+    "id": "3mbps",
+    "kbps": 3000
+  },
+  "danmakuPerMinute": 5000,
+  "summary": {
+    "otter": {
+      "runs": 10,
+      "ttffMs": {
+        "median": 327,
+        "p90": 333.3,
+        "min": 323,
+        "max": 336
+      },
+      "rebuffers": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rebufferMs": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "runsWithRebuffer": 0,
+      "switches": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "startHeights": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "endHeights": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "fallbacks": 0,
+      "fatal": [],
+      "danmakuRenderers": [
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d"
+      ],
+      "danmakuFramesMin": 472,
+      "raw": [
+        {
+          "ttff": 324,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 473,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 336,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 326,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 323,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 324,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 473,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 328,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 487,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 333,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 328,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 325,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 328,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        }
+      ]
+    },
+    "hlsjs": {
+      "runs": 10,
+      "ttffMs": {
+        "median": 419.5,
+        "p90": 432.2,
+        "min": 408,
+        "max": 434
+      },
+      "rebuffers": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rebufferMs": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "runsWithRebuffer": 0,
+      "switches": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "startHeights": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "endHeights": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "fallbacks": 0,
+      "fatal": [],
+      "danmakuRenderers": [
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d",
+        "canvas2d"
+      ],
+      "danmakuFramesMin": 470,
+      "raw": [
+        {
+          "ttff": 412,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 470,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 432,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 481,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 418,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 473,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 408,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 421,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 416,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 470,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 418,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 470,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 431,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 477,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 434,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 482,
+            "renderer": "canvas2d"
+          }
+        },
+        {
+          "ttff": 422,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 360,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 360,
+          "danmaku": {
+            "frames": 472,
+            "renderer": "canvas2d"
+          }
+        }
+      ]
+    }
+  },
+  "machine": {
+    "cores": 8,
+    "loadAvgAtStart": [
+      1.07,
+      0.87,
+      0.97
+    ],
+    "loadAvgAtEnd": [
+      0.53,
+      0.75,
+      0.9
+    ]
+  }
+}

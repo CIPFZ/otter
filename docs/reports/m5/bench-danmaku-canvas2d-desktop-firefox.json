@@ -2,18 +2,32 @@
   "perMinute": 5000,
   "windowS": 20,
   "frames": 1200,
-  "drawn": 1201,
-  "p50": 17.040000000000873,
-  "p95": 17.11999999999898,
-  "max": 17.56000000000131,
+  "p50": 17.07999999999811,
+  "p95": 17.100000000002183,
+  "max": 17.420000000000073,
   "gapsOver50": 0,
   "longTasks": null,
   "longestTask": 0,
-  "onStage": 133,
-  "peakOnStage": 151,
+  "onStage": 148,
+  "peakOnStage": 155,
+  "drawn": 1202,
   "renderer": "canvas2d",
   "cost": {
     "p50": 2,
-    "p95": 4
-  }
+    "p95": 3
+  },
+  "workerFrameP95": null,
+  "baseline": {
+    "windowS": 6,
+    "frames": 360,
+    "p50": 17.079999999999927,
+    "p95": 17.100000000000364,
+    "max": 17.11999999999989,
+    "gapsOver50": 0,
+    "longTasks": null,
+    "longestTask": 0,
+    "onStage": 0,
+    "peakOnStage": 0
+  },
+  "rafP95OverBaseline": 1.0635936575909e-13
 }

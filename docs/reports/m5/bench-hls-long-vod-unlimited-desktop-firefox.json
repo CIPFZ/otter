@@ -12,10 +12,10 @@
     "otter": {
       "runs": 10,
       "ttffMs": {
-        "median": 80.5,
-        "p90": 89.7,
-        "min": 75,
-        "max": 141
+        "median": 90,
+        "p90": 102,
+        "min": 83,
+        "max": 102
       },
       "rebuffers": {
         "median": 0,
@@ -64,7 +64,7 @@
       "fatal": [],
       "raw": [
         {
-          "ttff": 75,
+          "ttff": 86,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -74,7 +74,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 80,
+          "ttff": 102,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -84,7 +84,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 81,
+          "ttff": 83,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -94,7 +94,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 75,
+          "ttff": 91,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -104,7 +104,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 141,
+          "ttff": 102,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -114,7 +114,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 77,
+          "ttff": 99,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -124,7 +124,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 82,
+          "ttff": 86,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -134,7 +134,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 76,
+          "ttff": 95,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -144,7 +144,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 82,
+          "ttff": 89,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -168,10 +168,10 @@
     "hlsjs": {
       "runs": 10,
       "ttffMs": {
-        "median": 176.5,
-        "p90": 188.5,
-        "min": 158,
-        "max": 193
+        "median": 188.5,
+        "p90": 235.9,
+        "min": 160,
+        "max": 244
       },
       "rebuffers": {
         "median": 0,
@@ -230,7 +230,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 164,
+          "ttff": 244,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -240,7 +240,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 181,
+          "ttff": 183,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -250,7 +250,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 172,
+          "ttff": 235,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -260,7 +260,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 193,
+          "ttff": 189,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -270,7 +270,7 @@
           "startHeight": 720
         },
         {
-          "ttff": 158,
+          "ttff": 165,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -280,7 +280,27 @@
           "startHeight": 720
         },
         {
-          "ttff": 181,
+          "ttff": 196,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 160,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720
+        },
+        {
+          "ttff": 198,
           "rebuffers": 0,
           "rebufferMs": 0,
           "switches": 0,
@@ -298,28 +318,21 @@
           "fallback": false,
           "fatal": [],
           "startHeight": 720
-        },
-        {
-          "ttff": 188,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 0,
-          "endHeight": 720,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
-        },
-        {
-          "ttff": 164,
-          "rebuffers": 0,
-          "rebufferMs": 0,
-          "switches": 0,
-          "endHeight": 720,
-          "fallback": false,
-          "fatal": [],
-          "startHeight": 720
         }
       ]
     }
+  },
+  "machine": {
+    "cores": 8,
+    "loadAvgAtStart": [
+      0.54,
+      0.8,
+      1.99
+    ],
+    "loadAvgAtEnd": [
+      0.96,
+      1.11,
+      1.51
+    ]
   }
 }

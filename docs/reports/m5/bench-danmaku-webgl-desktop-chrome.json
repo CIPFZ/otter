@@ -1,19 +1,33 @@
 {
   "perMinute": 5000,
   "windowS": 20,
-  "frames": 1145,
-  "drawn": 1146,
-  "p50": 16.699999999999818,
-  "p95": 16.80000000000291,
-  "max": 50,
+  "frames": 1116,
+  "p50": 16.700000000000728,
+  "p95": 33.29999999999927,
+  "max": 33.400000000001455,
   "gapsOver50": 0,
   "longTasks": 0,
   "longestTask": 0,
-  "onStage": 132,
-  "peakOnStage": 149,
+  "onStage": 147,
+  "peakOnStage": 156,
+  "drawn": 1117,
   "renderer": "webgl",
   "cost": {
-    "p50": 0.5,
-    "p95": 0.699999988079071
-  }
+    "p50": 0.40000003576278687,
+    "p95": 0.6000000238418579
+  },
+  "workerFrameP95": null,
+  "baseline": {
+    "windowS": 6,
+    "frames": 360,
+    "p50": 16.699999999999818,
+    "p95": 16.800000000000182,
+    "max": 16.800000000000182,
+    "gapsOver50": 0,
+    "longTasks": 0,
+    "longestTask": 0,
+    "onStage": 0,
+    "peakOnStage": 0
+  },
+  "rafP95OverBaseline": 0.9821428571427924
 }

@@ -1,0 +1,445 @@
+{
+  "scenario": {
+    "id": "long-vod",
+    "src": "bench/ladder/master.m3u8",
+    "playS": 30
+  },
+  "link": {
+    "id": "unlimited",
+    "kbps": 0
+  },
+  "danmakuPerMinute": 5000,
+  "summary": {
+    "otter": {
+      "runs": 10,
+      "ttffMs": {
+        "median": 81,
+        "p90": 87.68,
+        "min": 77.5,
+        "max": 115.39999997615814
+      },
+      "rebuffers": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rebufferMs": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "runsWithRebuffer": 0,
+      "switches": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "startHeights": [
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720
+      ],
+      "endHeights": [
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720
+      ],
+      "fallbacks": 0,
+      "fatal": [],
+      "danmakuRenderers": [
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl"
+      ],
+      "danmakuFramesMin": 1816,
+      "raw": [
+        {
+          "ttff": 115.39999997615814,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1819,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 77.5,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1817,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 80.19999998807907,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1821,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 84.59999996423721,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1817,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 80.5,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1819,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 80.5,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1816,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 84.29999995231628,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1819,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 79.90000003576279,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1818,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 84.20000004768372,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1819,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 81.5,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1819,
+            "renderer": "webgl"
+          }
+        }
+      ]
+    },
+    "hlsjs": {
+      "runs": 10,
+      "ttffMs": {
+        "median": 293.05,
+        "p90": 298.33,
+        "min": 132.19999998807907,
+        "max": 304
+      },
+      "rebuffers": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "rebufferMs": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "runsWithRebuffer": 0,
+      "switches": {
+        "median": 0,
+        "p90": 0,
+        "min": 0,
+        "max": 0
+      },
+      "startHeights": [
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720
+      ],
+      "endHeights": [
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720,
+        720
+      ],
+      "fallbacks": 0,
+      "fatal": [],
+      "danmakuRenderers": [
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl",
+        "webgl"
+      ],
+      "danmakuFramesMin": 1819,
+      "raw": [
+        {
+          "ttff": 304,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1823,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 196.70000004768372,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1826,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 132.19999998807907,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1829,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 291.19999998807907,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1820,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 294.89999997615814,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1820,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 291.2000000476837,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1821,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 294.89999997615814,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1820,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 297.69999998807907,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1821,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 289.39999997615814,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1823,
+            "renderer": "webgl"
+          }
+        },
+        {
+          "ttff": 296.2999999523163,
+          "rebuffers": 0,
+          "rebufferMs": 0,
+          "switches": 0,
+          "endHeight": 720,
+          "fallback": false,
+          "fatal": [],
+          "startHeight": 720,
+          "danmaku": {
+            "frames": 1819,
+            "renderer": "webgl"
+          }
+        }
+      ]
+    }
+  },
+  "machine": {
+    "cores": 8,
+    "loadAvgAtStart": [
+      0.37,
+      0.9,
+      1.03
+    ],
+    "loadAvgAtEnd": [
+      3.51,
+      2.96,
+      2.13
+    ]
+  }
+}
