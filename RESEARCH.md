@@ -91,7 +91,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - 有界面的 Edge（Playwright 有界面）：没有用户手势时新建的 AudioContext 保持 suspended，按自动播放策略不启动；无头 Chrome 放宽了这条，所以 CI 看不到。依赖 AudioContext 起播的路径在真机上要有手势，或者有不靠 AudioContext 的退路。
 - 真 Edge（这台 Server 2022，USB 声卡 + VB-Cable）：AudioContext 空闲挂起 6 s 后经 `resume()` 恢复，8 次里有 1 次在恢复后约 1.1 s 内 `currentTime` 只前进 0.06 s（state 已是 running），像是输出设备重新打开的延迟。
 - 这台 Windows Server 关了系统动画，所以 `prefers-reduced-motion: reduce`。Edge 经 CDP 的模拟能改回 no-preference；Firefox 经 WebDriver BiDi 改不了（已知限制），页面看到的就是 reduce。
-- Playwright 1.64 经 WebDriver BiDi 驱动正式版 Firefox，又发现两处限制（之前已知 dblclick、reducedMotion 两处）：`page.keyboard.press('MediaPlayPause')` 报 Unknown key；进入全屏后 `page.screenshot()` 只截原来视口大小（1280×720）的左上一块，而全屏页面是 1920×1080。
+- Playwright 1.64 经 WebDriver BiDi 驱动正式版 Firefox，又发现两处限制（之前已知 dblclick、reducedMotion 两处；处理：real-windows-firefox 上 tv 用例改按 Space、Hero 的减少动态效果那步 skip、全屏截图改截全屏元素）：`page.keyboard.press('MediaPlayPause')` 报 Unknown key；进入全屏后 `page.screenshot()` 只截原来视口大小（1280×720）的左上一块，而全屏页面是 1920×1080。
 - 真实 Firefox 159（RTX 3080，有 WebGL2，Worker 里也有）：弹幕把舞台画布 `transferControlToOffscreen` 交给 Worker、用 WebGL 画时，5000 条/分钟下页面的 rAF 掉到约 10 s 一次（三次都这样），`page.evaluate` 也可能超时；同一页面用 Canvas 2D 或主线程 WebGL 都正常。无头 Firefox 没有 WebGL，所以以前测不到（M6 测试收口轮，待定位）。
 - 有 Worker 画布（OffscreenCanvas）的页面，真 Edge 上整页的 rAF 基线就变差：同一页面还没有弹幕时 p95 18–26 ms，普通页面是 17 ms。
 - 真 GPU（RTX 3080）上的主线程 WebGL 弹幕，5000 条/分钟时 rAF p95 18 ms，与基线持平：无头 Chrome 上的 33 ms 是 SwiftShader 所致。

@@ -122,7 +122,9 @@ test('tv preset: the remote moves focus between controls, OK activates, Back lea
   const before = (await state(page)).currentTime;
   await page.keyboard.press('ArrowRight');
   await expect.poll(async () => (await state(page)).currentTime).toBeGreaterThan(before + 1);
-  await page.keyboard.press('MediaPlayPause');
+  // Media keys: Playwright's WebDriver BiDi (real-windows-firefox) does not know MediaPlayPause
+  // (RESEARCH §1); there the pause goes through Space, the remote's OK on the picture.
+  await page.keyboard.press(test.info().project.name === 'real-windows-firefox' ? 'Space' : 'MediaPlayPause');
   await expect.poll(async () => (await state(page)).paused).toBe(true);
   // OK on the focused play button plays again.
   await page.keyboard.press('ArrowDown');
@@ -133,6 +135,9 @@ test('tv preset: the remote moves focus between controls, OK activates, Back lea
 });
 
 test('background preset (Hero): muted inline loop without UI, playing; reduced motion leaves it still', async ({ page }) => {
+  // That Windows machine has system animations off (prefers-reduced-motion: reduce) and BiDi cannot
+  // emulate it away: the preset rightly stays still (RESEARCH §1, M6 test round F7).
+  test.skip(test.info().project.name === 'real-windows-firefox', 'no reducedMotion emulation through WebDriver BiDi');
   await page.goto('/presets.html?preset=background&src=/frames/h264-video-only.mp4');
   const video = page.locator('#hero video');
   await expect(video).toHaveAttribute('aria-hidden', 'true');

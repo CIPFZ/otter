@@ -110,8 +110,9 @@ test('fullscreen: the mark is inside the fullscreen player and on screen', async
   const b = await box(page);
   expect(b.x).toBeGreaterThan(0.5);
   expect(b.r).toBeLessThanOrEqual(1);
-  // The page, not an element: the fullscreen element is on top of everything.
-  expect(await greenIn(page)).toBeGreaterThan(100);
+  // The fullscreen element itself: a page screenshot through WebDriver BiDi keeps the old viewport
+  // size (real-windows-firefox: 1280 x 720 of a 1920 x 1080 page, the mark outside it; F6).
+  expect(await greenIn(page, '#player')).toBeGreaterThan(100);
   ciNotice(`watermark modes: fullscreen entered (${kind})`);
 });
 

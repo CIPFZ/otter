@@ -110,6 +110,13 @@ function createSignal() {
 }
 
 const VISIBILITY_EVENTS = ['visibilitychange', 'enterpictureinpicture', 'leavepictureinpicture'] as const;
+/** Events that grant user activation: the first one lets an AudioContext start. */
+const GESTURES = ['pointerdown', 'keydown', 'touchend', 'click'] as const;
+/**
+ * Whether the page has had a user gesture (sticky activation). Without one the autoplay policy
+ * keeps any AudioContext suspended (real Edge, M6 test round F1). Browsers without the API: assumed.
+ */
+const activated = (): boolean => (globalThis.navigator as { userActivation?: { hasBeenActive: boolean } } | undefined)?.userActivation?.hasBeenActive ?? true;
 
 const schedule = (cb: () => void): (() => void) => {
   // A hidden page gets no animation frames; a timer keeps a picture shown elsewhere (PiP) going.
@@ -170,6 +177,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   let clock: MediaClock | undefined;
   let sink: AudioSink | undefined;
   let audio: DecoderInstance | undefined;
+  /** Removes the first-gesture listeners (no gesture yet at load). */
+  let offGesture: (() => void) | undefined;
   let volume = 1;
   let muted = false;
   let rate = 1;
@@ -830,13 +839,17 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
           levels = [v];
         }
       }
-      if (a !== null) {
+      // No user gesture yet (a page nobody touched: a wall, autoplay): start muted, no AudioContext,
+      // the clock on performance.now() by design (nothing to report); the first gesture creates
+      // the context inside it and the clock moves to it (owner 2026-10-28, F1).
+      const gated = !activated();
+      const setupAudio = async (c: AudioContext | undefined): Promise<void> => {
+        if (a === null) return;
         const decoder = pickDecoder('audio');
         const support = decoder === undefined ? false : await decoder.supports(a.codec, ctx.caps);
-        audioCtx = acquireAudioContext();
-        if (decoder !== undefined && support !== false && audioCtx !== undefined) {
+        if (decoder !== undefined && support !== false && c !== undefined) {
           try {
-            sink = await createAudioSink(audioCtx);
+            sink = await createAudioSink(c);
             sink.setVolume(volume, muted);
             audio = decoder.create({ ...a.setup, output: onAudioData, error: fail });
           } catch (err) {
@@ -847,13 +860,47 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
           // Play the picture without sound rather than fall back.
           bus.emit('error', createError({ type: 'media', details: 'audioUnsupported', fatal: false, recoverable: false, message: `no decoder for audio ${a.codec}` }));
         }
+      };
+      if (gated) {
+        muted = true;
+        update({ muted: true });
+      } else {
+        if (a !== null) audioCtx = acquireAudioContext();
+        await setupAudio(audioCtx);
+        audioCtx ??= acquireAudioContext();
       }
-      audioCtx ??= acquireAudioContext();
-      clock = createClock(audioCtx);
+      const c = createClock(audioCtx, { deferred: gated });
+      clock = c;
       clock.setRate(rate);
-      if (sink !== undefined) {
+      const anchorSink = (): void => {
         const s = sink;
-        clock.onAnchor((anchor) => s.setAnchor(anchor));
+        if (s !== undefined) c.onAnchor((anchor) => s.setAnchor(anchor));
+      };
+      anchorSink();
+      if (gated && typeof document === 'object') {
+        const onGesture = (): void => {
+          offGesture?.();
+          offGesture = undefined;
+          if (destroyed) return;
+          const next = acquireAudioContext();
+          if (next === undefined) return;
+          audioCtx = next;
+          c.attach(next);
+          setPlaying(next, owner, c.playing);
+          void setupAudio(next).then(() => {
+            if (destroyed || audio === undefined || demuxer === undefined) return;
+            anchorSink();
+            // Sound from where the clock is (packets before the gesture were not decoded).
+            const d = demuxer;
+            const g = gen;
+            audioEos = false;
+            void d.seek('audio', c.now()).then((st) => (g === gen ? pumpAudio(st, g) : undefined), (e: unknown) => fail(fatal('mux', 'demuxFailed', String(e), e)));
+          });
+        };
+        for (const t of GESTURES) document.addEventListener(t, onGesture, { capture: true });
+        offGesture = () => {
+          for (const t of GESTURES) document.removeEventListener(t, onGesture, { capture: true });
+        };
       }
       if (destroyed) return;
 
@@ -960,6 +1007,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       audio?.close();
       sink?.destroy();
       clock?.destroy();
+      offGesture?.();
       releaseAudioContext(audioCtx, owner);
       demuxer?.destroy();
       sinkOut.clear();

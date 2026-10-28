@@ -41,7 +41,9 @@ const state = (page: Page) =>
     return { t: s.currentTime, paused: s.paused, mode: s.presentation?.mode, backend: s.backend };
   });
 
-test('background on WebCodecs: nothing decoded or drawn while hidden, the clock runs on, the picture catches up on return', async ({ page }) => {
+// @solo: the catch-up time is a timing check (thresholds 1.5 s here, 3 s on CI); sharing the CPU
+// with the parallel suite on a 4-core machine makes it 1.5-1.9 s (2026-10-28), so it runs alone.
+test('background on WebCodecs: nothing decoded or drawn while hidden, the clock runs on, the picture catches up on return @solo', async ({ page }) => {
   test.setTimeout(60_000);
   await page.addInitScript(() => {
     Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get: () => ((window as { __otterHidden?: boolean }).__otterHidden === true ? 'hidden' : 'visible') });
@@ -83,6 +85,9 @@ test('background on WebCodecs: nothing decoded or drawn while hidden, the clock 
     appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: background catch-up ${caughtUpMs === null ? 'none within 15 s' : `${caughtUpMs} ms`} (retry ${test.info().retry})\n`);
     writeFileSync(`test-results/background/catch-up-${test.info().project.name}-r${test.info().retry}.json`, JSON.stringify({ project: test.info().project.name, retry: test.info().retry, caughtUpMs, hiddenS: t1 - t0, at: new Date().toISOString(), sha: process.env['GITHUB_SHA'] ?? null }));
   }
+  // Catch-up threshold (owner 2026-10-28, from 25 local runs: p90 0.93 s, max 1.06 s): 1.5 s here,
+  // 3 s on CI's slower runners. The time is the decode from the GOP's keyframe to the clock.
+  expect(caughtUpMs, 'background catch-up').toBeLessThanOrEqual(process.env['CI'] === undefined ? 1500 : 3000);
   expect((await state(page)).mode).not.toBe('background');
   expect((await state(page)).paused).toBe(false);
   // And it is the clock's frame (paused, so the comparison does not race the screenshot).

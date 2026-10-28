@@ -81,3 +81,14 @@ export function decide(current: RendererKind, recent: readonly FrameSample[], si
   }
   return undefined;
 }
+
+/**
+ * Why this browser may not use a renderer at all, before any frame: Firefox's OffscreenCanvas
+ * Worker path stalls the page (real Firefox 159 with a GPU: rAF about once in 10 s at 5000
+ * comments a minute, seeks not drawn; M6 test round F4, a Firefox bug under investigation).
+ * Undefined: allowed.
+ */
+export function rendererBlocked(kind: RendererKind, userAgent: string): string | undefined {
+  if (kind === 'worker' && /\bFirefox\/\d+/.test(userAgent) && !/\bSeamonkey\//i.test(userAgent)) return 'Firefox: an OffscreenCanvas Worker stalls the page (M6 test round F4)';
+  return undefined;
+}

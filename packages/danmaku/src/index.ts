@@ -11,7 +11,7 @@
 import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@otter-player/core';
 import type { Overlay, OverlayHost } from '@otter-player/surface';
 import type { MaskFrame, MaskSource } from './mask.js';
-import { decide, type FrameSample, type RendererKind } from './policy.js';
+import { decide, rendererBlocked, type FrameSample, type RendererKind } from './policy.js';
 import { createCanvasRenderer, font, lineHeight, paintText, type Comment, type DanmakuRenderer } from './renderer.js';
 import {
   blockTest,
@@ -204,6 +204,13 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
   const switchTo = (kind: RendererKind, reason: string): void => {
     if (switching || host === undefined || renderer?.kind === kind) return;
     const doc = host.root.ownerDocument;
+    // Not on this browser at all (a host's fixed choice too): rejected, the reason in the steps.
+    const blocked = rendererBlocked(kind, doc.defaultView?.navigator.userAgent ?? '');
+    if (blocked !== undefined) {
+      unavailable.add(kind);
+      step(kind, 'rejected', blocked);
+      return;
+    }
     if (kind === 'canvas2d') return use(createCanvasRenderer(doc), reason);
     switching = true;
     const fail = (why: string): void => {
@@ -412,7 +419,8 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       samples.push({ onStage: fs.running.length, drawMs: performance.now() - t0, intervalMs: interval });
       if (samples.length > 600) samples.splice(0, samples.length - 600);
       if ((options.renderer ?? 'auto') !== 'auto') return;
-      const available = new Set<RendererKind>((['canvas2d', 'webgl', 'worker'] as const).filter((k) => !unavailable.has(k)));
+      const ua = doc?.defaultView?.navigator.userAgent ?? '';
+      const available = new Set<RendererKind>((['canvas2d', 'webgl', 'worker'] as const).filter((k) => !unavailable.has(k) && rendererBlocked(k, ua) === undefined));
       const d = decide(renderer.kind as RendererKind, samples, performance.now() - switchedAt, available);
       if (d === undefined) return;
       if (d.reject !== undefined) {

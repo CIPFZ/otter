@@ -146,7 +146,8 @@ test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when
   if (first?.candidate === 'worker') {
     if (first.outcome === 'selected') expect(first.reason).toMatch(BUSY);
   } else if (first?.outcome === 'selected') {
-    expect(first.reason).toMatch(/^dense: \d+ comments on stage \(≥ 120\)$/);
+    // Either legitimate reason (ADR-012 §5): the density, or Canvas 2D's own frame cost.
+    expect(first.reason).toMatch(/^(dense: \d+ comments on stage \(≥ 120\)|Canvas 2D frame cost p90 [\d.]+ ms \(≥ 4\))$/);
     // A busy page: 30 ms of someone else's work every 30 ms.
     await page.evaluate(() => {
       setInterval(() => {
@@ -164,6 +165,13 @@ test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when
   const st = (await otter(page)).danmakuStatus;
   expect(st.renderer).toBe(st.steps.filter((x) => x.outcome === 'selected').at(-1)?.candidate);
   ciNotice(`danmaku auto renderer: ${st.steps.map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`).join(' | ')}`);
+});
+
+test('Firefox: the Worker renderer is refused, asked for or not, and the steps say why (M6 test round F4)', async ({ page, browserName }) => {
+  test.skip(browserName !== 'firefox', 'Firefox only');
+  await start(page, '&renderer=worker');
+  await expect.poll(async () => (await otter(page)).danmakuStatus.steps.map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`)).toContainEqual(expect.stringMatching(/^worker rejected: Firefox: an OffscreenCanvas Worker stalls the page/));
+  expect((await otter(page)).danmakuStatus.renderer).toBe('canvas2d');
 });
 
 test('danmaku seek rebuilds the stage at the new time, both ways', async ({ page }) => {

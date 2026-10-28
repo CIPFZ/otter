@@ -157,3 +157,25 @@ describe('renderer policy (ADR-012 §5)', async () => {
     expect(decide('webgl', frames(600, { onStage: 10, drawMs: 0.5, intervalMs: 16.7 }), 20_000, all)).toEqual({ to: 'canvas2d', reason: 'sparse: 10 comments on stage over 600 frames (≤ 40)' });
   });
 });
+
+describe('renderers blocked by browser (M6 test round F4)', async () => {
+  const { rendererBlocked } = await import('../src/policy.js');
+  it('Firefox gets no Worker renderer; other browsers and renderers are allowed', () => {
+    const firefox = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:159.0) Gecko/20100101 Firefox/159.0';
+    const edge = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0';
+    expect(rendererBlocked('worker', firefox)).toMatch(/^Firefox: an OffscreenCanvas Worker stalls the page/);
+    expect(rendererBlocked('webgl', firefox)).toBeUndefined();
+    expect(rendererBlocked('canvas2d', firefox)).toBeUndefined();
+    expect(rendererBlocked('worker', edge)).toBeUndefined();
+  });
+});
+
+describe('renderer policy on a real GPU (F3)', async () => {
+  const { decide } = await import('../src/policy.js');
+  const all = new Set(['canvas2d', 'webgl', 'worker'] as const);
+  const frames = (n: number, f: { onStage: number; drawMs: number; intervalMs: number }) => Array.from({ length: n }, () => f);
+  it('a dense stage at the frame rate stays on main-thread WebGL; the Worker only for a busy main thread', () => {
+    expect(decide('webgl', frames(600, { onStage: 150, drawMs: 1, intervalMs: 17 }), 60_000, all)).toBeUndefined();
+    expect(decide('webgl', frames(60, { onStage: 150, drawMs: 1, intervalMs: 33 }), 60_000, all)?.to).toBe('worker');
+  });
+});

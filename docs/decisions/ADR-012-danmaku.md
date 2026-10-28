@@ -73,11 +73,13 @@ M5 第四批：新包 `@otter-player/danmaku`（按需加载，首屏不变）�
 
 ### 8. 验收口径与体积（2026-10-27，负责人）
 
-- **60 fps**：本机（独占机器，`OTTER_BENCH=1`）rAF 间隔 p95 < 20 ms，且无长任务（不支持 longtask 的浏览器：无 > 50 ms 的间隔）。Worker 自己上屏，页面的 rAF 看不出它掉帧，所以 Worker 自己的帧间隔 p95 也要 < 20 ms。
-- **CI 的 WebKit（macOS 虚拟机）用相对基线**：
+- **60 fps 统一用相对口径**（2026-10-28 负责人，测试收口轮 F3；原来本机用的绝对 20 ms 口径废除）：
   - 同一页面先量 6 s 不加弹幕的基线，再量 20 s 加弹幕的数据。
-  - 达标条件：主线程弹幕耗时 p95 < 4 ms，且 rAF p95 不比基线差 30% 以上（Worker 自己的帧间隔同样）。
-  - 只出通知，不进门禁。真机 Safari / iPhone 留 M7。
+  - 达标条件：主线程弹幕耗时 p95 < 4 ms，且 rAF p95 不比基线差 30% 以上。Worker 自己上屏，页面的 rAF 看不出它掉帧，所以 Worker 自己的帧间隔同样不得比基线差 30% 以上。
+  - 无长任务；不支持 longtask 的浏览器（Firefox）上，> 50 ms 的间隔 ≤ 1 次。
+  - 本机 `OTTER_BENCH=1` 时断言；CI 只出通知。真机 Safari / iPhone 留 M7。
+- **转交 Worker 的画布会拖慢整页的帧节奏**（真 Edge 实测）：页面上有 `transferControlToOffscreen` 的画布时，还没有弹幕，整页 rAF 基线就是 18–26 ms，普通页面是 17 ms。所以在真 GPU 上，自动策略优先主线程 WebGL，只有主线程繁忙（帧间隔 p90 ≥ 25 ms、本引擎耗时 < 4 ms）时才选 Worker（§5，现有规则就是如此，单测覆盖）。
+- **Firefox 上 Worker 渲染器不可用**（F4，真实 Firefox 159 上 Worker 路径让页面卡住）：自动策略不选；宿主手动指定也拒绝，原因「Firefox: an OffscreenCanvas Worker stalls the page」写进 `danmakuStatus.steps`。根因排查单独一停。
 - **蒙版对齐 ±1 帧**按截图判（截图与真实上屏的关系各引擎不同）。录屏或高速相机核对留 M7 待办。
 - **体积**两档，进门禁（`.size-limit.js`，SPEC §1.1）：
   - 基本：主块 + 解析块 ≤ 10 KB。

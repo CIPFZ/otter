@@ -198,10 +198,44 @@ describe('shared AudioContext lifecycle', () => {
     ctx.currentTime = 7.25;
     clock.check();
     expect(clock.source).toBe('audio');
-    // A context that then really stops advancing is still caught.
+    // A context that then really stops advancing is still caught, once the 2 s after the resume
+    // are over (RESUME_SETTLE_S) and it stays frozen 0.5 s more.
+    vi.advanceTimersByTime(600);
+    clock.check();
+    expect(clock.source).toBe('audio');
+    vi.advanceTimersByTime(1500);
+    clock.check();
     vi.advanceTimersByTime(600);
     clock.check();
     expect(clock.unavailable).toBe('AudioContext time frozen for 0.5 s');
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('right after a resume the context time may stand still for a while (output device opening): not frozen within 2 s', async () => {
+    // Real Edge (M6 test round F2): after the idle suspend, resume() landed and the context said
+    // running, but its time moved 0.06 s in the next 1.1 s.
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    clock.start();
+    ctx.currentTime = 6.1;
+    clock.check();
+    clock.stop();
+    ctx.set('suspended');
+    vi.advanceTimersByTime(6000);
+    clock.start();
+    await vi.advanceTimersByTimeAsync(0);
+    for (let t = 0; t < 1150; t += 50) {
+      vi.advanceTimersByTime(50);
+      clock.check();
+    }
+    expect(clock.source).toBe('audio');
+    expect(clock.unavailable).toBeUndefined();
+    // Then it moves: still the context clock.
+    ctx.currentTime = 6.16;
+    vi.advanceTimersByTime(50);
+    clock.check();
+    expect(clock.source).toBe('audio');
     clock.destroy();
     releaseAudioContext(ctx as unknown as AudioContext);
   });

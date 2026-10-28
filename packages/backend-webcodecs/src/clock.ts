@@ -37,7 +37,21 @@ export interface MediaClock {
   onAnchor(h: (a: ClockAnchor) => void): void;
   /** Called when the time source changes (reason for QoE). */
   onSource(h: (source: 'audio' | 'performance', reason: string) => void): void;
+  /**
+   * The context arrives later (created at the page's first user gesture): from now on time follows
+   * it, re-anchored seamlessly. Until then the clock ran on performance.now() by design and
+   * reported nothing (`deferred`).
+   */
+  attach(ctx: AudioContext): void;
   destroy(): void;
+}
+
+export interface ClockOptions {
+  /**
+   * No context yet on purpose (no user gesture: the autoplay policy would hold one suspended):
+   * performance.now() keeps time and `unavailable` stays undefined until attach().
+   */
+  readonly deferred?: boolean;
 }
 
 /** A running context whose currentTime is frozen this long (s) is treated as broken. */
@@ -47,8 +61,15 @@ const STUCK_S = 0.5;
  * succeeds later still takes the clock back.
  */
 export const RESUME_GRACE_MS = 3000;
+/**
+ * After the context (re)starts its time may stand still a while (an output device opening: real
+ * Edge, about 1.1 s once in 8): the frozen-time watchdog only counts from this long (s) after it.
+ */
+export const RESUME_SETTLE_S = 2;
 
-export function createClock(ctx: AudioContext | undefined): MediaClock {
+export function createClock(initial: AudioContext | undefined, options: ClockOptions = {}): MediaClock {
+  let ctx = initial;
+  let deferred = options.deferred === true && initial === undefined;
   let stuck = false;
   const usable = (): boolean => ctx !== undefined && ctx.state === 'running' && !stuck;
   let source: 'audio' | 'performance' = usable() ? 'audio' : 'performance';
@@ -62,6 +83,8 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
   // Watchdog for a running context that does not advance.
   let lastCtx = -1;
   let lastPerf = 0;
+  /** performance.now() (s) until which the context is settling after a (re)start. */
+  let settleUntil = 0;
   /** The pending resume (within its grace), and why the context clock is out once settled. */
   let resuming = false;
   let failure: string | undefined;
@@ -87,7 +110,10 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
   };
   const switchTo = (next: 'audio' | 'performance', reason: string): void => {
     if (next === source) return;
-    if (next === 'audio') rebaseWatchdog();
+    if (next === 'audio') {
+      rebaseWatchdog();
+      settleUntil = performance.now() / 1000 + RESUME_SETTLE_S;
+    }
     media = now();
     source = next;
     base = host();
@@ -105,7 +131,7 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
       return source;
     },
     get unavailable() {
-      if (source === 'audio' || resuming) return undefined;
+      if (source === 'audio' || resuming || deferred) return undefined;
       return failure ?? (ctx === undefined ? 'no AudioContext' : `AudioContext ${ctx.state}`);
     },
     get playing() {
@@ -168,7 +194,7 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
       if (source !== 'audio' || ctx === undefined) return;
       const c = ctx.currentTime;
       const p = performance.now() / 1000;
-      if (c !== lastCtx) {
+      if (c !== lastCtx || p < settleUntil) {
         lastCtx = c;
         lastPerf = p;
         return;
@@ -185,6 +211,15 @@ export function createClock(ctx: AudioContext | undefined): MediaClock {
     },
     onSource(h) {
       sourceListener = h;
+    },
+    attach(next) {
+      if (ctx !== undefined) return;
+      ctx = next;
+      deferred = false;
+      ctx.addEventListener('statechange', onState);
+      onState();
+      // Playing: the context should run now (attach comes from inside the gesture).
+      if (playing && ctx.state === 'suspended') void ctx.resume().then(onState, () => undefined);
     },
     destroy() {
       ctx?.removeEventListener('statechange', onState);

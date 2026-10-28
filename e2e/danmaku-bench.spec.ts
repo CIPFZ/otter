@@ -3,11 +3,12 @@
 // (PerformanceObserver 'longtask' where the browser has it; elsewhere gaps > 50 ms).
 // Each case first measures a baseline on the same page (video playing, no comments, 6 s), then
 // the comments (20 s), so a machine's own pacing is not counted as the engine's.
-// - Local (OTTER_BENCH=1, a machine of its own, --workers=1): asserted, rAF p95 < 20 ms and no
-//   long tasks; writes docs/reports/m5/bench-danmaku-<renderer>-<project>.json.
-// - CI (one worker: Chrome in the bench step, WebKit in its own step): a notice only, with the
-//   relative criterion accepted for CI's WebKit VM (ADR-012 §5): main-thread danmaku cost p95 < 4
-//   ms and rAF p95 at most 30 % above the baseline. Real devices: M7.
+// - Local (OTTER_BENCH=1, a machine of its own, --workers=1): asserted with the relative criterion
+//   below (since 2026-10-28 for every machine, F3) and no long tasks (Firefox: at most one gap
+//   over 50 ms); writes docs/reports/m5/bench-danmaku-<renderer>-<project>.json.
+// - CI (one worker: Chrome in the bench step, WebKit in its own step): a notice only.
+// Relative criterion (ADR-012 §8): main-thread danmaku cost p95 < 4 ms, rAF p95 (and the Worker's own
+// frame interval) at most 30 % above the same page's baseline.
 // @bench: never in the parallel suite.
 
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -39,7 +40,7 @@ interface Pacing {
 }
 
 for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
-  test(`danmaku ${PER_MINUTE}/min on ${renderer}: rAF p95 < 20 ms, no long tasks @bench`, async ({ page }) => {
+  test(`danmaku ${PER_MINUTE}/min on ${renderer}: rAF p95 within 30 % of the baseline, main thread < 4 ms, no long tasks @bench`, async ({ page }) => {
     test.skip(test.info().project.name.startsWith('emulated'), 'desktop browsers (phones: M7 real devices)');
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1400, height: 900 });
@@ -141,9 +142,10 @@ for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
     );
     expect(after.renderer).toBe(renderer);
     if (!bench) return;
-    expect(r.p95).toBeLessThan(20);
-    if (own !== null) expect(own).toBeLessThan(20);
+    // The relative criterion everywhere (owner 2026-10-28, F3; ADR-012 §8): the absolute 20 ms is
+    // gone. No long tasks; without the longtask API (Firefox) at most one gap over 50 ms.
+    expect(relative, `cost p95 ${after.cost.p95} ms, rAF p95 ${pct} over the baseline, Worker ${own ?? '-'} ms`).toBe(true);
     if (r.longTasks !== null) expect(r.longTasks).toBe(0);
-    else expect(r.gapsOver50).toBe(0);
+    else expect(r.gapsOver50).toBeLessThanOrEqual(1);
   });
 }

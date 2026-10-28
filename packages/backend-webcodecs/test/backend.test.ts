@@ -200,6 +200,52 @@ describe('backend-webcodecs', () => {
     }
   });
 
+  it('without a user gesture: muted, no AudioContext, the wall clock and no audioClockUnavailable; the first gesture brings the context clock', async () => {
+    // A page nobody touched (a surveillance wall, autoplay): the autoplay policy would keep any
+    // AudioContext suspended (real Edge, M6 test round F1).
+    const created: unknown[] = [];
+    class Gated extends EventTarget {
+      state = 'suspended';
+      currentTime = 0;
+      constructor() {
+        super();
+        created.push(this);
+      }
+      resume = () => {
+        if (!activation.hasBeenActive) return new Promise<void>(() => undefined);
+        this.state = 'running';
+        this.dispatchEvent(new Event('statechange'));
+        return Promise.resolve();
+      };
+      suspend = () => Promise.resolve();
+      close = () => Promise.resolve();
+    }
+    const activation = { hasBeenActive: false };
+    vi.stubGlobal('AudioContext', Gated);
+    Object.defineProperty(navigator, 'userActivation', { value: activation, configurable: true });
+    try {
+      const { backend, state, errors } = setup();
+      await backend.load({ src: new Blob() }, { startTime: 2 });
+      await backend.play();
+      await new Promise((r) => setTimeout(r, 3600));
+      expect(created).toHaveLength(0);
+      expect(errors).not.toContain('audioClockUnavailable');
+      expect(state['muted']).toBe(true);
+      expect(state['currentTime'] as number).toBeGreaterThan(5);
+      // The first gesture: the context is created (inside it) and the clock moves to it.
+      activation.hasBeenActive = true;
+      document.dispatchEvent(new Event('pointerdown'));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(created).toHaveLength(1);
+      expect((created[0] as Gated).state).toBe('running');
+      expect(errors).not.toContain('audioClockUnavailable');
+      backend.destroy();
+    } finally {
+      vi.unstubAllGlobals();
+      delete (navigator as { userActivation?: unknown }).userActivation;
+    }
+  });
+
   it('runtime fallback: a decode error while playing moves to the WASM decoder, from the keyframe before', async () => {
     const wasm = makeDecoder('wasm-hevc');
     const { backend, drawn, details, errors, state } = setup([makeDecoder('webcodecs', { failAfter: 40 }), wasm]);
