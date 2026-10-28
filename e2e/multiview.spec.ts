@@ -86,6 +86,8 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   await open(page, 16, src);
   const w = wall(page);
   const kind = await w.eval((x) => x.kind);
+  // Before any input the WebCodecs backend makes no AudioContext (M6 test round F1).
+  const activated = await page.evaluate(() => (navigator as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? 'unknown');
   // Whole-browser CPU (all processes: browser, renderer, GPU, utility), from Chromium's
   // SystemInfo.getProcessInfo: the per-stream cost with hardware decoding, where the pool's
   // busy time does not apply.
@@ -127,6 +129,7 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       droppedByClock: t.dropped - b.dropped,
       replacedOnCanvas: t.replaced - b.replaced,
       errors: t.errors.filter((e) => e !== 'codecUnsupported'),
+      messages: t.messages.filter((e) => !e.startsWith('codecUnsupported')),
     };
   });
   const report = { project: info.project.name, src: src ?? '/frames/hevc-720p.mp4', cores, kind, hevcHardware, browserCpu, perStreamCpu, mainThread: main, wallMs: Math.round(wallMs), workers: after.pool.workers, streams: rows };
@@ -137,7 +140,7 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   ciNotice(`multiview 16 x 720p ${src === undefined ? 'HEVC' : src} (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core (decoder pool), whole browser ${perStreamCpu}% of a core per stream (${JSON.stringify(browserCpu)}), hardware HEVC ${hevcHardware}, worst lost frames ${worst.lost}, slowest ${worst.slow} s played`);
 
   for (const r of rows) {
-    expect(r.errors, r.tile).toEqual([]);
+    expect(r.errors, `${r.tile}: ${r.messages.join(' | ')}; user activation ${activated}`).toEqual([]);
     // Real time: each stream played (nearly) all 10 s.
     expect(r.advancedS, r.tile).toBeGreaterThan(9);
     // Frames lost (skipped by the clock or never drawn): at most 5% of 300.

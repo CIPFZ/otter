@@ -86,6 +86,8 @@ export interface WallTile {
   readonly loops: number;
   readonly route: RouteExplanation | null;
   readonly errors: string[];
+  /** The same errors as `details: message`, for a failure's diagnostics. */
+  readonly messages: string[];
 }
 
 export interface WallFixture {
@@ -490,7 +492,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
     () => wall.focused?.surface ?? wall.tiles[0]?.surface,
   );
   const blob = await (await fetch(src)).blob();
-  type TileCore = { core: ReturnType<typeof createCore<MediaState & QoeState, MediaActionMap>>; tile: ReturnType<typeof wall.add>; errors: string[]; dropped: number; decoded: number; loops: number };
+  type TileCore = { core: ReturnType<typeof createCore<MediaState & QoeState, MediaActionMap>>; tile: ReturnType<typeof wall.add>; errors: string[]; messages: string[]; dropped: number; decoded: number; loops: number };
   const tiles: TileCore[] = [];
   const refused: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -511,7 +513,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
     });
     const core = createCore<MediaState & QoeState, MediaActionMap>({ slices: [MEDIA_SLICE, QOE_SLICE], plugins: [media, createQoePlugin()] });
     await core.start();
-    const t: TileCore = { core, tile, errors: [], dropped: 0, decoded: 0, loops: 0 };
+    const t: TileCore = { core, tile, errors: [], messages: [], dropped: 0, decoded: 0, loops: 0 };
     // The clip loops: at its end, back to the start.
     core.store.select(
       (s) => s.ended,
@@ -522,7 +524,11 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
         core.store.dispatch('play', undefined);
       },
     );
-    core.qoe.on('error', (p) => t.errors.push((p as { error: { details: string } }).error.details));
+    core.qoe.on('error', (p) => {
+      const e = (p as { error: { details: string; message?: string } }).error;
+      t.errors.push(e.details);
+      t.messages.push(`${e.details}: ${e.message ?? ''}`);
+    });
     core.qoe.on('dropped-frames', (p) => {
       t.dropped = (p as { dropped: number }).dropped;
       t.decoded = (p as { total: number }).total;
@@ -552,7 +558,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
       tiles.map((t) => {
         const s = t.core.store.getState();
         const replaced = (t.tile.surface as { framesReplaced?: number }).framesReplaced ?? 0;
-        return { label: t.tile.label, status: s.status, backend: s.backend, currentTime: s.currentTime, paused: s.paused, muted: s.muted, dropped: t.dropped, decoded: t.decoded, replaced, loops: t.loops, route: s.route, errors: t.errors };
+        return { label: t.tile.label, status: s.status, backend: s.backend, currentTime: s.currentTime, paused: s.paused, muted: s.muted, dropped: t.dropped, decoded: t.decoded, replaced, loops: t.loops, route: s.route, errors: t.errors, messages: t.messages };
       }),
     focus: (i) => wall.focus((tiles[i] as TileCore).tile),
     expand: (i) => wall.expand(i < 0 ? undefined : (tiles[i] as TileCore).tile),
