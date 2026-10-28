@@ -86,6 +86,15 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - CI 的 iPhone 仿真（WebKit）上，`e2e/picture.spec.ts` 偶发读不到帧号块：取到的行里一个亮像素都没有，15 s 里重发 seek 也没变，重试则通过。桌面 WebKit 上同类的「暂停 seek 后画面停在关键帧」重发 seek 就能解决，这个不行，原因未明。处理：标 flaky，靠重试；M7 在真 iPhone 上再定（2026-10-27 负责人）。
 - 无头 Chrome（SwiftShader）的主线程 WebGL：往一张上一帧还在采样的大纹理（4096² 图集）里 `texSubImage2D`，约 150 个精灵在屏、每帧约 1.4 次上传时，每隔几帧就有一帧赶不上（rAF p95 33 ms）。主线程本帧只用 0.7 ms，时间不在 JS 里。去掉上传或只画一个精灵就恢复 16.7 ms。分页图集（2048 × 512）和 `desynchronized` 上下文都没有稳定改善（8 次里 2 次 16.8 ms）。同一套 GL 代码放进 Worker 后，Worker 自己的帧间隔 p95 约 18 ms，主线程 rAF 16.7 ms。
 - OffscreenCanvas 在 Worker 里自己上屏：页面的 rAF 间隔看不出 Worker 掉帧（Worker 忙时会跳帧，主线程照常 60 fps）。Worker 渲染的流畅度要用 Worker 自己的帧间隔来量。
+- Windows Server 2022（Datacenter 20348）默认没有 HEVC 扩展：Edge 153 的 `VideoDecoder.isConfigSupported(hvc1, prefer-hardware)` 与 no-preference 都是 false，MSE `isTypeSupported(hvc1)` 与 `decodingInfo` 也是 false，即使显卡（RTX 3080）能解。同一台机器上 H.264、AV1 的 WebCodecs 硬解都是 true。
+- 同一台机器上的 Firefox 159：MSE `isTypeSupported(hvc1)` 与 `decodingInfo`（media-source）都说 HEVC 支持，而且流畅、省电；WebCodecs `isConfigSupported(hvc1)` 却是 false。MSE 那一侧的说法要以真正出画面为准（编码族剔除就是为此）。另外 Firefox 的 WebGL 渲染器名是泛化过的（实际是 RTX 3080，报「GTX 980 or similar」），不能用来判断真实 GPU。
+- 有界面的 Edge（Playwright 有界面）：没有用户手势时新建的 AudioContext 保持 suspended，按自动播放策略不启动；无头 Chrome 放宽了这条，所以 CI 看不到。依赖 AudioContext 起播的路径在真机上要有手势，或者有不靠 AudioContext 的退路。
+- 真 Edge（这台 Server 2022，USB 声卡 + VB-Cable）：AudioContext 空闲挂起 6 s 后经 `resume()` 恢复，8 次里有 1 次在恢复后约 1.1 s 内 `currentTime` 只前进 0.06 s（state 已是 running），像是输出设备重新打开的延迟。
+- 这台 Windows Server 关了系统动画，所以 `prefers-reduced-motion: reduce`。Edge 经 CDP 的模拟能改回 no-preference；Firefox 经 WebDriver BiDi 改不了（已知限制），页面看到的就是 reduce。
+- Playwright 1.64 经 WebDriver BiDi 驱动正式版 Firefox，又发现两处限制（之前已知 dblclick、reducedMotion 两处）：`page.keyboard.press('MediaPlayPause')` 报 Unknown key；进入全屏后 `page.screenshot()` 只截原来视口大小（1280×720）的左上一块，而全屏页面是 1920×1080。
+- 真实 Firefox 159（RTX 3080，有 WebGL2，Worker 里也有）：弹幕把舞台画布 `transferControlToOffscreen` 交给 Worker、用 WebGL 画时，5000 条/分钟下页面的 rAF 掉到约 10 s 一次（三次都这样），`page.evaluate` 也可能超时；同一页面用 Canvas 2D 或主线程 WebGL 都正常。无头 Firefox 没有 WebGL，所以以前测不到（M6 测试收口轮，待定位）。
+- 有 Worker 画布（OffscreenCanvas）的页面，真 Edge 上整页的 rAF 基线就变差：同一页面还没有弹幕时 p95 18–26 ms，普通页面是 17 ms。
+- 真 GPU（RTX 3080）上的主线程 WebGL 弹幕，5000 条/分钟时 rAF p95 18 ms，与基线持平：无头 Chrome 上的 33 ms 是 SwiftShader 所致。
 - 逐帧对齐（蒙版与画面 ≤ 1 帧）在无头浏览器里与并行的其他用例共享软件合成器时测不准：帧会迟到一两帧，误差来自机器而非代码。这类用例单独一步、一个 worker 跑（`@solo`）。
 
 ## 2. 格式 / 协议 / 编码全景
