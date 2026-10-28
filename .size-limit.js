@@ -53,8 +53,9 @@ const ENGINES = Object.keys(ENGINE_FILES);
  * id, SPEC §19 row, own-code limit, engines loaded by the scenario's default first playback,
  * and the milestone the limit becomes blocking. Since M6 (ADR-013) each row measures its preset as
  * a host imports it, with the default skin: long-vod = `vod`, live = `live` and `lowlatency`,
- * danmaku = `danmaku`, tv = `tv` (default skin until ui-skin-tv), Hero = `background` (gated at 5 KB).
- * The short-VOD row keeps its M5 composition for now (see docs/reports/M6.md, batch 2 second stop).
+ * danmaku = `danmaku`, tv = `tv` (default skin until ui-skin-tv), Hero = `background` (gated at 5 KB),
+ * short-vod = `basic` with the minimal skin (its own assembly, not createPlayer; still ≤ 30 KB).
+ * Captions and preview pictures are on-demand chunks of the presets, outside these rows.
  */
 const SCENARIOS = [
   ['short-vod', '短视频 / 简单点播', '30 KB', []],

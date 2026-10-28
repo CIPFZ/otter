@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/presets",
   "version": "0.0.0",
-  "description": "Scenario presets (vod, live, lowlatency, ott-drm, surveillance, danmaku, shorts, tv, background).",
+  "description": "Scenario presets (basic, vod, live, lowlatency, ott-drm, surveillance, danmaku, shorts, tv, background).",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -10,6 +10,11 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./basic": {
+      "@otter-player/source": "./src/basic.ts",
+      "types": "./dist/basic.d.ts",
+      "default": "./dist/basic.js"
     },
     "./vod": {
       "@otter-player/source": "./src/vod.ts",
@@ -70,6 +75,7 @@
   },
   "otter": {
     "entries": {
+      "basic": "src/basic.ts",
       "vod": "src/vod.ts",
       "live": "src/live.ts",
       "background": "src/background.ts",

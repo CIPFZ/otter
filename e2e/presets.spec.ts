@@ -18,6 +18,42 @@ function scripts(page: Page): string[] {
   return seen;
 }
 
+test('basic preset: five controls only, HLS on the own engine and MP4 by range requests, mute and fullscreen work', async ({ page }) => {
+  const loaded = scripts(page);
+  await page.goto('/presets.html?preset=basic&src=/hls-fmp4/master.m3u8');
+  // The shell: play / pause, mute, time, progress, fullscreen; nothing else.
+  const tags = await page.locator('#player [data-otter-controls] *').evaluateAll((els) => els.map((e) => e.localName).filter((n) => n.startsWith('otter-')));
+  expect(tags.sort()).toEqual(['otter-fullscreen-button', 'otter-mute-button', 'otter-play-button', 'otter-time-display', 'otter-time-slider']);
+  await expect(page.locator('#player [data-otter-top], #player otter-settings-menu, #player otter-captions-button')).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.5);
+  let s = await state(page);
+  expect(s).toMatchObject({ format: 'hls', backend: 'mse', muted: true });
+  expect(loaded.some((u) => HLSJS.test(u))).toBe(false);
+  expect((s as { textTracks?: unknown }).textTracks).toBeUndefined();
+  // Mute button: sound on.
+  await page.locator('otter-mute-button').getByRole('button').click();
+  await expect.poll(async () => (await state(page)).muted).toBe(false);
+  // Fullscreen of the player root, and back (where the page may enter it).
+  const canFullscreen = await page.evaluate(() => document.fullscreenEnabled === true);
+  if (canFullscreen) {
+    await page.locator('otter-fullscreen-button').getByRole('button').click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.id ?? null)).toBe('player');
+    await expect.poll(async () => (await state(page) as unknown as { presentation: { mode: string } }).presentation.mode).toBe('fullscreen');
+    await page.locator('otter-fullscreen-button').getByRole('button').click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+    await expect.poll(async () => (await state(page) as unknown as { presentation: { mode: string } }).presentation.mode).toBe('inline');
+  }
+  // Progressive MP4 through mp4-range.
+  await page.evaluate(() => (window.preset as Player).load('/frames/h264.mp4', { autoplay: true }));
+  await expect.poll(async () => (await state(page)).format, { timeout: 15_000 }).toBe('mp4-range');
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.5);
+  s = await state(page);
+  expect(s.error).toBeNull();
+  // explain(): the route.
+  expect((await explain(page)).route?.format).toBe('mp4-range');
+  test.skip(!canFullscreen, 'fullscreen not available here: everything else checked');
+});
+
 test('vod preset: builds the shell, plays HLS on the own engine, controls drive it, captions offered, explain()', async ({ page }) => {
   const loaded = scripts(page);
   await page.goto('/presets.html?preset=vod&src=/hls-fmp4/master.m3u8');
@@ -33,6 +69,8 @@ test('vod preset: builds the shell, plays HLS on the own engine, controls drive 
   expect((s.route?.steps ?? []).map((x) => x.reason).join('\n')).not.toContain('own engine');
   expect(loaded.some((u) => HLSJS.test(u))).toBe(false);
   expect(s.textTracks.length).toBeGreaterThan(0);
+  // Preview pictures: the on-demand chunk arrived and the provider is in place.
+  await expect.poll(() => page.evaluate(() => window.hasThumbnails?.() === true)).toBe(true);
   // explain(): the route with its steps, presentation, no error.
   const e = await explain(page);
   expect(e.route?.format).toBe('hls');
@@ -44,10 +82,11 @@ test('vod preset: builds the shell, plays HLS on the own engine, controls drive 
   await expect.poll(async () => (await state(page)).paused).toBe(true);
 });
 
-test('vod preset with captions and thumbnails off: plays, no caption tracks or caption state', async ({ page }) => {
+test('vod preset with captions and thumbnails off: plays, no caption tracks or caption state, no preview-picture provider', async ({ page }) => {
   await page.goto('/presets.html?preset=vod&captions=0&thumbs=0&src=/hls-fmp4/master.m3u8');
   await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.5);
   expect((await state(page)).textTracks).toBeUndefined();
+  expect(await page.evaluate(() => window.hasThumbnails?.() === true)).toBe(false);
 });
 
 test('live preset: live HLS near HOLD-BACK, the live indicator shows, back to live works', async ({ page }) => {

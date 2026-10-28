@@ -1,4 +1,73 @@
 /*
  * @otter-player/ui-skin-minimal (SPEC §14.4): CSS only.
- * Minimal skin. Layout lands with ui-core primitives (M2 / M6); theme tokens come from ui-skin-default.
+ * The smallest usable skin, for `presets/basic` (ADR-013 §4: play / pause, mute, time, progress,
+ * fullscreen). A subset of ui-skin-default: the same tokens and shell markup ([data-otter-player],
+ * [data-otter-controls] with [data-otter-group="left"|"right"]), no top bar, menus, centre
+ * controls or presentation modes. A host that adds those switches to ui-skin-default.
  */
+:where([data-otter-player]) {
+  --otter-accent: #1ee9e6;
+  --otter-fg: rgb(255 255 255 / 0.92);
+  --otter-fg-muted: rgb(255 255 255 / 0.64);
+  --otter-track: rgb(255 255 255 / 0.22);
+  --otter-buffered-color: rgb(255 255 255 / 0.45);
+  --otter-hover: rgb(255 255 255 / 0.1);
+  --otter-control-size: 40px;
+  --otter-icon-size: 24px;
+  --otter-bar-height: 56px;
+  --otter-gap: 4px;
+  --otter-progress-height: 3px;
+  --otter-progress-thumb: 13px;
+  --otter-radius-sm: 4px;
+  --otter-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  position: relative;
+  display: block;
+  background: #000;
+  color: var(--otter-fg);
+  font-family: var(--otter-font);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  outline: none;
+}
+:where([data-otter-player]:fullscreen) {
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
+}
+:where([data-otter-player]) > video {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+:where([data-otter-controls]) {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: linear-gradient(to top, rgb(0 0 0 / 0.75), transparent);
+  transition: opacity 150ms ease-out;
+}
+:where([data-otter-controls])[data-idle] {
+  opacity: 0;
+  pointer-events: none;
+}
+:where([data-otter-controls]) > otter-time-slider {
+  flex: 1 0 100%;
+}
+:where([data-otter-group]) {
+  display: flex;
+  align-items: center;
+  gap: var(--otter-gap);
+  min-height: var(--otter-bar-height);
+}
+@media (pointer: coarse) {
+  :where([data-otter-player]) {
+    --otter-control-size: 48px;
+    --otter-icon-size: 26px;
+  }
+}

@@ -26,8 +26,8 @@ describe('plugins', () => {
 });
 
 describe('presets', () => {
-  it('lists the SPEC §3 scenarios', () => {
-    expect(PRESET_IDS).toHaveLength(9);
-    expect(new Set(PRESET_IDS).size).toBe(9);
+  it('lists the SPEC §3 scenarios: basic (the short-VOD row, ADR-013 §4) and the nine of ADR-013', () => {
+    expect(PRESET_IDS).toHaveLength(10);
+    expect(new Set(PRESET_IDS).size).toBe(10);
   });
 });

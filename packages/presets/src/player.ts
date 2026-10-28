@@ -23,7 +23,7 @@ import {
 import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationPluginOptions, type PresentationState } from '@otter-player/presentation';
 import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
 import { createOverlayLayer, createVideoSurface, trackFrameTime, type OverlayLayer, type Surface } from '@otter-player/surface';
-import { createText, TEXT_SLICE, type TextActionMap, type TextState } from '@otter-player/text';
+import type { TextActionMap, TextState } from '@otter-player/text';
 import { bindActivity, CHROME_SLICE, createChromePlugin, defineOtterElements, provideStore, type ChromeActionMap, type ChromeState } from '@otter-player/ui-core';
 import { buildShell } from './shell.js';
 
@@ -45,7 +45,10 @@ export interface PlayerOptions<S extends PlayerState = PlayerState, A extends Pl
   readonly title?: string;
   /** The default controls (true) or a bare <video> (false: the host builds its UI on the store). Default true. */
   readonly controls?: boolean;
-  /** Captions (sidecar and in-band tracks, Otter's renderer, CVAA style). Default true. */
+  /**
+   * Captions (sidecar and in-band tracks, Otter's renderer, CVAA style): an on-demand chunk, loaded
+   * while the player starts when on. Default true.
+   */
   readonly captions?: boolean;
   /**
    * Start muted (before the first load): browsers allow autoplay only without sound, and the mute
@@ -118,14 +121,37 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
     ...(options.policy === undefined ? {} : { policy: options.policy }),
     ...(options.cmcd === undefined ? {} : { cmcd: options.cmcd }),
   });
-  // Captions: Otter's renderer, native TextTracks while only the <video> shows (PiP, iPhone fullscreen).
-  const text = options.captions === false ? undefined : createText({ inband: media, native: video });
+  // Captions: Otter's renderer, native TextTracks while only the <video> shows (PiP, iPhone
+  // fullscreen). An on-demand chunk (ADR-013 §4): the package loads inside this plugin's install
+  // (captions off loads nothing), its state goes in before the controller installs, so by `ready`
+  // the store looks as with a static slice.
+  let textOverlay: Parameters<OverlayLayer['add']>[0] | undefined;
+  const text: Plugin<S, A> | undefined =
+    options.captions === false
+      ? undefined
+      : (() => {
+          let inner: Plugin<S, A> | undefined;
+          return {
+            id: 'text',
+            async install(ctx) {
+              const { createText, TEXT_SLICE } = await import('@otter-player/text');
+              ctx.store.setState(TEXT_SLICE.initialState as Partial<S>);
+              const t = createText({ inband: media, native: video });
+              inner = t.plugin as unknown as Plugin<S, A>;
+              textOverlay = t.overlay;
+              await inner.install(ctx);
+            },
+            async uninstall() {
+              await inner?.uninstall();
+            },
+          };
+        })();
   const core: OtterCore<S, A> = createCore<S, A>({
-    slices: [MEDIA_SLICE, QOE_SLICE, ...(text === undefined ? [] : [TEXT_SLICE]), CHROME_SLICE, PRESENTATION_SLICE, ...(options.slices ?? [])],
+    slices: [MEDIA_SLICE, QOE_SLICE, CHROME_SLICE, PRESENTATION_SLICE, ...(options.slices ?? [])],
     plugins: [
       media,
       createQoePlugin(),
-      ...(text === undefined ? [] : [text.plugin]),
+      ...(text === undefined ? [] : [text]),
       createChromePlugin({ idleMs: options.idleMs ?? 3000 }),
       createPresentationPlugin({
         ...(options.title === undefined ? {} : { mediaSession: { metadata: { title: options.title } } }),
@@ -144,7 +170,7 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
     // The presented frame's media time, for frame-exact overlays (danmaku masks).
     const presented = trackFrameTime(video);
     const layer = createOverlayLayer({ container: root, surface, store, mediaTime: () => video.currentTime, frameTime: presented.time });
-    if (text !== undefined) layer.add(text.overlay);
+    if (textOverlay !== undefined) layer.add(textOverlay);
     provideStore(root, store);
     // Keyboard, pointer and touch through one InputController on the root (SPEC §14.3).
     const input = createInputController({ store, ...(options.hotkeys === undefined ? {} : { hotkeys: options.hotkeys }) });

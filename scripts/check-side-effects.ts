@@ -3,7 +3,7 @@
 // annotations. A module without top-level side effects tree-shakes to an empty bundle; any
 // remaining code (customElements.define, DOM access, registrations, calls) is reported.
 //
-// Third-party packages are external: only Otter's own modules are judged. A static top-level
+// Third-party packages are external: only Otter's own modules are judged; so are import() targets. A static top-level
 // import of a third-party value therefore fails the gate too, which keeps engine libraries
 // (hls.js, Shaka, mpegts.js) behind dynamic import().
 //
@@ -61,6 +61,10 @@ for (const { dir, entry } of entries) {
           b.onResolve({ filter: /^[^./]/ }, (args) =>
             args.path.startsWith('@otter-player/') ? undefined : { path: args.path, external: true },
           );
+          // What only import() reaches does not run when the entry is imported (every package is
+          // judged as its own entry anyway). Inlined, a module shared by the static and the dynamic
+          // graph would come out wrapped in esbuild's lazy-init calls, read here as top-level code.
+          b.onResolve({ filter: /.*/ }, (args) => (args.kind === 'dynamic-import' ? { path: args.path, external: true } : undefined));
         },
       },
     ],

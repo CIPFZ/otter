@@ -72,6 +72,10 @@ for (const kind of ['svg', 'webm'] as const) {
   for (const renderer of ['canvas2d', 'webgl', 'worker'] as const) {
     test(`${kind} mask on ${renderer}: the band erases comments at the picture's own frame (paused exact, playing ≤ 1 frame) @solo`, async ({ page }) => {
       test.setTimeout(90_000);
+      // Known flaky on the real Windows Firefox (M6 F11, owner 2026-10-28: < 20 % is flaky, not a
+      // product fault): a single screenshot at -2 frames in 2 of 13 runs (WebM on Canvas 2D); 0 of
+      // 20 on the next round there, 0 of 20 on Linux release Firefox; otherwise 0 / -1.
+      if (kind === 'webm' && test.info().project.name === 'real-windows-firefox') test.info().annotations.push({ type: 'flaky', description: 'F11: one -2 frame screenshot in 2 of 13 runs (15 %), real Windows Firefox 159' });
       // Desktop: a 960 px player. Phones keep their own viewport (a 1280 px-wide Pixel 7 would be a
       // 3360 px software-composited page, late on every frame).
       if (!test.info().project.name.startsWith('emulated')) await page.setViewportSize({ width: 1280, height: 860 });

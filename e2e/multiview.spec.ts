@@ -83,6 +83,30 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   // OTTER_BENCH_SRC=/frames/h264-720p.mp4: the same 720p clip in H.264, for machines without
   // hardware HEVC in WebCodecs (hardware decoding on the GPU instead of the WASM pool).
   const src = process.env['OTTER_BENCH_SRC'];
+  // The shared AudioContext's time, for a frozen-clock failure (M6 F9): every stretch of 300 ms or
+  // more in which it said running but its time did not move, as `at+length` ms after its creation.
+  await page.addInitScript(() => {
+    const Native = window.AudioContext;
+    const w = window as unknown as { ctxStalls: string[] };
+    w.ctxStalls = [];
+    window.AudioContext = class extends Native {
+      constructor(options?: AudioContextOptions) {
+        super(options);
+        const t0 = performance.now();
+        let last = -1;
+        let since = 0;
+        const id = setInterval(() => {
+          const now = performance.now();
+          if (this.state !== 'running' || this.currentTime !== last) {
+            if (last >= 0 && now - since >= 300) w.ctxStalls.push(`${Math.round(since - t0)}+${Math.round(now - since)}${this.state === 'running' ? '' : ` (${this.state})`}`);
+            last = this.currentTime;
+            since = now;
+          }
+          if (now - t0 > 30_000) clearInterval(id);
+        }, 20);
+      }
+    };
+  });
   // Hardware H.264 in WebCodecs (the OTTER_BENCH_SRC clip below), for the hardware-path tolerance.
   const h264Hardware = await page.evaluate(async () =>
     typeof VideoDecoder === 'function'
@@ -138,15 +162,16 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       messages: t.messages.filter((e) => !e.startsWith('codecUnsupported')),
     };
   });
+  const stalls = await page.evaluate(() => (window as unknown as { ctxStalls: string[] }).ctxStalls);
   const report = { project: info.project.name, src: src ?? '/frames/hevc-720p.mp4', cores, kind, hevcHardware, browserCpu, perStreamCpu, mainThread: main, wallMs: Math.round(wallMs), workers: after.pool.workers, streams: rows };
   mkdirSync('test-results', { recursive: true });
   writeFileSync(`test-results/multiview-${info.project.name}${src === undefined ? '' : '-' + (src.split('/').pop() ?? '')}.json`, JSON.stringify(report, null, 2));
   info.attach('multiview.json', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
   const worst = rows.reduce((m, r) => ({ cpu: Math.max(m.cpu, r.cpuPercentOfOneCore ?? 0), lost: Math.max(m.lost, r.droppedByClock + r.replacedOnCanvas), slow: Math.min(m.slow, r.advancedS) }), { cpu: 0, lost: 0, slow: Infinity });
-  ciNotice(`multiview 16 x 720p ${src === undefined ? 'HEVC' : src} (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core (decoder pool), whole browser ${perStreamCpu}% of a core per stream (${JSON.stringify(browserCpu)}), hardware HEVC ${hevcHardware}, worst lost frames ${worst.lost}, slowest ${worst.slow} s played`);
+  ciNotice(`multiview 16 x 720p ${src === undefined ? 'HEVC' : src} (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core (decoder pool), whole browser ${perStreamCpu}% of a core per stream (${JSON.stringify(browserCpu)}), hardware HEVC ${hevcHardware}, worst lost frames ${worst.lost}, slowest ${worst.slow} s played; AudioContext stalls ≥ 300 ms: ${stalls.join(', ') || 'none'}`);
 
   for (const r of rows) {
-    expect(r.errors, `${r.tile}: ${r.messages.join(' | ')}; user activation ${activated}`).toEqual([]);
+    expect(r.errors, `${r.tile}: ${r.messages.join(' | ')}; user activation ${activated}; context stalls ${stalls.join(', ') || 'none'}`).toEqual([]);
     // Real time: each stream played (nearly) all 10 s.
     expect(r.advancedS, r.tile).toBeGreaterThan(9);
     // Frames lost (skipped by the clock or never drawn): at most 5% of 300.

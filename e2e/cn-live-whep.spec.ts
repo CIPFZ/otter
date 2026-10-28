@@ -191,10 +191,10 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
   await expect.poll(async () => (await state(page)).t, { timeout: 20_000 }).toBeGreaterThan(1);
   const rec = await page.evaluate(async (seconds) => {
     const stream = (document.querySelector('video') as HTMLVideoElement).srcObject as MediaStream;
-    if (stream.getAudioTracks().length === 0) return { running: true, tracks: 0, rate: 0, b64: '' };
+    if (stream.getAudioTracks().length === 0) return { running: true, tracks: 0, rate: 0, b64: '', got: 0, messages: 0 };
     const ctx = new AudioContext();
     const running = await Promise.race([ctx.resume().then(() => ctx.state === 'running'), new Promise<boolean>((r) => setTimeout(() => r(false), 1000))]);
-    if (!running) return { running, tracks: 1, rate: 0, b64: '' };
+    if (!running) return { running, tracks: 1, rate: 0, b64: '', got: 0, messages: 0 };
     const code = `registerProcessor('otter-rec', class extends AudioWorkletProcessor {
       process(inputs) { const ch = inputs[0] && inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
     });`;
@@ -203,8 +203,12 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     const want = Math.round(seconds * ctx.sampleRate);
     const out = new Int16Array(want);
     let n = 0;
+    let messages = 0;
     await new Promise<void>((resolve) => {
+      // At most 10 s more than the recording: what arrived by then is reported.
+      setTimeout(resolve, (seconds + 10) * 1000);
       node.port.onmessage = (e: MessageEvent<Float32Array>) => {
+        messages++;
         for (const v of e.data) {
           if (n >= want) break;
           out[n++] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
@@ -219,13 +223,14 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     const bytes = new Uint8Array(out.buffer);
     let bin = '';
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { running, tracks: 1, rate, b64: btoa(bin) };
+    return { running, tracks: 1, rate, b64: btoa(bin), got: n, messages };
   }, 20);
   expect(rec.tracks).toBe(1);
   if (!rec.running) {
     ciNotice('WHEP recording: no running AudioContext here, nothing to record');
     test.skip(true, 'no running AudioContext');
   }
+  expect(rec.got, `${rec.got} of ${20 * rec.rate} samples in ${rec.messages} worklet messages within 30 s`).toBe(20 * rec.rate);
   const buf = Buffer.from(rec.b64, 'base64');
   const pcm = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength / 2);
   const file = `test-results/whep-recording-${info.project.name}.wav`;

@@ -58,8 +58,31 @@ describe('shell', () => {
     expect(bare.children.length).toBe(1);
   });
 
-  it('lists the nine scenario presets', () => {
-    expect(PRESET_IDS).toHaveLength(9);
+  it('lists the ten scenario presets (basic and the nine of ADR-013)', () => {
+    expect(PRESET_IDS).toHaveLength(10);
+    expect(PRESET_IDS[0]).toBe('basic');
+  });
+});
+
+describe('basic preset', () => {
+  it('builds the five controls only, keeps a host shell, and offers fullscreen in the presentation shape', async () => {
+    const { createBasicPlayer } = await import('../src/basic.js');
+    const box = document.createElement('div');
+    document.body.append(box);
+    const p = createBasicPlayer({ container: box, idleMs: 0 });
+    await p.ready;
+    const tags = [...box.querySelectorAll('[data-otter-controls] *')].map((e) => e.localName).filter((n) => n.startsWith('otter-'));
+    expect(tags.sort()).toEqual(['otter-fullscreen-button', 'otter-mute-button', 'otter-play-button', 'otter-time-display', 'otter-time-slider']);
+    expect(box.getAttribute('role')).toBe('region');
+    expect(p.store.getState().presentation.mode).toBe('inline');
+    expect(p.explain()).toEqual({ route: null, error: null });
+    await p.destroy();
+    const host = document.createElement('div');
+    host.innerHTML = '<video id="mine"></video>';
+    const q = createBasicPlayer({ container: host });
+    expect(q.video.id).toBe('mine');
+    expect(host.querySelector('[data-otter-controls]')).toBeNull();
+    await q.destroy();
   });
 });
 
