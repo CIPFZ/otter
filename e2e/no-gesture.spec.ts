@@ -18,6 +18,9 @@ const ciNotice = (text: string): void => {
   appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
 };
 
+/** The stock Firefox driven over WebDriver BiDi (channel moz-firefox). */
+const bidi = (): boolean => (test.info().project.use as { channel?: string }).channel?.startsWith('moz-firefox') === true;
+
 type Report = { activation: boolean | null; contexts: number; currentTime: number; paused: boolean; muted: boolean; errors: string[] };
 
 /** Loads and plays h264.mp4 from an init script; resolves with what the page saw after 2 s of playback. */
@@ -56,6 +59,12 @@ async function playWithoutGesture(page: Page): Promise<Report> {
   await expect.poll(() => report, { timeout: 30_000 }).toBeDefined();
   const r = report as Report;
   test.skip(r.activation === null, 'no navigator.userActivation here: the backend cannot tell a gesture and takes one as given');
+  // Playwright over WebDriver BiDi (the stock Firefox) gives every page a user activation before
+  // any of its scripts runs (RESEARCH §1): there is no gesture-free page to test.
+  if (r.activation === true && bidi()) {
+    ciNotice('no gesture: the page already had a user activation (Playwright over WebDriver BiDi), not testable');
+    test.skip(true, 'WebDriver BiDi pages start with a user activation');
+  }
   return r;
 }
 

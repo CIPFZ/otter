@@ -207,7 +207,7 @@ describe('shared AudioContext lifecycle', () => {
     clock.check();
     vi.advanceTimersByTime(600);
     clock.check();
-    expect(clock.unavailable).toBe('AudioContext time frozen for 0.5 s');
+    expect(clock.unavailable).toMatch(/^AudioContext time frozen for 0\.5 s \(at [\d.]+ s, still for [\d.]+ s\)$/);
     clock.destroy();
     releaseAudioContext(ctx as unknown as AudioContext);
   });
@@ -250,7 +250,7 @@ describe('shared AudioContext lifecycle', () => {
     vi.advanceTimersByTime(600);
     clock.check();
     expect(clock.source).toBe('performance');
-    expect(clock.unavailable).toBe('AudioContext time frozen for 0.5 s');
+    expect(clock.unavailable).toMatch(/^AudioContext time frozen for 0\.5 s \(at [\d.]+ s, still for [\d.]+ s\)$/);
     clock.destroy();
     releaseAudioContext(ctx as unknown as AudioContext);
   });
@@ -298,7 +298,7 @@ describe('shared AudioContext lifecycle', () => {
     // Frozen while playing: left for performance.now().
     vi.advanceTimersByTime(600);
     clock.check();
-    expect(clock.unavailable).toBe('AudioContext time frozen for 0.5 s');
+    expect(clock.unavailable).toMatch(/^AudioContext time frozen for 0\.5 s \(at [\d.]+ s, still for [\d.]+ s\)$/);
     clock.stop();
     ctx.set('suspended');
     vi.advanceTimersByTime(6000);

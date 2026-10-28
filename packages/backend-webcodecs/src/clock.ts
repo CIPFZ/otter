@@ -219,7 +219,8 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       }
       if (p - lastPerf > STUCK_S) {
         stuck = true;
-        failure = `AudioContext time frozen for ${STUCK_S} s`;
+        // With its numbers: where the context's time stood and for how long on the wall clock.
+        failure = `AudioContext time frozen for ${STUCK_S} s (at ${c.toFixed(3)} s, still for ${(p - lastPerf).toFixed(2)} s)`;
         switchTo('performance', failure);
       }
     },
