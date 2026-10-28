@@ -126,7 +126,7 @@ test(`danmaku on ${renderer} follows media time: pause freezes, 2x doubles, posi
 });
 }
 
-test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when the page is busy; each step explained', async ({ page }) => {
+test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when the page is busy; each step explained', async ({ page, browserName }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1400, height: 900 });
   await start(page);
@@ -155,6 +155,16 @@ test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when
         while (performance.now() < end);
       }, 30);
     });
+    if (browserName === 'firefox') {
+      // No Worker renderer on Firefox (M6 test round F4): a busy page keeps drawing on the main
+      // thread, WebGL or (WebGL's own cost too high) back to Canvas 2D; never a Worker step.
+      await page.waitForTimeout(10_000);
+      const st = (await otter(page)).danmakuStatus;
+      expect(st.steps.filter((x) => x.candidate === 'worker')).toEqual([]);
+      expect(['webgl', 'canvas2d']).toContain(st.renderer);
+      ciNotice(`danmaku auto renderer (Firefox, no Worker): ${st.steps.map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`).join(' | ')}`);
+      return;
+    }
     await expect.poll(async () => (await steps()).map((x) => `${x.candidate} ${x.outcome}`), { timeout: 40_000 }).toContainEqual(expect.stringMatching(/^worker (selected|rejected)$/));
     const busy = (await steps()).find((x) => x.candidate === 'worker');
     // Or WebGL itself cost the main thread too much (ADR-012 §5): off it, WebGL not tried again.
