@@ -85,6 +85,8 @@ export default defineConfig<object, OtterWorkerOptions>({
   use: {
     baseURL,
     trace: 'retain-on-failure',
+    // The last picture of a failed attempt (flaky tests included): kept in the HTML report.
+    screenshot: 'only-on-failure',
   },
   projects,
   // A remote base URL (tunnel to a real device) means the fixture is served elsewhere.
