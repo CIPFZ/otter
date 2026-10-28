@@ -496,8 +496,8 @@ M0 接口落点（ADR-002）：
 ## 23. 开放问题
 
 - Q1：正式项目名与 npm scope。**已结案**（2026-10-27）：名称 Otter 不改，scope `@otter-player/*` 不改；改名清单（`docs/reports/M5.md`「M5 → M6 交接」§8）备案，不执行。
-- Q2：video.js v10 GA 后，是 L2 vendoring 其 core store，还是保持自写同形状以避免跟随其 API 变动。
+- ~~Q2：video.js v10 GA 后，是 L2 vendoring 其 core store，还是保持自写同形状以避免跟随其 API 变动。~~ 已结案（2026-10-28，ADR-014 §8）：保持自写 store。
 - ~~Q3：自研轻量 CMAF 引擎与 SPF 的关系，是复用 SPF 组件还是独立实现。~~ 已结案（2026-10-21，ADR-010）：独立实现，不依赖 SPF 运行时；按 L3 拷 SPF 的 m3u8 解析、缓冲计划、重载策略、`tfdt` 读取及其测试。
-- Q4：P2P-CDN 插件是否纳入 v1 范围。
-- Q5：WebTransport / MoQ 是否等标准稳定再做。
-- Q6：是否提供 Electron 专用包。
+- ~~Q4：P2P-CDN 插件是否纳入 v1 范围。~~ 已结案（2026-10-28，ADR-014 §8）：不进 1.0，`plugin-p2p` 保留为占位包（`private: true`）。
+- ~~Q5：WebTransport / MoQ 是否等标准稳定再做。~~ 已结案（2026-10-28，ADR-014 §8）：等标准稳定。
+- ~~Q6：是否提供 Electron 专用包。~~ 已结案（2026-10-28，ADR-014 §8）：不提供；文档站加一页「在 Electron 里用」。
