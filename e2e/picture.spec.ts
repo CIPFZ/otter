@@ -4,6 +4,7 @@
 // Checked from the picture: the frames/*.mp4 clips number every frame in ten 48 px blocks across
 // the top-left, so a zoom on the top-left corner makes those blocks proportionally bigger.
 
+import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
@@ -14,6 +15,40 @@ const PATHS = [
   // A local file: format-file on WebCodecs, the canvas FrameSurface.
   { name: 'webcodecs', src: '/frames/h264-video-only.mp4', blob: true, picture: '[data-otter-frames]' },
 ] as const;
+
+const ciNotice = (text: string): void => {
+  mkdirSync('test-results', { recursive: true });
+  appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
+};
+
+/**
+ * What the screen shows, for failure notices: the frame number in the picture's top-left bits
+ * (ten 48 px blocks of the 640 px frame, letterboxed in the player), the brightest pixel of the
+ * row the block width is read from, and the element's state.
+ */
+async function screenState(page: Page): Promise<string> {
+  const png = (await page.locator('#player').screenshot({ animations: 'disabled' })).toString('base64');
+  return page.evaluate(async (b64) => {
+    const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+    const c = new OffscreenCanvas(img.width, img.height);
+    const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    ctx.drawImage(img, 0, 0);
+    const h = Math.min(img.height, (img.width * 9) / 16);
+    const w = (h * 16) / 9;
+    const x0 = (img.width - w) / 2;
+    const y0 = (img.height - h) / 2;
+    let frame = 0;
+    for (let i = 0; i < 10; i++) {
+      const d = ctx.getImageData(Math.floor(x0 + ((i * 48 + 24) / 640) * w), Math.floor(y0 + (24 / 360) * h), 1, 1).data;
+      if ((d[0] as number) + (d[1] as number) + (d[2] as number) > 384) frame |= 1 << i;
+    }
+    const row = ctx.getImageData(0, Math.round(img.height * 0.03), img.width, 1).data;
+    let max = 0;
+    for (let x = 0; x < img.width; x++) max = Math.max(max, (row[x * 4] as number) + (row[x * 4 + 1] as number) + (row[x * 4 + 2] as number));
+    const v = document.querySelector('video') as HTMLVideoElement;
+    return `frame ${frame}, row max ${max}/765, ct ${v.currentTime.toFixed(3)}, rs ${v.readyState}, seeking ${v.seeking}, paused ${v.paused}, shot ${img.width}x${img.height}, video box ${Math.round(v.getBoundingClientRect().width)}x${Math.round(v.getBoundingClientRect().height)}`;
+  }, png);
+}
 
 const picture = (page: Page) => page.evaluate(async () => ((await window.otter) as OtterFixture).state().picture);
 
@@ -70,16 +105,29 @@ for (const p of PATHS) {
     // A paused WebKit sometimes keeps showing the GOP's keyframe (frame 0: no block at all) after
     // a seek inside the GOP (RESEARCH §1; the fixture has a keyframe every 90 frames): the seek
     // is issued again while the reading is still that keyframe.
-    await expect
-      .poll(
-        async () => {
-          const w = (await blockWidth(page)) / box.width;
-          if (w <= 0.12) await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('seek', { time: 3 / 30 + 0.01 }));
-          return w;
-        },
-        { message: 'two 1-bits read as one bright run', timeout: 15_000, intervals: [500, 1000, 2000] },
-      )
-      .toBeGreaterThan(0.12);
+    // Every reading and re-seek, with what the screen showed, goes to a notice when this fails
+    // (the emulated-iPhone flake: located from CI notices, owner 2026-10-28).
+    const trail: string[] = [];
+    const started = Date.now();
+    try {
+      await expect
+        .poll(
+          async () => {
+            const w = (await blockWidth(page)) / box.width;
+            if (w <= 0.12) {
+              trail.push(`${Date.now() - started} ms: width ${w.toFixed(3)}; ${await screenState(page)}; re-seek`);
+              await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('seek', { time: 3 / 30 + 0.01 }));
+            }
+            return w;
+          },
+          { message: 'two 1-bits read as one bright run', timeout: 15_000, intervals: [500, 1000, 2000] },
+        )
+        .toBeGreaterThan(0.12);
+    } catch (err) {
+      ciNotice(`picture block read failed on the ${p.name} path (retry ${test.info().retry}): ${trail.join(' | ')}; now ${await screenState(page)}`);
+      throw err;
+    }
+    if (trail.length > 0) ciNotice(`picture block read on the ${p.name} path needed ${trail.length} re-seeks (retry ${test.info().retry}): ${trail.join(' | ')}`);
     await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().seeking), { timeout: 10_000 }).toBe(false);
     const base = await blockWidth(page);
     expect(base / box.width).toBeLessThan(0.18);
