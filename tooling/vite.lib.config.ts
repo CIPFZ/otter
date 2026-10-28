@@ -1,7 +1,7 @@
 // Shared Vite library build for every @otter-player/* JS package.
 // Invoked from a package directory: `vite build --config ../../tooling/vite.lib.config.ts`.
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { transform } from 'esbuild';
 import { defineConfig, type Plugin } from 'vite';
 
@@ -24,8 +24,9 @@ const entries: Record<string, string> = {
 };
 const bundled = manifest.otter?.bundle ?? [];
 const isBundled = (id: string): boolean => bundled.some((b) => id === b || id.startsWith(`${b}/`)) || id === 'stream' || id === 'string_decoder';
+// A resolved module path is absolute (on Windows `C:\...`, not `/`): never external.
 const isExternal = (id: string): boolean =>
-  !id.startsWith('.') && !id.startsWith('/') && !id.startsWith('\0') && !(bundled.length > 0 && isBundled(id));
+  !id.startsWith('.') && !isAbsolute(id) && !id.startsWith('\0') && !(bundled.length > 0 && isBundled(id));
 
 /**
  * dist keeps tsc's .d.ts (emptyOutDir: false), so old hashed chunks would pile up and be counted by
