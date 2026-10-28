@@ -90,13 +90,16 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - 同一台机器上的 Firefox 159：MSE `isTypeSupported(hvc1)` 与 `decodingInfo`（media-source）都说 HEVC 支持，而且流畅、省电；WebCodecs `isConfigSupported(hvc1)` 却是 false。MSE 那一侧的说法要以真正出画面为准（编码族剔除就是为此）。另外 Firefox 的 WebGL 渲染器名是泛化过的（实际是 RTX 3080，报「GTX 980 or similar」），不能用来判断真实 GPU。
 - 有界面的 Edge（Playwright 有界面）：没有用户手势时新建的 AudioContext 保持 suspended，按自动播放策略不启动；无头 Chrome 放宽了这条，所以 CI 看不到。依赖 AudioContext 起播的路径在真机上要有手势，或者有不靠 AudioContext 的退路。
 - 真 Edge（这台 Server 2022，USB 声卡 + VB-Cable）：AudioContext 空闲挂起 6 s 后经 `resume()` 恢复，8 次里有 1 次在恢复后约 1.1 s 内 `currentTime` 只前进 0.06 s（state 已是 running），像是输出设备重新打开的延迟。
+- 同一台实例（`inst-01m4skyh…`，默认输出端点是一个虚拟的「Audio Device」，VB-Cable 驱动坏着）：**不含 Otter 的裸 AudioContext + 振荡器**，30 s 里每 20 ms 读一次 `currentTime`，Edge 和 Firefox 各 3 次里各有 1 次出现一段约 2.03 s 的停顿（state 一直是 running，出现时刻随机：27.3 s、20.8 s）。多宫格上的 `audioClockUnavailable`（M6 F9 复测）每一次都对上这样一段约 2.05 s 的停顿。真 Firefox 上用 AudioWorklet 录 WHEP 音轨时，`process()` 30 s 里只跑了约 1000 次（约 2.7 s 的量）就不再跑，原因未查。都要在普通声卡的机器上复核（M7，2026-10-28）。
 - 这台 Windows Server 关了系统动画，所以 `prefers-reduced-motion: reduce`。Edge 经 CDP 的模拟能改回 no-preference；Firefox 经 WebDriver BiDi 改不了（已知限制），页面看到的就是 reduce。
 - Playwright 1.64 经 WebDriver BiDi 驱动正式版 Firefox，又发现两处限制（之前已知 dblclick、reducedMotion 两处；处理：real-windows-firefox 上 tv 用例改按 Space、Hero 的减少动态效果那步 skip、全屏截图改截全屏元素）：`page.keyboard.press('MediaPlayPause')` 报 Unknown key；进入全屏后 `page.screenshot()` 只截原来视口大小（1280×720）的左上一块，而全屏页面是 1920×1080。
 - 真实 Firefox 159（RTX 3080，有 WebGL2，Worker 里也有）：弹幕把舞台画布 `transferControlToOffscreen` 交给 Worker、用 WebGL 画时，5000 条/分钟下页面的 rAF 掉到约 10 s 一次（三次都这样），`page.evaluate` 也可能超时；同一页面用 Canvas 2D 或主线程 WebGL 都正常。无头 Firefox 没有 WebGL，所以以前测不到（M6 测试收口轮，待定位）。Linux 上的正式版 Firefox 159（Xvfb、软件 GL，没有 GPU 也没有 Windows 驱动）同样复现：Worker 那组页面 rAF p95 9999.9 ms，Canvas 2D、主线程 WebGL 都是 17.1 ms，所以不是 Windows 驱动的问题。只把画布交给 Worker 画 WebGL（清屏，或 150 个四边形 + 每帧两次 `texSubImage2D` 文字上传）、下面放一个播放中的 `<video>`，这样的最小页面在两台机器上都不复现：触发条件还在弹幕 Worker 的其他部分里（2026-10-28）。
 - Playwright 1.64 的 trace（`trace: 'on'` / `'retain-on-failure'`，DOM 快照）让页面从第一份文档起就 `hasBeenActive`，Chromium 和 Firefox 都一样；`exposeBinding`、console 消息、init script 都不会。
+- Playwright 1.64 经 WebDriver BiDi 驱动正式版 Firefox（`channel: 'moz-firefox'`，Windows 与 Linux 的 159 都一样）时，页面在自己的脚本运行之前就已 `hasBeenActive`：不开 trace、没有 init script 和 binding 的 `data:` 页也是。所以「无手势」的行为在 BiDi Firefox 上测不了，`e2e/no-gesture.spec.ts` 在那里 skip（2026-10-28）。
 - Playwright（Chromium 系，含有界面的 Edge）的 `page.evaluate` 带用户手势执行：页面在第一次 evaluate 之前 `navigator.userActivation.hasBeenActive` 是 false，之后就是 true，自动播放策略也随之放行 AudioContext。所以「没有手势」的路径在 e2e 里只在加载完成前没有任何 evaluate 时才走得到；轮询状态的 evaluate 和页面加载赛跑时，有的实例看到有手势、有的没有（M6 测试收口轮 F1 复核，2026-10-28）。
 - 有 Worker 画布（OffscreenCanvas）的页面，真 Edge 上整页的 rAF 基线就变差：同一页面还没有弹幕时 p95 18–26 ms，普通页面是 17 ms。
 - 真 GPU（RTX 3080）上的主线程 WebGL 弹幕，5000 条/分钟时 rAF p95 18 ms，与基线持平：无头 Chrome 上的 33 ms 是 SwiftShader 所致。
+- 真 Windows Firefox 159 上 WebM 蒙版 × Canvas 2D 的偶发 −2 帧（M6 F11）：13 次里 2 次各有一张截图差 −2 帧（15%，蒙版落后），之后同机 20 次、Linux 正式版 Firefox 20 次都没有；其余截图 0 或 −1（约四成 −1），WebGL 偶见 +1。按负责人的口径（< 20%）记 flaky，不改产品（2026-10-28）。
 - 逐帧对齐（蒙版与画面 ≤ 1 帧）在无头浏览器里与并行的其他用例共享软件合成器时测不准：帧会迟到一两帧，误差来自机器而非代码。这类用例单独一步、一个 worker 跑（`@solo`）。
 
 ## 2. 格式 / 协议 / 编码全景
