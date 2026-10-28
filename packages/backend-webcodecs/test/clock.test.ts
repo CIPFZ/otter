@@ -244,11 +244,70 @@ describe('shared AudioContext lifecycle', () => {
     const ctx = acquireAudioContext() as unknown as FakeAudioContext;
     const clock = createClock(ctx as unknown as AudioContext);
     clock.start();
+    // Past the first start's settling (RESUME_SETTLE_S), then frozen 0.5 s more.
+    vi.advanceTimersByTime(2000);
     clock.check();
     vi.advanceTimersByTime(600);
     clock.check();
     expect(clock.source).toBe('performance');
     expect(clock.unavailable).toBe('AudioContext time frozen for 0.5 s');
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('the first start of a running context may stand still for a while too: not frozen within 2 s (M6 F9)', () => {
+    // Real Edge, multiview: a context the page's first play started had its time frozen > 0.5 s.
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    clock.start();
+    for (let t = 0; t < 1150; t += 50) {
+      vi.advanceTimersByTime(50);
+      clock.check();
+    }
+    expect(clock.source).toBe('audio');
+    expect(clock.unavailable).toBeUndefined();
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('paused, a context whose time stands still is not counted as frozen (M6 F8)', () => {
+    // Around the idle suspend the context's time may stop while it still says running.
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    clock.start();
+    vi.advanceTimersByTime(3000);
+    ctx.currentTime = 3;
+    clock.check();
+    clock.stop();
+    for (let t = 0; t < 1000; t += 50) {
+      vi.advanceTimersByTime(50);
+      clock.check();
+    }
+    expect(clock.source).toBe('audio');
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('a context that froze and then runs again after a suspension takes the clock back (M6 F8)', async () => {
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    clock.start();
+    vi.advanceTimersByTime(3000);
+    ctx.currentTime = 3;
+    clock.check();
+    // Frozen while playing: left for performance.now().
+    vi.advanceTimersByTime(600);
+    clock.check();
+    expect(clock.unavailable).toBe('AudioContext time frozen for 0.5 s');
+    clock.stop();
+    ctx.set('suspended');
+    vi.advanceTimersByTime(6000);
+    // The next play resumes it: a fresh start, the context clock again, nothing to report.
+    clock.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctx.state).toBe('running');
+    expect(clock.source).toBe('audio');
+    expect(clock.unavailable).toBeUndefined();
     clock.destroy();
     releaseAudioContext(ctx as unknown as AudioContext);
   });

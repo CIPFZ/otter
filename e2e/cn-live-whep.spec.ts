@@ -3,7 +3,7 @@
 // backend; ICE that cannot connect goes down the fallback chain to the source's fallback (the
 // local HTTP-FLV live stream).
 
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
@@ -74,7 +74,7 @@ test('cn-live WHEP: the WebRTC stream plays on the native backend', async ({ pag
   await page.goto('/player.html?idle=0');
   if (!(await gathers(page))) {
     ciNotice('WHEP: this browser gathers no ICE candidates here; WebRTC playback not testable');
-    return;
+    test.skip(true, 'no ICE candidates here');
   }
   await load(page, { src: '/whep/live', type: 'application/whep', live: true });
   await expect.poll(async () => (await state(page)).t, { timeout: 20_000 }).toBeGreaterThan(1);
@@ -134,4 +134,177 @@ test('cn-live WHEP: ICE that cannot connect falls back to the HTTP-FLV source', 
   // No retry of the same offer: one iceFailed, straight to the fallback source.
   expect(s.errors).toEqual(['iceFailed']);
   expect(s.steps.some((r) => r === 'source fallback selected format flv')).toBe(true);
+});
+
+/** Loop length of the WHEP fixture's audio (e2e/media/whep/tone.ogg: 201 packets of 20 ms). */
+const LOOP_S = 4.02;
+
+/** A 16-bit mono PCM WAV file. */
+function wav(samples: Int16Array, rate: number): Buffer {
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0);
+  h.writeUInt32LE(36 + samples.byteLength, 4);
+  h.write('WAVEfmt ', 8);
+  h.writeUInt32LE(16, 16);
+  h.writeUInt16LE(1, 20);
+  h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(rate, 24);
+  h.writeUInt32LE(rate * 2, 28);
+  h.writeUInt16LE(2, 32);
+  h.writeUInt16LE(16, 34);
+  h.write('data', 36);
+  h.writeUInt32LE(samples.byteLength, 40);
+  return Buffer.concat([h, Buffer.from(samples.buffer, samples.byteOffset, samples.byteLength)]);
+}
+
+/** Share of a window's energy at `f` Hz (Goertzel; 1 for a pure tone at f). */
+function toneShare(x: Float64Array, from: number, n: number, f: number, rate: number): number {
+  const w = (2 * Math.PI * f) / rate;
+  const c = 2 * Math.cos(w);
+  let s1 = 0;
+  let s2 = 0;
+  let energy = 0;
+  for (let i = from; i < from + n; i++) {
+    const v = x[i] as number;
+    const s0 = v + c * s1 - s2;
+    s2 = s1;
+    s1 = s0;
+    energy += v * v;
+  }
+  const power = s1 * s1 + s2 * s2 - c * s1 * s2;
+  return energy === 0 ? 0 : (2 * power) / (n * energy);
+}
+
+// The WHEP audio as heard by the page (test round decision 3b, 2026-10-28): 20 s of the received
+// track recorded through WebAudio, written as WAV (test-results/, attached to the report), and
+// read back: a 440 Hz tone in every second, and the 4 s loop seam of the source (e2e/whep.ts loops
+// the 4 s tone.ogg). It proves what the page received and decoded, not the system output.
+test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the loop seam every 4 s @solo', async ({ page, browserName }, info) => {
+  test.setTimeout(90_000);
+  await routeDocuments(page, browserName);
+  await page.goto('/player.html?idle=0');
+  if (!(await gathers(page))) {
+    ciNotice('WHEP recording: this browser gathers no ICE candidates here; not testable');
+    test.skip(true, 'no ICE candidates here');
+  }
+  await load(page, { src: '/whep/live', type: 'application/whep', live: true });
+  await expect.poll(async () => (await state(page)).t, { timeout: 20_000 }).toBeGreaterThan(1);
+  const rec = await page.evaluate(async (seconds) => {
+    const stream = (document.querySelector('video') as HTMLVideoElement).srcObject as MediaStream;
+    if (stream.getAudioTracks().length === 0) return { running: true, tracks: 0, rate: 0, b64: '' };
+    const ctx = new AudioContext();
+    const running = await Promise.race([ctx.resume().then(() => ctx.state === 'running'), new Promise<boolean>((r) => setTimeout(() => r(false), 1000))]);
+    if (!running) return { running, tracks: 1, rate: 0, b64: '' };
+    const code = `registerProcessor('otter-rec', class extends AudioWorkletProcessor {
+      process(inputs) { const ch = inputs[0] && inputs[0][0]; if (ch) this.port.postMessage(ch.slice(0)); return true; }
+    });`;
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+    const node = new AudioWorkletNode(ctx, 'otter-rec');
+    const want = Math.round(seconds * ctx.sampleRate);
+    const out = new Int16Array(want);
+    let n = 0;
+    await new Promise<void>((resolve) => {
+      node.port.onmessage = (e: MessageEvent<Float32Array>) => {
+        for (const v of e.data) {
+          if (n >= want) break;
+          out[n++] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
+        }
+        if (n >= want) resolve();
+      };
+      ctx.createMediaStreamSource(stream).connect(node);
+      node.connect(ctx.destination);
+    });
+    const rate = ctx.sampleRate;
+    void ctx.close();
+    const bytes = new Uint8Array(out.buffer);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { running, tracks: 1, rate, b64: btoa(bin) };
+  }, 20);
+  expect(rec.tracks).toBe(1);
+  if (!rec.running) {
+    ciNotice('WHEP recording: no running AudioContext here, nothing to record');
+    test.skip(true, 'no running AudioContext');
+  }
+  const buf = Buffer.from(rec.b64, 'base64');
+  const pcm = new Int16Array(buf.buffer, buf.byteOffset, buf.byteLength / 2);
+  const file = `test-results/whep-recording-${info.project.name}.wav`;
+  mkdirSync('test-results', { recursive: true });
+  writeFileSync(file, wav(pcm, rec.rate));
+  await info.attach('whep-recording.wav', { path: file, contentType: 'audio/wav' });
+
+  const x = Float64Array.from(pcm, (v) => v / 32768);
+  const rate = rec.rate;
+  // The tone's frequency: the strongest of 430-450 Hz over the whole recording (the received clock
+  // may differ from the source's by a fraction of a hertz).
+  let f0 = 440;
+  let best = 0;
+  for (let f = 430; f <= 450; f += 0.05) {
+    const share = toneShare(x, 0, x.length, f, rate);
+    if (share > best) [best, f0] = [share, f];
+  }
+  // Every second: most of the energy at the tone. Ten 100 ms windows per second, each on its own
+  // (a seam's phase jump would cancel a coherent 1 s sum).
+  const shares: number[] = [];
+  const tenth = Math.round(rate / 10);
+  for (let s = 0; s + 10 * tenth <= x.length; s += 10 * tenth) {
+    let sum = 0;
+    for (let k = 0; k < 10; k++) sum += toneShare(x, s + k * tenth, tenth, f0, rate);
+    shares.push(sum / 10);
+  }
+  // Loop seams: a phase jump. Each 10 ms window is fitted with a sine at f0 (least squares on sin
+  // and cos); a seam leaves a residual far above the windows around it. Merged within 300 ms (the
+  // jitter buffer may smear one seam over a few windows).
+  const win = Math.round(rate * 0.01);
+  const w0 = (2 * Math.PI * f0) / rate;
+  const residuals: number[] = [];
+  for (let s = 0; s + win <= x.length; s += win) {
+    let ss = 0;
+    let cc = 0;
+    let sc = 0;
+    let xs = 0;
+    let xc = 0;
+    let xx = 0;
+    for (let i = s; i < s + win; i++) {
+      const v = x[i] as number;
+      const sn = Math.sin(w0 * i);
+      const cs = Math.cos(w0 * i);
+      ss += sn * sn;
+      cc += cs * cs;
+      sc += sn * cs;
+      xs += v * sn;
+      xc += v * cs;
+      xx += v * v;
+    }
+    const det = ss * cc - sc * sc;
+    const a = (xs * cc - xc * sc) / det;
+    const b = (xc * ss - xs * sc) / det;
+    residuals.push(xx === 0 ? 1 : Math.max(0, xx - a * xs - b * xc) / xx);
+  }
+  const median = [...residuals].sort((p, q) => p - q)[residuals.length >> 1] as number;
+  const seams: number[] = [];
+  residuals.forEach((r, i) => {
+    const t = (i * win) / rate;
+    if (r > Math.max(0.01, 10 * median) && (seams.length === 0 || t - (seams.at(-1) as number) > 0.3)) seams.push(t);
+  });
+  // The first half second may still be the stream starting.
+  const inner = seams.filter((t) => t > 0.5);
+  const gaps = inner.slice(1).map((t, i) => t - (inner[i] as number));
+  const rms = Math.sqrt(x.reduce((acc, v) => acc + v * v, 0) / x.length);
+  ciNotice(
+    `WHEP recording (${rate} Hz, ${(x.length / rate).toFixed(1)} s, RMS ${rms.toFixed(3)}): tone ${f0.toFixed(2)} Hz, share per second min ${Math.min(...shares).toFixed(3)}; seams at ${inner.map((t) => t.toFixed(2)).join(', ') || 'none'} s (gaps ${gaps.map((g) => g.toFixed(2)).join(', ')}); ${file}`,
+  );
+  expect(rms).toBeGreaterThan(0.01);
+  expect(Math.abs(f0 - 440)).toBeLessThan(2);
+  expect(Math.min(...shares)).toBeGreaterThan(0.8);
+  // The loop of the source: tone.ogg is 201 Opus packets of 20 ms, so a seam every 4.02 s and
+  // nothing else (20 s: four or five). The receiver's jitter buffer stretches and shrinks playout a
+  // little, so a single gap may be off by ~0.15 s; on average they are the loop.
+  expect(inner.length).toBeGreaterThanOrEqual(4);
+  for (const g of gaps) {
+    expect(g).toBeGreaterThan(LOOP_S - 0.25);
+    expect(g).toBeLessThan(LOOP_S + 0.25);
+  }
+  const mean = ((inner.at(-1) as number) - (inner[0] as number)) / (inner.length - 1);
+  expect(Math.abs(mean - LOOP_S)).toBeLessThan(0.05);
 });

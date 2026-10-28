@@ -83,6 +83,12 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   // OTTER_BENCH_SRC=/frames/h264-720p.mp4: the same 720p clip in H.264, for machines without
   // hardware HEVC in WebCodecs (hardware decoding on the GPU instead of the WASM pool).
   const src = process.env['OTTER_BENCH_SRC'];
+  // Hardware H.264 in WebCodecs (the OTTER_BENCH_SRC clip below), for the hardware-path tolerance.
+  const h264Hardware = await page.evaluate(async () =>
+    typeof VideoDecoder === 'function'
+      ? (await VideoDecoder.isConfigSupported({ codec: 'avc1.64001f', codedWidth: 1280, codedHeight: 720, hardwareAcceleration: 'prefer-hardware' })).supported === true
+      : false,
+  );
   await open(page, 16, src);
   const w = wall(page);
   const kind = await w.eval((x) => x.kind);
@@ -146,9 +152,12 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
     // Frames lost (skipped by the clock or never drawn): at most 5% of 300.
     expect(r.droppedByClock + r.replacedOnCanvas, r.tile).toBeLessThanOrEqual(15);
   }
-  // The main thread keeps its frame rate: no long task, no frame missed by two vsyncs.
+  // The main thread keeps its frame rate: no long task, no frame missed by two vsyncs. On the
+  // hardware path (every tile on WebCodecs, hardware decoding for the clip) one such frame per 10 s window is tolerated (M6 test
+  // round F10, ADR-008 §7: real Edge, 1 in 5 runs); the notice above has the actual count.
   expect(main.longTasks).toBe(0);
-  expect(main.over34).toBe(0);
+  const hardwarePath = rows.every((r) => r.backend === 'webcodecs') && (src?.includes('h264') === true ? h264Hardware : hevcHardware);
+  expect(main.over34, `${main.over34} frames > 34 ms in 10 s (${hardwarePath ? 'hardware path, ≤ 1' : 'software decoding, 0'})`).toBeLessThanOrEqual(hardwarePath ? 1 : 0);
   expect(main.over20 / main.frames).toBeLessThan(0.02);
 
   // Every viewport shows its own stream: paused, each tile's picture is the frame of its clock.

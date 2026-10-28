@@ -63,7 +63,8 @@ const STUCK_S = 0.5;
 export const RESUME_GRACE_MS = 3000;
 /**
  * After the context (re)starts its time may stand still a while (an output device opening: real
- * Edge, about 1.1 s once in 8): the frozen-time watchdog only counts from this long (s) after it.
+ * Edge, about 1.1 s once in 8, after a resume and at the first start): the frozen-time watchdog
+ * only counts from this long (s) after it.
  */
 export const RESUME_SETTLE_S = 2;
 
@@ -71,6 +72,8 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
   let ctx = initial;
   let deferred = options.deferred === true && initial === undefined;
   let stuck = false;
+  /** The context's state at the last statechange: a fresh 'running' after another one clears `stuck`. */
+  let lastState = initial?.state;
   const usable = (): boolean => ctx !== undefined && ctx.state === 'running' && !stuck;
   let source: 'audio' | 'performance' = usable() ? 'audio' : 'performance';
   const host = (): number => (source === 'audio' ? (ctx as AudioContext).currentTime : performance.now() / 1000);
@@ -85,6 +88,8 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
   let lastPerf = 0;
   /** performance.now() (s) until which the context is settling after a (re)start. */
   let settleUntil = 0;
+  /** The first start() on a context already running is a (re)start too: it settles (M6 F9). */
+  let firstStart = true;
   /** The pending resume (within its grace), and why the context clock is out once settled. */
   let resuming = false;
   let failure: string | undefined;
@@ -121,6 +126,11 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     anchor();
   };
   const onState = (): void => {
+    // Running again after a suspension: a new start of the device, the old freeze no longer says
+    // anything about it (M6 F8).
+    const state = ctx?.state;
+    if (state === 'running' && lastState !== undefined && lastState !== 'running') stuck = false;
+    lastState = state;
     if (usable()) failure = undefined;
     switchTo(usable() ? 'audio' : 'performance', `AudioContext ${ctx?.state ?? 'missing'}`);
   };
@@ -146,6 +156,8 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       base = host();
       playing = true;
       rebaseWatchdog();
+      if (firstStart && source === 'audio') settleUntil = performance.now() / 1000 + RESUME_SETTLE_S;
+      firstStart = false;
       // Inside a user gesture this lets a suspended context run (autoplay policy). performance.now()
       // keeps time until it does; the statechange takes the clock back seamlessly whenever the
       // resume lands. Only a rejection, or no result within the grace (a context with no output
@@ -192,6 +204,12 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     },
     check() {
       if (source !== 'audio' || ctx === undefined) return;
+      // Only while playing: paused, the context's time may stop on its way to the idle suspend
+      // while it still says running (M6 F8); the baseline starts again on the next start().
+      if (!playing) {
+        rebaseWatchdog();
+        return;
+      }
       const c = ctx.currentTime;
       const p = performance.now() / 1000;
       if (c !== lastCtx || p < settleUntil) {
