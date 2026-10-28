@@ -28,3 +28,6 @@ e2e/.site-dist/
 
 # Benchmark media (e2e/media/generate-bench.sh, about 30 MB): generated locally, not committed.
 e2e/media/bench/
+
+# Local scratch and credentials (instance tokens, API keys): never committed.
+tmp/
