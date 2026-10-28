@@ -25,6 +25,21 @@
       "@otter-player/source": "./src/background.ts",
       "types": "./dist/background.d.ts",
       "default": "./dist/background.js"
+    },
+    "./lowlatency": {
+      "@otter-player/source": "./src/lowlatency.ts",
+      "types": "./dist/lowlatency.d.ts",
+      "default": "./dist/lowlatency.js"
+    },
+    "./danmaku": {
+      "@otter-player/source": "./src/danmaku.ts",
+      "types": "./dist/danmaku.d.ts",
+      "default": "./dist/danmaku.js"
+    },
+    "./tv": {
+      "@otter-player/source": "./src/tv.ts",
+      "types": "./dist/tv.d.ts",
+      "default": "./dist/tv.js"
     }
   },
   "files": [
@@ -38,12 +53,15 @@
     "@otter-player/backend-mse": "workspace:*",
     "@otter-player/backend-native": "workspace:*",
     "@otter-player/core": "workspace:*",
+    "@otter-player/danmaku": "workspace:*",
     "@otter-player/format-dash": "workspace:*",
     "@otter-player/format-hls": "workspace:*",
     "@otter-player/format-mp4-range": "workspace:*",
     "@otter-player/input": "workspace:*",
     "@otter-player/media": "workspace:*",
     "@otter-player/overlay-thumbnails": "workspace:*",
+    "@otter-player/overlay-watermark": "workspace:*",
+    "@otter-player/preferences": "workspace:*",
     "@otter-player/presentation": "workspace:*",
     "@otter-player/qoe": "workspace:*",
     "@otter-player/surface": "workspace:*",
@@ -54,7 +72,10 @@
     "entries": {
       "vod": "src/vod.ts",
       "live": "src/live.ts",
-      "background": "src/background.ts"
+      "background": "src/background.ts",
+      "lowlatency": "src/lowlatency.ts",
+      "danmaku": "src/danmaku.ts",
+      "tv": "src/tv.ts"
     }
   }
 }

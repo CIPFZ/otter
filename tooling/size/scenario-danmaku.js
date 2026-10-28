@@ -1,10 +1,5 @@
-// SPEC §19 B 站式弹幕站: MSE, DASH with separate audio / video, danmaku, the corner watermark.
-// The danmaku's on-demand chunks (parsers, WebGL, Worker, masks) are listed apart (ADR-012).
-export * from './base.js';
-export { createMseBackendFactory } from '../../packages/backend-mse/dist/index.js';
-export { createDashFormat } from '../../packages/format-dash/dist/index.js';
-export * from '../../packages/danmaku/dist/index.js';
-export { createWatermark } from '../../packages/overlay-watermark/dist/index.js';
-// Codec probing is in the media session; the viewer's choices persist (ADR-011 batch 3).
-export { createPreferencesPlugin } from '../../packages/preferences/dist/index.js';
+// SPEC §19 B 站式弹幕站: the `danmaku` preset (DASH A/V split on Shaka, HLS, MP4 range, danmaku,
+// watermark, preferences) and the default skin (ADR-013). Danmaku's on-demand chunks (parsers,
+// WebGL, Worker, masks) are listed apart (ADR-012).
+export * from '../../packages/presets/dist/danmaku.js';
 import '../../packages/ui-skin-default/dist/index.css';

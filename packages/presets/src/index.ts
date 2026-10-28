@@ -2,7 +2,8 @@
 // sub-path per scenario composes it (`@otter-player/presets/vod`, `/live`, `/background`, ...), so a
 // page carries only its scenario's formats and backends.
 
-export { createPlayer, type Player, type PlayerActions, type PlayerOptions, type PlayerParts, type PlayerState } from './player.js';
+export { createPlayer, type Player, type PlayerActions, type PlayerExplanation, type PlayerOptions, type PlayerParts, type PlayerState } from './player.js';
+export type { PresetOptions } from './options.js';
 
 export type PresetId =
   | 'vod'

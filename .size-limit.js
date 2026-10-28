@@ -51,14 +51,16 @@ const ENGINES = Object.keys(ENGINE_FILES);
 
 /**
  * id, SPEC §19 row, own-code limit, engines loaded by the scenario's default first playback,
- * and the milestone the limit becomes blocking. Since M6 batch 2 (ADR-013) a scenario with a
- * preset measures the preset as a host imports it: long-vod = `vod`, live = `live`, Hero =
- * `background` (gated at 5 KB from then on).
+ * and the milestone the limit becomes blocking. Since M6 (ADR-013) each row measures its preset as
+ * a host imports it, with the default skin: long-vod = `vod`, live = `live` and `lowlatency`,
+ * danmaku = `danmaku`, tv = `tv` (default skin until ui-skin-tv), Hero = `background` (gated at 5 KB).
+ * The short-VOD row keeps its M5 composition for now (see docs/reports/M6.md, batch 2 second stop).
  */
 const SCENARIOS = [
   ['short-vod', '短视频 / 简单点播', '30 KB', []],
   ['long-vod', '长视频点播 + 多清晰度 + 字幕', '80 KB', ['hls.js']],
   ['live', '直播 + LL-HLS / LL-DASH', '90 KB', ['hls.js']],
+  ['lowlatency', '直播 + LL-HLS / LL-DASH（lowlatency preset）', '90 KB', ['hls.js']],
   ['cn-live', '国内直播 / 电商', '70 KB', ['mpegts.js']],
   ['danmaku', 'B 站式弹幕站', '120 KB', ['shaka-player']],
   ['background', '背景视频 / Hero', '5 KB', []],

@@ -8,7 +8,7 @@ import { createNativeBackendFactory } from '@otter-player/backend-native';
 import { createDashFormat } from '@otter-player/format-dash';
 import { createHlsFormat } from '@otter-player/format-hls';
 import { createPlayer, type Player } from './player.js';
-import type { PresetOptions } from './vod.js';
+import type { PresetOptions } from './options.js';
 
 export interface LivePresetOptions extends PresetOptions {
   /** Latency to hold on the own HLS engine, seconds; default the playlist's HOLD-BACK. */

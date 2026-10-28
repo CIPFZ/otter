@@ -1,10 +1,11 @@
-// createPlayer (SPEC §16 host contract, ADR-013): one call assembles what a host otherwise wires by
-// hand: the shell around a <video>, the playback session, QoE, captions, the chrome, presentation
-// modes, the overlay layer and input, and a typed handle to load, observe and destroy. The scenario
-// presets (vod, live, ...) call it with their formats and backends; hosts can call it directly.
+// createPlayer (SPEC §16 host contract, ADR-013): the low-level assembly behind the scenario presets.
+// One call puts together what a host otherwise wires by hand: the shell around a <video>, the
+// playback session, QoE, captions, the chrome, presentation modes, the overlay layer and input, and
+// a typed handle to load, observe, explain and destroy. The presets (vod, live, ...) pass their
+// formats and backends; a host with its own composition calls it directly.
 
-import { createCore, type CoreEventMap, type EventBus, type OtterCore, type Plugin, type QoeHook, type StoreSlice, type StoreView, type Unsubscribe } from '@otter-player/core';
-import { createInputController } from '@otter-player/input';
+import { createCore, type CoreEventMap, type EventBus, type OtterCore, type Plugin, type QoeHook, type RouteExplanation, type RouteStep, type StoreSlice, type StoreView, type Unsubscribe } from '@otter-player/core';
+import { createInputController, type HotkeyMap } from '@otter-player/input';
 import {
   createMediaPlugin,
   MEDIA_SLICE,
@@ -21,7 +22,7 @@ import {
 } from '@otter-player/media';
 import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationPluginOptions, type PresentationState } from '@otter-player/presentation';
 import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
-import { createOverlayLayer, createVideoSurface, type OverlayLayer, type Surface } from '@otter-player/surface';
+import { createOverlayLayer, createVideoSurface, trackFrameTime, type OverlayLayer, type Surface } from '@otter-player/surface';
 import { createText, TEXT_SLICE, type TextActionMap, type TextState } from '@otter-player/text';
 import { bindActivity, CHROME_SLICE, createChromePlugin, defineOtterElements, provideStore, type ChromeActionMap, type ChromeState } from '@otter-player/ui-core';
 import { buildShell } from './shell.js';
@@ -31,7 +32,7 @@ export type PlayerState = MediaState & QoeState & TextState & ChromeState & Pres
 /** Actions of a player made by createPlayer. */
 export type PlayerActions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap;
 
-export interface PlayerOptions {
+export interface PlayerOptions<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions> {
   /** The player's root. Empty: the default shell is built inside; with a <video>: its markup is kept. */
   readonly container: HTMLElement;
   readonly formats: readonly FormatPlugin[];
@@ -44,6 +45,8 @@ export interface PlayerOptions {
   readonly title?: string;
   /** The default controls (true) or a bare <video> (false: the host builds its UI on the store). Default true. */
   readonly controls?: boolean;
+  /** Captions (sidecar and in-band tracks, Otter's renderer, CVAA style). Default true. */
+  readonly captions?: boolean;
   /**
    * Start muted (before the first load): browsers allow autoplay only without sound, and the mute
    * must be in place before play(). Default false.
@@ -51,44 +54,63 @@ export interface PlayerOptions {
   readonly muted?: boolean;
   /** Control bar auto-hide delay, ms; default 3000; 0 keeps the controls shown. */
   readonly idleMs?: number;
+  /** Keyboard mapping instead of SPEC §14.3's defaults (a remote's keys, ...). */
+  readonly hotkeys?: HotkeyMap;
   /** Presentation modes: mini window, Document PiP, Media Session... (container and surface are the player's). */
   readonly presentation?: Omit<PresentationPluginOptions, 'container' | 'surface'>;
-  /** More state slices and plugins (danmaku, preferences, ...). */
+  /** More state slices and plugins (danmaku, preferences, ...): S and A are the player's state and actions with theirs. */
   readonly slices?: readonly StoreSlice[];
-  readonly plugins?: readonly Plugin<never, never>[];
+  readonly plugins?: readonly Plugin<S, A>[];
+  /** More decision logs for explain(), by name (e.g. the danmaku renderer's steps). */
+  readonly explain?: Readonly<Record<string, (state: Readonly<S>) => readonly RouteStep[]>>;
   /** Runs once the player is assembled (overlays, thumbnails, more bindings); may return a cleanup. */
-  readonly setup?: (parts: PlayerParts) => void | (() => void);
+  readonly setup?: (parts: PlayerParts<S, A>) => void | (() => void);
 }
 
 /** What `setup` gets: the assembled pieces. */
-export interface PlayerParts {
+export interface PlayerParts<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions> {
   readonly root: HTMLElement;
   readonly video: HTMLVideoElement;
   readonly surface: Surface;
   readonly layer: OverlayLayer;
-  readonly media: MediaPlugin<PlayerState, PlayerActions>;
-  readonly store: StoreView<PlayerState, PlayerActions>;
+  readonly media: MediaPlugin<S, A>;
+  readonly store: StoreView<S, A>;
 }
 
-export interface Player {
+/** Everything the player decided and why, in one place (diagnostics, support tickets). */
+export interface PlayerExplanation {
+  /** router.explain(): format, backend and every step (codecs, fallbacks, hand-overs). */
+  readonly route: RouteExplanation | null;
+  /** Codec families dropped on this device, and why. */
+  readonly codecExcluded: Readonly<Record<string, string>>;
+  /** Presentation mode now and what the environment supports. */
+  readonly presentation: PresentationState['presentation'];
+  /** The last error, if any. */
+  readonly error: MediaState['error'];
+  /** More decision logs by name (`explain` option: e.g. `danmaku`, the renderer's choices). */
+  readonly more: Readonly<Record<string, readonly RouteStep[]>>;
+}
+
+export interface Player<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions> {
   readonly element: HTMLElement;
   readonly video: HTMLVideoElement;
   /** Read state and dispatch actions (what the UI and framework bindings use). */
-  readonly store: StoreView<PlayerState, PlayerActions>;
+  readonly store: StoreView<S, A>;
   readonly events: EventBus<CoreEventMap>;
   readonly qoe: QoeHook;
   /** Resolves once every plugin is installed; `load` before that waits for it. */
   readonly ready: Promise<void>;
   load(source: string | Source, options?: LoadOptions): Promise<void>;
+  explain(): PlayerExplanation;
   destroy(): Promise<void>;
 }
 
-export function createPlayer(options: PlayerOptions): Player {
+export function createPlayer<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions>(options: PlayerOptions<S, A>): Player<S, A> {
   const root = options.container;
   const video = buildShell(root, options.controls !== false, options.title);
   defineOtterElements();
   const surface = createVideoSurface(video);
-  const media = createMediaPlugin<PlayerState, PlayerActions>({
+  const media = createMediaPlugin<S, A>({
     target: video,
     formats: options.formats,
     backends: options.backends,
@@ -97,13 +119,13 @@ export function createPlayer(options: PlayerOptions): Player {
     ...(options.cmcd === undefined ? {} : { cmcd: options.cmcd }),
   });
   // Captions: Otter's renderer, native TextTracks while only the <video> shows (PiP, iPhone fullscreen).
-  const text = createText({ inband: media, native: video });
-  const core: OtterCore<PlayerState, PlayerActions> = createCore<PlayerState, PlayerActions>({
-    slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE, ...(options.slices ?? [])],
+  const text = options.captions === false ? undefined : createText({ inband: media, native: video });
+  const core: OtterCore<S, A> = createCore<S, A>({
+    slices: [MEDIA_SLICE, QOE_SLICE, ...(text === undefined ? [] : [TEXT_SLICE]), CHROME_SLICE, PRESENTATION_SLICE, ...(options.slices ?? [])],
     plugins: [
       media,
       createQoePlugin(),
-      text.plugin,
+      ...(text === undefined ? [] : [text.plugin]),
       createChromePlugin({ idleMs: options.idleMs ?? 3000 }),
       createPresentationPlugin({
         ...(options.title === undefined ? {} : { mediaSession: { metadata: { title: options.title } } }),
@@ -111,7 +133,7 @@ export function createPlayer(options: PlayerOptions): Player {
         container: root,
         surface,
       }),
-      ...((options.plugins ?? []) as readonly Plugin<PlayerState, PlayerActions>[]),
+      ...(options.plugins ?? []),
     ],
   });
   const store = core.store.view();
@@ -119,13 +141,15 @@ export function createPlayer(options: PlayerOptions): Player {
   const ready = core.start().then(() => {
     if (options.muted === true) store.dispatch('set-muted', { muted: true });
     root.querySelector('[data-otter-overlays]')?.remove();
-    const layer = createOverlayLayer({ container: root, surface, store, mediaTime: () => video.currentTime });
-    layer.add(text.overlay);
+    // The presented frame's media time, for frame-exact overlays (danmaku masks).
+    const presented = trackFrameTime(video);
+    const layer = createOverlayLayer({ container: root, surface, store, mediaTime: () => video.currentTime, frameTime: presented.time });
+    if (text !== undefined) layer.add(text.overlay);
     provideStore(root, store);
     // Keyboard, pointer and touch through one InputController on the root (SPEC §14.3).
-    const input = createInputController({ store });
+    const input = createInputController({ store, ...(options.hotkeys === undefined ? {} : { hotkeys: options.hotkeys }) });
     input.attach(root);
-    offs.push(() => input.destroy(), bindActivity(root, store), trackControls(root, store, layer), () => layer.destroy());
+    offs.push(() => input.destroy(), bindActivity(root, store), trackControls(root, store, layer), () => layer.destroy(), () => presented.stop());
     const cleanup = options.setup?.({ root, video, surface, layer, media, store });
     if (cleanup !== undefined) offs.push(cleanup);
   });
@@ -139,6 +163,16 @@ export function createPlayer(options: PlayerOptions): Player {
     async load(source, loadOptions) {
       await ready;
       store.dispatch('load', { source: typeof source === 'string' ? { src: source } : source, ...(loadOptions === undefined ? {} : { options: loadOptions }) });
+    },
+    explain() {
+      const s = store.getState();
+      return {
+        route: s.route,
+        codecExcluded: s.codecExcluded,
+        presentation: s.presentation,
+        error: s.error,
+        more: Object.fromEntries(Object.entries(options.explain ?? {}).map(([name, read]) => [name, read(s)])),
+      };
     },
     async destroy() {
       await ready.catch(() => undefined);

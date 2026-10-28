@@ -1,5 +1,5 @@
-// Scenario presets (ADR-013, M6 batch 2): `vod`, `live` and `background` as a host uses them, one
-// call with a container and a source (e2e/site/presets.ts), no hand wiring.
+// Scenario presets (ADR-013, M6 batch 2) as a host uses them: one call with a container and a
+// source (e2e/site/presets.ts), no hand wiring.
 
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
@@ -7,12 +7,19 @@ import type { Player } from '@otter-player/presets';
 import type { BackgroundPlayer } from '@otter-player/presets/background';
 
 const state = (page: Page) => page.evaluate(() => (window.preset as Player).store.getState());
+const explain = (page: Page) => page.evaluate(() => (window.preset as Player).explain());
+const HLSJS = /hls(\.light)?(\.min)?\.m?js|hls-[\w-]+\.js/;
 
-test('vod preset: builds the shell, plays HLS on the own engine, controls drive it, captions offered', async ({ page }) => {
-  const scripts: string[] = [];
+function scripts(page: Page): string[] {
+  const seen: string[] = [];
   page.on('request', (r) => {
-    if (r.resourceType() === 'script') scripts.push(r.url());
+    if (r.resourceType() === 'script') seen.push(r.url());
   });
+  return seen;
+}
+
+test('vod preset: builds the shell, plays HLS on the own engine, controls drive it, captions offered, explain()', async ({ page }) => {
+  const loaded = scripts(page);
   await page.goto('/presets.html?preset=vod&src=/hls-fmp4/master.m3u8');
   await expect(page.locator('#player[data-otter-player] [data-otter-controls] otter-time-slider')).toHaveCount(1);
   await expect(page.locator('[data-otter-title]')).toHaveText('Preset vod');
@@ -24,11 +31,23 @@ test('vod preset: builds the shell, plays HLS on the own engine, controls drive 
   expect(s.backend).toBe('mse');
   // The own CMAF-HLS engine: no hand-over step, no hls.js module loaded.
   expect((s.route?.steps ?? []).map((x) => x.reason).join('\n')).not.toContain('own engine');
-  expect(scripts.some((u) => /hls(\.light)?(\.min)?\.m?js|hls-[\w-]+\.js/.test(u))).toBe(false);
+  expect(loaded.some((u) => HLSJS.test(u))).toBe(false);
   expect(s.textTracks.length).toBeGreaterThan(0);
+  // explain(): the route with its steps, presentation, no error.
+  const e = await explain(page);
+  expect(e.route?.format).toBe('hls');
+  expect(e.route?.steps.length).toBeGreaterThan(0);
+  expect(e.presentation.mode).toBe('inline');
+  expect(e.error).toBeNull();
   // A play button of the shell pauses it (phones show the centre one, desktops the bar's too).
   await page.locator('otter-play-button').getByRole('button').filter({ visible: true }).first().click();
   await expect.poll(async () => (await state(page)).paused).toBe(true);
+});
+
+test('vod preset with captions and thumbnails off: plays, no caption tracks or caption state', async ({ page }) => {
+  await page.goto('/presets.html?preset=vod&captions=0&thumbs=0&src=/hls-fmp4/master.m3u8');
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.5);
+  expect((await state(page)).textTracks).toBeUndefined();
 });
 
 test('live preset: live HLS near HOLD-BACK, the live indicator shows, back to live works', async ({ page }) => {
@@ -45,6 +64,72 @@ test('live preset: live HLS near HOLD-BACK, the live indicator shows, back to li
     p.store.dispatch('play', undefined);
   });
   await expect.poll(async () => (await state(page)).latency ?? 99, { timeout: 15_000 }).toBeLessThan(9);
+});
+
+test('lowlatency preset: LL-HLS goes straight to hls.js (no first try on the own engine)', async ({ page }) => {
+  const loaded = scripts(page);
+  await page.goto('/presets.html?preset=lowlatency&src=/hls-unsupported/ll-parts/master.m3u8');
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 20_000 }).toBeGreaterThan(0.5);
+  const s = await state(page);
+  expect(s.format).toBe('hls');
+  expect(s.error).toBeNull();
+  expect(loaded.some((u) => HLSJS.test(u))).toBe(true);
+  // No own-engine attempt handed over (that would read "own engine does not support ... EXT-X-PART").
+  expect((s.route?.steps ?? []).map((x) => x.reason).join('\n')).not.toContain('own engine');
+});
+
+test('danmaku preset: DASH A/V plays, comments draw with the renderer explained, watermark on, settings persist', async ({ page }) => {
+  await page.goto('/presets.html?preset=danmaku&wm=1&src=/dash-av/manifest.mpd');
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 20_000 }).toBeGreaterThan(0.5);
+  expect((await state(page)).format).toBe('dash');
+  await page.evaluate(() => (window.preset as Player).store.dispatch('load-danmaku' as never, { url: '/danmaku/ladder.xml' } as never));
+  await expect.poll(async () => page.evaluate(() => ((window.preset as Player).store.getState() as unknown as { danmakuStatus: { count: number } }).danmakuStatus.count), { timeout: 10_000 }).toBeGreaterThan(0);
+  const e = await explain(page);
+  expect(e.more['danmaku']?.[0]).toMatchObject({ candidate: 'canvas2d', outcome: 'selected' });
+  await expect(page.locator('[data-otter-watermark]')).toBeVisible();
+  // The viewer's danmaku settings come back on the next visit (preferences).
+  await page.evaluate(() => (window.preset as Player).store.dispatch('set-danmaku' as never, { opacity: 0.4 } as never));
+  await page.reload();
+  await expect.poll(async () => page.evaluate(() => ((window.preset as Player).store.getState() as unknown as { danmaku: { opacity: number } }).danmaku.opacity), { timeout: 10_000 }).toBe(0.4);
+});
+
+test('tv preset: the remote moves focus between controls, OK activates, Back leaves, media keys play / pause', async ({ page }) => {
+  test.skip(test.info().project.name.startsWith('emulated'), 'a TV has a remote, not touch');
+  // 30 s clip: a 10 s seek from the start stays inside it (the 8 s one would end).
+  await page.goto('/presets.html?preset=tv&src=/frames/hls-ladder/master.m3u8');
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.3);
+  const focused = () =>
+    page.evaluate(() => {
+      let a = document.activeElement;
+      while (a?.shadowRoot?.activeElement != null) a = a.shadowRoot.activeElement;
+      const host = (a?.getRootNode() as ShadowRoot | Document) instanceof ShadowRoot ? ((a?.getRootNode() as ShadowRoot).host as Element) : a;
+      return host === null || host === undefined ? '' : host.id === 'player' ? 'player' : host.tagName.toLowerCase();
+    });
+  await page.locator('#player').focus();
+  // Down on the picture: controls up, focus in the bar.
+  await page.keyboard.press('ArrowDown');
+  const first = await focused();
+  expect(first).toMatch(/^otter-/);
+  // Right moves to another control, Left comes back.
+  await page.keyboard.press('ArrowRight');
+  const second = await focused();
+  expect(second).toMatch(/^otter-/);
+  expect(second).not.toBe(first);
+  // Back leaves the controls: focus on the player again.
+  await page.keyboard.press('Escape');
+  expect(await focused()).toBe('player');
+  // On the picture, Left / Right seek; media keys play and pause.
+  const before = (await state(page)).currentTime;
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await state(page)).currentTime).toBeGreaterThan(before + 1);
+  await page.keyboard.press('MediaPlayPause');
+  await expect.poll(async () => (await state(page)).paused).toBe(true);
+  // OK on the focused play button plays again.
+  await page.keyboard.press('ArrowDown');
+  const play = page.locator('[data-otter-controls] otter-play-button').getByRole('button');
+  await play.focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await state(page)).paused).toBe(false);
 });
 
 test('background preset (Hero): muted inline loop without UI, playing; reduced motion leaves it still', async ({ page }) => {

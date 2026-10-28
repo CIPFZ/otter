@@ -23,6 +23,9 @@
       "path": "../core"
     },
     {
+      "path": "../danmaku"
+    },
+    {
       "path": "../format-dash"
     },
     {
@@ -39,6 +42,12 @@
     },
     {
       "path": "../overlay-thumbnails"
+    },
+    {
+      "path": "../overlay-watermark"
+    },
+    {
+      "path": "../preferences"
     },
     {
       "path": "../presentation"

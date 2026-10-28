@@ -62,3 +62,13 @@ describe('shell', () => {
     expect(PRESET_IDS).toHaveLength(9);
   });
 });
+
+describe('tv preset keys', () => {
+  it('maps the remote media keys and leaves Up / Down to focus moves', async () => {
+    const { TV_HOTKEYS } = await import('../src/tv.js');
+    expect(TV_HOTKEYS['MediaPlayPause']).toEqual({ type: 'toggle-paused' });
+    expect(TV_HOTKEYS['MediaFastForward']).toEqual({ type: 'seek-by', seconds: 10 });
+    expect(TV_HOTKEYS['ArrowUp']).toBeUndefined();
+    expect(TV_HOTKEYS['ArrowLeft']).toEqual({ type: 'seek-by', seconds: -10 });
+  });
+});
