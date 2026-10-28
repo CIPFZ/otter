@@ -136,7 +136,8 @@ for (const kind of ['svg', 'webm'] as const) {
       // (33 ms), it does not run at the frame rate here and frame alignment is not what is measured
       // (owner 2026-10-28: skipped with the measured p95; the Worker only, never Canvas 2D or WebGL;
       // real WebKit is an M7 item).
-      if (renderer === 'worker') {
+      // Never on a real device (`real-*`, a real GPU): there a slow Worker is a failure, not a skip.
+      if (renderer === 'worker' && !test.info().project.name.startsWith('real-')) {
         const own = (await inspect())?.ownFrameP95 ?? null;
         if (own !== null && own > 33) {
           ciNotice(`danmaku mask ${kind} on worker: skipped, the Worker's own frame interval p95 ${own.toFixed(1)} ms (> 33 ms, not presenting at the frame rate here); ${playing.length} of ${shots} screenshots read a band, band - frame ${signed.join(',')}`);
