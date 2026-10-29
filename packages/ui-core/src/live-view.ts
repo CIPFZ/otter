@@ -28,7 +28,7 @@ export function liveSlider(
   input: HTMLInputElement,
   strings: () => UiStrings,
   label: (format: (time: number) => string) => void,
-  speakTime: (seconds: number) => string,
+  speakTime: (seconds: number, words: UiStrings) => string,
   setFill: (el: HTMLElement, name: 'played' | 'buffered', fraction: number) => void,
 ): LiveSlider {
   let edge = 0;
@@ -45,7 +45,7 @@ export function liveSlider(
     const at = value ?? s.currentTime;
     if (!dragging || value !== undefined) {
       if (value === undefined) input.value = String(at);
-      input.setAttribute('aria-valuetext', `${strings().behindLive} ${speakTime(edge - at)}`);
+      input.setAttribute('aria-valuetext', `${strings().behindLive} ${speakTime(edge - at, strings())}`);
       fillTo('played', (at - min) / (max - min));
     }
     fillTo('buffered', (s.bufferedEnd - min) / (max - min));

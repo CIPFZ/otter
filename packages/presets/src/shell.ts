@@ -2,6 +2,8 @@
 // built inside the host's container. The ui-core elements render themselves once defined; the
 // skin is the host's stylesheet (`@otter-player/ui-skin-default`).
 
+import { findStrings } from '@otter-player/ui-core';
+
 /** Markup of the default shell (controls, centre buttons, top bar, feedback, error, stats). */
 const SHELL = `<video playsinline crossorigin="anonymous" tabindex="-1"></video>
 <otter-gesture></otter-gesture><otter-poster></otter-poster><otter-big-play></otter-big-play><otter-spinner></otter-spinner><otter-feedback></otter-feedback><otter-error></otter-error>
@@ -20,7 +22,7 @@ const SHELL = `<video playsinline crossorigin="anonymous" tabindex="-1"></video>
 export function buildShell(container: HTMLElement, controls: boolean, title: string | undefined): HTMLVideoElement {
   container.setAttribute('data-otter-player', '');
   if (!container.hasAttribute('role')) container.setAttribute('role', 'region');
-  if (!container.hasAttribute('aria-label')) container.setAttribute('aria-label', 'Video player');
+  if (!container.hasAttribute('aria-label')) container.setAttribute('aria-label', findStrings(container).player);
   // The root takes keyboard focus for hotkeys (the picture itself is not a control).
   if (!container.hasAttribute('tabindex')) container.tabIndex = -1;
   let video = container.querySelector('video');

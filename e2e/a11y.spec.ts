@@ -30,9 +30,9 @@ const blockingOf = (results: Awaited<ReturnType<AxeBuilder['analyze']>>): string
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id} (${v.impact}): ${v.help} [${v.nodes.map((n) => n.target.join(' ')).join(', ')}]`);
 
-async function loadPlayer(page: Page): Promise<void> {
+async function loadPlayer(page: Page, query = ''): Promise<void> {
   // idle=0: controls stay up for the scan and the Tab walk.
-  await page.goto('/player.html?idle=0');
+  await page.goto(`/player.html?idle=0${query}`);
   await page.evaluate(async () => {
     const o = (await window.otter) as OtterFixture;
     o.dispatch('set-muted', { muted: true });
@@ -41,8 +41,9 @@ async function loadPlayer(page: Page): Promise<void> {
   await expect.poll(async () => page.evaluate(async () => ((await window.otter) as OtterFixture).state().qoe.ttff), { timeout: 30_000 }).not.toBeNull();
 }
 
-test('player page: no serious or critical axe violations while playing, with captions and the settings menu open', async ({ page }, testInfo) => {
-  await loadPlayer(page);
+for (const lang of ['en', 'zh-CN'] as const) {
+test(`player page${lang === 'en' ? '' : ' in Chinese (lang=zh-CN)'}: no serious or critical axe violations while playing, with captions and the settings menu open`, async ({ page }, testInfo) => {
+  await loadPlayer(page, lang === 'en' ? '' : '&lang=zh-CN');
   await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('select-text-track', { id: 'sidecar:0' }));
   const playing = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
   await page.locator('otter-settings-menu').locator('button').click();
@@ -51,6 +52,7 @@ test('player page: no serious or critical axe violations while playing, with cap
   await testInfo.attach('axe-player.json', { body: JSON.stringify({ playing, menu }, null, 2), contentType: 'application/json' });
   expect([...blockingOf(playing), ...blockingOf(menu)]).toEqual([]);
 });
+}
 
 test('every control is reachable with Tab and shows a visible focus ring', async ({ page, browserName }, testInfo) => {
   test.skip(browserName === 'webkit', 'WebKit only tabs to links/buttons with "Press Tab to highlight each item" enabled');

@@ -1,5 +1,8 @@
 // UI strings (ADR-005 §6): primitives never hard-code text. English and Chinese ship; a host
 // swaps or extends the table with provideStrings(). `{n}` / `{label}` are placeholders.
+// Which table: the host's (provideStrings) -> the nearest `lang` attribute (across shadow roots;
+// a preset's `lang` option sets it on the player) -> navigator.language -> English. Numbers and
+// times (0:09, 720P, 1.0x) are not translated.
 
 /** Texts of the settings menu's Picture page (defaults in settings-level.ts, by language). */
 /** Danmaku settings page texts (level-two chunk), when the host installs @otter-player/danmaku. */
@@ -36,7 +39,32 @@ export interface PictureStrings {
   readonly reset: string;
 }
 
+/** Row labels of the stats panel (its chunk holds the defaults by language). */
+export interface StatsStrings {
+  readonly status: string;
+  readonly format: string;
+  readonly backend: string;
+  readonly resolution: string;
+  readonly codec: string;
+  readonly quality: string;
+  readonly bandwidth: string;
+  /** Suffix of a bandwidth that is the engine's estimate, not a measurement. */
+  readonly estimated: string;
+  readonly buffer: string;
+  readonly latency: string;
+  readonly ttff: string;
+  readonly rebuffers: string;
+  readonly switches: string;
+  readonly dropped: string;
+  readonly errors: string;
+  /** "last: {label}" */
+  readonly lastError: string;
+  readonly noDecision: string;
+}
+
 export interface UiStrings {
+  /** BCP 47 language of this table (`en`, `zh-CN`): on-demand pages pick their texts by it. */
+  readonly locale: string;
   readonly play: string;
   readonly pause: string;
   readonly mute: string;
@@ -72,6 +100,15 @@ export interface UiStrings {
    */
   readonly picture?: Partial<PictureStrings>;
   readonly danmakuPage?: Partial<DanmakuStrings>;
+  readonly stats?: Partial<StatsStrings>;
+  /** Spoken durations (aria-valuetext): "{n} hour" / "{n} hours", ...; joined by spaces. */
+  readonly hour: string;
+  readonly hours: string;
+  readonly minute: string;
+  readonly minutes: string;
+  readonly second: string;
+  readonly seconds: string;
+  readonly timeUnknown: string;
   readonly audio: string;
   // Caption display settings (CVAA).
   readonly captionSize: string;
@@ -136,6 +173,14 @@ export interface UiStrings {
 }
 
 export const STRINGS_EN: UiStrings = {
+  locale: 'en',
+  hour: '{n} hour',
+  hours: '{n} hours',
+  minute: '{n} minute',
+  minutes: '{n} minutes',
+  second: '{n} second',
+  seconds: '{n} seconds',
+  timeUnknown: 'unknown',
   play: 'Play',
   pause: 'Pause',
   mute: 'Mute',
@@ -218,6 +263,14 @@ export const STRINGS_EN: UiStrings = {
 };
 
 export const STRINGS_ZH: UiStrings = {
+  locale: 'zh-CN',
+  hour: '{n} 小时',
+  hours: '{n} 小时',
+  minute: '{n} 分钟',
+  minutes: '{n} 分钟',
+  second: '{n} 秒',
+  seconds: '{n} 秒',
+  timeUnknown: '未知',
   play: '播放',
   pause: '暂停',
   mute: '静音',
@@ -301,21 +354,32 @@ export const STRINGS_ZH: UiStrings = {
 
 const tables = new WeakMap<Node, UiStrings>();
 
-/** Strings for every primitive under `root` (default: from the closest `lang`, en or zh). */
+/** Strings for every primitive under `root` (default: by language, see the top of this file). */
 export function provideStrings(root: Node, strings: UiStrings): void {
   tables.set(root, strings);
 }
+
+/** The UI language at `from`: the nearest `lang` attribute (across shadow roots), else the browser's. */
+export function uiLanguage(from: Node): string {
+  let node: Node | null = from;
+  while (node !== null) {
+    const lang = node instanceof Element ? node.getAttribute('lang') : null;
+    if (lang !== null && lang !== '') return lang;
+    node = node.parentNode ?? ((node as { host?: Node }).host ?? null);
+  }
+  return (globalThis.navigator as { language?: string } | undefined)?.language ?? 'en';
+}
+
+const isZh = (lang: string): boolean => /^zh\b/i.test(lang);
 
 export function findStrings(from: Node): UiStrings {
   let node: Node | null = from;
   while (node !== null) {
     const table = tables.get(node);
     if (table !== undefined) return table;
-    const lang = node instanceof Element ? node.getAttribute('lang') : null;
-    if (lang !== null && lang !== '') return /^zh\b/i.test(lang) ? STRINGS_ZH : STRINGS_EN;
     node = node.parentNode ?? ((node as { host?: Node }).host ?? null);
   }
-  return STRINGS_EN;
+  return isZh(uiLanguage(from)) ? STRINGS_ZH : STRINGS_EN;
 }
 
 /** `format('Volume {n}%', { n: 50 })` */

@@ -41,3 +41,14 @@ pnpm check                 # 以上非 e2e 检查全部跑一遍
 
 node scripts/new-package.ts <name> --description "..." [--deps core,media] [--no-dom] [--css]
 ```
+
+## 界面语言
+
+控件文字（含 aria-label、提示、读屏用的时间）按以下顺序选表：
+
+1. 宿主用 `provideStrings(root, table)` 给的表；
+2. 最近的 `lang` 属性（preset 的 `lang` 选项就设在播放器根上）；
+3. `navigator.language`；
+4. 英文。
+
+自带英文与中文（`zh*`）。数字与时间格式（`0:09`、`720P`、`1.0x`）不翻译。加一种语言：照 `STRINGS_EN` 写一张 `UiStrings` 表（`locale` 填它的 BCP 47 标签），用 `provideStrings` 挂在播放器根上；画面、弹幕、统计这几页的文字可以放在表的 `picture`、`danmakuPage`、`stats` 里覆盖。用法见 `packages/presets/README.md`。

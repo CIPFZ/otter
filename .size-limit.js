@@ -58,7 +58,8 @@ const ENGINES = Object.keys(ENGINE_FILES);
  * Captions and preview pictures are on-demand chunks of the presets, outside these rows.
  */
 const SCENARIOS = [
-  ['short-vod', '短视频 / 简单点播', '30 KB', []],
+  // 32 KB since 2026-10-29 (owner): basic was 29.9 KB at 1.0; the 2 KB are a margin for fixes (SPEC §19 note).
+  ['short-vod', '短视频 / 简单点播', '32 KB', []],
   ['long-vod', '长视频点播 + 多清晰度 + 字幕', '80 KB', ['hls.js']],
   ['live', '直播 + LL-HLS / LL-DASH', '90 KB', ['hls.js']],
   ['lowlatency', '直播 + LL-HLS / LL-DASH（lowlatency preset）', '90 KB', ['hls.js']],

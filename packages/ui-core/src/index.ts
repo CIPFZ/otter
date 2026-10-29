@@ -80,7 +80,7 @@ export {
   type MenuGroup,
   type MenuOption,
 } from './elements.js';
-export { formatBitrate, formatMs, formatSeconds, formatTime, speakTime } from './format.js';
+export { formatBitrate, formatMs, formatSeconds, formatTime, speakTime, type TimeWords } from './format.js';
 export {
   bindActivity,
   CHROME_SLICE,
@@ -92,4 +92,4 @@ export {
   type ChromeUiActions,
 } from './chrome.js';
 export { icon, type IconNode } from './icons.js';
-export { fill, findStrings, provideStrings, STRINGS_EN, STRINGS_ZH, type UiStrings } from './strings.js';
+export { fill, findStrings, provideStrings, STRINGS_EN, STRINGS_ZH, uiLanguage, type DanmakuStrings, type PictureStrings, type StatsStrings, type UiStrings } from './strings.js';

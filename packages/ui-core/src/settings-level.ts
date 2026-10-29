@@ -53,7 +53,7 @@ const PICTURE_ZH: PictureStrings = {
 
 /** Picture page texts: the host's override over the defaults for the player's language. */
 export const pictureStrings = (host: LevelHost): PictureStrings => ({
-  ...(/^zh\b/i.test(host.el.closest('[lang]')?.getAttribute('lang') ?? '') ? PICTURE_ZH : PICTURE_EN),
+  ...(/^zh\b/i.test(host.strings.locale) ? PICTURE_ZH : PICTURE_EN),
   ...host.strings.picture,
 });
 
@@ -97,7 +97,7 @@ const DANMAKU_ZH: DanmakuStrings = {
 };
 
 const danmakuStrings = (host: LevelHost): DanmakuStrings => ({
-  ...(/^zh\b/i.test(host.el.closest('[lang]')?.getAttribute('lang') ?? '') ? DANMAKU_ZH : DANMAKU_EN),
+  ...(/^zh\b/i.test(host.strings.locale) ? DANMAKU_ZH : DANMAKU_EN),
   ...host.strings.danmakuPage,
 });
 

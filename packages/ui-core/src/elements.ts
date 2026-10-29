@@ -562,7 +562,7 @@ ${glassFallback('.time')}
         });
       }
       #valueText(current: number, duration: number): void {
-        this.#input?.setAttribute('aria-valuetext', fill(this.strings.timeOf, { current: speakTime(current), duration: speakTime(duration) }));
+        this.#input?.setAttribute('aria-valuetext', fill(this.strings.timeOf, { current: speakTime(current, this.strings), duration: speakTime(duration, this.strings) }));
       }
       #played(current: number, duration: number): void {
         setFill(this, 'played', duration > 0 ? current / duration : 0);

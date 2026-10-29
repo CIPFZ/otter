@@ -10,18 +10,23 @@ export function formatTime(seconds: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
 
-/** Spoken form for aria-valuetext: "1 minute 15 seconds". */
-export function speakTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return 'unknown';
+/** Units of a spoken duration (a UiStrings table): "{n} minute" / "{n} minutes", ... */
+export type TimeWords = Readonly<Record<'hour' | 'hours' | 'minute' | 'minutes' | 'second' | 'seconds' | 'timeUnknown', string>>;
+
+const EN_WORDS: TimeWords = { hour: '{n} hour', hours: '{n} hours', minute: '{n} minute', minutes: '{n} minutes', second: '{n} second', seconds: '{n} seconds', timeUnknown: 'unknown' };
+
+/** Spoken form for aria-valuetext: "1 minute 15 seconds" (in the words of `w`, default English). */
+export function speakTime(seconds: number, w: TimeWords = EN_WORDS): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return w.timeUnknown;
   const s = Math.floor(seconds);
   const parts: string[] = [];
-  const unit = (n: number, word: string): void => {
-    if (n > 0) parts.push(`${n} ${word}${n === 1 ? '' : 's'}`);
+  const unit = (n: number, one: string, many: string): void => {
+    if (n > 0) parts.push((n === 1 ? one : many).replace('{n}', String(n)));
   };
-  unit(Math.floor(s / 3600), 'hour');
-  unit(Math.floor((s % 3600) / 60), 'minute');
-  unit(s % 60, 'second');
-  return parts.length === 0 ? '0 seconds' : parts.join(' ');
+  unit(Math.floor(s / 3600), w.hour, w.hours);
+  unit(Math.floor((s % 3600) / 60), w.minute, w.minutes);
+  unit(s % 60, w.second, w.seconds);
+  return parts.length === 0 ? w.seconds.replace('{n}', '0') : parts.join(' ');
 }
 
 /** bits per second -> "4.2 Mbps". */

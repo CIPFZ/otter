@@ -4,7 +4,46 @@
 import type { UiState } from './context.js';
 import type { IconNode } from './icons.js';
 import type { T as Tokens } from './primitives.js';
-import type { UiStrings } from './strings.js';
+import type { StatsStrings, UiStrings } from './strings.js';
+
+const STATS_EN: StatsStrings = {
+  status: 'Status',
+  format: 'Format',
+  backend: 'Backend',
+  resolution: 'Resolution',
+  codec: 'Codec',
+  quality: 'Quality',
+  bandwidth: 'Bandwidth',
+  estimated: 'est.',
+  buffer: 'Buffer',
+  latency: 'Latency',
+  ttff: 'TTFF',
+  rebuffers: 'Rebuffers',
+  switches: 'Switches',
+  dropped: 'Dropped',
+  errors: 'Errors',
+  lastError: 'last: {label}',
+  noDecision: 'no decision yet',
+};
+const STATS_ZH: StatsStrings = {
+  status: '状态',
+  format: '格式',
+  backend: '后端',
+  resolution: '分辨率',
+  codec: '编码',
+  quality: '清晰度',
+  bandwidth: '带宽',
+  estimated: '估计',
+  buffer: '缓冲',
+  latency: '延迟',
+  ttff: '首帧时间',
+  rebuffers: '卡顿',
+  switches: '清晰度切换',
+  dropped: '丢帧',
+  errors: '错误',
+  lastError: '最近：{label}',
+  noDecision: '尚未选路',
+};
 
 /** Helpers owned by the main chunk (see the Stats element). */
 export interface StatsDeps {
@@ -54,50 +93,52 @@ ${d.glassFallback(':host')}
 
   return (s) => {
     const t = host.strings;
+    const L: StatsStrings = { ...(/^zh\b/i.test(t.locale) ? STATS_ZH : STATS_EN), ...t.stats };
     root.querySelector('section')?.setAttribute('aria-label', t.statistics);
     root.querySelector('[data-action="copy"]')?.setAttribute('aria-label', t.copy);
     root.querySelector('[data-action="close"]')?.setAttribute('aria-label', t.close);
     const q = s.qoe;
     const active = s.tracks.video.find((v) => v.id === s.activeQuality) ?? s.tracks.video.find((v) => v.selected);
     const buffer = Math.max(0, s.bufferedEnd - s.currentTime);
-    const groups: [string, [string, string][]][] = [
+    // [stable key (data-stat, copied JSON), label, value]
+    const groups: [string, [string, string, string][]][] = [
       [
         t.statsPlayback,
         [
-          ['Status', s.error === null ? s.status : `${s.status} (${s.error.type}: ${s.error.details})`],
-          ['Format', s.format ?? '—'],
-          ['Backend', `${s.backend ?? '—'}${s.mms ? ' (MMS)' : ''}`],
-          ['Resolution', s.videoWidth > 0 ? `${s.videoWidth}×${s.videoHeight}` : '—'],
-          ['Codec', active?.codec ?? q?.codec ?? '—'],
+          ['Status', L.status, s.error === null ? s.status : `${s.status} (${s.error.type}: ${s.error.details})`],
+          ['Format', L.format, s.format ?? '—'],
+          ['Backend', L.backend, `${s.backend ?? '—'}${s.mms ? ' (MMS)' : ''}`],
+          ['Resolution', L.resolution, s.videoWidth > 0 ? `${s.videoWidth}×${s.videoHeight}` : '—'],
+          ['Codec', L.codec, active?.codec ?? q?.codec ?? '—'],
         ],
       ],
       [
         t.statsNetwork,
         [
-          ['Quality', `${s.activeQuality ?? '—'} (${s.quality})${active?.bitrate === undefined ? '' : ` · ${formatBitrate(active.bitrate)}`}`],
+          ['Quality', L.quality, `${s.activeQuality ?? '—'} (${s.quality})${active?.bitrate === undefined ? '' : ` · ${formatBitrate(active.bitrate)}`}`],
           // Not measured yet: the engine's default is labelled, nothing is shown as a measurement.
-          ['Bandwidth', q?.bandwidth == null ? '—' : `${formatBitrate(q.bandwidth)}${q.bandwidthEstimated === true ? ' (est.)' : ''}`],
-          ['Buffer', formatSeconds(buffer)],
-          ['Latency', s.live ? formatSeconds(s.latency ?? q?.latency) : '—'],
+          ['Bandwidth', L.bandwidth, q?.bandwidth == null ? '—' : `${formatBitrate(q.bandwidth)}${q.bandwidthEstimated === true ? ` (${L.estimated})` : ''}`],
+          ['Buffer', L.buffer, formatSeconds(buffer)],
+          ['Latency', L.latency, s.live ? formatSeconds(s.latency ?? q?.latency) : '—'],
         ],
       ],
       [
         t.statsQuality,
         [
-          ['TTFF', q?.ttff == null ? '—' : formatMs(q.ttff)],
-          ['Rebuffers', q === undefined ? '—' : `${q.rebufferCount} (${formatMs(q.rebufferDuration)})`],
-          ['Switches', q === undefined ? '—' : String(q.qualitySwitches)],
-          ['Dropped', q === undefined ? '—' : `${q.droppedFrames} / ${q.totalFrames}`],
-          ['Errors', q === undefined ? '—' : `${q.errors}${q.lastError === null ? '' : ` (last: ${q.lastError.details})`}`],
+          ['TTFF', L.ttff, q?.ttff == null ? '—' : formatMs(q.ttff)],
+          ['Rebuffers', L.rebuffers, q === undefined ? '—' : `${q.rebufferCount} (${formatMs(q.rebufferDuration)})`],
+          ['Switches', L.switches, q === undefined ? '—' : String(q.qualitySwitches)],
+          ['Dropped', L.dropped, q === undefined ? '—' : `${q.droppedFrames} / ${q.totalFrames}`],
+          ['Errors', L.errors, q === undefined ? '—' : `${q.errors}${q.lastError === null ? '' : ` (${L.lastError.replace('{label}', q.lastError.details)})`}`],
         ],
       ],
     ];
-    json = JSON.stringify(Object.fromEntries(groups.flatMap(([, rows]) => rows)), null, 2);
+    json = JSON.stringify(Object.fromEntries(groups.flatMap(([, rows]) => rows.map(([k, , v]) => [k, v]))), null, 2);
     const html = groups
-      .map(([, rows]) => `<dl>${rows.map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd data-stat="${escapeHtml(k)}">${escapeHtml(v)}</dd>`).join('')}</dl>`)
+      .map(([, rows]) => `<dl>${rows.map(([k, label, v]) => `<dt>${escapeHtml(label)}</dt><dd data-stat="${escapeHtml(k)}">${escapeHtml(v)}</dd>`).join('')}</dl>`)
       .join('');
     if (body.innerHTML !== html) body.innerHTML = html;
-    const text = s.route === null ? 'no decision yet' : JSON.stringify(s.route, null, 2);
+    const text = s.route === null ? L.noDecision : JSON.stringify(s.route, null, 2);
     if (route.textContent !== text) route.textContent = text;
   };
 }

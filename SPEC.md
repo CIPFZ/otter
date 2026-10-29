@@ -447,7 +447,7 @@ M0 接口落点（ADR-002）：
 
 | 场景 | backend | 格式包 | 必带模块 | 体积目标：自有代码 (gzip，M1–M6 门禁) | 含第三方引擎 (gzip，记录到 M6) |
 |---|---|---|---|---|---|
-| 短视频 / 简单点播 | native 或 mse | mp4-range 或 hls | core + ui 最小皮肤 | < 30KB | 记录 |
+| 短视频 / 简单点播 | native 或 mse | mp4-range 或 hls | preset basic + 最小皮肤 | < 32KB（注） | 记录 |
 | 长视频点播 + 多清晰度 + 字幕 | mse | hls / dash | abr + text + thumbnails | < 80KB | 记录 |
 | 直播 + LL-HLS / LL-DASH | mse | hls / dash | live-controller + 追帧 | < 90KB | 记录 |
 | 国内直播 / 电商 | mse | flv / ts / whep | live-controller + 看门狗 | < 70KB | 记录 |
@@ -458,6 +458,8 @@ M0 接口落点（ADR-002）：
 | 背景视频 / Hero | native | mp4 | 无 UI | < 5KB | 记录 |
 | 沉浸竖屏信息流 | mse | hls / mp4-range | preset shorts | < 60KB | 记录 |
 | 电视遥控器 | mse | hls / dash | ui-skin-tv | < 90KB | 记录 |
+
+注：短视频行原为 30KB，2026-10-29 负责人改为 32KB。`presets/basic` 在 1.0 时约 29.9KB（滑块修正与中英文读时间之前）；多出的 2KB 是给修复留的余量，不用于加功能。
 
 体积口径（ADR-004、ADR-009、ADR-010）：「自有代码」指 Otter 各包及其非引擎 L1 依赖，不含 hls.js / Shaka / mpegts.js / WASM 解码器；「含第三方引擎」在此基础上加上该场景首次播放必须加载的引擎块。两条独立门禁：自有代码列为 M1–M6 门禁；自研 CMAF-HLS 引擎块（`format-hls` 的按需块及其独有依赖）点播 ≤ 12KB、含直播 ≤ 15KB，M5 起门禁。含第三方引擎列只记录到 M6。引擎库只能在 `Engine.load()` / `Decoder.create()` 中以 `import()` 按需加载，不得进入首屏 chunk。
 

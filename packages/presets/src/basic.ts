@@ -18,6 +18,7 @@ import {
   CHROME_SLICE,
   createChromePlugin,
   defineElements,
+  findStrings,
   otterFullscreenButton,
   otterMuteButton,
   otterPlayButton,
@@ -47,6 +48,8 @@ export interface BasicOptions<S extends BasicState = BasicState, A extends Basic
   readonly muted?: boolean;
   /** Control bar auto-hide delay, ms; default 3000; 0 keeps the controls shown. */
   readonly idleMs?: number;
+  /** Language of the controls (BCP 47), set as the player's `lang` (see createPlayer). */
+  readonly lang?: string;
   readonly slices?: readonly StoreSlice[];
   readonly plugins?: readonly Plugin<S, A>[];
   /** Runs once the player is assembled; may return a cleanup. */
@@ -125,8 +128,9 @@ function createFullscreenPlugin<S extends BasicState, A extends BasicActions>(ro
 export function createBasicPlayer<S extends BasicState = BasicState, A extends BasicActions = BasicActions>(options: BasicOptions<S, A>): BasicPlayer<S, A> {
   const root = options.container;
   root.setAttribute('data-otter-player', '');
+  if (options.lang !== undefined) root.lang = options.lang;
   if (!root.hasAttribute('role')) root.setAttribute('role', 'region');
-  if (!root.hasAttribute('aria-label')) root.setAttribute('aria-label', 'Video player');
+  if (!root.hasAttribute('aria-label')) root.setAttribute('aria-label', findStrings(root).player);
   if (!root.hasAttribute('tabindex')) root.tabIndex = -1;
   let video = root.querySelector('video');
   if (video === null) {

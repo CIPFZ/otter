@@ -165,6 +165,9 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
   const cmcd: CmcdConfig | undefined =
     cmcdMode === 'query' || cmcdMode === 'headers' ? { enabled: true, mode: cmcdMode, sessionId: 'otter-e2e', contentId: 'fixture' } : undefined;
   const root = document.getElementById('player') as HTMLElement;
+  // ?lang=zh-CN: the controls' language (as a preset's `lang` option does).
+  const lang = params.get('lang');
+  if (lang !== null) root.lang = lang;
   document.body.toggleAttribute('data-scroll', params.get('scroll') === '1');
   const video = root.querySelector('video') as HTMLVideoElement;
   // One surface per page: rebuilding the core (setPolicy) reuses it.

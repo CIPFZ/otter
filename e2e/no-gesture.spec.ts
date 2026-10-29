@@ -103,10 +103,10 @@ test('h264.mp4 started without a gesture: the first gesture makes the AudioConte
   await page.waitForTimeout(1000);
   const after = await page.evaluate(async () => {
     const f = await (window.wc as Promise<WebCodecsFixture>);
-    return { paused: f.state().paused, t: f.state().currentTime, errors: f.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string } }).error.details) };
+    return { paused: f.state().paused, t: f.state().currentTime, errors: f.events.filter((e) => e.type === 'error').map((e) => (e.payload as { error: { details: string } }).error.details), messages: f.events.filter((e) => e.type === 'error').map((e) => { const x = (e.payload as { error: { details: string; message?: string } }).error; return `${x.details}: ${x.message ?? ''}`; }) };
   });
   expect(after.paused).toBe(false);
   expect(after.t).toBeGreaterThan(r.currentTime);
-  expect(after.errors).not.toContain('audioClockUnavailable');
+  expect(after.errors, after.messages.join(' | ')).not.toContain('audioClockUnavailable');
   ciNotice(`first gesture: 1 AudioContext running, the clock on it, ${after.t.toFixed(2)} s played, no audioClockUnavailable`);
 });

@@ -43,6 +43,11 @@ export interface PlayerOptions<S extends PlayerState = PlayerState, A extends Pl
   readonly cmcd?: CmcdConfig;
   /** Top bar and Media Session title. */
   readonly title?: string;
+  /**
+   * Language of the controls (BCP 47: `zh-CN`, `en`), set as the player's `lang`. Without it: the
+   * page's nearest `lang`, else the browser's language. More languages: provideStrings(root, table).
+   */
+  readonly lang?: string;
   /** The default controls (true) or a bare <video> (false: the host builds its UI on the store). Default true. */
   readonly controls?: boolean;
   /**
@@ -110,6 +115,7 @@ export interface Player<S extends PlayerState = PlayerState, A extends PlayerAct
 
 export function createPlayer<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions>(options: PlayerOptions<S, A>): Player<S, A> {
   const root = options.container;
+  if (options.lang !== undefined) root.lang = options.lang;
   const video = buildShell(root, options.controls !== false, options.title);
   defineOtterElements();
   const surface = createVideoSurface(video);

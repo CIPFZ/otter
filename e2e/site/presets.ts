@@ -26,12 +26,14 @@ const kind = params.get('preset');
 const container = document.getElementById('player') as HTMLElement;
 window.hasThumbnails = () => findThumbnails(container) !== undefined;
 // Muted: browsers allow autoplay only without sound.
-const common = { container, title: `Preset ${kind}`, idleMs: 0, muted: true } as const;
+// ?lang=zh-CN: the presets' `lang` option; without it the page has no lang, so the browser's language decides.
+const lang = params.get('lang');
+const common = { container, title: `Preset ${kind}`, idleMs: 0, muted: true, ...(lang === null ? {} : { lang }) } as const;
 let player: Player | undefined;
 if (kind === 'background') {
   window.preset = createBackgroundPlayer({ target: document.getElementById('hero') as HTMLElement, src });
 } else if (kind === 'basic') {
-  const basic = createBasicPlayer({ container, idleMs: 0, muted: true });
+  const basic = createBasicPlayer({ container, idleMs: 0, muted: true, ...(lang === null ? {} : { lang }) });
   window.preset = basic;
   void basic.load(src, { autoplay: true });
 } else if (kind === 'vod') {
@@ -42,7 +44,7 @@ if (kind === 'background') {
   player = createLowLatencyPlayer(common);
 } else if (kind === 'tv') {
   // A TV keeps its own idle delay (5 s); 0 here would keep the controls up for the focus checks anyway.
-  player = createTvPlayer({ container, title: 'Preset tv', muted: true });
+  player = createTvPlayer({ container, title: 'Preset tv', muted: true, ...(lang === null ? {} : { lang }) });
 } else if (kind === 'danmaku') {
   // One call: the comments come with each load (?comments=<url>, default the fixture's ladder.xml).
   player = createDanmakuPlayer({
