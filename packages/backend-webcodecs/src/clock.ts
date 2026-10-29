@@ -98,6 +98,13 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
   let movingSince = -1;
   const stalls: number[] = [];
   let pinned = false;
+  /**
+   * The context moves again after a freeze, the clock still on performance.now() for RECOVER_S:
+   * the worklet plays meanwhile, anchored at the media time of that moment (M6: sound came back
+   * 2 s after the device). Sound and time source are separate decisions: sound needs only a
+   * context that runs now; the clock needs one that has run steadily.
+   */
+  let audibleOnStandIn = false;
   let recoverListener: ((stallS: number) => void) | undefined;
   /** The context's state at the last statechange: a fresh 'running' after another one clears `stuck`. */
   let lastState = initial?.state;
@@ -128,7 +135,7 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     if (ctx === undefined || anchorListener === undefined) return;
     // The worklet works in context time: re-express the anchor there.
     const m = now();
-    anchorListener({ media: m, context: ctx.currentTime, rate, playing: playing && source === 'audio' });
+    anchorListener({ media: m, context: ctx.currentTime, rate, playing: playing && (source === 'audio' || audibleOnStandIn) });
   };
   const rebase = (): void => {
     media = now();
@@ -196,6 +203,7 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     if (state === 'running' && lastState !== undefined && lastState !== 'running') {
       stuck = false;
       pinned = false;
+      audibleOnStandIn = false;
     }
     lastState = state;
     if (usable()) failure = undefined;
@@ -210,15 +218,25 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     if (c !== watchCtx) {
       watchCtx = c;
       lastMove = p;
-      if (movingSince < 0) movingSince = p;
+      if (movingSince < 0) {
+        movingSince = p;
+        // Sound at once, from where the media is now (the stall's samples are skipped).
+        audibleOnStandIn = true;
+        anchor();
+      }
     } else if (p - lastMove > 0.1) {
       movingSince = -1;
+      if (audibleOnStandIn) {
+        audibleOnStandIn = false;
+        anchor();
+      }
     }
     if (movingSince < 0 || p - movingSince < RECOVER_S) return;
     const stallS = movingSince - stallFrom;
     stuck = false;
     failure = undefined;
     movingSince = -1;
+    audibleOnStandIn = false;
     switchTo('audio', `AudioContext time moving again after a ${stallS.toFixed(2)} s stall`);
     recoverListener?.(stallS);
   };
@@ -286,6 +304,7 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       }
       if (p - lastPerf > STUCK_S) {
         stuck = true;
+        audibleOnStandIn = false;
         // From the last movement, also when the stall began inside the settling window.
         stallFrom = Math.min(lastPerf, lastMoved > 0 ? lastMoved : lastPerf);
         watchCtx = c;

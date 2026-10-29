@@ -328,6 +328,52 @@ describe('shared AudioContext lifecycle', () => {
     releaseAudioContext(ctx as unknown as AudioContext);
   });
 
+  it('sound comes back as soon as the context moves again, aligned to the media time now; the clock still waits 2 s (M6)', () => {
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    const anchors: { media: number; context: number; playing: boolean }[] = [];
+    clock.onAnchor((a) => anchors.push(a));
+    clock.start();
+    run(clock, ctx, 2500, true);
+    run(clock, ctx, 2000, false);
+    expect(clock.source).toBe('performance');
+    expect(anchors.at(-1)?.playing).toBe(false);
+    // The context moves again: the first check with movement re-anchors the worklet, playing.
+    vi.advanceTimersByTime(50);
+    ctx.currentTime += 0.05;
+    clock.check();
+    const a = anchors.at(-1) as { media: number; context: number; playing: boolean };
+    expect(a.playing).toBe(true);
+    // Aligned to where the media is now (the stall's audio is skipped), in context time.
+    expect(a.media).toBeCloseTo(clock.now(), 6);
+    expect(a.context).toBe(ctx.currentTime);
+    expect(clock.source).toBe('performance');
+    // While the clock waits, worklet and clock agree: media at the context's time = clock.now().
+    run(clock, ctx, 1000, true);
+    expect(a.media + (ctx.currentTime - a.context)).toBeCloseTo(clock.now(), 3);
+    run(clock, ctx, 1200, true);
+    expect(clock.source).toBe('audio');
+    expect(anchors.at(-1)?.playing).toBe(true);
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('if the context stops again during the wait, the worklet goes silent again', () => {
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    const anchors: { playing: boolean }[] = [];
+    clock.onAnchor((a) => anchors.push(a));
+    clock.start();
+    run(clock, ctx, 2500, true);
+    run(clock, ctx, 2000, false);
+    run(clock, ctx, 300, true);
+    expect(anchors.at(-1)?.playing).toBe(true);
+    run(clock, ctx, 300, false);
+    expect(anchors.at(-1)?.playing).toBe(false);
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
   it('the third stall within 60 s keeps performance.now() until the next suspend / resume (M6 F9)', async () => {
     const ctx = acquireAudioContext() as unknown as FakeAudioContext;
     const clock = createClock(ctx as unknown as AudioContext);

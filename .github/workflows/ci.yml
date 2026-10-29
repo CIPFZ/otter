@@ -5,6 +5,11 @@ on:
     branches: [main, 'feat/**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      repeat:
+        description: 'Times to run the 30 s audio worklet case in the solo step (OTTER_REPEAT_F14)'
+        required: false
+        default: '1'
   schedule:
     # Nightly real-device matrix (runs only when device endpoints are configured).
     - cron: '17 3 * * *'
@@ -125,8 +130,9 @@ jobs:
       # Frame-timing checks (danmaku mask alignment) with the runner to themselves; they and the
       # benchmarks run (and report) even when the main suite failed.
       - if: ${{ !cancelled() }}
-        # OTTER_REPEAT_F14: the 30 s audio worklet case 5 times in a row (M6 F14 acceptance; back to 1 after it).
-        run: STEP=solo OTTER_REPEAT_F14=5 sh tooling/e2e-step.sh ${{ matrix.projects }} --grep @solo --workers=1
+        # OTTER_REPEAT_F14: the 30 s audio worklet case n times in a row (workflow_dispatch input
+        # `repeat`; once otherwise).
+        run: STEP=solo OTTER_REPEAT_F14=${{ inputs.repeat || '1' }} sh tooling/e2e-step.sh ${{ matrix.projects }} --grep @solo --workers=1
       # Benchmarks need the runner to themselves (one worker); they skip, with a notice, where the
       # runner is too small (e2e/multiview.spec.ts: 8+ cores).
       - if: ${{ !cancelled() && matrix.name == 'chromium + firefox' }}

@@ -207,14 +207,20 @@ test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
   // render thread standing still (M6 F14: the test instance's sound device; then process() is not
   // called at all and the output is silent), recorded as performance.now() spans.
   await page.evaluate(() => {
-    const w = window as unknown as { taps: AnalyserNode[]; ctxStalls: { from: number; to: number }[] };
-    const ctx = w.taps.at(-1)?.context as BaseAudioContext;
+    const w = window as unknown as { taps: AnalyserNode[]; ctxStalls: { from: number; to: number }[]; loud: { at: number; rms: number }[] };
+    const tap = w.taps.at(-1) as AnalyserNode;
+    const ctx = tap.context;
+    const buf = new Float32Array(tap.fftSize);
     w.ctxStalls = [];
+    w.loud = [];
     let last = -1;
     let since = performance.now();
     let open: { from: number; to: number } | undefined;
     setInterval(() => {
       const now = performance.now();
+      // The output every 20 ms: when sound comes back after a stall.
+      tap.getFloatTimeDomainData(buf);
+      w.loud.push({ at: now, rms: Math.sqrt(buf.reduce((a, x) => a + x * x, 0) / buf.length) });
       if (ctx.currentTime !== last) {
         if (open !== undefined) open.to = now;
         open = undefined;
@@ -247,6 +253,17 @@ test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
   const inStall = (i: number): boolean => stallSpans.some((x) => (walls[i] as number) - 1000 <= x.to + 500 && (walls[i] as number) >= x.from);
   const silent = rms.flatMap((x, i) => (x < 0.01 ? [i] : []));
   const environment = silent.filter(inStall);
+  // After each stall that ended, sound within 100 ms of the context moving again (M6: it used to
+  // wait for the clock's 2 s switch back).
+  const loud = await page.evaluate(() => (window as unknown as { loud: { at: number; rms: number }[] }).loud);
+  const back = stallSpans
+    .filter((x) => x.to < Number.MAX_VALUE && x.to < (walls.at(-1) as number) - 500)
+    .map((x) => {
+      const first = loud.find((l) => l.at >= x.to && l.rms > 0.01);
+      return first === undefined ? Infinity : first.at - x.to;
+    });
+  if (back.length > 0) ciNotice(`audio worklet 30 s: sound back ${back.map((ms) => `${Math.round(ms)} ms`).join(', ')} after the context moved again`);
+  for (const ms of back) expect(ms, 'sound back within 100 ms of the context moving again').toBeLessThanOrEqual(100);
   if (environment.length > 0) ciNotice(`audio worklet 30 s: 环境停顿 (render thread stood still ${stallSpans.map((x) => `${((x.to - x.from) / 1000).toFixed(2)} s`).join(', ')}): silent seconds ${environment.join(', ')} not counted`);
   const all = await page.evaluate(() => (window as unknown as { stats: { ahead: number; under: number; gap: number; late: number; disc: number }[] }).stats);
   ciNotice(
