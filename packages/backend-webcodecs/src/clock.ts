@@ -113,6 +113,8 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
   // Watchdog for a running context that does not advance.
   let lastCtx = -1;
   let lastPerf = 0;
+  /** When the context's time last moved (performance.now(), s): where a stall's length counts from. */
+  let lastMoved = 0;
   /** performance.now() (s) until which the context is settling after a (re)start. */
   let settleUntil = 0;
   /** The first start() on a context already running is a (re)start too: it settles (M6 F9). */
@@ -276,6 +278,7 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       }
       const c = ctx.currentTime;
       const p = performance.now() / 1000;
+      if (c !== lastCtx) lastMoved = p;
       if (c !== lastCtx || p < settleUntil) {
         lastCtx = c;
         lastPerf = p;
@@ -283,7 +286,8 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       }
       if (p - lastPerf > STUCK_S) {
         stuck = true;
-        stallFrom = lastPerf;
+        // From the last movement, also when the stall began inside the settling window.
+        stallFrom = Math.min(lastPerf, lastMoved > 0 ? lastMoved : lastPerf);
         watchCtx = c;
         movingSince = -1;
         stalls.push(p);

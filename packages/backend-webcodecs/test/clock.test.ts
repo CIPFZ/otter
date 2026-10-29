@@ -311,6 +311,23 @@ describe('shared AudioContext lifecycle', () => {
     releaseAudioContext(ctx as unknown as AudioContext);
   });
 
+  it('a stall that began inside the first start\'s settling window counts from the last movement (M6 F9)', () => {
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    const recovered: number[] = [];
+    clock.onRecover((s) => recovered.push(s));
+    clock.start();
+    run(clock, ctx, 1000, true);
+    // Stands still from 1 s to 3 s: the settling window (2 s) hides the first second of it.
+    run(clock, ctx, 2000, false);
+    run(clock, ctx, 2200, true);
+    expect(clock.source).toBe('audio');
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toBeGreaterThan(1.9);
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
   it('the third stall within 60 s keeps performance.now() until the next suspend / resume (M6 F9)', async () => {
     const ctx = acquireAudioContext() as unknown as FakeAudioContext;
     const clock = createClock(ctx as unknown as AudioContext);

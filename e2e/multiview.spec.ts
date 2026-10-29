@@ -215,13 +215,17 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   // Main-thread attribution of every frame over 34 ms (M6, HEVC software path: GC / compositor ->
   // the hardware tolerance; our code -> fix): long animation frames and long tasks in it, and
   // whether it fell into an audio stall or next to a clock switch (an error report).
+  // A slow frame inside a stall the independent record proves (from 50 ms before it to 500 ms after
+  // it) is the environment's: noted, not counted (owner 2026-10-29, ADR-008 §7).
+  const inStall = (f: { at: number; ms: number }) => spans.find((x) => f.at >= x.from - 50 && f.at - f.ms <= (x.to ?? Infinity) + 500);
+  const environmentSlow = main.slow.filter((f) => inStall(f) !== undefined).length;
   if (main.slow.length > 0) {
     const errorTimes = rows.flatMap((r) => r.errorAt);
     const lines = main.slow.map((f) => {
-      const stall = spans.find((x) => f.at >= x.from && f.at - f.ms <= (x.to ?? Infinity) + 500);
+      const stall = inStall(f);
       const switchNear = errorTimes.some((t) => Math.abs(t - f.at) < 300);
       const loaf = f.loaf.map((l) => `LoAF ${Math.round(l.duration)} ms (blocking ${Math.round(l.blocking)}, render ${Math.round(l.render)}${l.scripts.length > 0 ? `; ${l.scripts.join(', ')}` : '; no script'})`).join(' + ') || 'no LoAF';
-      return `${Math.round(f.ms)} ms frame at ${Math.round(f.at)}: ${loaf}; long tasks ${f.longTasks.map(Math.round).join('/') || 'none'}; ${stall === undefined ? 'no audio stall' : `in an audio stall ${Math.round(stall.from)}..${stall.to === null ? 'open' : Math.round(stall.to)}`}${switchNear ? ', next to a clock switch' : ''}`;
+      return `${Math.round(f.ms)} ms frame at ${Math.round(f.at)}: ${loaf}; long tasks ${f.longTasks.map(Math.round).join('/') || 'none'}; ${stall === undefined ? 'no audio stall' : `环境停顿 (in an audio stall ${Math.round(stall.from)}..${stall.to === null ? 'open' : Math.round(stall.to)}, not counted)`}${switchNear ? ', next to a clock switch' : ''}`;
     });
     ciNotice(`multiview slow frames (${src ?? 'HEVC'}): ${lines.join(' | ')}`);
   }
@@ -240,7 +244,7 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   // the count and the attribution.
   expect(main.longTasks).toBe(0);
   const hardwarePath = rows.every((r) => r.backend === 'webcodecs') && (src?.includes('h264') === true ? h264Hardware : hevcHardware);
-  expect(main.over34, `${main.over34} frames > 34 ms in 10 s (${hardwarePath ? 'hardware' : 'software'} decoding, ≤ 1)`).toBeLessThanOrEqual(1);
+  expect(main.over34 - environmentSlow, `${main.over34} frames > 34 ms in 10 s, ${environmentSlow} of them in an environment stall (${hardwarePath ? 'hardware' : 'software'} decoding, ≤ 1 counted)`).toBeLessThanOrEqual(1);
   expect(main.over20 / main.frames).toBeLessThan(0.02);
 
   // Every viewport shows its own stream: paused, each tile's picture is the frame of its clock.
