@@ -233,8 +233,15 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
         }
         if (n >= want) resolve();
       };
-      ctx.createMediaStreamSource(stream).connect(node);
-      node.connect(ctx.destination);
+      // Every node held by the page, the worklet into the graph through a muted gain (M6 F12: on
+      // the real Firefox process() stopped after about 2.7 s with the worklet straight into the
+      // destination and the source unreferenced).
+      const source = ctx.createMediaStreamSource(stream);
+      const silent = ctx.createGain();
+      silent.gain.value = 0;
+      source.connect(node);
+      node.connect(silent).connect(ctx.destination);
+      (window as unknown as { recorder: unknown[] }).recorder = [ctx, stream, source, node, silent];
     });
     const rate = ctx.sampleRate;
     void ctx.close();

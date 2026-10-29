@@ -155,6 +155,57 @@ for (const clip of CLIPS) {
 // The shared AudioContext suspends 5 s after the last instance stops playing (clock.ts) and is
 // resumed by the next play() in a user gesture: the clock is the AudioContext again, not the
 // performance.now() fallback. Real Firefox on Windows is where this path was unverified (M4).
+// The audio worklet keeps producing sound for 30 s (M6 F12: a recording worklet stopped after
+// about 2.7 s on the real Firefox; the product's own worklet is checked here). Its output is tapped
+// by an AnalyserNode; the 12 s clip (a 440 Hz sine) is played from the start again near its end.
+test('h264.mp4 with sound for 30 s: the audio worklet keeps producing, every second @solo', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    const Native = window.AudioWorkletNode;
+    const w = window as unknown as { taps: AnalyserNode[] };
+    w.taps = [];
+    window.AudioWorkletNode = class extends Native {
+      constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+        super(context, name, options);
+        const tap = context.createAnalyser();
+        this.connect(tap);
+        w.taps.push(tap);
+      }
+    };
+  });
+  await page.goto('/webcodecs.html');
+  await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).load('h264.mp4', 0));
+  await page.locator('#play').click();
+  const probe = () =>
+    page.evaluate(async () => {
+      const f = await (window.wc as Promise<WebCodecsFixture>);
+      const tap = (window as unknown as { taps: AnalyserNode[] }).taps.at(-1);
+      let rms = 0;
+      if (tap !== undefined) {
+        const d = new Float32Array(tap.fftSize);
+        tap.getFloatTimeDomainData(d);
+        rms = Math.sqrt(d.reduce((a, x) => a + x * x, 0) / d.length);
+      }
+      return { taps: (window as unknown as { taps: AnalyserNode[] }).taps.length, state: tap?.context.state ?? 'none', t: f.state().currentTime, muted: f.state().muted, rms };
+    });
+  await expect.poll(async () => (await probe()).t, { timeout: 15_000 }).toBeGreaterThan(0.5);
+  const first = await probe();
+  if (first.taps === 0 || first.state !== 'running') {
+    ciNotice(`audio worklet 30 s: ${first.taps === 0 ? 'no audio worklet' : `AudioContext ${first.state}`} here, not testable`);
+    test.skip(true, 'no running audio worklet here');
+  }
+  const rms: number[] = [];
+  for (let i = 0; i < 30; i++) {
+    await page.waitForTimeout(1000);
+    const p = await probe();
+    rms.push(p.rms);
+    if (p.t > 10.5) await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).seek(0.2));
+  }
+  ciNotice(`audio worklet 30 s: RMS per second min ${Math.min(...rms).toFixed(3)}, max ${Math.max(...rms).toFixed(3)}; ${rms.filter((x) => x < 0.01).length} silent seconds`);
+  expect(first.muted).toBe(false);
+  expect(rms.filter((x) => x < 0.01), `silent seconds (RMS ${rms.map((x) => x.toFixed(3)).join(' ')})`).toEqual([]);
+});
+
 test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it as the clock', async ({ page }) => {
   test.setTimeout(60_000);
   // Records the AudioContexts the page makes, to read their state.
