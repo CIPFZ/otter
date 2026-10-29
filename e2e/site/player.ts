@@ -92,6 +92,17 @@ export interface WallTile {
   readonly errorAt: number[];
 }
 
+/** A frame interval over 34 ms and what the main thread did meanwhile (M6 HEVC attribution). */
+export interface SlowFrame {
+  /** performance.now() at the end of the interval, and its length (ms). */
+  readonly at: number;
+  readonly ms: number;
+  /** Long animation frames overlapping it (Chromium): script time by source, render / style time. */
+  readonly loaf: readonly { readonly start: number; readonly duration: number; readonly blocking: number; readonly render: number; readonly scripts: readonly string[] }[];
+  /** Long tasks overlapping it (ms each). */
+  readonly longTasks: readonly number[];
+}
+
 export interface WallFixture {
   readonly kind: 'gpu' | 'canvas2d';
   /** navigator.userActivation.hasBeenActive when the tiles loaded (null: no such API). */
@@ -118,7 +129,7 @@ export interface WallFixture {
   shellState(): State;
   pool(): ReturnType<ReturnType<typeof sharedDecodePool>['stats']>;
   /** Main-thread smoothness over `ms`: rAF intervals and long tasks. */
-  measure(ms: number): Promise<{ frames: number; over20: number; over34: number; over50: number; longest: number; longTasks: number; longTaskMs: number }>;
+  measure(ms: number): Promise<{ frames: number; over20: number; over34: number; over50: number; longest: number; longTasks: number; longTaskMs: number; slow: SlowFrame[] }>;
 }
 
 declare global {
@@ -598,23 +609,50 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
     measure: (ms) =>
       new Promise((resolve) => {
         const deltas: number[] = [];
+        const slowAt: { at: number; ms: number }[] = [];
         let longTasks = 0;
         let longTaskMs = 0;
-        const observer = typeof PerformanceObserver === 'function' && PerformanceObserver.supportedEntryTypes.includes('longtask') ? new PerformanceObserver((list) => {
+        const tasks: { start: number; duration: number }[] = [];
+        const supported = typeof PerformanceObserver === 'function' ? PerformanceObserver.supportedEntryTypes : [];
+        const observer = supported.includes('longtask') ? new PerformanceObserver((list) => {
           for (const e of list.getEntries()) {
             longTasks++;
             longTaskMs += e.duration;
+            tasks.push({ start: e.startTime, duration: e.duration });
           }
         }) : undefined;
         observer?.observe({ type: 'longtask' });
+        type Loaf = PerformanceEntry & { blockingDuration: number; renderStart: number; scripts: (PerformanceEntry & { invoker: string; sourceURL: string; sourceFunctionName: string })[] };
+        const loafs: Loaf[] = [];
+        const loafObserver = supported.includes('long-animation-frame') ? new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) loafs.push(e as Loaf);
+        }) : undefined;
+        loafObserver?.observe({ type: 'long-animation-frame' });
         const t0 = performance.now();
         let last = t0;
         const step = (now: number): void => {
           deltas.push(now - last);
+          if (now - last > 34) slowAt.push({ at: now, ms: now - last });
           last = now;
           if (now - t0 < ms) requestAnimationFrame(step);
           else {
             observer?.disconnect();
+            loafObserver?.disconnect();
+            const overlaps = (from: number, to: number, start: number, duration: number): boolean => start < to && start + duration > from;
+            const slow = slowAt.map(({ at, ms: d }) => ({
+              at,
+              ms: d,
+              loaf: loafs
+                .filter((l) => overlaps(at - d, at, l.startTime, l.duration))
+                .map((l) => ({
+                  start: l.startTime,
+                  duration: l.duration,
+                  blocking: l.blockingDuration,
+                  render: l.startTime + l.duration - l.renderStart,
+                  scripts: l.scripts.map((sc) => `${Math.round(sc.duration)} ms ${sc.invoker} ${sc.sourceFunctionName} ${sc.sourceURL.replace(/^.*\//, '')}`),
+                })),
+              longTasks: tasks.filter((t) => overlaps(at - d, at, t.start, t.duration)).map((t) => t.duration),
+            }));
             resolve({
               frames: deltas.length,
               over20: deltas.filter((d) => d > 20).length,
@@ -623,6 +661,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
               longest: Math.max(...deltas),
               longTasks,
               longTaskMs,
+              slow,
             });
           }
         };

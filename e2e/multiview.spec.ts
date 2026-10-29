@@ -74,12 +74,6 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
     ciNotice(`multiview bench skipped: ${cores} cores here, 16 software-decoded 720p HEVC streams need about 3 cores of decoding plus rendering (run it on an 8+ core machine)`);
     test.skip(true, `${cores} cores`);
   }
-  // Hardware HEVC in WebCodecs here? (With it the tiles decode on the GPU, not in the WASM pool.)
-  const hevcHardware = await page.evaluate(async () =>
-    typeof VideoDecoder === 'function'
-      ? (await VideoDecoder.isConfigSupported({ codec: 'hvc1.1.6.L93.B0', codedWidth: 1280, codedHeight: 720, hardwareAcceleration: 'prefer-hardware' })).supported === true
-      : false,
-  );
   // OTTER_BENCH_SRC=/frames/h264-720p.mp4: the same 720p clip in H.264, for machines without
   // hardware HEVC in WebCodecs (hardware decoding on the GPU instead of the WASM pool).
   const src = process.env['OTTER_BENCH_SRC'];
@@ -115,13 +109,22 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       }
     };
   });
-  // Hardware H.264 in WebCodecs (the OTTER_BENCH_SRC clip below), for the hardware-path tolerance.
-  const h264Hardware = await page.evaluate(async () =>
+  await open(page, 16, src);
+  // The hardware probes run on the fixture page: WebCodecs exists only in a secure context, and
+  // about:blank (before open) is not one, which made both read false until 2026-10-29.
+  // Hardware HEVC in WebCodecs here? (With it the tiles decode on the GPU, not in the WASM pool.)
+  const hevcHardware = await page.evaluate(async () =>
     typeof VideoDecoder === 'function'
-      ? (await VideoDecoder.isConfigSupported({ codec: 'avc1.64001f', codedWidth: 1280, codedHeight: 720, hardwareAcceleration: 'prefer-hardware' })).supported === true
+      ? (await VideoDecoder.isConfigSupported({ codec: 'hvc1.1.6.L93.B0', codedWidth: 1280, codedHeight: 720, hardwareAcceleration: 'prefer-hardware' })).supported === true
       : false,
   );
-  await open(page, 16, src);
+  // Hardware H.264 in WebCodecs for the OTTER_BENCH_SRC clip (h264-720p.mp4 is Main@3.1), for the
+  // hardware-path tolerance.
+  const h264Hardware = await page.evaluate(async () =>
+    typeof VideoDecoder === 'function'
+      ? (await VideoDecoder.isConfigSupported({ codec: 'avc1.4d401f', codedWidth: 1280, codedHeight: 720, hardwareAcceleration: 'prefer-hardware' })).supported === true
+      : false,
+  );
   const w = wall(page);
   const kind = await w.eval((x) => x.kind);
   // Before any input the WebCodecs backend makes no AudioContext (M6 test round F1).
@@ -178,7 +181,7 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   writeFileSync(`test-results/multiview-${info.project.name}${src === undefined ? '' : '-' + (src.split('/').pop() ?? '')}.json`, JSON.stringify(report, null, 2));
   info.attach('multiview.json', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
   const worst = rows.reduce((m, r) => ({ cpu: Math.max(m.cpu, r.cpuPercentOfOneCore ?? 0), lost: Math.max(m.lost, r.droppedByClock + r.replacedOnCanvas), slow: Math.min(m.slow, r.advancedS) }), { cpu: 0, lost: 0, slow: Infinity });
-  ciNotice(`multiview 16 x 720p ${src === undefined ? 'HEVC' : src} (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core (decoder pool), whole browser ${perStreamCpu}% of a core per stream (${JSON.stringify(browserCpu)}), hardware HEVC ${hevcHardware}, worst lost frames ${worst.lost}, slowest ${worst.slow} s played; AudioContext stalls ≥ 300 ms: ${stalls.join(', ') || 'none'}`);
+  ciNotice(`multiview 16 x 720p ${src === undefined ? 'HEVC' : src} (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core (decoder pool), whole browser ${perStreamCpu}% of a core per stream (${JSON.stringify(browserCpu)}), hardware HEVC ${hevcHardware}, worst lost frames ${worst.lost}, slowest ${worst.slow} s played; hardware H.264 ${h264Hardware}; AudioContext stalls ≥ 300 ms: ${stalls.join(', ') || 'none'}`);
 
   // A frozen-clock report is accepted only as an environment stall (owner 2026-10-29): the
   // independent record shows the context's time standing >= 0.5 s around the report (the watchdog
@@ -209,6 +212,19 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
     r.errors = kept;
   }
   if (environment.length > 0) ciNotice(`multiview: 环境停顿 (environment stall, accepted): ${environment.join(' | ')}`);
+  // Main-thread attribution of every frame over 34 ms (M6, HEVC software path: GC / compositor ->
+  // the hardware tolerance; our code -> fix): long animation frames and long tasks in it, and
+  // whether it fell into an audio stall or next to a clock switch (an error report).
+  if (main.slow.length > 0) {
+    const errorTimes = rows.flatMap((r) => r.errorAt);
+    const lines = main.slow.map((f) => {
+      const stall = spans.find((x) => f.at >= x.from && f.at - f.ms <= (x.to ?? Infinity) + 500);
+      const switchNear = errorTimes.some((t) => Math.abs(t - f.at) < 300);
+      const loaf = f.loaf.map((l) => `LoAF ${Math.round(l.duration)} ms (blocking ${Math.round(l.blocking)}, render ${Math.round(l.render)}${l.scripts.length > 0 ? `; ${l.scripts.join(', ')}` : '; no script'})`).join(' + ') || 'no LoAF';
+      return `${Math.round(f.ms)} ms frame at ${Math.round(f.at)}: ${loaf}; long tasks ${f.longTasks.map(Math.round).join('/') || 'none'}; ${stall === undefined ? 'no audio stall' : `in an audio stall ${Math.round(stall.from)}..${stall.to === null ? 'open' : Math.round(stall.to)}`}${switchNear ? ', next to a clock switch' : ''}`;
+    });
+    ciNotice(`multiview slow frames (${src ?? 'HEVC'}): ${lines.join(' | ')}`);
+  }
 
   for (const r of rows) {
     expect(r.errors, `${r.tile}: ${r.messages.join(' | ')}; user activation ${activated}; context stalls ${stalls.join(', ') || 'none'}`).toEqual([]);
@@ -245,10 +261,18 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   expect(await w.eval((x) => x.focused())).toBe(0);
   // Before any user gesture all four are muted (F1: WebKit under Playwright has no activation);
   // where the page already has one (Chromium: page.evaluate gives it), the focused tile has sound.
-  // What counts is the activation when the tiles loaded (the backend's gate); no API: taken as active.
+  // What counts is whether the page has had a gesture by now (no API: taken as active): before one
+  // all are muted; once there was one (also an activation Playwright itself gives WebKit pages
+  // after load, seen on CI), the gate is lifted and the focused tile has the sound it was given.
   const atLoad = await w.eval((x) => x.activatedAtLoad);
-  const now = await page.evaluate(() => (navigator as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? null);
-  expect(await w.eval((x) => x.tiles().map((t) => t.muted)), `user activation at load ${atLoad}, now ${now}`).toEqual(atLoad !== false ? [false, true, true, true] : [true, true, true, true]);
+  const activation = () => page.evaluate(() => (navigator as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? true);
+  await expect
+    .poll(async () => {
+      const muted = await w.eval((x) => x.tiles().map((t) => t.muted));
+      const want = (await activation()) ? [false, true, true, true] : [true, true, true, true];
+      return JSON.stringify(muted) === JSON.stringify(want) ? 'ok' : `muted ${JSON.stringify(muted)}, activation at load ${atLoad}, now ${await activation()}`;
+    }, { timeout: 1000 })
+    .toBe('ok');
   // Tile 2 is top right; click clear of the bars and the centre buttons (small players put them
   // over the tiles).
   const tile = page.locator('[data-otter-multiview-tile="2"]');
