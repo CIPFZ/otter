@@ -20,9 +20,10 @@ class OtterAudio extends AudioWorkletProcessor {
     // decode queue depth sent with the last chunk (dq).
     this.s = { n: 0, under: 0, gap: 0, late: 0, disc: 0, dq: 0 };
     this.lastEnd = null;
-    // Underrun (M6 F14): the queue ran dry while playing after audio had been flowing (not the
-    // first fill after a load or seek); reported with its length once audio flows again (a dry end
-    // of the media is not reported).
+    // Underrun (M6 F14): the queue ran dry while playing after audio had been flowing, i.e. after
+    // it once reached 0.1 s ahead (the first fill after a load or seek is not over with its
+    // first chunk); reported with its length once audio flows again (a dry end of the media is
+    // not reported).
     this.flowing = false;
     this.dryFrom = null;
     this.port.onmessage = (e) => {
@@ -84,7 +85,8 @@ class OtterAudio extends AudioWorkletProcessor {
     if (i > 0) {
       if (this.dryFrom !== null) this.port.postMessage({ t: 'underrun', media: this.dryFrom, ms: (t0 - this.dryFrom) * 1000 });
       this.dryFrom = null;
-      this.flowing = true;
+      const last = q[q.length - 1];
+      if (last !== undefined && end(last) - t0 >= 0.1) this.flowing = true;
     }
     if (i < n && this.flowing && this.dryFrom === null) this.dryFrom = t0 + i / sampleRate;
     if (s.n >= sampleRate / 5) {

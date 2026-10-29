@@ -446,9 +446,11 @@ describe('shared AudioContext lifecycle', () => {
     releaseAudioContext(ctx as unknown as AudioContext);
   });
 
-  it('a context that froze and then runs again after a suspension takes the clock back (M6 F8)', async () => {
+  it('a context that froze and then runs again after a suspension takes the clock back (M6 F8), and says so like any recovery', async () => {
     const ctx = acquireAudioContext() as unknown as FakeAudioContext;
     const clock = createClock(ctx as unknown as AudioContext);
+    const recovered: number[] = [];
+    clock.onRecover((s) => recovered.push(s));
     clock.start();
     vi.advanceTimersByTime(3000);
     ctx.currentTime = 3;
@@ -466,6 +468,9 @@ describe('shared AudioContext lifecycle', () => {
     expect(ctx.state).toBe('running');
     expect(clock.source).toBe('audio');
     expect(clock.unavailable).toBeUndefined();
+    // The recovery is said with the stall's length (from the last movement to running again).
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toBeGreaterThan(6);
     clock.destroy();
     releaseAudioContext(ctx as unknown as AudioContext);
   });

@@ -67,6 +67,16 @@ describe('audio worklet underruns (M6 F14)', () => {
     expect(u[0]?.ms).toBeLessThan(310);
   });
 
+  it('the first fill is not over after the first chunk: a short gap before the second is not an underrun (16-tile wall, 2 ms at 0.021 s)', () => {
+    const w = worklet();
+    // One 21 ms chunk, then the rest a moment later.
+    w.send({ t: 'chunk', start: 0, rate: RATE, planes: [new Float32Array(1024).fill(0.5)], dq: 0 });
+    w.render(0.03);
+    w.chunks(0.0213, 0.6);
+    w.render(0.4);
+    expect(w.underruns()).toEqual([]);
+  });
+
   it('the first fill after a load or a seek is not an underrun, nor a dry end of the media', () => {
     const w = worklet();
     // Nothing yet (decoding the first frames): silent, not reported.

@@ -200,6 +200,9 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     // Running again after a suspension: a new start of the device, the old freeze no longer says
     // anything about it (M6 F8).
     const state = ctx?.state;
+    // Also a recovery from a freeze (the device stood still, then the context went through another
+    // state): said like the other way back (watchRecovery).
+    const fromStall = stuck && state === 'running' && lastState !== undefined && lastState !== 'running' ? performance.now() / 1000 - stallFrom : undefined;
     if (state === 'running' && lastState !== undefined && lastState !== 'running') {
       stuck = false;
       pinned = false;
@@ -208,6 +211,7 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     lastState = state;
     if (usable()) failure = undefined;
     switchTo(usable() ? 'audio' : 'performance', `AudioContext ${ctx?.state ?? 'missing'}`);
+    if (fromStall !== undefined && source === 'audio') recoverListener?.(fromStall);
   };
   ctx?.addEventListener('statechange', onState);
 
