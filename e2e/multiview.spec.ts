@@ -202,13 +202,18 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       // The stall ends (if it has not), then within 5 s the route says the clock is back.
       await expect.poll(() => page.evaluate(() => (window as unknown as { ctxSpans: { to: number }[] }).ctxSpans.every((x) => Number.isFinite(x.to))), { timeout: 15_000 }).toBe(true);
       const end = await page.evaluate((from) => (window as unknown as { ctxSpans: { from: number; to: number }[] }).ctxSpans.find((x) => x.from === from)?.to ?? 0, span.from);
+      // The recovery step, and when it appeared: within 5 s of the stall's end (not just by now).
       const recovered = () =>
         page.evaluate(async (i) => {
           const x = await (window.wall as Promise<WallFixture>);
-          return x.tiles()[i]?.route?.steps.find((st) => /^audio clock: back on the AudioContext after a [\d.]+ s stall$/.test(st.reason))?.reason ?? null;
+          const st = x.tiles()[i]?.stepsAt.find((y) => /^audio clock: back on the AudioContext after a [\d.]+ s stall$/.test(y.reason));
+          return st === undefined ? null : `${st.reason} (${Math.round(st.at)} ms)`;
         }, r.index);
+      const recoveredAt = () =>
+        page.evaluate(async (i) => (await (window.wall as Promise<WallFixture>)).tiles()[i]?.stepsAt.find((y) => /^audio clock: back on the AudioContext/.test(y.reason))?.at ?? null, r.index);
       const wait = Math.max(500, end + 5000 - (await page.evaluate(() => performance.now())));
       await expect.poll(recovered, { timeout: wait, message: `${r.tile}: back on the AudioContext within 5 s of the stall's end` }).not.toBeNull();
+      expect((await recoveredAt()) as number, `${r.tile}: the recovery came ${Math.round(((await recoveredAt()) as number) - end)} ms after the stall's end`).toBeLessThanOrEqual(end + 5000);
       environment.push(`${r.tile}: environment stall ${Math.round(span.from)}..${Math.round(end)} ms (${((end - span.from) / 1000).toFixed(2)} s), reported at ${Math.round(at)} ms; ${await recovered()}`);
     }
     r.errors = kept;

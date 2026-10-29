@@ -90,6 +90,8 @@ export interface WallTile {
   readonly messages: string[];
   /** performance.now() of each error, same order. */
   readonly errorAt: number[];
+  /** Route steps with the performance.now() they appeared at. */
+  readonly stepsAt: { readonly at: number; readonly reason: string }[];
 }
 
 /** A frame interval over 34 ms and what the main thread did meanwhile (M6 HEVC attribution). */
@@ -510,7 +512,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
     () => wall.focused?.surface ?? wall.tiles[0]?.surface,
   );
   const blob = await (await fetch(src)).blob();
-  type TileCore = { core: ReturnType<typeof createCore<MediaState & QoeState, MediaActionMap>>; tile: ReturnType<typeof wall.add>; errors: string[]; messages: string[]; errorAt: number[]; dropped: number; decoded: number; loops: number };
+  type TileCore = { core: ReturnType<typeof createCore<MediaState & QoeState, MediaActionMap>>; tile: ReturnType<typeof wall.add>; errors: string[]; messages: string[]; errorAt: number[]; stepsAt: { at: number; reason: string }[]; dropped: number; decoded: number; loops: number };
   const tiles: TileCore[] = [];
   const refused: string[] = [];
   for (let i = 0; i < count; i++) {
@@ -531,7 +533,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
     });
     const core = createCore<MediaState & QoeState, MediaActionMap>({ slices: [MEDIA_SLICE, QOE_SLICE], plugins: [media, createQoePlugin()] });
     await core.start();
-    const t: TileCore = { core, tile, errors: [], messages: [], errorAt: [], dropped: 0, decoded: 0, loops: 0 };
+    const t: TileCore = { core, tile, errors: [], messages: [], errorAt: [], stepsAt: [], dropped: 0, decoded: 0, loops: 0 };
     // The clip loops: at its end, back to the start.
     core.store.select(
       (s) => s.ended,
@@ -540,6 +542,13 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
         t.loops++;
         core.store.dispatch('seek', { time: 0 });
         core.store.dispatch('play', undefined);
+      },
+    );
+    // When each route step appeared (performance.now()): a recovery's timing is checked against the stall.
+    core.store.select(
+      (s) => s.route?.steps,
+      (steps, prev) => {
+        for (const st of (steps ?? []).slice(prev?.length ?? 0)) t.stepsAt.push({ at: performance.now(), reason: st.reason });
       },
     );
     core.qoe.on('error', (p) => {
@@ -579,7 +588,7 @@ async function startWall(count: number, src: string): Promise<WallFixture> {
       tiles.map((t) => {
         const s = t.core.store.getState();
         const replaced = (t.tile.surface as { framesReplaced?: number }).framesReplaced ?? 0;
-        return { label: t.tile.label, status: s.status, backend: s.backend, currentTime: s.currentTime, paused: s.paused, muted: s.muted, dropped: t.dropped, decoded: t.decoded, replaced, loops: t.loops, route: s.route, errors: t.errors, messages: t.messages, errorAt: t.errorAt };
+        return { label: t.tile.label, status: s.status, backend: s.backend, currentTime: s.currentTime, paused: s.paused, muted: s.muted, dropped: t.dropped, decoded: t.decoded, replaced, loops: t.loops, route: s.route, errors: t.errors, messages: t.messages, errorAt: t.errorAt, stepsAt: t.stepsAt };
       }),
     focus: (i) => wall.focus((tiles[i] as TileCore).tile),
     expand: (i) => wall.expand(i < 0 ? undefined : (tiles[i] as TileCore).tile),
