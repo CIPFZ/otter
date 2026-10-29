@@ -103,7 +103,7 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 - 局部全屏：双击或 Shift+Enter 让一路铺满整面墙，其余视口区域为零（不上传、不绘制），再次双击回到网格。
 - 每路是一个独立的 core（media + QoE），共享整页的解码池和一个 AudioContext；超过 16 路的那一路排队，`route-detail` 写进 `router.explain()`（「decoder queued: 16 decoders busy (pool limit) …」），并发出非致命 QoE 事件 `decoderQueued`，有路退出后自动开始。
 - 墙插在外壳指定元素之前（`before`，播放器外壳传顶部栏）：高于手势 / 海报层（单击、双击归墙），低于所有控件。
-- 验收（`e2e/multiview.spec.ts`）：功能用例在 Chrome、Firefox、Android 仿真上运行（每个视口显示自己那一路，从画面像素读帧号；焦点、出声、控件跟随；局部全屏；第 17 路排队）；16 路基准标记 `@bench`，只在 desktop Chrome、单 worker、8 核以上机器运行（CI 的 4 核 runner 上跳过并留 notice），要求每路 10 s 内播放 > 9 s、丢帧（时钟跳过 + 画布未显示）≤ 5%、主线程无长任务且没有超过两个 vsync 的帧间隔。硬解路径（各路都走 WebCodecs 后端）的容差（M6 测试收口轮 F10，2026-10-28）：每个 10 s 窗口里超过 34 ms 的帧间隔 ≤ 1 次，> 50 ms 的长任务仍为 0，通知里记实际次数；软件解码（WASM，或 WebCodecs 没有硬解时）仍是 0 次。数据见 `docs/reports/M4.md`。
+- 验收（`e2e/multiview.spec.ts`）：功能用例在 Chrome、Firefox、Android 仿真上运行（每个视口显示自己那一路，从画面像素读帧号；焦点、出声、控件跟随；局部全屏；第 17 路排队）；16 路基准标记 `@bench`，只在 desktop Chrome、单 worker、8 核以上机器运行（CI 的 4 核 runner 上跳过并留 notice），要求每路 10 s 内播放 > 9 s、丢帧（时钟跳过 + 画布未显示）≤ 5%、主线程无长任务且没有超过两个 vsync 的帧间隔。硬解路径（各路都走 WebCodecs 后端）的容差（M6 测试收口轮 F10，2026-10-28）：每个 10 s 窗口里超过 34 ms 的帧间隔 ≤ 1 次，> 50 ms 的长任务仍为 0，通知里记实际次数。软件解码（WASM，或 WebCodecs 没有硬解时）原为 0 次，2026-10-29 起同为 ≤ 1 次（负责人：归因为 GC / 合成器则与硬解同容差）：真 Edge 上 HEVC 软件路径 20 次里 5 帧 > 34 ms（40–43 ms），都没有 long animation frame 里的脚本、也没有长任务，4 帧落在虚拟声卡停顿开始的那一刻、1 帧在其前 7 ms。数据见 `docs/reports/M4.md`。
 
 ### 8. 其余
 

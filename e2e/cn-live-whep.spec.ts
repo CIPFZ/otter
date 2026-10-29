@@ -181,6 +181,12 @@ function toneShare(x: Float64Array, from: number, n: number, f: number, rate: nu
 // the 4 s tone.ogg). It proves what the page received and decoded, not the system output.
 test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the loop seam every 4 s @solo', async ({ page, browserName }, info) => {
   test.setTimeout(90_000);
+  // The real Firefox stops calling the recorder's process() after about 2.7 s (M6 F12; the worklet
+  // through a muted gain with every node held changed nothing): not recordable there (RESEARCH §1).
+  if (test.info().project.name === 'real-windows-firefox') {
+    ciNotice('WHEP recording: the real Firefox stops the recording worklet after about 2.7 s (F12), skipped');
+    test.skip(true, 'F12: recording worklet stops on the real Firefox');
+  }
   // Known flaky on WebKit (owner 2026-10-29, RESEARCH §1): now and then the recorded tone is
   // 463.6 Hz with seams 3.83 s apart (x 1.054 both: the recording path's sample rate, not the
   // playback); the criterion stays, the notice carries the measured tone and seams.
@@ -233,15 +239,8 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
         }
         if (n >= want) resolve();
       };
-      // Every node held by the page, the worklet into the graph through a muted gain (M6 F12: on
-      // the real Firefox process() stopped after about 2.7 s with the worklet straight into the
-      // destination and the source unreferenced).
-      const source = ctx.createMediaStreamSource(stream);
-      const silent = ctx.createGain();
-      silent.gain.value = 0;
-      source.connect(node);
-      node.connect(silent).connect(ctx.destination);
-      (window as unknown as { recorder: unknown[] }).recorder = [ctx, stream, source, node, silent];
+      ctx.createMediaStreamSource(stream).connect(node);
+      node.connect(ctx.destination);
     });
     const rate = ctx.sampleRate;
     void ctx.close();

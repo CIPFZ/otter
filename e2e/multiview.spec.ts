@@ -233,12 +233,14 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
     // Frames lost (skipped by the clock or never drawn): at most 5% of 300.
     expect(r.droppedByClock + r.replacedOnCanvas, r.tile).toBeLessThanOrEqual(15);
   }
-  // The main thread keeps its frame rate: no long task, no frame missed by two vsyncs. On the
-  // hardware path (every tile on WebCodecs, hardware decoding for the clip) one such frame per 10 s window is tolerated (M6 test
-  // round F10, ADR-008 §7: real Edge, 1 in 5 runs); the notice above has the actual count.
+  // The main thread keeps its frame rate: no long task, and at most one frame missed by two vsyncs
+  // per 10 s window, hardware or software decoding (M6 F10, and 2026-10-29 for the software path:
+  // in 20 runs on the real Edge every such frame had no script and no long task and fell on the
+  // virtual sound device's stall, i.e. compositor / system; ADR-008 §7). The notices above have
+  // the count and the attribution.
   expect(main.longTasks).toBe(0);
   const hardwarePath = rows.every((r) => r.backend === 'webcodecs') && (src?.includes('h264') === true ? h264Hardware : hevcHardware);
-  expect(main.over34, `${main.over34} frames > 34 ms in 10 s (${hardwarePath ? 'hardware path, ≤ 1' : 'software decoding, 0'})`).toBeLessThanOrEqual(hardwarePath ? 1 : 0);
+  expect(main.over34, `${main.over34} frames > 34 ms in 10 s (${hardwarePath ? 'hardware' : 'software'} decoding, ≤ 1)`).toBeLessThanOrEqual(1);
   expect(main.over20 / main.frames).toBeLessThan(0.02);
 
   // Every viewport shows its own stream: paused, each tile's picture is the frame of its clock.

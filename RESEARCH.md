@@ -104,6 +104,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - `appearance: none` 的 `<input type=range>`，轨道比圆点高时（命中区 24 px、圆点 13 px）：Chromium 和 WebKit 把 `::-webkit-slider-thumb` 放在轨道顶部，要 `margin-top: (轨道高 − 圆点高) / 2` 才居中；Firefox 的 `::-moz-range-thumb` 自动垂直居中，所以只在 Firefox 上看不出来。三家的圆点中心横向都只走 [圆点宽/2, 宽 − 圆点宽/2]，按整宽百分比画的填充条在两端差半个圆点；`step` 不是 `any` 时圆点还会吸附到步长上，与连续的填充条错开（M6，负责人实看发现，2026-10-29）。
 - CI 的 macOS WebKit（desktop-safari、emulated-iphone）：经 AudioWorklet 录 WHEP 收到的音轨，2 次里有 1 次两个项目都录到 463.6 Hz 的单音、接缝间隔 3.83 s，而源是 440 Hz、4.02 s；463.6 / 440 = 4.02 / 3.83 ≈ 1.054，像是录音路径的采样率错配（每个采样多出约 5% 的内容），不是页面播放出来的声音。用例在 WebKit 上标 flaky，判定不放宽（2026-10-29 负责人）。
 - 测试实例 `inst-01m4skyh…` 的默认音频输出是「扬声器 (Audio Device)」= `USB\VID_46F4&PID_0002`，即 QEMU 的虚拟 USB 声卡，也是唯一 active 的输出端点；坏掉的 VB-Cable 端点根本不在列表里。上文约 2 s 的 AudioContext 停顿多半出在这块虚拟声卡上（2026-10-29，只读查询）。
+- 真 Firefox 159（Windows 实例）：`MediaStreamAudioSourceNode` → `AudioWorkletNode` 录 WHEP 音轨，`process()` 只跑约 2.7 s（30 s 内 500–1000 次）就不再被调用，期间输入一直不空。worklet 改经 gain 0 接 destination、页面持有全部节点的引用，没有改善（M6 F12，按负责人「有界一次」不再深挖；该录音用例在真 Firefox 上 skip）。同一台机器上产品自己的音频 worklet（WebCodecs 后端，440 Hz 片子 30 s）3 次里有 2 次在某一处出现连续 2 s 无声，Edge 3 次都没有；未查，记待验（2026-10-29）。
 - 逐帧对齐（蒙版与画面 ≤ 1 帧）在无头浏览器里与并行的其他用例共享软件合成器时测不准：帧会迟到一两帧，误差来自机器而非代码。这类用例单独一步、一个 worker 跑（`@solo`）。
 
 ## 2. 格式 / 协议 / 编码全景
