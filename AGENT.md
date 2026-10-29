@@ -50,6 +50,10 @@
 3. 直接在 `main` 上小步提交并推送，保持 CI 绿；每个里程碑在 `docs/reports/Mx.md` 附：体积报告（size-limit）、真机矩阵结果、axe 结果。
 4. 遇到浏览器差异先查 `RESEARCH.md` §1 与 `SPEC.md` §15 的坑表；新发现的坑追加到表里。
 5. 决策变更写 ADR（`docs/decisions/ADR-xxx.md`），格式参照 ADR-001。
+6. **汇报**（2026-10-29 负责人）：照四段（做了什么 / 测试结果 / 偏离或疑问 / 下一步建议）。
+   - 汇报前必须等最后一次提交的 CI 跑完；汇报第一行写 CI 的提交号与各组结果（typecheck…size、e2e chromium + firefox、e2e webkit 等）。
+   - CI 任一组红时不许写「通过」，红的组列在「偏离或疑问」第一条。
+   - `pnpm check` 不含 e2e：本地绿不等于 CI 绿。
 
 ## 6. 明确不做
 

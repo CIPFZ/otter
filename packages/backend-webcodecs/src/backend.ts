@@ -878,14 +878,32 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       };
       anchorSink();
       if (gated && typeof document === 'object') {
-        const onGesture = (): void => {
+        // Listening until the context runs: the first gesture makes it, later ones resume it if it is
+        // still suspended (WebKit does not count every event; M6 F13).
+        let made: AudioContext | undefined;
+        const stop = (): void => {
           offGesture?.();
           offGesture = undefined;
-          if (destroyed) return;
+        };
+        const onGesture = (): void => {
+          if (destroyed) return stop();
+          if (made !== undefined) {
+            if (made.state === 'running') return stop();
+            c.resume();
+            return;
+          }
           const next = acquireAudioContext();
-          if (next === undefined) return;
+          if (next === undefined) return stop();
+          made = next;
           audioCtx = next;
+          const ran = (): void => {
+            if (next.state !== 'running') return;
+            next.removeEventListener('statechange', ran);
+            stop();
+          };
+          next.addEventListener('statechange', ran);
           c.attach(next);
+          ran();
           setPlaying(next, owner, c.playing);
           void setupAudio(next).then(() => {
             if (destroyed || audio === undefined || demuxer === undefined) return;

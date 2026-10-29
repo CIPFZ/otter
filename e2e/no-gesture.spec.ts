@@ -88,18 +88,23 @@ test('h264.mp4 started without a gesture: the first gesture makes the AudioConte
   await page.mouse.click(5, 5);
   const contexts = () => page.evaluate(() => (window as unknown as { contexts: AudioContext[] }).contexts.map((c) => c.state));
   await expect.poll(async () => (await contexts()).length, { timeout: 5000 }).toBe(1);
+  // Running within 3 s of the click (M6 F13: WebKit makes the gesture's context suspended and
+  // resumes it a little later; the clock waits for it without a report).
+  const t0 = Date.now();
   const running = await expect
-    .poll(contexts, { timeout: 5000 })
+    .poll(contexts, { timeout: 3000 })
     .toEqual(['running'])
     .then(
       () => true,
       () => false,
     );
-  if (!running) {
+  if (!running && test.info().project.name === 'desktop-firefox') {
     // Headless Firefox has no output device: its contexts never run (RESEARCH §1).
     ciNotice(`first gesture: the AudioContext was made but does not run here (${(await contexts()).join(', ')}), not testable`);
     test.skip(true, 'the AudioContext does not run here (no audio output device)');
   }
+  expect(await contexts(), 'the AudioContext runs within 3 s of the first click').toEqual(['running']);
+  const runAfterMs = Date.now() - t0;
   await page.waitForTimeout(1000);
   const after = await page.evaluate(async () => {
     const f = await (window.wc as Promise<WebCodecsFixture>);
@@ -108,5 +113,5 @@ test('h264.mp4 started without a gesture: the first gesture makes the AudioConte
   expect(after.paused).toBe(false);
   expect(after.t).toBeGreaterThan(r.currentTime);
   expect(after.errors, after.messages.join(' | ')).not.toContain('audioClockUnavailable');
-  ciNotice(`first gesture: 1 AudioContext running, the clock on it, ${after.t.toFixed(2)} s played, no audioClockUnavailable`);
+  ciNotice(`first gesture: 1 AudioContext running ${runAfterMs} ms after the click, the clock on it, ${after.t.toFixed(2)} s played, no audioClockUnavailable`);
 });

@@ -4,7 +4,13 @@
 
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import type { OtterFixture } from './site/player.ts';
+
+const ciNotice = (text: string): void => {
+  mkdirSync('test-results', { recursive: true });
+  appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
+};
 
 async function ready(page: Page, query = '?idle=0'): Promise<void> {
   await page.goto(`/player.html${query}`);
@@ -210,7 +216,7 @@ input::-moz-range-thumb { background: #f0f !important; box-shadow: none !importa
   return { thumbX: thumb.cx / a.dpr, thumbY: thumb.cy / a.dpr, railY: rail.cy / a.dpr, fillEnd: (fill.n > 0 ? fill.maxX : Math.min(railB.minX, fill.minX)) / b.dpr };
 }
 
-test('slider thumbs sit on the rail and at the end of the fill: time and volume, at 0 %, 50 % and 100 %', async ({ page }, info) => {
+test('slider thumbs sit on the rail and at the end of the fill: time and volume, at 0 %, 50 % and 100 %', async ({ page, browserName }, info) => {
   test.skip(info.project.name.startsWith('emulated'), 'phones hide the volume slider; desktop engines cover the three thumb implementations');
   await ready(page);
   await page.evaluate(() => {
@@ -222,6 +228,9 @@ test('slider thumbs sit on the rail and at the end of the fill: time and volume,
   const state = () => page.evaluate(async () => ((await window.otter) as OtterFixture).state());
   const duration = (await state()).duration;
   const rows: string[] = [];
+  // Firefox centres its own thumb and snaps it to whole pixels: 1.00 px measured on the real one
+  // (owner 2026-10-29: accepted, ≤ 1.5 px there); the others ≤ 1 px.
+  const limit = browserName === 'firefox' ? 1.5 : 1;
   for (const f of [0, 0.5, 1]) {
     await page.evaluate(async ([t, v]) => {
       const o = (await window.otter) as OtterFixture;
@@ -234,11 +243,12 @@ test('slider thumbs sit on the rail and at the end of the fill: time and volume,
     for (const tag of ['otter-time-slider', 'otter-volume-slider'] as const) {
       const g = await sliderGeometry(page, tag);
       rows.push(`${tag} ${f * 100}%: thumb y - rail y ${(g.thumbY - g.railY).toFixed(2)}, thumb x - fill end ${(g.thumbX - g.fillEnd).toFixed(2)}`);
-      expect(Math.abs(g.thumbY - g.railY), `${tag} at ${f * 100} %: thumb centre vs rail centre (y)`).toBeLessThanOrEqual(1);
-      expect(Math.abs(g.thumbX - g.fillEnd), `${tag} at ${f * 100} %: thumb centre vs fill end (x)`).toBeLessThanOrEqual(1);
+      expect(Math.abs(g.thumbY - g.railY), `${tag} at ${f * 100} %: thumb centre vs rail centre (y)`).toBeLessThanOrEqual(limit);
+      expect(Math.abs(g.thumbX - g.fillEnd), `${tag} at ${f * 100} %: thumb centre vs fill end (x)`).toBeLessThanOrEqual(limit);
     }
   }
   info.annotations.push({ type: 'geometry', description: rows.join(' | ') });
+  ciNotice(`slider geometry (limit ${limit} px): ${rows.join(' | ')}`);
   // For the report: the bar at 50 % with both thumbs shown, as a user sees it on hover.
   for (const tag of ['otter-time-slider', 'otter-volume-slider']) await page.locator(tag).first().evaluate((el) => el.shadowRoot?.querySelector('style[data-test]')?.remove());
   await page.evaluate(async (t) => ((await window.otter) as OtterFixture).dispatch('seek', { time: t }), duration / 2);

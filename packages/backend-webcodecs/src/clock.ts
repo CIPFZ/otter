@@ -43,6 +43,11 @@ export interface MediaClock {
    * reported nothing (`deferred`).
    */
   attach(ctx: AudioContext): void;
+  /**
+   * Tries resume() again on a context still suspended (a later user gesture: WebKit makes the
+   * gesture's context suspended and may not count the first event), within a fresh grace.
+   */
+  resume(): void;
   destroy(): void;
 }
 
@@ -125,6 +130,41 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     sourceListener?.(next, reason);
     anchor();
   };
+  /**
+   * Inside a user gesture this lets a suspended context run (autoplay policy). performance.now()
+   * keeps time until it does; the statechange takes the clock back seamlessly whenever the resume
+   * lands. Only a rejection, or no result within the grace (a context with no output device can
+   * leave it pending, headless Firefox), makes the stand-in final. Another call (a later gesture)
+   * tries again with a fresh grace; only the latest attempt counts.
+   */
+  let grace: ReturnType<typeof setTimeout> | undefined;
+  let attempt = 0;
+  const resumeWithGrace = (): void => {
+    if (ctx === undefined || ctx.state !== 'suspended') return;
+    const n = ++attempt;
+    resuming = true;
+    failure = undefined;
+    clearTimeout(grace);
+    grace = setTimeout(() => {
+      if (!resuming || n !== attempt) return;
+      resuming = false;
+      failure = `AudioContext resume() not done after ${RESUME_GRACE_MS / 1000} s`;
+    }, RESUME_GRACE_MS);
+    ctx.resume().then(
+      () => {
+        if (n !== attempt) return;
+        clearTimeout(grace);
+        resuming = false;
+        onState();
+      },
+      (err: unknown) => {
+        if (n !== attempt) return;
+        clearTimeout(grace);
+        resuming = false;
+        failure = `AudioContext resume() failed: ${(err as { name?: string } | null)?.name ?? String(err)}`;
+      },
+    );
+  };
   const onState = (): void => {
     // Running again after a suspension: a new start of the device, the old freeze no longer says
     // anything about it (M6 F8).
@@ -158,32 +198,7 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       rebaseWatchdog();
       if (firstStart && source === 'audio') settleUntil = performance.now() / 1000 + RESUME_SETTLE_S;
       firstStart = false;
-      // Inside a user gesture this lets a suspended context run (autoplay policy). performance.now()
-      // keeps time until it does; the statechange takes the clock back seamlessly whenever the
-      // resume lands. Only a rejection, or no result within the grace (a context with no output
-      // device can leave it pending, headless Firefox), makes the stand-in final.
-      if (ctx !== undefined && ctx.state === 'suspended' && !resuming) {
-        const c = ctx;
-        resuming = true;
-        failure = undefined;
-        const grace = setTimeout(() => {
-          if (!resuming) return;
-          resuming = false;
-          failure = `AudioContext resume() not done after ${RESUME_GRACE_MS / 1000} s`;
-        }, RESUME_GRACE_MS);
-        c.resume().then(
-          () => {
-            clearTimeout(grace);
-            resuming = false;
-            onState();
-          },
-          (err: unknown) => {
-            clearTimeout(grace);
-            resuming = false;
-            failure = `AudioContext resume() failed: ${(err as { name?: string } | null)?.name ?? String(err)}`;
-          },
-        );
-      }
+      if (!resuming) resumeWithGrace();
       anchor();
     },
     stop() {
@@ -237,10 +252,15 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       deferred = false;
       ctx.addEventListener('statechange', onState);
       onState();
-      // Playing: the context should run now (attach comes from inside the gesture).
-      if (playing && ctx.state === 'suspended') void ctx.resume().then(onState, () => undefined);
+      // Playing: the context should run now (attach comes from inside the gesture), with the same
+      // grace as start() (M6 F13: WebKit makes it suspended and resumes it a little later).
+      if (playing) resumeWithGrace();
+    },
+    resume() {
+      if (playing) resumeWithGrace();
     },
     destroy() {
+      clearTimeout(grace);
       ctx?.removeEventListener('statechange', onState);
       anchorListener = undefined;
       sourceListener = undefined;

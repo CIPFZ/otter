@@ -246,6 +246,63 @@ describe('backend-webcodecs', () => {
     }
   });
 
+  it('WebKit: the gesture context starts suspended and only a later gesture resumes it; no audioClockUnavailable meanwhile (M6 F13)', async () => {
+    const created: WebKitLike[] = [];
+    let allowed = false;
+    class WebKitLike extends EventTarget {
+      state = 'suspended';
+      currentTime = 0;
+      resumes = 0;
+      constructor() {
+        super();
+        created.push(this);
+      }
+      // Not an audio gesture (pointerdown): pending; a click: running after a while.
+      resume = () => {
+        this.resumes++;
+        if (!allowed) return new Promise<void>(() => undefined);
+        return new Promise<void>((r) =>
+          setTimeout(() => {
+            this.state = 'running';
+            this.dispatchEvent(new Event('statechange'));
+            r();
+          }, 200),
+        );
+      };
+      suspend = () => Promise.resolve();
+      close = () => Promise.resolve();
+    }
+    const activation = { hasBeenActive: false };
+    vi.stubGlobal('AudioContext', WebKitLike);
+    Object.defineProperty(navigator, 'userActivation', { value: activation, configurable: true });
+    try {
+      const { backend, errors } = setup();
+      await backend.load({ src: new Blob() }, { startTime: 2 });
+      await backend.play();
+      await new Promise((r) => setTimeout(r, 300));
+      activation.hasBeenActive = true;
+      document.dispatchEvent(new Event('pointerdown'));
+      await new Promise((r) => setTimeout(r, 1000));
+      expect(created).toHaveLength(1);
+      expect(created[0]?.state).toBe('suspended');
+      expect(errors).not.toContain('audioClockUnavailable');
+      allowed = true;
+      document.dispatchEvent(new Event('click'));
+      await new Promise((r) => setTimeout(r, 600));
+      expect(created[0]?.state).toBe('running');
+      expect(errors).not.toContain('audioClockUnavailable');
+      // Running: the listeners are gone (a later click does not touch the context).
+      const n = created[0]?.resumes ?? 0;
+      document.dispatchEvent(new Event('click'));
+      expect(created[0]?.resumes).toBe(n);
+      expect(created).toHaveLength(1);
+      backend.destroy();
+    } finally {
+      vi.unstubAllGlobals();
+      delete (navigator as { userActivation?: unknown }).userActivation;
+    }
+  });
+
   it('runtime fallback: a decode error while playing moves to the WASM decoder, from the keyframe before', async () => {
     const wasm = makeDecoder('wasm-hevc');
     const { backend, drawn, details, errors, state } = setup([makeDecoder('webcodecs', { failAfter: 40 }), wasm]);

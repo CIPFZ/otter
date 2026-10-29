@@ -181,6 +181,10 @@ function toneShare(x: Float64Array, from: number, n: number, f: number, rate: nu
 // the 4 s tone.ogg). It proves what the page received and decoded, not the system output.
 test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the loop seam every 4 s @solo', async ({ page, browserName }, info) => {
   test.setTimeout(90_000);
+  // Known flaky on WebKit (owner 2026-10-29, RESEARCH §1): now and then the recorded tone is
+  // 463.6 Hz with seams 3.83 s apart (x 1.054 both: the recording path's sample rate, not the
+  // playback); the criterion stays, the notice carries the measured tone and seams.
+  if (browserName === 'webkit') info.annotations.push({ type: 'flaky', description: 'WebKit: recording path pitched x1.054 in 1 of 2 CI runs' });
   await routeDocuments(page, browserName);
   await page.goto('/player.html?idle=0');
   if (!(await gathers(page))) {

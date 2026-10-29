@@ -240,6 +240,44 @@ describe('shared AudioContext lifecycle', () => {
     releaseAudioContext(ctx as unknown as AudioContext);
   });
 
+  it('a context attached at the first gesture gets the resume grace too (WebKit: made suspended, resume() lands later) (M6 F13)', async () => {
+    FakeAudioContext.resumeMode = 'slow';
+    FakeAudioContext.resumeDelayMs = 400;
+    const clock = createClock(undefined, { deferred: true });
+    clock.start();
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    ctx.state = 'suspended';
+    clock.attach(ctx as unknown as AudioContext);
+    // Resuming: the stand-in keeps time, nothing to report.
+    expect(clock.unavailable).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(450);
+    expect(ctx.state).toBe('running');
+    expect(clock.source).toBe('audio');
+    expect(clock.unavailable).toBeUndefined();
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('resume() retries a context still suspended after the first gesture (a later click resumes it)', async () => {
+    FakeAudioContext.resumeMode = 'hang';
+    const clock = createClock(undefined, { deferred: true });
+    clock.start();
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    ctx.state = 'suspended';
+    clock.attach(ctx as unknown as AudioContext);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(clock.unavailable).toBeUndefined();
+    // The next gesture: this time resume() works, within a fresh grace.
+    FakeAudioContext.resumeMode = 'ok';
+    clock.resume();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(clock.source).toBe('audio');
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(clock.unavailable).toBeUndefined();
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
   it('a running context whose time stands still is left for performance.now()', () => {
     const ctx = acquireAudioContext() as unknown as FakeAudioContext;
     const clock = createClock(ctx as unknown as AudioContext);
