@@ -41,3 +41,7 @@ await player.load('/other.mpd', { comments: null }); // 这一次不要弹幕
 ```
 
 `comments` 可以是一个 URL，或者由视频地址求出弹幕地址的函数（返回 `undefined` 表示这个视频没有弹幕）。换视频时，没有弹幕的视频会清掉上一个的弹幕；不给 `comments` 时 preset 不碰弹幕，由宿主 `dispatch('load-danmaku', …)`。
+
+## 逐帧精确（剪辑 / 标注）与 Safari
+
+Safari（WebKit）上 `<video>` 暂停后 seek 可能停在更早的一帧不重绘，这是平台限制（RESEARCH §1、ADR-008 §6.1）。需要逐帧精确时用 WebCodecs 路径：本地文件或 Blob 交给 `@otter-player/format-file`，后端 `@otter-player/backend-webcodecs`，帧由播放器画在画布上（§19 剪辑行的组合）。这条路径在 Safari 上逐帧准确（e2e `picture.spec` 的 webcodecs 一条）。

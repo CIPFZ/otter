@@ -34,7 +34,6 @@ export {
   bufferedEndAt,
   mediaElementError,
   observeMediaElement,
-  seekMedia,
   type BackendEmit,
   type MediaElementObserver,
   type ObserveOptions,

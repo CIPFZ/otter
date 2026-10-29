@@ -8,7 +8,6 @@ import {
   EMPTY_TRACKS,
   mediaElementError,
   observeMediaElement,
-  seekMedia,
   type AudioTrack,
   type BackendContext,
   type BackendEvents,
@@ -191,7 +190,7 @@ export function createNativeBackend(ctx: BackendContext, options: NativeBackendO
     play: () => element().play(),
     pause: () => element().pause(),
     seek(t) {
-      seekMedia(element(), t);
+      element().currentTime = t;
     },
     setVolume(v) {
       element().volume = v;

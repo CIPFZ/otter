@@ -90,11 +90,15 @@ async function load(page: Page, p: (typeof PATHS)[number]): Promise<void> {
 }
 
 for (const p of PATHS) {
-  test(`picture controls on the ${p.name} path: wheel and pinch zoom, drag pans, filters from the menu`, async ({ page }) => {
+  test(`picture controls on the ${p.name} path: wheel and pinch zoom, drag pans, filters from the menu`, async ({ page, browserName }) => {
     test.setTimeout(90_000);
-    // WebKit (CI) kept an old frame after a paused seek on the <video> path (frame 1 shown,
-    // currentTime 0.11, readyState 4; re-seeks did nothing): the element backends now nudge it
-    // (seekMedia: one muted frame of play, pause, seek back; M6 WebKit stop).
+    // WebKit: after a paused seek the <video> may keep showing an older frame (frame 1 at currentTime
+    // 0.11, readyState 4; re-seeking and a play-one-frame nudge do not fix it: RESEARCH §1, M6). A
+    // platform limitation: frame-exact work on Safari uses the WebCodecs path (the webcodecs case).
+    if (p.name === 'video' && browserName === 'webkit') {
+      ciNotice('picture controls on the video path: WebKit paused seeks may not repaint (RESEARCH §1), skipped; the WebCodecs path covers WebKit');
+      test.skip(true, 'WebKit paused seek does not repaint the <video> (RESEARCH §1)');
+    }
     await load(page, p);
     // Frame 3: bits 0 and 1, two white blocks side by side at the top-left (a 96 px run of the
     // 640 px picture), so a 2x zoom there still fits the box.

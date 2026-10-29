@@ -8,7 +8,6 @@ import {
   EMPTY_TRACKS,
   NO_CODEC_RANKING,
   observeMediaElement,
-  seekMedia,
   type BackendContext,
   type BackendEvents,
   type BackendFactory,
@@ -141,7 +140,7 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
     play: () => element().play(),
     pause: () => element().pause(),
     seek(t) {
-      seekMedia(element(), t);
+      element().currentTime = t;
     },
     setVolume(v) {
       element().volume = v;

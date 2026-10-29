@@ -103,6 +103,10 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 - 已修正（2026-10-23，M5 第二批，ADR-011 §3）：画面面按帧的原色在平台给 `<video>` 做色彩管理时转到 sRGB，e2e 的颜色映射拟合已删除，回到原阈值。Edge 硬件通路最差平均差 5.37（原来拟合后 10.5），离群 1.74%。
 - e2e（`e2e/surfaces.spec.ts`）在 Chrome、Firefox、Android 仿真上对 7 组参数（恒等、放大+平移、旋转 90°+镜像、亮度/对比度/饱和度、色温、锐化、3 倍放大+全部滤镜）逐像素比较三种 Surface：平均差 < 6/255，差值 > 40 的像素占比 < 3%（实测最大 1.8%），两种 Surface 的 `contentRect` 完全相等；另有对照确保画面不是空白、换帧后差异明显。
 
+### 6.1 WebKit 暂停 seek 不重绘（2026-10-30）
+
+WebKit 上 `<video>` 暂停后 seek 可能不重绘（RESEARCH §1）。「play 一帧再 pause、seek 回去」的缓解试过，无效且让画面超前 `currentTime` 若干帧，已撤回。产品不在 `<video>` 路径上做补救；需要逐帧精确的用法（剪辑 / 标注 / 逐帧，§19 剪辑行的组合）在 Safari 上走 WebCodecs 后端（format-file，帧由我们画到画布），文档写明。
+
 ### 7. 多宫格（`@otter-player/presentation/multiview`，按需入口）
 
 - `createMultiview({ container, columns?, label?, before? })`：一张画布、一个 WebGL2 上下文（渲染在 Worker 中），每路一个视口；没有 WebGL2 时每路一个 2D canvas，在主线程绘制，最多 4 路（`CANVAS2D_MAX_TILES`；16 路 720p 时主线程只有约 10 fps），第 5 路起 `add()` 抛出 `gpuUnavailable`（非致命）。2D 兜底不放进 Worker（2026-10-21 负责人决定）。`add(label)` 返回该路的 `surface`（交给 WebCodecs 后端作 `sink`）和覆盖在视口上的按钮。默认列数为能放下所有路的最小正方形。

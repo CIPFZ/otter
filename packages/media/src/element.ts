@@ -46,53 +46,6 @@ export function mediaElementError(error: MediaError | null): OtterError {
   });
 }
 
-/** Elements in a repaint nudge (seekMedia): their play / pause / seek / volume events are not state. */
-const nudging = new WeakSet<HTMLMediaElement>();
-
-const isWebKit = (): boolean => {
-  const ua = (globalThis.navigator as { userAgent?: string } | undefined)?.userAgent ?? '';
-  return /AppleWebKit/.test(ua) && !/Chrome|Chromium|CriOS|Edg|FxiOS|Android/.test(ua);
-};
-
-/**
- * Seeks the element. On WebKit a paused seek can leave the compositor on an old frame (frame 1 shown
- * at 0.11 s with readyState 4; re-seeking does nothing: M6, RESEARCH §1): there, once seeked, the
- * element plays one frame muted, pauses, and seeks back to the exact time, unseen by the store.
- */
-export function seekMedia(media: HTMLMediaElement, time: number): void {
-  media.currentTime = time;
-  if (!media.paused || !isWebKit()) return;
-  media.addEventListener(
-    'seeked',
-    () => {
-      if (!media.paused || nudging.has(media)) return;
-      const muted = media.muted;
-      nudging.add(media);
-      media.muted = true;
-      const done = (): void => {
-        media.muted = muted;
-        // The last event (seeked after the seek back, or this) ends the nudge.
-        const end = (): void => {
-          nudging.delete(media);
-          media.dispatchEvent(new Event('otter-nudged'));
-        };
-        if (Math.abs(media.currentTime - time) > 1e-3) {
-          media.addEventListener('seeked', end, { once: true });
-          media.currentTime = time;
-        } else end();
-      };
-      media.play().then(
-        () => {
-          media.pause();
-          done();
-        },
-        done,
-      );
-    },
-    { once: true },
-  );
-}
-
 export function observeMediaElement(
   media: HTMLMediaElement,
   emit: BackendEmit,
@@ -142,11 +95,7 @@ export function observeMediaElement(
     timer = undefined;
   };
 
-  /** During a repaint nudge (seekMedia) these events are the nudge's, not the viewer's. */
-  const NUDGE_EVENTS = new Set(['play', 'playing', 'pause', 'seeking', 'seeked', 'timeupdate', 'volumechange', 'waiting']);
   const handlers: Readonly<Record<string, () => void>> = {
-    // The nudge is over: the element's state as it is now.
-    'otter-nudged': () => emit('playback-change', snapshot()),
     play: () => emit('playback-change', { paused: false, ended: false }),
     playing: () => {
       waiting = false;
@@ -192,14 +141,13 @@ export function observeMediaElement(
     error: () => emit('error', mediaElementError(media.error)),
   };
 
-  const listeners = Object.entries(handlers).map(([type, handler]) => [type, NUDGE_EVENTS.has(type) ? () => !nudging.has(media) && handler() : handler] as const);
-  for (const [type, handler] of listeners) media.addEventListener(type, handler);
+  for (const [type, handler] of Object.entries(handlers)) media.addEventListener(type, handler);
 
   return {
     snapshot,
     destroy() {
       stopPolling();
-      for (const [type, handler] of listeners) media.removeEventListener(type, handler);
+      for (const [type, handler] of Object.entries(handlers)) media.removeEventListener(type, handler);
     },
   };
 }
