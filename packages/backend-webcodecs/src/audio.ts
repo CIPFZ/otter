@@ -6,18 +6,42 @@
 
 import type { ClockAnchor } from './clock.js';
 
-// Plain JS for AudioWorkletGlobalScope (`currentTime`, `sampleRate` are globals there).
-const PROCESSOR = `
+// Plain JS for AudioWorkletGlobalScope (`currentTime`, `sampleRate` are globals there). Exported
+// for the unit tests, which run it with stand-ins for those globals.
+export const PROCESSOR = `
 class OtterAudio extends AudioWorkletProcessor {
   constructor() {
     super();
     this.q = [];
     this.a = null;
+    // Observation (M6 F14), summed over about 0.2 s and posted as 'stat': samples output as zeros
+    // because the queue was dry (under) or the next chunk starts later (gap), chunks dropped as
+    // already past (late), the largest discontinuity between consecutive chunks (disc, s), the
+    // decode queue depth sent with the last chunk (dq).
+    this.s = { n: 0, under: 0, gap: 0, late: 0, disc: 0, dq: 0 };
+    this.lastEnd = null;
+    // Underrun (M6 F14): the queue ran dry while playing after audio had been flowing (not the
+    // first fill after a load or seek); reported with its length once audio flows again (a dry end
+    // of the media is not reported).
+    this.flowing = false;
+    this.dryFrom = null;
     this.port.onmessage = (e) => {
       const m = e.data;
-      if (m.t === 'chunk') this.q.push(m);
-      else if (m.t === 'anchor') this.a = m;
-      else if (m.t === 'flush') this.q.length = 0;
+      if (m.t === 'chunk') {
+        if (this.lastEnd !== null) {
+          const d = m.start - this.lastEnd;
+          if (Math.abs(d) > Math.abs(this.s.disc)) this.s.disc = d;
+        }
+        this.lastEnd = m.start + m.planes[0].length / m.rate;
+        this.s.dq = m.dq;
+        this.q.push(m);
+      } else if (m.t === 'anchor') this.a = m;
+      else if (m.t === 'flush') {
+        this.q.length = 0;
+        this.lastEnd = null;
+        this.flowing = false;
+        this.dryFrom = null;
+      }
     };
   }
   process(_inputs, outputs) {
@@ -28,16 +52,24 @@ class OtterAudio extends AudioWorkletProcessor {
     const q = this.q;
     const t0 = a.media + (currentTime - a.context);
     const end = (c) => c.start + c.planes[0].length / c.rate;
-    while (q.length > 0 && end(q[0]) <= t0) q.shift();
+    const s = this.s;
+    while (q.length > 0 && end(q[0]) <= t0) {
+      q.shift();
+      s.late++;
+    }
     const n = out[0].length;
     let k = 0;
-    for (let i = 0; i < n; i++) {
+    let i = 0;
+    for (; i < n; i++) {
       const t = t0 + i / sampleRate;
       while (k < q.length && end(q[k]) <= t) k++;
       const c = q[k];
       if (c === undefined) break;
       const pos = (t - c.start) * c.rate;
-      if (pos < 0) continue;
+      if (pos < 0) {
+        s.gap++;
+        continue;
+      }
       const j = pos | 0;
       const f = pos - j;
       for (let ch = 0; ch < out.length; ch++) {
@@ -45,6 +77,20 @@ class OtterAudio extends AudioWorkletProcessor {
         const v = p[j];
         out[ch][i] = j + 1 < p.length ? v + (p[j + 1] - v) * f : v;
       }
+    }
+    s.under += n - i;
+    s.n += n;
+    // Audio in this quantum after a dry stretch in earlier ones: that stretch is over.
+    if (i > 0) {
+      if (this.dryFrom !== null) this.port.postMessage({ t: 'underrun', media: this.dryFrom, ms: (t0 - this.dryFrom) * 1000 });
+      this.dryFrom = null;
+      this.flowing = true;
+    }
+    if (i < n && this.flowing && this.dryFrom === null) this.dryFrom = t0 + i / sampleRate;
+    if (s.n >= sampleRate / 5) {
+      const last = q[q.length - 1];
+      this.port.postMessage({ t: 'stat', at: currentTime, media: t0, ahead: last === undefined ? -1 : end(last) - t0, queued: q.length, ...s });
+      this.s = { n: 0, under: 0, gap: 0, late: 0, disc: 0, dq: s.dq };
     }
     return true;
   }
@@ -74,14 +120,16 @@ function loadProcessor(ctx: AudioContext): Promise<void> {
 }
 
 export interface AudioSink {
-  /** Takes ownership of `data` (closed after copying). */
-  push(data: AudioData): void;
+  /** Takes ownership of `data` (closed after copying); `decodeQueue`: the decoder's queue depth then. */
+  push(data: AudioData, decodeQueue?: number): void;
   /** Drops everything queued (seek). */
   flush(): void;
   /** End (s) of the audio handed over so far, -Infinity after a flush. */
   readonly bufferedEnd: number;
   setAnchor(a: ClockAnchor): void;
   setVolume(volume: number, muted: boolean): void;
+  /** The worklet ran dry while playing (media time it began, ms of silence), once audio flows again. */
+  onUnderrun(h: (media: number, ms: number) => void): void;
   destroy(): void;
 }
 
@@ -91,8 +139,12 @@ export async function createAudioSink(ctx: AudioContext): Promise<AudioSink> {
   const gain = ctx.createGain();
   node.connect(gain).connect(ctx.destination);
   let bufferedEnd = Number.NEGATIVE_INFINITY;
+  let underrun: ((media: number, ms: number) => void) | undefined;
+  node.port.onmessage = (e: MessageEvent<{ t: string; media?: number; ms?: number }>) => {
+    if (e.data.t === 'underrun') underrun?.(e.data.media as number, e.data.ms as number);
+  };
   return {
-    push(data) {
+    push(data, decodeQueue = 0) {
       const frames = data.numberOfFrames;
       const planes: Float32Array[] = [];
       for (let ch = 0; ch < data.numberOfChannels; ch++) {
@@ -104,7 +156,7 @@ export async function createAudioSink(ctx: AudioContext): Promise<AudioSink> {
       const rate = data.sampleRate;
       data.close();
       bufferedEnd = Math.max(bufferedEnd, start + frames / rate);
-      node.port.postMessage({ t: 'chunk', start, rate, planes }, planes.map((p) => p.buffer));
+      node.port.postMessage({ t: 'chunk', start, rate, planes, dq: decodeQueue }, planes.map((p) => p.buffer));
     },
     flush() {
       bufferedEnd = Number.NEGATIVE_INFINITY;
@@ -118,6 +170,9 @@ export async function createAudioSink(ctx: AudioContext): Promise<AudioSink> {
     },
     setVolume(volume, muted) {
       gain.gain.value = muted ? 0 : volume;
+    },
+    onUnderrun(h) {
+      underrun = h;
     },
     destroy() {
       node.port.postMessage({ t: 'flush' });

@@ -45,6 +45,12 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
   - 暂停中不做冻结判定：空闲挂起前后，上下文时间可能先停住、状态还是 running。
   - 判为冻结的上下文，挂起后再次 running 就清掉冻结标记，时钟回到它上面。
 - **停顿之后回到上下文时钟**（2026-10-29 负责人，F9 后续）：判为冻结、改走 `performance.now()` 之后，若上下文的时间重新走动并连续稳定 2 s（`RECOVER_S`），时钟回到上下文，后端在路由上记一条「audio clock: back on the AudioContext after a X s stall」（含停顿时长，`route-detail`）；之后再停顿会再报告一次。60 s 内第 3 次停顿（`STALL_WINDOW_S`）则留在墙钟，直到下一次挂起 / 恢复。起因：测试实例的虚拟声卡（QEMU USB audio）偶尔停约 2 s，裸 WebAudio 也复现。多宫格基准只在独立记录证实有 ≥ 0.5 s 停顿、且与看门狗窗口重叠时接受这条报错，并要求停顿结束后 5 s 内出现这条恢复记录（通知标「环境停顿」）。
+- **音频 sink 的缓冲与欠载**（2026-10-29 负责人，F14）：
+  - 稳态目标：解码到时钟之前 1 s（`AUDIO_AHEAD_S`），泵每 20 ms 检查一次。实测最低：真 Firefox 0.57 s、真 Edge 0.68 s、无头 Chrome 0.8 s 以上，都在 0.5 s 之上。下限定 0.5 s：20 ms 的检查间隔、一次 AAC 解码和一次主线程卡顿都比它小得多。
+  - seek 后：flush，只在新的首个 AudioData 到达前静音。实测每次 seek 因时间戳对齐补零 1–5 ms，没有整段的零。
+  - 欠载：worklet 在播放中、已有音频流过之后队列空了，等音频再来时报一次非致命 `audioUnderrun`（「audio ran dry at X s for Y ms」）。加载 / seek 后的首次填充和媒体结尾的空不算。
+  - 观测：worklet 每约 0.2 s 发一条 `stat`（队列领先、空队列补零、时间戳缺口补零、过期块、块间不连续、解码队列深度），供 e2e 对齐静音秒。
+  - F14 的结论：真 Edge / 真 Firefox 上的静音秒里 worklet 一条 `stat` 也没有，说明 `process()` 根本没被调用，即音频渲染线程停住了（测试实例的虚拟声卡，约 2 s）；sink 本身没有空过、时间戳没有不连续。e2e 把落在上下文停顿里的静音秒标「环境停顿」，不计入。
 - 倍速只改时钟倍率，倍率 ≠ 1 时音频静音（音频变速留给后续）。
 - AudioContext 跑不起来时（手势之前被自动播放策略挂起；或者没有音频设备，例如 Linux 上的无头 Firefox：`resume()` 永不返回），时钟改用 `performance.now()`，AudioContext 开始运行后重新锚定；「state 是 running 但时间不走」由看门狗识别。AudioContext 时钟确定不可用时（resume 失败或 3 秒宽限已过、时间冻结、没有 AudioContext）发一次非致命的 `audioClockUnavailable`，消息里带原因；回到 AudioContext 时钟后再次失去会再报。worklet 模块加载与 `resume()` 都有超时；音频输出不可用时发 `audioOutputUnavailable`，画面照常播放。
 - seek：从目标时间之前（含）的最后一个关键帧开始解码，丢掉被目标之后的帧覆盖的帧，显示覆盖目标时刻的那一帧，即「时间戳 ≤ 目标的最后一帧」，帧序号 `floor(t × fps + ε)`，与 `<video>` 和播放时的规则一致：t 落在一帧的后半段时显示的仍是当前帧，不是下一帧。判断时有 0.5 ms 容差：WebM 以毫秒存时间戳（第 32 帧存为 1.067，晚于 32/30），没有容差会落到前一帧。新的 seek 立即作废进行中的 seek（generation 计数，`reset()` 解码器），旧 seek 的帧不会画出来。e2e 对 30 fps、GOP 90 的样本从画面像素读出帧序号，断言等于 `floor(t × fps + ε)`；目标有帧起点、帧前半段和帧后半段（每个样本至少 3 个后半段），按 round 取帧的实现会失败。
@@ -103,7 +109,7 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 - 局部全屏：双击或 Shift+Enter 让一路铺满整面墙，其余视口区域为零（不上传、不绘制），再次双击回到网格。
 - 每路是一个独立的 core（media + QoE），共享整页的解码池和一个 AudioContext；超过 16 路的那一路排队，`route-detail` 写进 `router.explain()`（「decoder queued: 16 decoders busy (pool limit) …」），并发出非致命 QoE 事件 `decoderQueued`，有路退出后自动开始。
 - 墙插在外壳指定元素之前（`before`，播放器外壳传顶部栏）：高于手势 / 海报层（单击、双击归墙），低于所有控件。
-- 验收（`e2e/multiview.spec.ts`）：功能用例在 Chrome、Firefox、Android 仿真上运行（每个视口显示自己那一路，从画面像素读帧号；焦点、出声、控件跟随；局部全屏；第 17 路排队）；16 路基准标记 `@bench`，只在 desktop Chrome、单 worker、8 核以上机器运行（CI 的 4 核 runner 上跳过并留 notice），要求每路 10 s 内播放 > 9 s、丢帧（时钟跳过 + 画布未显示）≤ 5%、主线程无长任务且没有超过两个 vsync 的帧间隔。硬解路径（各路都走 WebCodecs 后端）的容差（M6 测试收口轮 F10，2026-10-28）：每个 10 s 窗口里超过 34 ms 的帧间隔 ≤ 1 次，> 50 ms 的长任务仍为 0，通知里记实际次数。软件解码（WASM，或 WebCodecs 没有硬解时）原为 0 次，2026-10-29 起同为 ≤ 1 次（负责人：归因为 GC / 合成器则与硬解同容差）：真 Edge 上 HEVC 软件路径 20 次里 5 帧 > 34 ms（40–43 ms），都没有 long animation frame 里的脚本、也没有长任务，4 帧落在虚拟声卡停顿开始的那一刻、1 帧在其前 7 ms。数据见 `docs/reports/M4.md`。
+- 验收（`e2e/multiview.spec.ts`）：功能用例在 Chrome、Firefox、Android 仿真上运行（每个视口显示自己那一路，从画面像素读帧号；焦点、出声、控件跟随；局部全屏；第 17 路排队）；16 路基准标记 `@bench`，只在 desktop Chrome、单 worker、8 核以上机器运行（CI 的 4 核 runner 上跳过并留 notice），要求每路 10 s 内播放 > 9 s、丢帧（时钟跳过 + 画布未显示）≤ 5%、主线程无长任务且没有超过两个 vsync 的帧间隔。硬解路径（各路都走 WebCodecs 后端）的容差（M6 测试收口轮 F10，2026-10-28）：每个 10 s 窗口里超过 34 ms 的帧间隔 ≤ 1 次，> 50 ms 的长任务仍为 0，通知里记实际次数。软件解码（WASM，或 WebCodecs 没有硬解时）原为 0 次，2026-10-29 起同为 ≤ 1 次（负责人：归因为 GC / 合成器则与硬解同容差）：真 Edge 上 HEVC 软件路径 20 次里 5 帧 > 34 ms（40–43 ms），都没有 long animation frame 里的脚本、也没有长任务，4 帧落在虚拟声卡停顿开始的那一刻、1 帧在其前 7 ms。落在独立记录证实的停顿窗口（停顿开始前 50 ms 到结束后 500 ms）里的慢帧标「环境停顿」，不计入容差，仍写进通知；窗口外维持 ≤ 1 帧 / 10 s（2026-10-29 负责人）。数据见 `docs/reports/M4.md`。
 
 ### 8. 其余
 

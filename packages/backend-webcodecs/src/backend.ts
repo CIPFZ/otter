@@ -343,7 +343,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
 
   const onAudioData = (data: DecodedFrame): void => {
     if (destroyed || sink === undefined || isI420(data)) return closeFrame(data);
-    sink.push(data as AudioData);
+    sink.push(data as AudioData, audio?.decodeQueueSize ?? 0);
     signal.notify();
   };
 
@@ -863,6 +863,10 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
           try {
             sink = await createAudioSink(c);
             sink.setVolume(volume, muted);
+            // A dry worklet is said, not just heard as silence (M6 F14).
+            sink.onUnderrun((media, ms) =>
+              bus.emit('error', createError({ type: 'media', details: 'audioUnderrun', fatal: false, recoverable: true, message: `audio ran dry at ${media.toFixed(3)} s for ${Math.round(ms)} ms` })),
+            );
             audio = decoder.create({ ...a.setup, output: onAudioData, error: fail });
           } catch (err) {
             // Keep the picture and the clock; say why there is no sound.

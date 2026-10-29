@@ -158,18 +158,27 @@ for (const clip of CLIPS) {
 // The audio worklet keeps producing sound for 30 s (M6 F12: a recording worklet stopped after
 // about 2.7 s on the real Firefox; the product's own worklet is checked here). Its output is tapped
 // by an AnalyserNode; the 12 s clip (a 440 Hz sine) is played from the start again near its end.
-test('h264.mp4 with sound for 30 s: the audio worklet keeps producing, every second @solo', async ({ page }) => {
+// OTTER_REPEAT_F14=<n>: the case n times in a row (the F14 acceptance: 5 on each CI browser).
+for (let run = 1; run <= Number(process.env['OTTER_REPEAT_F14'] ?? 1); run++)
+test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every second${run > 1 ? ` (run ${run})` : ''} @solo`, async ({ page }) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => {
     const Native = window.AudioWorkletNode;
-    const w = window as unknown as { taps: AnalyserNode[] };
+    type Stat = { at: number; media: number; ahead: number; queued: number; under: number; gap: number; late: number; disc: number; dq: number; wall: number };
+    const w = window as unknown as { taps: AnalyserNode[]; stats: Stat[] };
     w.taps = [];
+    w.stats = [];
     window.AudioWorkletNode = class extends Native {
       constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
         super(context, name, options);
         const tap = context.createAnalyser();
         this.connect(tap);
         w.taps.push(tap);
+        // The sink's 0.2 s summaries (M6 F14 observation).
+        this.port.addEventListener('message', (e: MessageEvent<{ t: string } & Omit<Stat, 'wall'>>) => {
+          if (e.data.t === 'stat') w.stats.push({ ...e.data, wall: performance.now() });
+        });
+        this.port.start();
       }
     };
   });
@@ -186,7 +195,7 @@ test('h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
         tap.getFloatTimeDomainData(d);
         rms = Math.sqrt(d.reduce((a, x) => a + x * x, 0) / d.length);
       }
-      return { taps: (window as unknown as { taps: AnalyserNode[] }).taps.length, state: tap?.context.state ?? 'none', t: f.state().currentTime, muted: f.state().muted, rms };
+      return { taps: (window as unknown as { taps: AnalyserNode[] }).taps.length, state: tap?.context.state ?? 'none', t: f.state().currentTime, muted: f.state().muted, rms, wall: performance.now() };
     });
   await expect.poll(async () => (await probe()).t, { timeout: 15_000 }).toBeGreaterThan(0.5);
   const first = await probe();
@@ -194,16 +203,72 @@ test('h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
     ciNotice(`audio worklet 30 s: ${first.taps === 0 ? 'no audio worklet' : `AudioContext ${first.state}`} here, not testable`);
     test.skip(true, 'no running audio worklet here');
   }
+  // The context's own time every 20 ms: stretches of >= 0.5 s without movement are the audio
+  // render thread standing still (M6 F14: the test instance's sound device; then process() is not
+  // called at all and the output is silent), recorded as performance.now() spans.
+  await page.evaluate(() => {
+    const w = window as unknown as { taps: AnalyserNode[]; ctxStalls: { from: number; to: number }[] };
+    const ctx = w.taps.at(-1)?.context as BaseAudioContext;
+    w.ctxStalls = [];
+    let last = -1;
+    let since = performance.now();
+    let open: { from: number; to: number } | undefined;
+    setInterval(() => {
+      const now = performance.now();
+      if (ctx.currentTime !== last) {
+        if (open !== undefined) open.to = now;
+        open = undefined;
+        last = ctx.currentTime;
+        since = now;
+      } else if (open === undefined && now - since >= 500) {
+        open = { from: since, to: Infinity };
+        w.ctxStalls.push(open);
+      }
+    }, 20);
+  });
   const rms: number[] = [];
+  const walls: number[] = [];
+  const seeks: number[] = [];
   for (let i = 0; i < 30; i++) {
     await page.waitForTimeout(1000);
     const p = await probe();
     rms.push(p.rms);
-    if (p.t > 10.5) await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).seek(0.2));
+    walls.push(p.wall);
+    if (p.t > 10.5) seeks.push(await page.evaluate(async () => {
+      const at = performance.now();
+      await (await (window.wc as Promise<WebCodecsFixture>)).seek(0.2);
+      return at;
+    }));
+  }
+  // Each silent second with the sink's summaries of the second before it (M6 F14). A silent second
+  // inside a stall of the render thread (from 1 s before it to 500 ms after it) is the
+  // environment's: noted, not counted.
+  const stallSpans = await page.evaluate(() => (window as unknown as { ctxStalls: { from: number; to: number }[] }).ctxStalls.map((x) => ({ from: x.from, to: Number.isFinite(x.to) ? x.to : Number.MAX_VALUE })));
+  const inStall = (i: number): boolean => stallSpans.some((x) => (walls[i] as number) - 1000 <= x.to + 500 && (walls[i] as number) >= x.from);
+  const silent = rms.flatMap((x, i) => (x < 0.01 ? [i] : []));
+  const environment = silent.filter(inStall);
+  if (environment.length > 0) ciNotice(`audio worklet 30 s: 环境停顿 (render thread stood still ${stallSpans.map((x) => `${((x.to - x.from) / 1000).toFixed(2)} s`).join(', ')}): silent seconds ${environment.join(', ')} not counted`);
+  const all = await page.evaluate(() => (window as unknown as { stats: { ahead: number; under: number; gap: number; late: number; disc: number }[] }).stats);
+  ciNotice(
+    `audio worklet 30 s, sink summary: ${all.length} windows, lowest ahead ${Math.min(...all.map((x) => x.ahead)).toFixed(2)} s, zeroed samples dry ${all.reduce((n, x) => n + x.under, 0)} / gap ${all.reduce((n, x) => n + x.gap, 0)}, late chunks ${all.reduce((n, x) => n + x.late, 0)}, largest discontinuity ${Math.max(...all.map((x) => Math.abs(x.disc))).toFixed(3)} s, ${seeks.length} seeks`,
+  );
+  if (silent.length > 0) {
+    const stats = await page.evaluate(() => (window as unknown as { stats: { at: number; media: number; ahead: number; queued: number; under: number; gap: number; late: number; disc: number; dq: number; wall: number }[] }).stats);
+    const lines = silent.map((i) => {
+      const to = walls[i] as number;
+      const from = to - 1000;
+      const near = stats.filter((x) => x.wall >= from - 400 && x.wall <= to + 200);
+      const seekNear = seeks.filter((x) => x >= from - 1500 && x <= to).map((x) => `seek ${Math.round(to - x)} ms before`);
+      return `second ${i} (${seekNear.join(', ') || 'no seek'}): ${near.map((x) => `[media ${x.media.toFixed(2)} ahead ${x.ahead.toFixed(2)} q ${x.queued} under ${x.under} gap ${x.gap} late ${x.late} disc ${x.disc.toFixed(3)} dq ${x.dq}]`).join(' ')}`;
+    });
+    ciNotice(`audio worklet 30 s: silent seconds with the sink's view: ${lines.join(' | ')}`);
   }
   ciNotice(`audio worklet 30 s: RMS per second min ${Math.min(...rms).toFixed(3)}, max ${Math.max(...rms).toFixed(3)}; ${rms.filter((x) => x < 0.01).length} silent seconds`);
   expect(first.muted).toBe(false);
-  expect(rms.filter((x) => x < 0.01), `silent seconds (RMS ${rms.map((x) => x.toFixed(3)).join(' ')})`).toEqual([]);
+  expect(silent.filter((i) => !environment.includes(i)), `silent seconds outside an environment stall (RMS ${rms.map((x) => x.toFixed(3)).join(' ')})`).toEqual([]);
+  // A dry sink is reported, not silent (none expected here).
+  const underruns = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).events.filter((e) => e.type === 'error' && (e.payload as { error: { details: string } }).error.details === 'audioUnderrun').map((e) => (e.payload as { error: { message?: string } }).error.message ?? ''));
+  expect(underruns).toEqual([]);
 });
 
 test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it as the clock', async ({ page }) => {
