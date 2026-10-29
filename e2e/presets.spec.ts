@@ -121,7 +121,7 @@ test('danmaku preset: DASH A/V plays, comments draw with the renderer explained,
   await page.goto('/presets.html?preset=danmaku&wm=1&src=/dash-av/manifest.mpd');
   await expect.poll(async () => (await state(page)).currentTime, { timeout: 20_000 }).toBeGreaterThan(0.5);
   expect((await state(page)).format).toBe('dash');
-  await page.evaluate(() => (window.preset as Player).store.dispatch('load-danmaku' as never, { url: '/danmaku/ladder.xml' } as never));
+  // The preset loaded the comments itself (`comments` option): nothing dispatched here.
   await expect.poll(async () => page.evaluate(() => ((window.preset as Player).store.getState() as unknown as { danmakuStatus: { count: number } }).danmakuStatus.count), { timeout: 10_000 }).toBeGreaterThan(0);
   const e = await explain(page);
   expect(e.more['danmaku']?.[0]).toMatchObject({ candidate: 'canvas2d', outcome: 'selected' });
@@ -130,6 +130,36 @@ test('danmaku preset: DASH A/V plays, comments draw with the renderer explained,
   await page.evaluate(() => (window.preset as Player).store.dispatch('set-danmaku' as never, { opacity: 0.4 } as never));
   await page.reload();
   await expect.poll(async () => page.evaluate(() => ((window.preset as Player).store.getState() as unknown as { danmaku: { opacity: number } }).danmaku.opacity), { timeout: 10_000 }).toBe(0.4);
+});
+
+test('danmaku preset in one call: comments scroll over the picture within 10 s, nothing dispatched by the page', async ({ page }) => {
+  await page.goto('/presets.html?preset=danmaku&src=/dash-av/manifest.mpd');
+  await page.addStyleTag({ content: '#player video { visibility: hidden !important; } [data-otter-top], [data-otter-controls], [data-otter-center] { visibility: hidden !important; }' });
+  /** Bright pixels (comment text) in the picture area. */
+  const shot = async (): Promise<{ bright: number; png: string }> => {
+    const png = (await page.locator('#player').screenshot({ animations: 'disabled' })).toString('base64');
+    const bright = await page.evaluate(async (b64) => {
+      const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+      const c = new OffscreenCanvas(img.width, img.height);
+      const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, img.width, img.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if ((d[i] as number) + (d[i + 1] as number) + (d[i + 2] as number) > 450) n++;
+      return n;
+    }, png);
+    return { bright, png };
+  };
+  await expect.poll(async () => (await shot()).bright, { timeout: 10_000 }).toBeGreaterThan(200);
+  const a = await shot();
+  await page.waitForTimeout(500);
+  const b = await shot();
+  expect(b.bright).toBeGreaterThan(200);
+  // Moving: the two pictures differ.
+  expect(a.png).not.toBe(b.png);
+  // A load without comments for this video clears them (load option `comments: null`).
+  await page.evaluate(() => (window.preset as unknown as { load(s: string, o: object): Promise<void> }).load('/dash-av/manifest.mpd', { autoplay: true, comments: null }));
+  await expect.poll(async () => page.evaluate(() => ((window.preset as Player).store.getState() as unknown as { danmakuStatus: { count: number } }).danmakuStatus.count)).toBe(0);
 });
 
 test('tv preset: the remote moves focus between controls, OK activates, Back leaves, media keys play / pause', async ({ page }) => {

@@ -100,6 +100,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - 有 Worker 画布（OffscreenCanvas）的页面，真 Edge 上整页的 rAF 基线就变差：同一页面还没有弹幕时 p95 18–26 ms，普通页面是 17 ms。
 - 真 GPU（RTX 3080）上的主线程 WebGL 弹幕，5000 条/分钟时 rAF p95 18 ms，与基线持平：无头 Chrome 上的 33 ms 是 SwiftShader 所致。
 - 真 Windows Firefox 159 上 WebM 蒙版 × Canvas 2D 的偶发 −2 帧（M6 F11）：13 次里 2 次各有一张截图差 −2 帧（15%，蒙版落后），之后同机 20 次、Linux 正式版 Firefox 20 次都没有；其余截图 0 或 −1（约四成 −1），WebGL 偶见 +1。按负责人的口径（< 20%）记 flaky，不改产品（2026-10-28）。
+- `appearance: none` 的 `<input type=range>`，轨道比圆点高时（命中区 24 px、圆点 13 px）：Chromium 和 WebKit 把 `::-webkit-slider-thumb` 放在轨道顶部，要 `margin-top: (轨道高 − 圆点高) / 2` 才居中；Firefox 的 `::-moz-range-thumb` 自动垂直居中，所以只在 Firefox 上看不出来。三家的圆点中心横向都只走 [圆点宽/2, 宽 − 圆点宽/2]，按整宽百分比画的填充条在两端差半个圆点；`step` 不是 `any` 时圆点还会吸附到步长上，与连续的填充条错开（M6，负责人实看发现，2026-10-29）。
 - 逐帧对齐（蒙版与画面 ≤ 1 帧）在无头浏览器里与并行的其他用例共享软件合成器时测不准：帧会迟到一两帧，误差来自机器而非代码。这类用例单独一步、一个 worker 跑（`@solo`）。
 
 ## 2. 格式 / 协议 / 编码全景

@@ -29,8 +29,10 @@ export function liveSlider(
   strings: () => UiStrings,
   label: (format: (time: number) => string) => void,
   speakTime: (seconds: number) => string,
+  setFill: (el: HTMLElement, name: 'played' | 'buffered', fraction: number) => void,
 ): LiveSlider {
   let edge = 0;
+  const fillTo = (name: 'played' | 'buffered', f: number): void => setFill(host, name, f);
   label((time) => formatBehind(edge - time));
   return (s, dragging, value) => {
     const min = s.seekableStart ?? 0;
@@ -44,9 +46,9 @@ export function liveSlider(
     if (!dragging || value !== undefined) {
       if (value === undefined) input.value = String(at);
       input.setAttribute('aria-valuetext', `${strings().behindLive} ${speakTime(edge - at)}`);
-      host.style.setProperty('--otter-played', `${Math.min(100, Math.max(0, ((at - min) / (max - min)) * 100))}%`);
+      fillTo('played', (at - min) / (max - min));
     }
-    host.style.setProperty('--otter-buffered', `${Math.min(100, Math.max(0, ((s.bufferedEnd - min) / (max - min)) * 100))}%`);
+    fillTo('buffered', (s.bufferedEnd - min) / (max - min));
   };
 }
 

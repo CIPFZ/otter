@@ -84,7 +84,13 @@ ${glassFallback('.tip')}
 ${REDUCED_MOTION}
 `;
 
-/** Native range input over a drawn rail (UI-DESIGN §6.2); the input keeps all slider semantics. */
+/**
+ * Native range input over a drawn rail (UI-DESIGN §6.2); the input keeps all slider semantics.
+ * The thumb's centre travels from thumb/2 to width - thumb/2, so a fill ends at
+ * thumb/2 + f x (width - thumb) (f: `--otter-played-f` / `--otter-buffered-f`, 0..1) to end under
+ * it. Chromium / WebKit put an appearance:none thumb at the top of its track, hence the margin;
+ * Firefox centres it (RESEARCH §1).
+ */
 export const rangeCss = (): string => `
 .range { position: relative; height: var(--otter-hit, 24px); }  /* WCAG 2.5.8: 24 px target, 3 px drawn */
 input { -webkit-appearance: none; appearance: none; position: absolute; inset: 0; width: 100%; height: 100%; margin: 0;
@@ -95,6 +101,7 @@ input::-webkit-slider-runnable-track { height: 100%; background: transparent; }
 input::-moz-range-track { height: 100%; background: transparent; }
 input::-moz-range-progress { background: transparent; }
 input::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: var(--otter-thumb, 13px); height: var(--otter-thumb, 13px);
+  margin-top: calc((var(--otter-hit, 24px) - var(--otter-thumb, 13px)) / 2);
   border-radius: 50%; background: ${T.accent}; box-shadow: 0 0 0 2px rgb(0 0 0 / 0.35);
   transform: scale(var(--otter-thumb-scale, 0)); transition: transform ${T.fast} ${T.easeOut}; }
 input::-moz-range-thumb { width: var(--otter-thumb, 13px); height: var(--otter-thumb, 13px); border: none; border-radius: 50%;
@@ -104,10 +111,17 @@ input:focus-visible, .range:hover input { --otter-thumb-scale: 1; }
 .rail { position: absolute; left: 0; right: 0; top: 50%; height: var(--otter-rail, 3px); transform: translateY(-50%);
   border-radius: 999px; background: ${T.track}; overflow: hidden; pointer-events: none; transition: height ${T.fast} ${T.easeOut}; }
 .rail > i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: inherit; }
-.buffered { background: ${T.buffered}; width: var(--otter-buffered, 0%); }
-.played { background: ${T.accent}; width: var(--otter-played, 0%); }
+.buffered { background: ${T.buffered}; width: calc(var(--otter-thumb, 13px) / 2 + var(--otter-buffered-f, 0) * (100% - var(--otter-thumb, 13px))); }
+.played { background: ${T.accent}; width: calc(var(--otter-thumb, 13px) / 2 + var(--otter-played-f, 0) * (100% - var(--otter-thumb, 13px))); }
 ${REDUCED_MOTION}
 `;
+
+/** Sets a rail fill: `--otter-<name>` (percent, the documented variable) and `--otter-<name>-f` (0..1). */
+export const setFill = (el: HTMLElement, name: 'played' | 'buffered', fraction: number): void => {
+  const f = Math.min(1, Math.max(0, fraction || 0));
+  el.style.setProperty(`--otter-${name}`, `${f * 100}%`);
+  el.style.setProperty(`--otter-${name}-f`, String(f));
+};
 
 /** Shared lifecycle: find the store and strings, subscribe while connected, render on change. */
 export function createBase(): abstract new () => HTMLElement & StoreConsumer & { readonly ui: UiStore | undefined; readonly strings: UiStrings } {

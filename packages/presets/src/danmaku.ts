@@ -3,7 +3,8 @@
 // (preferences: volume, speed, quality, captions, danmaku settings, codec failures), the danmaku
 // engine (Canvas 2D, WebGL / Worker chosen by load, masks; its settings page in the menu) and an
 // optional watermark that follows fullscreen, Document PiP and video PiP.
-// Comments: `player.store.dispatch('load-danmaku', { url })` after each load.
+// Comments: `comments` (a URL, or a function of the source URL) loads them after every load; a
+// load's own `comments` overrides it once (null: none for this video).
 // The default skin is the host's stylesheet: `import '@otter-player/ui-skin-default'`.
 
 import { createMseBackendFactory } from '@otter-player/backend-mse';
@@ -12,6 +13,7 @@ import { createDanmaku, DANMAKU_SLICE, type DanmakuActionMap, type DanmakuState 
 import { createDashFormat } from '@otter-player/format-dash';
 import { createHlsFormat } from '@otter-player/format-hls';
 import { createMp4RangeFormat } from '@otter-player/format-mp4-range';
+import type { LoadOptions, Source } from '@otter-player/media';
 import { createPipComposite, createWatermark, type WatermarkOptions } from '@otter-player/overlay-watermark';
 import { createPreferencesPlugin } from '@otter-player/preferences';
 import { bindCanvasPip, canvasPipSupported, type CanvasPip } from '@otter-player/presentation/canvas-pip';
@@ -28,14 +30,29 @@ export interface DanmakuPresetOptions extends PresetOptions<DanmakuPlayerState, 
   readonly watermark?: WatermarkOptions;
   /** Keep the viewer's choices across visits (localStorage). Default true. */
   readonly preferences?: boolean;
+  /**
+   * The comments of each video (Bilibili XML, JSON or ASS; `load-danmaku`): a URL, or a function of
+   * the source URL (undefined: none for that video). Loaded after every `load()`; a new video
+   * without comments clears the last one's. Not given: the host loads comments itself.
+   */
+  readonly comments?: string | ((src: string) => string | undefined);
 }
 
-export function createDanmakuPlayer(options: DanmakuPresetOptions): Player<DanmakuPlayerState, DanmakuPlayerActions> {
+/** `load()` options of the danmaku preset: `comments` overrides the preset's for this load (null: none). */
+export interface DanmakuLoadOptions extends LoadOptions {
+  readonly comments?: string | null;
+}
+
+export interface DanmakuPlayer extends Omit<Player<DanmakuPlayerState, DanmakuPlayerActions>, 'load'> {
+  load(source: string | Source, options?: DanmakuLoadOptions): Promise<void>;
+}
+
+export function createDanmakuPlayer(options: DanmakuPresetOptions): DanmakuPlayer {
   const danmaku = createDanmaku(options.renderer === undefined ? {} : { renderer: options.renderer });
   const watermark = options.watermark === undefined ? undefined : createWatermark(options.watermark);
   let canvasPip: CanvasPip | undefined;
   const pip = watermark !== undefined && canvasPipSupported(document);
-  return createPlayer<DanmakuPlayerState, DanmakuPlayerActions>({
+  const player = createPlayer<DanmakuPlayerState, DanmakuPlayerActions>({
     ...options,
     formats: [createDashFormat(), createHlsFormat(), createMp4RangeFormat()],
     backends: [createMseBackendFactory(), createNativeBackendFactory()],
@@ -62,4 +79,17 @@ export function createDanmakuPlayer(options: DanmakuPresetOptions): Player<Danma
       };
     },
   });
+  return {
+    ...player,
+    async load(source, loadOptions) {
+      const { comments: once, ...rest } = loadOptions ?? {};
+      await player.load(source, loadOptions === undefined ? undefined : rest);
+      const src = typeof source === 'string' ? source : typeof source.src === 'string' ? source.src : '';
+      const configured = options.comments;
+      if (once === undefined && configured === undefined) return;
+      const url = once !== undefined ? once : typeof configured === 'function' ? configured(src) : configured;
+      if (url === null || url === undefined) player.store.dispatch('clear-danmaku', {});
+      else player.store.dispatch('load-danmaku', { url });
+    },
+  };
 }

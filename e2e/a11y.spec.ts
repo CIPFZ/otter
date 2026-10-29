@@ -118,3 +118,20 @@ test('keyboard: space / k / m / c / arrows act on the player; the menu takes arr
   await page.getByRole('menuitemradio', { name: '1.5x' }).press('Enter');
   await expect.poll(async () => (await state()).playbackRate).toBe(1.5);
 });
+
+test('sliders keep a 24 px target (WCAG 2.5.8) with the thumb drawn inside it', async ({ page }, info) => {
+  test.skip(info.project.name.startsWith('emulated'), 'phones hide the volume slider');
+  await page.goto('/player.html?idle=0');
+  for (const tag of ['otter-time-slider', 'otter-volume-slider']) {
+    const box = await page.locator(tag).first().evaluate((el) => {
+      (el as HTMLElement).style.setProperty('--otter-volume-width', '72px');
+      const input = el.shadowRoot?.querySelector('input') as HTMLInputElement;
+      const r = input.getBoundingClientRect();
+      const cs = getComputedStyle(input);
+      return { h: r.height, thumb: parseFloat(cs.getPropertyValue('--otter-thumb')) || 13 };
+    });
+    expect(box.h, `${tag} target height`).toBeGreaterThanOrEqual(24);
+    // Centred in the target (visual.spec measures it from pixels): (24 - thumb) / 2 on each side.
+    expect(box.thumb).toBeLessThanOrEqual(box.h);
+  }
+});

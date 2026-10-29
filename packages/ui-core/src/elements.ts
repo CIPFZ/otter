@@ -37,7 +37,7 @@ import { findThumbnails, type UiActions, type UiState } from './context.js';
 import { formatBitrate, formatMs, formatSeconds, formatTime } from './format.js';
 import type { LiveSlider } from './live-view.js';
 import { icon, LiveDot, SpinnerRing, Theater, type IconNode } from './icons.js';
-import { buttonCss, createBase, glass, glassFallback, rangeCss, REDUCED_MOTION, speakTime, speakVolume, T, unsupported, type OtterBase } from './primitives.js';
+import { buttonCss, createBase, glass, glassFallback, rangeCss, REDUCED_MOTION, setFill, speakTime, speakVolume, T, unsupported, type OtterBase } from './primitives.js';
 import { fill, type UiStrings } from './strings.js';
 
 export const M1_ELEMENTS = {
@@ -514,7 +514,7 @@ const timeSliderClass = () =>
 .card[data-thumb] .time { position: absolute; right: 6px; bottom: 6px; padding: 2px 6px; border: none; border-radius: ${T.radiusSm};
   background: rgb(0 0 0 / 0.65); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
 ${glassFallback('.time')}
-</style><div class="range" part="range"><div class="rail" part="rail"><i class="buffered"></i><i class="played"></i></div><input part="input" type="range" min="0" max="0" step="0.1" value="0"></div>
+</style><div class="range" part="range"><div class="rail" part="rail"><i class="buffered"></i><i class="played"></i></div><input part="input" type="range" min="0" max="0" step="any" value="0"></div>
 <div class="card" part="preview" aria-hidden="true"><div class="thumb" part="thumbnail"><span class="time" part="preview-time"></span></div></div>`;
         const input = root.querySelector('input') as HTMLInputElement;
         const range = root.querySelector('.range') as HTMLElement;
@@ -535,7 +535,8 @@ ${glassFallback('.time')}
           this.#preview(null);
           this.ui?.dispatch('seek', { time: Number(input.value) }, { type: e.type, source: 'otter-time-slider' });
         });
-        // Arrows step 5 s (Shift: 10 s) instead of the input's 0.1 s step (UI-DESIGN §6.2).
+        // Arrows step 5 s (Shift: 10 s) (UI-DESIGN §6.2). The input itself has step="any": the thumb sits at
+        // the exact time, where the fill ends (a 0.1 s step put it up to 0.05 s off).
         input.addEventListener('keydown', (e) => {
           if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
           const s = this.ui?.getState();
@@ -549,8 +550,10 @@ ${glassFallback('.time')}
           const max = Number(input.max);
           const min = Number(input.min);
           const r = range.getBoundingClientRect();
-          if (max <= min || r.width <= 0) return;
-          this.#hoverTime = min + Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * (max - min);
+          // The thumb's centre (and a click) covers [thumb/2, width - thumb/2].
+          const thumb = parseFloat(getComputedStyle(input).getPropertyValue('--otter-thumb')) || 13;
+          if (max <= min || r.width <= thumb) return;
+          this.#hoverTime = min + Math.min(1, Math.max(0, (e.clientX - r.left - thumb / 2) / (r.width - thumb))) * (max - min);
           this.#preview(this.#hoverTime);
         });
         range.addEventListener('pointerleave', () => {
@@ -562,7 +565,7 @@ ${glassFallback('.time')}
         this.#input?.setAttribute('aria-valuetext', fill(this.strings.timeOf, { current: speakTime(current), duration: speakTime(duration) }));
       }
       #played(current: number, duration: number): void {
-        this.style.setProperty('--otter-played', `${duration > 0 ? Math.min(100, (current / duration) * 100) : 0}%`);
+        setFill(this, 'played', duration > 0 ? current / duration : 0);
       }
       #swipeTarget(): number | null {
         const s = this.#last;
@@ -609,7 +612,7 @@ ${glassFallback('.time')}
           // DVR: the live chunk sets the window (min / max), the fill and the "−12 s" labels;
           // disabled until it has (a VOD range must not be dragged on a live stream).
           if (this.#live === undefined) input.disabled = true;
-          this.#live ??= import('./live-view.js').then((m) => m.liveSlider(this, input, () => this.strings, (l) => (this.#label = l), speakTime));
+          this.#live ??= import('./live-view.js').then((m) => m.liveSlider(this, input, () => this.strings, (l) => (this.#label = l), speakTime, setFill));
           void this.#live.then((render) => render(this.ui?.getState() ?? s, this.#dragging));
           if (this.#hoverTime === null && !this.#dragging) this.#preview(this.#swipeTarget());
           return;
@@ -628,7 +631,7 @@ ${glassFallback('.time')}
           this.#valueText(s.currentTime, s.duration);
           this.#played(s.currentTime, s.duration);
         }
-        this.style.setProperty('--otter-buffered', `${Math.min(100, (s.bufferedEnd / s.duration) * 100)}%`);
+        setFill(this, 'buffered', s.bufferedEnd / s.duration);
         // Swipe seek preview (chrome slice): where the release would land.
         if (this.#hoverTime === null && !this.#dragging) {
           this.toggleAttribute('data-active', s.seekPreview != null);
@@ -669,7 +672,7 @@ const volumeSliderClass = () =>
         if (input.getAttribute('aria-label') !== this.strings.volume) input.setAttribute('aria-label', this.strings.volume);
         const value = s.muted ? 0 : s.volume;
         if (Number(input.value) !== value) input.value = String(value);
-        this.style.setProperty('--otter-played', `${value * 100}%`);
+        setFill(this, 'played', value);
         input.setAttribute('aria-valuetext', s.muted ? this.strings.announceMuted : speakVolume(s.volume));
       }
     };

@@ -44,8 +44,10 @@ if (kind === 'background') {
   // A TV keeps its own idle delay (5 s); 0 here would keep the controls up for the focus checks anyway.
   player = createTvPlayer({ container, title: 'Preset tv', muted: true });
 } else if (kind === 'danmaku') {
+  // One call: the comments come with each load (?comments=<url>, default the fixture's ladder.xml).
   player = createDanmakuPlayer({
     ...common,
+    comments: params.get('comments') ?? '/danmaku/ladder.xml',
     preferences: params.get('prefs') !== '0',
     ...(params.get('wm') === '1' ? { watermark: { mode: 'static' as const, text: 'OTTER-WM', color: '#00ff00', opacity: 1, fontSize: 40 } } : {}),
   }) as unknown as Player;

@@ -143,3 +143,111 @@ test('settings menu: level one -> level two -> back by keyboard, focus never los
   await expect(menu).toBeHidden();
   await expect(trigger).toBeFocused();
 });
+
+type Geometry = { thumbX: number; thumbY: number; railY: number; fillEnd: number };
+
+/**
+ * Where a slider's thumb, rail and fill are drawn, from its pixels (CSS px from the element's
+ * left / top). The thumb is a pseudo-element, so it is painted magenta in one screenshot (fill
+ * transparent, rail blue) and hidden in a second (fill green): thumb centroid, rail centre, fill end.
+ */
+async function sliderGeometry(page: Page, tag: 'otter-time-slider' | 'otter-volume-slider'): Promise<Geometry> {
+  const host = page.locator(tag).first();
+  const paint = (thumb: boolean) =>
+    host.evaluate((el, show) => {
+      const root = el.shadowRoot as ShadowRoot;
+      root.querySelector('style[data-test]')?.remove();
+      const st = document.createElement('style');
+      st.setAttribute('data-test', '');
+      // One rule per engine prefix: an unknown pseudo-element drops the whole rule.
+      st.textContent = `
+:host { --otter-thumb-scale: ${show ? 1 : 0} !important; }
+input::-webkit-slider-thumb { background: #f0f !important; box-shadow: none !important; transition: none !important; }
+input::-moz-range-thumb { background: #f0f !important; box-shadow: none !important; transition: none !important; }
+.rail { background: #00f !important; transition: none !important; }
+.buffered { background: transparent !important; }
+.played { background: ${show ? 'transparent' : '#0f0'} !important; }`;
+      root.append(st);
+    }, thumb);
+  const read = async (): Promise<{ w: number; h: number; dpr: number; px: number[] }> => {
+    const png = (await host.screenshot({ animations: 'disabled' })).toString('base64');
+    return page.evaluate(async (b64) => {
+      const img = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
+      const c = new OffscreenCanvas(img.width, img.height);
+      const ctx = c.getContext('2d') as OffscreenCanvasRenderingContext2D;
+      ctx.drawImage(img, 0, 0);
+      return { w: img.width, h: img.height, dpr: devicePixelRatio, px: [...ctx.getImageData(0, 0, img.width, img.height).data] };
+    }, png);
+  };
+  const scan = (shot: { w: number; h: number; px: number[] }, hit: (r: number, g: number, b: number) => boolean) => {
+    let n = 0;
+    let sx = 0;
+    let sy = 0;
+    let maxX = -1;
+    let minX = Infinity;
+    for (let y = 0; y < shot.h; y++)
+      for (let x = 0; x < shot.w; x++) {
+        const i = (y * shot.w + x) * 4;
+        if (!hit(shot.px[i] as number, shot.px[i + 1] as number, shot.px[i + 2] as number)) continue;
+        n++;
+        sx += x + 0.5;
+        sy += y + 0.5;
+        maxX = Math.max(maxX, x + 1);
+        minX = Math.min(minX, x);
+      }
+    return { n, cx: sx / n, cy: sy / n, maxX, minX };
+  };
+  await paint(true);
+  const a = await read();
+  const thumb = scan(a, (r, g, b) => r > 200 && b > 200 && g < 90);
+  const rail = scan(a, (r, g, b) => b > 200 && r < 90 && g < 90);
+  await paint(false);
+  const b = await read();
+  const fill = scan(b, (r, g, bl) => g > 200 && r < 90 && bl < 90);
+  const railB = scan(b, (r, g, bl) => bl > 200 && r < 90 && g < 90);
+  expect(thumb.n, `${tag}: thumb pixels`).toBeGreaterThan(20);
+  // No fill drawn: it ends where the rail starts.
+  return { thumbX: thumb.cx / a.dpr, thumbY: thumb.cy / a.dpr, railY: rail.cy / a.dpr, fillEnd: (fill.n > 0 ? fill.maxX : Math.min(railB.minX, fill.minX)) / b.dpr };
+}
+
+test('slider thumbs sit on the rail and at the end of the fill: time and volume, at 0 %, 50 % and 100 %', async ({ page }, info) => {
+  test.skip(info.project.name.startsWith('emulated'), 'phones hide the volume slider; desktop engines cover the three thumb implementations');
+  await ready(page);
+  await page.evaluate(() => {
+    // The volume slider only opens on hover; open it for the measurement.
+    const v = document.querySelector('otter-volume-slider') as HTMLElement;
+    v.style.setProperty('--otter-volume-width', '72px');
+    v.style.opacity = '1';
+  });
+  const state = () => page.evaluate(async () => ((await window.otter) as OtterFixture).state());
+  const duration = (await state()).duration;
+  const rows: string[] = [];
+  for (const f of [0, 0.5, 1]) {
+    await page.evaluate(async ([t, v]) => {
+      const o = (await window.otter) as OtterFixture;
+      o.dispatch('pause', undefined);
+      o.dispatch('seek', { time: t });
+      o.dispatch('set-volume', { volume: v });
+    }, [f * duration, f] as const);
+    await expect.poll(async () => (await state()).seeking).toBe(false);
+    await page.waitForTimeout(200);
+    for (const tag of ['otter-time-slider', 'otter-volume-slider'] as const) {
+      const g = await sliderGeometry(page, tag);
+      rows.push(`${tag} ${f * 100}%: thumb y - rail y ${(g.thumbY - g.railY).toFixed(2)}, thumb x - fill end ${(g.thumbX - g.fillEnd).toFixed(2)}`);
+      expect(Math.abs(g.thumbY - g.railY), `${tag} at ${f * 100} %: thumb centre vs rail centre (y)`).toBeLessThanOrEqual(1);
+      expect(Math.abs(g.thumbX - g.fillEnd), `${tag} at ${f * 100} %: thumb centre vs fill end (x)`).toBeLessThanOrEqual(1);
+    }
+  }
+  info.annotations.push({ type: 'geometry', description: rows.join(' | ') });
+  // For the report: the bar at 50 % with both thumbs shown, as a user sees it on hover.
+  for (const tag of ['otter-time-slider', 'otter-volume-slider']) await page.locator(tag).first().evaluate((el) => el.shadowRoot?.querySelector('style[data-test]')?.remove());
+  await page.evaluate(async (t) => ((await window.otter) as OtterFixture).dispatch('seek', { time: t }), duration / 2);
+  await expect.poll(async () => (await state()).seeking).toBe(false);
+  await page.locator('otter-volume-slider').first().evaluate((el) => (el as HTMLElement).style.setProperty('--otter-thumb-scale', '1'));
+  await page.locator('otter-time-slider').first().hover();
+  await page.waitForTimeout(300);
+  const bar = page.locator('#player [data-otter-controls]');
+  const shot = `test-results/slider-${info.project.name}.png`;
+  await bar.screenshot({ path: shot });
+  await info.attach(`slider-${info.project.name}.png`, { path: shot, contentType: 'image/png' });
+});
