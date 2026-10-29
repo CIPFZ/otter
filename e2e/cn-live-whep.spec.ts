@@ -258,11 +258,20 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
 
   const x = Float64Array.from(pcm, (v) => v / 32768);
   const rate = rec.rate;
-  // The tone's frequency: the strongest of 430-450 Hz over the whole recording (the received clock
-  // may differ from the source's by a fraction of a hertz).
+  // The tone's frequency: the strongest of 400-480 Hz over the whole recording (the received clock
+  // may differ from the source's by a fraction of a hertz; WebKit's recording path now and then by
+  // x1.054, which the notice then shows).
   let f0 = 440;
   let best = 0;
-  for (let f = 430; f <= 450; f += 0.05) {
+  // Coarse on one second (1 Hz wide peaks), fine on the whole recording.
+  const from = Math.min(2 * rate, Math.max(0, x.length - rate));
+  for (let f = 400; f <= 480; f += 0.5) {
+    const share = toneShare(x, from, Math.min(rate, x.length - from), f, rate);
+    if (share > best) [best, f0] = [share, f];
+  }
+  const coarse = f0;
+  best = 0;
+  for (let f = coarse - 0.5; f <= coarse + 0.5; f += 0.05) {
     const share = toneShare(x, 0, x.length, f, rate);
     if (share > best) [best, f0] = [share, f];
   }

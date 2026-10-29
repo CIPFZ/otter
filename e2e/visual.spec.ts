@@ -218,6 +218,8 @@ input::-moz-range-thumb { background: #f0f !important; box-shadow: none !importa
 
 test('slider thumbs sit on the rail and at the end of the fill: time and volume, at 0 %, 50 % and 100 %', async ({ page, browserName }, info) => {
   test.skip(info.project.name.startsWith('emulated'), 'phones hide the volume slider; desktop engines cover the three thumb implementations');
+  // 12 measurements of two screenshots each: more than 30 s on CI's WebKit runner once.
+  test.setTimeout(60_000);
   await ready(page);
   await page.evaluate(() => {
     // The volume slider only opens on hover; open it for the measurement.
