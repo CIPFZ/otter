@@ -5,6 +5,9 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { Player } from '@otter-player/presets';
 import type { BackgroundPlayer } from '@otter-player/presets/background';
+import type { ShortsPlayer } from '@otter-player/presets/shorts';
+import type { SurveillancePlayer } from '@otter-player/presets/surveillance';
+import keys from './media/keys.json' with { type: 'json' };
 
 const state = (page: Page) => page.evaluate(() => (window.preset as Player).store.getState());
 const explain = (page: Page) => page.evaluate(() => (window.preset as Player).explain());
@@ -160,6 +163,78 @@ test('danmaku preset in one call: comments scroll over the picture within 10 s, 
   // A load without comments for this video clears them (load option `comments: null`).
   await page.evaluate(() => (window.preset as unknown as { load(s: string, o: object): Promise<void> }).load('/dash-av/manifest.mpd', { autoplay: true, comments: null }));
   await expect.poll(async () => page.evaluate(() => ((window.preset as Player).store.getState() as unknown as { danmakuStatus: { count: number } }).danmakuStatus.count)).toBe(0);
+});
+
+test('ott-drm preset: ClearKey DASH through Shaka with the preset\'s drm on every load; clear HLS stays on the own engine', async ({ page }) => {
+  await page.addInitScript((k) => {
+    (window as { OTTER_DRM?: unknown }).OTTER_DRM = { servers: {}, clearKeys: { [k.kid]: k.key } };
+  }, keys['dash-clearkey']);
+  await page.goto('/presets.html?preset=ott-drm&src=/dash-clearkey/manifest.mpd');
+  // EME needs a secure context: checked on the fixture page (about:blank is not one).
+  const clearKey = await page.evaluate(async () => {
+    try {
+      await navigator.requestMediaKeySystemAccess('org.w3.clearkey', [{ initDataTypes: ['cenc', 'keyids'], videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42c01e"' }] }]);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  test.skip(!clearKey, 'no ClearKey here');
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 20_000 }).toBeGreaterThan(0.5);
+  let s = await state(page);
+  expect(s).toMatchObject({ format: 'dash', backend: 'mse', error: null });
+  // A clear HLS source on the same player: the own engine (no Shaka, no hls.js).
+  await page.evaluate(() => (window.preset as Player).load('/hls-fmp4/master.m3u8', { autoplay: true }));
+  await expect.poll(async () => (await state(page)).format, { timeout: 15_000 }).toBe('hls');
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.5);
+  s = await state(page);
+  expect((s.route?.steps ?? []).map((x) => x.reason).join('\n')).not.toMatch(/shaka/i);
+});
+
+test('shorts preset: portrait feed, plays the first, next / ↑ move through the feed, each video loops', async ({ page }) => {
+  await page.goto('/presets.html?preset=shorts&feed=/frames/h264.mp4,/hls-fmp4/master.m3u8');
+  await expect(page.locator('#player[data-otter-shorts]')).toHaveCount(1);
+  const shorts = () => page.evaluate(() => ({ index: (window.preset as ShortsPlayer).index, s: (window.preset as ShortsPlayer).store.getState() }));
+  await expect.poll(async () => (await shorts()).s.currentTime, { timeout: 15_000 }).toBeGreaterThan(0.3);
+  expect((await shorts()).s).toMatchObject({ format: 'mp4-range', muted: true });
+  // Loops: from near the end, back to the start and on.
+  await page.evaluate(() => (window.preset as ShortsPlayer).store.dispatch('seek', { time: 11.6 }));
+  await expect.poll(async () => (await shorts()).s.currentTime, { timeout: 10_000 }).toBeLessThan(2);
+  expect((await shorts()).s.paused).toBe(false);
+  await page.evaluate(() => (window.preset as ShortsPlayer).next());
+  await expect.poll(async () => (await shorts()).index).toBe(1);
+  await expect.poll(async () => (await shorts()).s.format, { timeout: 15_000 }).toBe('hls');
+  // Next at the end of the feed: stays.
+  await page.evaluate(() => (window.preset as ShortsPlayer).next());
+  expect((await shorts()).index).toBe(1);
+  await page.locator('#player').focus();
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(async () => (await shorts()).index).toBe(0);
+  await expect.poll(async () => (await shorts()).s.format, { timeout: 15_000 }).toBe('mp4-range');
+});
+
+test('surveillance preset: four HLS streams on one wall over WebCodecs; the controls and the sound follow the focused tile', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto(`/presets.html?preset=surveillance&streams=${Array(4).fill('/hls-fmp4/master.m3u8').join(',')}`);
+  // WebCodecs needs a secure context: checked on the fixture page.
+  test.skip(!(await page.evaluate(() => typeof VideoDecoder === 'function')), 'no WebCodecs here');
+  const tiles = () => page.evaluate(() => (window.preset as SurveillancePlayer).tiles.map((t) => ({ ...t.store.getState(), format: t.explain()?.format ?? null })));
+  await expect.poll(async () => (await tiles()).map((t) => t.currentTime > 1), { timeout: 30_000 }).toEqual([true, true, true, true]);
+  for (const t of await tiles()) expect(t).toMatchObject({ backend: 'webcodecs', format: 'hls', error: null });
+  expect(await page.evaluate(() => (window.preset as SurveillancePlayer).focused)).toBe(0);
+  // A click on the top-right tile (index 1; data-otter-multiview-tile is 1-based) focuses it and is
+  // a gesture: only it is to be heard. Top row, clear of the bars (phones put them over the tiles).
+  const tile = page.locator('[data-otter-multiview-tile="2"]');
+  const box = (await tile.boundingBox()) as { width: number; height: number };
+  await tile.click({ position: { x: box.width * 0.85, y: box.height * 0.6 } });
+  expect(await page.evaluate(() => (window.preset as SurveillancePlayer).focused)).toBe(1);
+  await expect.poll(async () => (await tiles()).map((t) => t.muted), { timeout: 2000 }).toEqual([true, false, true, true]);
+  // The bar's play button pauses the focused tile only.
+  await page.locator('otter-play-button:visible').first().click();
+  await expect.poll(async () => (await tiles()).map((t) => t.paused)).toEqual([false, true, false, false]);
+  // focus() from the host does the same.
+  await page.evaluate(() => (window.preset as SurveillancePlayer).focus(0));
+  await expect.poll(async () => (await tiles()).map((t) => t.muted), { timeout: 2000 }).toEqual([false, true, true, true]);
 });
 
 test('tv preset: the remote moves focus between controls, OK activates, Back leaves, media keys play / pause', async ({ page }) => {

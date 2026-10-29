@@ -576,15 +576,27 @@ importers:
       '@otter-player/backend-native':
         specifier: workspace:*
         version: link:../backend-native
+      '@otter-player/backend-webcodecs':
+        specifier: workspace:*
+        version: link:../backend-webcodecs
       '@otter-player/core':
         specifier: workspace:*
         version: link:../core
       '@otter-player/danmaku':
         specifier: workspace:*
         version: link:../danmaku
+      '@otter-player/decoder-wasm-hevc':
+        specifier: workspace:*
+        version: link:../decoder-wasm-hevc
+      '@otter-player/decoder-webcodecs':
+        specifier: workspace:*
+        version: link:../decoder-webcodecs
       '@otter-player/format-dash':
         specifier: workspace:*
         version: link:../format-dash
+      '@otter-player/format-file':
+        specifier: workspace:*
+        version: link:../format-file
       '@otter-player/format-hls':
         specifier: workspace:*
         version: link:../format-hls

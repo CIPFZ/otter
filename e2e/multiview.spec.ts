@@ -169,9 +169,11 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       cpuPercentOfOneCore: slot === undefined ? null : Math.round(cpu * 1000) / 10,
       droppedByClock: t.dropped - b.dropped,
       replacedOnCanvas: t.replaced - b.replaced,
-      errors: t.errors.filter((e) => e !== 'codecUnsupported'),
-      messages: t.messages.filter((e) => !e.startsWith('codecUnsupported')),
-      errorAt: t.errorAt.filter((_, k) => t.errors[k] !== 'codecUnsupported'),
+      // Audio underruns are counted apart (surveillance acceptance, owner 2026-10-29), not failures.
+      errors: t.errors.filter((e) => e !== 'codecUnsupported' && e !== 'audioUnderrun'),
+      messages: t.messages.filter((_, k) => t.errors[k] !== 'codecUnsupported' && t.errors[k] !== 'audioUnderrun'),
+      errorAt: t.errorAt.filter((_, k) => t.errors[k] !== 'codecUnsupported' && t.errors[k] !== 'audioUnderrun'),
+      underruns: t.errors.flatMap((e, k) => (e === 'audioUnderrun' ? [{ at: t.errorAt[k] as number, message: t.messages[k] as string }] : [])),
       index: i,
     };
   });
@@ -212,6 +214,14 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
     r.errors = kept;
   }
   if (environment.length > 0) ciNotice(`multiview: 环境停顿 (environment stall, accepted): ${environment.join(' | ')}`);
+  // Audio underruns (surveillance acceptance, M6 F14): in a recorded stall window (from 50 ms before
+  // it to 500 ms after it) they are the environment's; the others decide on an ADR for audio
+  // decoding in a Worker (desktop-chrome / real Edge). Recorded, not failed.
+  const underruns = rows.flatMap((r) => r.underruns.map((u) => ({ tile: r.tile, ...u, stall: spans.some((x) => u.at >= x.from - 50 && u.at <= (x.to ?? Infinity) + 500) })));
+  ciNotice(
+    `multiview audio underruns (${src ?? 'HEVC'}): ${underruns.filter((u) => !u.stall).length} outside an environment stall, ${underruns.filter((u) => u.stall).length} in one` +
+      (underruns.length > 0 ? `: ${underruns.map((u) => `${u.tile} ${u.message}${u.stall ? ' (环境停顿)' : ''}`).join(' | ')}` : ''),
+  );
   // Main-thread attribution of every frame over 34 ms (M6, HEVC software path: GC / compositor ->
   // the hardware tolerance; our code -> fix): long animation frames and long tasks in it, and
   // whether it fell into an audio stall or next to a clock switch (an error report).

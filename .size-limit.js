@@ -54,7 +54,9 @@ const ENGINES = Object.keys(ENGINE_FILES);
  * and the milestone the limit becomes blocking. Since M6 (ADR-013) each row measures its preset as
  * a host imports it, with the default skin: long-vod = `vod`, live = `live` and `lowlatency`,
  * danmaku = `danmaku`, tv = `tv` (default skin until ui-skin-tv), Hero = `background` (gated at 5 KB),
- * short-vod = `basic` with the minimal skin (its own assembly, not createPlayer; still ≤ 30 KB).
+ * short-vod = `basic` with the minimal skin (its own assembly, not createPlayer), shorts = `shorts`
+ * (on basic) with the minimal skin, OTT = `ott-drm`, surveillance = `surveillance`; editing and
+ * cn-live are compositions (no preset).
  * Captions and preview pictures are on-demand chunks of the presets, outside these rows.
  */
 const SCENARIOS = [
@@ -68,16 +70,21 @@ const SCENARIOS = [
   ['background', '背景视频 / Hero', '5 KB', []],
   ['shorts', '沉浸竖屏信息流', '60 KB', []],
   ['tv', '电视遥控器', '90 KB', ['hls.js']],
+  // Rows without a number in SPEC §19 (null: report only): OTT ("adapter size dominates"),
+  // surveillance ("WASM counted apart"), editing ("on demand"; a composition, no preset).
+  ['ott-drm', 'OTT 付费 + DRM + 离线', null, ['shaka-player']],
+  ['surveillance', '监控多路 + HEVC', null, []],
+  ['editing', '剪辑 / 标注 / 逐帧', null, []],
 ];
 
 const scenarios = SCENARIOS.flatMap(([id, row, limit, engines, gatedFrom]) => {
   const own = {
-    name: gatedFrom === undefined ? `§19 own code: ${row} (≤ ${limit})` : `§19 own code (report, ≤ ${limit} gated from ${gatedFrom}): ${row}`,
+    name: limit === null ? `§19 own code (report): ${row}` : gatedFrom === undefined ? `§19 own code: ${row} (≤ ${limit})` : `§19 own code (report, ≤ ${limit} gated from ${gatedFrom}): ${row}`,
     path: `tooling/size/scenario-${id}.js`,
     import: '*',
     gzip: true,
     modifyEsbuildConfig: firstScreenOnly,
-    ...(gatedFrom === undefined ? { limit } : {}),
+    ...(gatedFrom === undefined && limit !== null ? { limit } : {}),
   };
   if (engines.length === 0) return [own];
   return [own, { name: `§19 with engines (report): ${row} + ${engines.join(' + ')}`, path: [`tooling/size/scenario-${id}.js`, ...engines.map((e) => ENGINE_FILES[e])], gzip: true, ignore: ENGINES }];

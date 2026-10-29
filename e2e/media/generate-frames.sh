@@ -11,6 +11,7 @@
 #                               audio: the surveillance-camera case (multi-view, WASM decoding);
 #                               blocks scale with the picture (96 px at 1280 wide)
 #   frames/h264-720p.mp4        the same in H.264 (main, no B-frames): multi-view with hardware decoding
+#   frames/{hevc,h264}-720p-av.mp4  the two with a 440 Hz AAC track (surveillance: audio underruns)
 #   frames/hls-hevc/            the same clip as HLS fMP4 (2 s segments): surveillance-style HEVC
 #                               HLS that MSE cannot play here (WebCodecs / WASM through format-hls)
 #   frames/hls-ladder/          30 s H.264 HLS fMP4, 640x360 at ~600 kbps and 320x180 at ~150 kbps,
@@ -71,6 +72,12 @@ HCR="if(lt(Y,$((HB / 2)))*lt(X,$((BITS * HB / 2))),128,cr(X,Y))"
 "$STATIC_FFMPEG" -y -hide_banner -loglevel error -f lavfi -i 'testsrc2=size=1280x720:rate=30' -t 10 \
   -vf "format=yuv420p,geq=lum='$HLUM':cb='$HCB':cr='$HCR'" -c:v libx264 -profile:v main -bf 0 -preset fast \
   -g 60 -keyint_min 60 -sc_threshold 0 -b:v 1500k -maxrate 1500k -bufsize 1500k -an -movflags +faststart frames/h264-720p.mp4
+# The two 720p clips with a 440 Hz AAC track (video copied): the surveillance acceptance counts
+# audio underruns on 16 tiles (M6 F14).
+for c in hevc-720p h264-720p; do
+  "$STATIC_FFMPEG" -y -hide_banner -loglevel error -i frames/$c.mp4 -f lavfi -i 'sine=frequency=440:sample_rate=48000' \
+    -map 0:v -map 1:a -c:v copy -c:a aac -b:a 64k -ac 2 -shortest -movflags +faststart frames/$c-av.mp4
+done
 mkdir -p frames/hls-hevc
 "$STATIC_FFMPEG" -y -hide_banner -loglevel error -i frames/hevc-720p.mp4 -c copy -tag:v hvc1 -f hls -hls_time 2 -hls_playlist_type vod \
   -hls_segment_type fmp4 -hls_fmp4_init_filename init.mp4 -hls_segment_filename 'frames/hls-hevc/seg_%03d.m4s' \

@@ -45,6 +45,21 @@
       "@otter-player/source": "./src/tv.ts",
       "types": "./dist/tv.d.ts",
       "default": "./dist/tv.js"
+    },
+    "./ott-drm": {
+      "@otter-player/source": "./src/ott-drm.ts",
+      "types": "./dist/ott-drm.d.ts",
+      "default": "./dist/ott-drm.js"
+    },
+    "./surveillance": {
+      "@otter-player/source": "./src/surveillance.ts",
+      "types": "./dist/surveillance.d.ts",
+      "default": "./dist/surveillance.js"
+    },
+    "./shorts": {
+      "@otter-player/source": "./src/shorts.ts",
+      "types": "./dist/shorts.d.ts",
+      "default": "./dist/shorts.js"
     }
   },
   "files": [
@@ -57,9 +72,13 @@
   "dependencies": {
     "@otter-player/backend-mse": "workspace:*",
     "@otter-player/backend-native": "workspace:*",
+    "@otter-player/backend-webcodecs": "workspace:*",
     "@otter-player/core": "workspace:*",
     "@otter-player/danmaku": "workspace:*",
+    "@otter-player/decoder-wasm-hevc": "workspace:*",
+    "@otter-player/decoder-webcodecs": "workspace:*",
     "@otter-player/format-dash": "workspace:*",
+    "@otter-player/format-file": "workspace:*",
     "@otter-player/format-hls": "workspace:*",
     "@otter-player/format-mp4-range": "workspace:*",
     "@otter-player/input": "workspace:*",
@@ -81,7 +100,10 @@
       "background": "src/background.ts",
       "lowlatency": "src/lowlatency.ts",
       "danmaku": "src/danmaku.ts",
-      "tv": "src/tv.ts"
+      "tv": "src/tv.ts",
+      "ott-drm": "src/ott-drm.ts",
+      "surveillance": "src/surveillance.ts",
+      "shorts": "src/shorts.ts"
     }
   }
 }

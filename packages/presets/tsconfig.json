@@ -20,13 +20,25 @@
       "path": "../backend-native"
     },
     {
+      "path": "../backend-webcodecs"
+    },
+    {
       "path": "../core"
     },
     {
       "path": "../danmaku"
     },
     {
+      "path": "../decoder-wasm-hevc"
+    },
+    {
+      "path": "../decoder-webcodecs"
+    },
+    {
       "path": "../format-dash"
+    },
+    {
+      "path": "../format-file"
     },
     {
       "path": "../format-hls"

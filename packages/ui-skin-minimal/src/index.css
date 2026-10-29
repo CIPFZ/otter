@@ -29,6 +29,10 @@
   overflow: hidden;
   outline: none;
 }
+/* The shorts preset: a portrait feed. */
+:where([data-otter-player][data-otter-shorts]) {
+  aspect-ratio: 9 / 16;
+}
 :where([data-otter-player]:fullscreen) {
   aspect-ratio: auto;
   width: 100%;
