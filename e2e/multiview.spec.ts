@@ -203,16 +203,20 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   await open(page, 4);
   const w = wall(page);
   expect(await w.eval((x) => x.focused())).toBe(0);
-  expect(await w.eval((x) => x.tiles().map((t) => t.muted))).toEqual([false, true, true, true]);
+  // Before any user gesture all four are muted (F1: WebKit under Playwright has no activation);
+  // where the page already has one (Chromium: page.evaluate gives it), the focused tile has sound.
+  const activated = await page.evaluate(() => (navigator as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? true);
+  expect(await w.eval((x) => x.tiles().map((t) => t.muted))).toEqual(activated ? [false, true, true, true] : [true, true, true, true]);
   // Tile 2 is top right; click clear of the bars and the centre buttons (small players put them
   // over the tiles).
   const tile = page.locator('[data-otter-multiview-tile="2"]');
   const box = (await tile.boundingBox()) as { width: number; height: number };
   const at = { position: { x: box.width * 0.85, y: box.height * 0.6 } };
-  // A click focuses it: only it is audible, the shell's controls show its state.
+  // A click focuses it (and is a gesture): within 1 s only it is audible, the shell's controls
+  // show its state.
   await tile.click(at);
   expect(await w.eval((x) => x.focused())).toBe(1);
-  expect(await w.eval((x) => x.tiles().map((t) => t.muted))).toEqual([true, false, true, true]);
+  await expect.poll(() => w.eval((x) => x.tiles().map((t) => t.muted)), { timeout: 1000 }).toEqual([true, false, true, true]);
   await expect(tile).toHaveAttribute('aria-pressed', 'true');
   // The shell's play button acts on the focused tile only.
   await page.locator('otter-play-button:visible').first().click();

@@ -180,6 +180,13 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   /** Removes the first-gesture listeners (no gesture yet at load). */
   let offGesture: (() => void) | undefined;
   let volume = 1;
+  /**
+   * Muting (F1, completed 2026-10-29): what the host asked for, and the gate before any user
+   * gesture; sound is on only when neither mutes. The first gesture lifts the gate, so the host's
+   * last wish (a wall's focused tile) applies then.
+   */
+  let wantMuted = false;
+  let gateMuted = false;
   let muted = false;
   let rate = 1;
 
@@ -212,6 +219,11 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     if (Object.keys(changed).length > 0) bus.emit('playback-change', changed);
     // The shared AudioContext idles (suspends) while no instance plays.
     if (changed.paused !== undefined) setPlaying(audioCtx, owner, !changed.paused);
+  };
+  const applyMute = (): void => {
+    muted = wantMuted || gateMuted;
+    sink?.setVolume(volume, muted);
+    update({ muted });
   };
 
   // Decoding state. `gen` changes on every seek; work of an older generation stops. `vgen` is the
@@ -861,10 +873,9 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
           bus.emit('error', createError({ type: 'media', details: 'audioUnsupported', fatal: false, recoverable: false, message: `no decoder for audio ${a.codec}` }));
         }
       };
-      if (gated) {
-        muted = true;
-        update({ muted: true });
-      } else {
+      gateMuted = gated;
+      applyMute();
+      if (!gated) {
         if (a !== null) audioCtx = acquireAudioContext();
         await setupAudio(audioCtx);
         audioCtx ??= acquireAudioContext();
@@ -892,6 +903,9 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
             c.resume();
             return;
           }
+          // The gesture: the host's muting applies from now on.
+          gateMuted = false;
+          applyMute();
           const next = acquireAudioContext();
           if (next === undefined) return stop();
           made = next;
@@ -973,9 +987,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       update({ volume: v });
     },
     setMuted(m) {
-      muted = m;
-      sink?.setVolume(volume, muted);
-      update({ muted: m });
+      wantMuted = m;
+      applyMute();
     },
     setPlaybackRate(r) {
       rate = r;

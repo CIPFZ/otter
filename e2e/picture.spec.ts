@@ -92,6 +92,10 @@ async function load(page: Page, p: (typeof PATHS)[number]): Promise<void> {
 for (const p of PATHS) {
   test(`picture controls on the ${p.name} path: wheel and pinch zoom, drag pans, filters from the menu`, async ({ page }) => {
     test.setTimeout(90_000);
+    // WebKit (CI): after a paused seek the compositor keeps an old frame on the <video> path (frame
+    // 1 shown, currentTime 0.11, readyState 4, re-seeks do nothing). Owner 2026-10-29: fixme until
+    // the "WebKit paused seek does not repaint" stop, whose first step is removing this line.
+    test.fixme(p.name === 'video' && ['desktop-safari', 'emulated-iphone'].includes(test.info().project.name), 'WebKit paused seek does not repaint (M6, WebKit stop)');
     await load(page, p);
     // Frame 3: bits 0 and 1, two white blocks side by side at the top-left (a 96 px run of the
     // 640 px picture), so a 2x zoom there still fits the box.

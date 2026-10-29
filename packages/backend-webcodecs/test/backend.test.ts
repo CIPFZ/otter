@@ -246,6 +246,46 @@ describe('backend-webcodecs', () => {
     }
   });
 
+  it("without a gesture the host's set-muted is kept as its wish: unmuted before / during the gate -> sound at the first gesture; muted again -> still muted (F1 completed)", async () => {
+    class Gated extends EventTarget {
+      state = 'suspended';
+      currentTime = 0;
+      resume = () => {
+        this.state = 'running';
+        this.dispatchEvent(new Event('statechange'));
+        return Promise.resolve();
+      };
+      suspend = () => Promise.resolve();
+      close = () => Promise.resolve();
+    }
+    const activation = { hasBeenActive: false };
+    vi.stubGlobal('AudioContext', Gated);
+    Object.defineProperty(navigator, 'userActivation', { value: activation, configurable: true });
+    try {
+      for (const mutedAgain of [false, true]) {
+        const { backend, state } = setup();
+        // The wall focuses this tile before it loads: sound wanted.
+        backend.setMuted(false);
+        await backend.load({ src: new Blob() }, { startTime: 2 });
+        await backend.play();
+        // No gesture yet: muted whatever the wish; a wish during the gate does not unmute.
+        expect(state['muted']).toBe(true);
+        backend.setMuted(false);
+        expect(state['muted']).toBe(true);
+        if (mutedAgain) backend.setMuted(true);
+        activation.hasBeenActive = true;
+        document.dispatchEvent(new Event('pointerdown'));
+        await new Promise((r) => setTimeout(r, 50));
+        expect(state['muted']).toBe(mutedAgain);
+        backend.destroy();
+        activation.hasBeenActive = false;
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      delete (navigator as { userActivation?: unknown }).userActivation;
+    }
+  });
+
   it('WebKit: the gesture context starts suspended and only a later gesture resumes it; no audioClockUnavailable meanwhile (M6 F13)', async () => {
     const created: WebKitLike[] = [];
     let allowed = false;
