@@ -38,6 +38,11 @@ export interface MediaClock {
   /** Called when the time source changes (reason for QoE). */
   onSource(h: (source: 'audio' | 'performance', reason: string) => void): void;
   /**
+   * Called when a frozen context's time has moved steadily for RECOVER_S and the clock went back to
+   * it; `stallS`: how long its time stood still (wall clock).
+   */
+  onRecover(h: (stallS: number) => void): void;
+  /**
    * The context arrives later (created at the page's first user gesture): from now on time follows
    * it, re-anchored seamlessly. Until then the clock ran on performance.now() by design and
    * reported nothing (`deferred`).
@@ -61,6 +66,11 @@ export interface ClockOptions {
 
 /** A running context whose currentTime is frozen this long (s) is treated as broken. */
 const STUCK_S = 0.5;
+/** A frozen context whose time then moves steadily this long (s) takes the clock back (M6 F9). */
+export const RECOVER_S = 2;
+/** The third stall within this window (s) leaves the clock on performance.now() until the next suspend / resume. */
+export const STALL_WINDOW_S = 60;
+const STALL_LIMIT = 3;
 /**
  * A resume() still pending after this is reported (an unwaitable device). A slow one that
  * succeeds later still takes the clock back.
@@ -77,6 +87,18 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
   let ctx = initial;
   let deferred = options.deferred === true && initial === undefined;
   let stuck = false;
+  /**
+   * Recovery from a freeze (M6 F9: a virtual sound device stood still about 2 s now and then):
+   * when the frozen time stopped moving, its last value and when it last moved, since when it has
+   * moved steadily, the recent stalls, and whether the clock is pinned to performance.now().
+   */
+  let stallFrom = 0;
+  let watchCtx = -1;
+  let lastMove = 0;
+  let movingSince = -1;
+  const stalls: number[] = [];
+  let pinned = false;
+  let recoverListener: ((stallS: number) => void) | undefined;
   /** The context's state at the last statechange: a fresh 'running' after another one clears `stuck`. */
   let lastState = initial?.state;
   const usable = (): boolean => ctx !== undefined && ctx.state === 'running' && !stuck;
@@ -169,12 +191,35 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     // Running again after a suspension: a new start of the device, the old freeze no longer says
     // anything about it (M6 F8).
     const state = ctx?.state;
-    if (state === 'running' && lastState !== undefined && lastState !== 'running') stuck = false;
+    if (state === 'running' && lastState !== undefined && lastState !== 'running') {
+      stuck = false;
+      pinned = false;
+    }
     lastState = state;
     if (usable()) failure = undefined;
     switchTo(usable() ? 'audio' : 'performance', `AudioContext ${ctx?.state ?? 'missing'}`);
   };
   ctx?.addEventListener('statechange', onState);
+
+  /** On performance.now() after a freeze: back to the context once its time has moved steadily for RECOVER_S. */
+  const watchRecovery = (): void => {
+    const c = (ctx as AudioContext).currentTime;
+    const p = performance.now() / 1000;
+    if (c !== watchCtx) {
+      watchCtx = c;
+      lastMove = p;
+      if (movingSince < 0) movingSince = p;
+    } else if (p - lastMove > 0.1) {
+      movingSince = -1;
+    }
+    if (movingSince < 0 || p - movingSince < RECOVER_S) return;
+    const stallS = movingSince - stallFrom;
+    stuck = false;
+    failure = undefined;
+    movingSince = -1;
+    switchTo('audio', `AudioContext time moving again after a ${stallS.toFixed(2)} s stall`);
+    recoverListener?.(stallS);
+  };
 
   return {
     get source() {
@@ -218,7 +263,11 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       anchor();
     },
     check() {
-      if (source !== 'audio' || ctx === undefined) return;
+      if (ctx === undefined) return;
+      if (source === 'performance') {
+        if (stuck && !pinned && playing && ctx.state === 'running') watchRecovery();
+        return;
+      }
       // Only while playing: paused, the context's time may stop on its way to the idle suspend
       // while it still says running (M6 F8); the baseline starts again on the next start().
       if (!playing) {
@@ -234,8 +283,16 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
       }
       if (p - lastPerf > STUCK_S) {
         stuck = true;
+        stallFrom = lastPerf;
+        watchCtx = c;
+        movingSince = -1;
+        stalls.push(p);
+        while (stalls.length > 0 && p - (stalls[0] as number) > STALL_WINDOW_S) stalls.shift();
+        pinned = stalls.length >= STALL_LIMIT;
         // With its numbers: where the context's time stood and for how long on the wall clock.
-        failure = `AudioContext time frozen for ${STUCK_S} s (at ${c.toFixed(3)} s, still for ${(p - lastPerf).toFixed(2)} s)`;
+        failure =
+          `AudioContext time frozen for ${STUCK_S} s (at ${c.toFixed(3)} s, still for ${(p - lastPerf).toFixed(2)} s)` +
+          (pinned ? `; stall ${stalls.length} within ${STALL_WINDOW_S} s: performance.now() until the next suspend / resume` : '');
         switchTo('performance', failure);
       }
     },
@@ -245,6 +302,9 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     },
     onSource(h) {
       sourceListener = h;
+    },
+    onRecover(h) {
+      recoverListener = h;
     },
     attach(next) {
       if (ctx !== undefined) return;

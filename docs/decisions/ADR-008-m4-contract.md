@@ -44,6 +44,7 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
   - 页面第一次播放时已在运行的上下文，同样有 2 s 稳定期（真 Edge 多宫格上首次启动也见过时间停住超过 0.5 s）。
   - 暂停中不做冻结判定：空闲挂起前后，上下文时间可能先停住、状态还是 running。
   - 判为冻结的上下文，挂起后再次 running 就清掉冻结标记，时钟回到它上面。
+- **停顿之后回到上下文时钟**（2026-10-29 负责人，F9 后续）：判为冻结、改走 `performance.now()` 之后，若上下文的时间重新走动并连续稳定 2 s（`RECOVER_S`），时钟回到上下文，后端在路由上记一条「audio clock: back on the AudioContext after a X s stall」（含停顿时长，`route-detail`）；之后再停顿会再报告一次。60 s 内第 3 次停顿（`STALL_WINDOW_S`）则留在墙钟，直到下一次挂起 / 恢复。起因：测试实例的虚拟声卡（QEMU USB audio）偶尔停约 2 s，裸 WebAudio 也复现。多宫格基准只在独立记录证实有 ≥ 0.5 s 停顿、且与看门狗窗口重叠时接受这条报错，并要求停顿结束后 5 s 内出现这条恢复记录（通知标「环境停顿」）。
 - 倍速只改时钟倍率，倍率 ≠ 1 时音频静音（音频变速留给后续）。
 - AudioContext 跑不起来时（手势之前被自动播放策略挂起；或者没有音频设备，例如 Linux 上的无头 Firefox：`resume()` 永不返回），时钟改用 `performance.now()`，AudioContext 开始运行后重新锚定；「state 是 running 但时间不走」由看门狗识别。AudioContext 时钟确定不可用时（resume 失败或 3 秒宽限已过、时间冻结、没有 AudioContext）发一次非致命的 `audioClockUnavailable`，消息里带原因；回到 AudioContext 时钟后再次失去会再报。worklet 模块加载与 `resume()` 都有超时；音频输出不可用时发 `audioOutputUnavailable`，画面照常播放。
 - seek：从目标时间之前（含）的最后一个关键帧开始解码，丢掉被目标之后的帧覆盖的帧，显示覆盖目标时刻的那一帧，即「时间戳 ≤ 目标的最后一帧」，帧序号 `floor(t × fps + ε)`，与 `<video>` 和播放时的规则一致：t 落在一帧的后半段时显示的仍是当前帧，不是下一帧。判断时有 0.5 ms 容差：WebM 以毫秒存时间戳（第 32 帧存为 1.067，晚于 32/30），没有容差会落到前一帧。新的 seek 立即作废进行中的 seek（generation 计数，`reset()` 解码器），旧 seek 的帧不会画出来。e2e 对 30 fps、GOP 90 的样本从画面像素读出帧序号，断言等于 `floor(t × fps + ε)`；目标有帧起点、帧前半段和帧后半段（每个样本至少 3 个后半段），按 round 取帧的实现会失败。

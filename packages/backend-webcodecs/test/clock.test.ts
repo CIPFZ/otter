@@ -278,6 +278,63 @@ describe('shared AudioContext lifecycle', () => {
     releaseAudioContext(ctx as unknown as AudioContext);
   });
 
+  /** Plays `ms` of wall time in 50 ms ticks, the context's time moving with it or not. */
+  const run = (clock: ReturnType<typeof createClock>, ctx: FakeAudioContext, ms: number, moving: boolean): void => {
+    for (let t = 0; t < ms; t += 50) {
+      vi.advanceTimersByTime(50);
+      if (moving) ctx.currentTime += 0.05;
+      clock.check();
+    }
+  };
+
+  it('a context frozen for a while and then moving steadily for 2 s takes the clock back, with the stall length (M6 F9)', () => {
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    const recovered: number[] = [];
+    clock.onRecover((s) => recovered.push(s));
+    clock.start();
+    run(clock, ctx, 2500, true);
+    // Frozen 2 s (a virtual sound device): left for performance.now() after 0.5 s.
+    run(clock, ctx, 2000, false);
+    expect(clock.source).toBe('performance');
+    expect(clock.unavailable).toMatch(/^AudioContext time frozen/);
+    // Moving again: still the stand-in for the first 2 s, then back, nothing left to report.
+    run(clock, ctx, 1500, true);
+    expect(clock.source).toBe('performance');
+    run(clock, ctx, 700, true);
+    expect(clock.source).toBe('audio');
+    expect(clock.unavailable).toBeUndefined();
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toBeGreaterThan(1.9);
+    expect(recovered[0]).toBeLessThan(2.2);
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
+  it('the third stall within 60 s keeps performance.now() until the next suspend / resume (M6 F9)', async () => {
+    const ctx = acquireAudioContext() as unknown as FakeAudioContext;
+    const clock = createClock(ctx as unknown as AudioContext);
+    clock.start();
+    run(clock, ctx, 2500, true);
+    for (let i = 0; i < 2; i++) {
+      run(clock, ctx, 1000, false);
+      run(clock, ctx, 4500, true);
+      expect(clock.source).toBe('audio');
+    }
+    run(clock, ctx, 1000, false);
+    expect(clock.unavailable).toMatch(/stall 3 within 60 s/);
+    run(clock, ctx, 5000, true);
+    expect(clock.source).toBe('performance');
+    // Paused, idle-suspended, played again: a fresh start of the device.
+    clock.stop();
+    ctx.set('suspended');
+    clock.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(clock.source).toBe('audio');
+    clock.destroy();
+    releaseAudioContext(ctx as unknown as AudioContext);
+  });
+
   it('a running context whose time stands still is left for performance.now()', () => {
     const ctx = acquireAudioContext() as unknown as FakeAudioContext;
     const clock = createClock(ctx as unknown as AudioContext);

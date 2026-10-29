@@ -83,26 +83,34 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   // OTTER_BENCH_SRC=/frames/h264-720p.mp4: the same 720p clip in H.264, for machines without
   // hardware HEVC in WebCodecs (hardware decoding on the GPU instead of the WASM pool).
   const src = process.env['OTTER_BENCH_SRC'];
-  // The shared AudioContext's time, for a frozen-clock failure (M6 F9): every stretch of 300 ms or
-  // more in which it said running but its time did not move, as `at+length` ms after its creation.
+  // The shared AudioContext's time, recorded on its own every 20 ms (M6 F9): every stretch of
+  // 300 ms or more in which it said running but its time did not move. `ctxStalls`: as `at+length`
+  // ms after its creation; `ctxSpans`: performance.now() from / to (an open one: to = Infinity).
   await page.addInitScript(() => {
     const Native = window.AudioContext;
-    const w = window as unknown as { ctxStalls: string[] };
+    const w = window as unknown as { ctxStalls: string[]; ctxSpans: { from: number; to: number }[] };
     w.ctxStalls = [];
+    w.ctxSpans = [];
     window.AudioContext = class extends Native {
       constructor(options?: AudioContextOptions) {
         super(options);
         const t0 = performance.now();
         let last = -1;
         let since = 0;
+        let open: { from: number; to: number } | undefined;
         const id = setInterval(() => {
           const now = performance.now();
           if (this.state !== 'running' || this.currentTime !== last) {
             if (last >= 0 && now - since >= 300) w.ctxStalls.push(`${Math.round(since - t0)}+${Math.round(now - since)}${this.state === 'running' ? '' : ` (${this.state})`}`);
+            if (open !== undefined) open.to = now;
+            open = undefined;
             last = this.currentTime;
             since = now;
+          } else if (open === undefined && now - since >= 300) {
+            open = { from: since, to: Infinity };
+            w.ctxSpans.push(open);
           }
-          if (now - t0 > 30_000) clearInterval(id);
+          if (now - t0 > 60_000) clearInterval(id);
         }, 20);
       }
     };
@@ -160,6 +168,8 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       replacedOnCanvas: t.replaced - b.replaced,
       errors: t.errors.filter((e) => e !== 'codecUnsupported'),
       messages: t.messages.filter((e) => !e.startsWith('codecUnsupported')),
+      errorAt: t.errorAt.filter((_, k) => t.errors[k] !== 'codecUnsupported'),
+      index: i,
     };
   });
   const stalls = await page.evaluate(() => (window as unknown as { ctxStalls: string[] }).ctxStalls);
@@ -169,6 +179,36 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   info.attach('multiview.json', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
   const worst = rows.reduce((m, r) => ({ cpu: Math.max(m.cpu, r.cpuPercentOfOneCore ?? 0), lost: Math.max(m.lost, r.droppedByClock + r.replacedOnCanvas), slow: Math.min(m.slow, r.advancedS) }), { cpu: 0, lost: 0, slow: Infinity });
   ciNotice(`multiview 16 x 720p ${src === undefined ? 'HEVC' : src} (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core (decoder pool), whole browser ${perStreamCpu}% of a core per stream (${JSON.stringify(browserCpu)}), hardware HEVC ${hevcHardware}, worst lost frames ${worst.lost}, slowest ${worst.slow} s played; AudioContext stalls ≥ 300 ms: ${stalls.join(', ') || 'none'}`);
+
+  // A frozen-clock report is accepted only as an environment stall (owner 2026-10-29): the
+  // independent record shows the context's time standing >= 0.5 s around the report (the watchdog
+  // fires 0.5 s into a stall), and the clock is back on the context within 5 s of the stall's end.
+  const spans = await page.evaluate(() => (window as unknown as { ctxSpans: { from: number; to: number | null }[] }).ctxSpans.map((x) => ({ from: x.from, to: Number.isFinite(x.to) ? x.to : null })));
+  const environment: string[] = [];
+  for (const r of rows) {
+    const kept: string[] = [];
+    for (const [k, e] of r.errors.entries()) {
+      const at = r.errorAt[k] as number;
+      const span = spans.find((x) => (x.to ?? Infinity) - x.from >= 500 && at >= x.from + 450 && at <= (x.to ?? Infinity) + 100);
+      if (e !== 'audioClockUnavailable' || !/time frozen/.test(r.messages[k] ?? '') || span === undefined) {
+        kept.push(e);
+        continue;
+      }
+      // The stall ends (if it has not), then within 5 s the route says the clock is back.
+      await expect.poll(() => page.evaluate(() => (window as unknown as { ctxSpans: { to: number }[] }).ctxSpans.every((x) => Number.isFinite(x.to))), { timeout: 15_000 }).toBe(true);
+      const end = await page.evaluate((from) => (window as unknown as { ctxSpans: { from: number; to: number }[] }).ctxSpans.find((x) => x.from === from)?.to ?? 0, span.from);
+      const recovered = () =>
+        page.evaluate(async (i) => {
+          const x = await (window.wall as Promise<WallFixture>);
+          return x.tiles()[i]?.route?.steps.find((st) => /^audio clock: back on the AudioContext after a [\d.]+ s stall$/.test(st.reason))?.reason ?? null;
+        }, r.index);
+      const wait = Math.max(500, end + 5000 - (await page.evaluate(() => performance.now())));
+      await expect.poll(recovered, { timeout: wait, message: `${r.tile}: back on the AudioContext within 5 s of the stall's end` }).not.toBeNull();
+      environment.push(`${r.tile}: environment stall ${Math.round(span.from)}..${Math.round(end)} ms (${((end - span.from) / 1000).toFixed(2)} s), reported at ${Math.round(at)} ms; ${await recovered()}`);
+    }
+    r.errors = kept;
+  }
+  if (environment.length > 0) ciNotice(`multiview: 环境停顿 (environment stall, accepted): ${environment.join(' | ')}`);
 
   for (const r of rows) {
     expect(r.errors, `${r.tile}: ${r.messages.join(' | ')}; user activation ${activated}; context stalls ${stalls.join(', ') || 'none'}`).toEqual([]);
@@ -205,8 +245,10 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   expect(await w.eval((x) => x.focused())).toBe(0);
   // Before any user gesture all four are muted (F1: WebKit under Playwright has no activation);
   // where the page already has one (Chromium: page.evaluate gives it), the focused tile has sound.
-  const activated = await page.evaluate(() => (navigator as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? true);
-  expect(await w.eval((x) => x.tiles().map((t) => t.muted))).toEqual(activated ? [false, true, true, true] : [true, true, true, true]);
+  // What counts is the activation when the tiles loaded (the backend's gate); no API: taken as active.
+  const atLoad = await w.eval((x) => x.activatedAtLoad);
+  const now = await page.evaluate(() => (navigator as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? null);
+  expect(await w.eval((x) => x.tiles().map((t) => t.muted)), `user activation at load ${atLoad}, now ${now}`).toEqual(atLoad !== false ? [false, true, true, true] : [true, true, true, true]);
   // Tile 2 is top right; click clear of the bars and the centre buttons (small players put them
   // over the tiles).
   const tile = page.locator('[data-otter-multiview-tile="2"]');
