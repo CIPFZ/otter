@@ -452,7 +452,7 @@ M0 接口落点（ADR-002）：
 | 直播 + LL-HLS / LL-DASH | mse | hls / dash | live-controller + 追帧 | < 90KB | 记录 |
 | 国内直播 / 电商 | mse | flv / ts / whep | live-controller + 看门狗 | < 70KB | 记录 |
 | OTT 付费 + DRM + 离线 | mse | hls + dash（Shaka 适配） | drm + storage + ads | 适配器体积为主 | 记录 |
-| 监控多路 + HEVC | webcodecs | flv / ts / ps | wasm-hevc 兜底 + GPUSurface 多画面 | WASM 另计 | 记录 |
+| 监控多路 + HEVC | webcodecs | flv / ts（1.0）；ps 经网关转 flv，浏览器不直接支持 | wasm-hevc 兜底 + GPUSurface 多画面 | WASM 另计 | 记录 |
 | B 站式弹幕站 | mse | dash 音视频分离 | danmaku + 多编码探测 + 偏好持久化 | < 120KB | 记录 |
 | 剪辑 / 标注 / 逐帧 | webcodecs | mp4 / webm 本地文件 | 帧精确 seek + 缩略图 | 按需 | 记录 |
 | 背景视频 / Hero | native | mp4 | 无 UI | < 5KB | 记录 |

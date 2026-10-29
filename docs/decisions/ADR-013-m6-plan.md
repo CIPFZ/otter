@@ -57,6 +57,13 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
 - 字幕与缩略图改为按需块。
 - ott-drm、surveillance、shorts 三个 preset，并补上 OTT、监控、剪辑三行。
 
+### 7. 监控行的格式（2026-10-30 负责人）
+
+- FLV 进 1.0：在 pipeline / transmux 的 FLV 解析上开一个样本出口，实现 WebCodecs 后端的 Demuxer 接口（流式、直播、音视频都出），复用 param-sets 的 AVC / HEVC 参数集处理；fMP4（MSE）路径不动。surveillance 的 streams 支持 http(s)-flv 与 ws-flv，路由偏向 WebCodecs。
+- TS 视 mediabunny 而定：先验证它对流式 MPEG-TS（HTTP 分块、无限长）的支持，限半天；能流式就接进 surveillance，不能则记为 1.0 之后的已知限制，不自研。
+- PS 不进浏览器：经网关转 FLV。
+- 排期：「F4 根因 + WebKit 暂停 seek 不刷新」那一停之后、第三批之前，单独一停；不扩到 PS，不扩到 MSE 路径。e2e 用 `/live/stream.flv` 夹具 4 路进多宫格（TTFF、丢帧按现有口径），真 Edge 16 路各 5 次；监控行重量，只记录。
+
 ## 代价
 
 - 体积收口要动 SPF 的 L3 拷贝（候选 1）。本地改动变多，UPSTREAM.json 要记清楚，以后同步上游时要合并。

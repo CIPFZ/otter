@@ -206,7 +206,7 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       const recovered = () =>
         page.evaluate(async (i) => {
           const x = await (window.wall as Promise<WallFixture>);
-          const st = x.tiles()[i]?.stepsAt.find((y) => /^audio clock: back on the AudioContext after a [\d.]+ s stall$/.test(y.reason));
+          const st = x.tiles()[i]?.stepsAt.find((y) => /^audio clock: back on the AudioContext after a [\d.]+ s stall( \(via a state change\))?$/.test(y.reason));
           return st === undefined ? null : `${st.reason} (${Math.round(st.at)} ms)`;
         }, r.index);
       const recoveredAt = () =>

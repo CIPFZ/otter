@@ -887,7 +887,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       const c = createClock(audioCtx, { deferred: gated });
       clock = c;
       // Back on the AudioContext after a stall (M6 F9): said on the route, with how long it stood.
-      c.onRecover((stallS) => bus.emit('route-detail', { reason: `audio clock: back on the AudioContext after a ${stallS.toFixed(2)} s stall` }));
+      c.onRecover((stallS, via) => bus.emit('route-detail', { reason: `audio clock: back on the AudioContext after a ${stallS.toFixed(2)} s stall${via === undefined ? '' : ` (via a ${via})`}` }));
       clock.setRate(rate);
       const anchorSink = (): void => {
         const s = sink;

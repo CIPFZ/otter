@@ -450,7 +450,11 @@ describe('shared AudioContext lifecycle', () => {
     const ctx = acquireAudioContext() as unknown as FakeAudioContext;
     const clock = createClock(ctx as unknown as AudioContext);
     const recovered: number[] = [];
-    clock.onRecover((s) => recovered.push(s));
+    const via: (string | undefined)[] = [];
+    clock.onRecover((s, how) => {
+      recovered.push(s);
+      via.push(how);
+    });
     clock.start();
     vi.advanceTimersByTime(3000);
     ctx.currentTime = 3;
@@ -471,6 +475,8 @@ describe('shared AudioContext lifecycle', () => {
     // The recovery is said with the stall's length (from the last movement to running again).
     expect(recovered).toHaveLength(1);
     expect(recovered[0]).toBeGreaterThan(6);
+    // Marked: this recovery came through a state change, not the 2 s of steady time.
+    expect(via).toEqual(['state change']);
     clock.destroy();
     releaseAudioContext(ctx as unknown as AudioContext);
   });

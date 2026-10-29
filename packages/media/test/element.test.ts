@@ -5,6 +5,7 @@ import {
   createCapabilityDetector,
   mediaElementError,
   observeMediaElement,
+  seekMedia,
   type BackendEvents,
 } from '@otter-player/media';
 
@@ -95,5 +96,62 @@ describe('capability detection', () => {
     expect(caps).toMatchObject({ mediaSource: false, managedMediaSource: true });
     expect(caps.codecs['video/mp4; codecs="avc1.42E01E"']).toEqual({ supported: true, smooth: true, powerEfficient: false });
     expect(caps.keySystems).toEqual({ 'org.w3.clearkey': true, 'com.widevine.alpha': false });
+  });
+});
+
+describe('seekMedia (WebKit paused-seek repaint nudge, M6)', () => {
+  /** A paused element whose play() moves the time on by a frame. */
+  function fakeVideo() {
+    const el = new EventTarget() as EventTarget & { currentTime: number; paused: boolean; muted: boolean; play(): Promise<void>; pause(): void; log: string[] };
+    let t = 0;
+    Object.assign(el, { paused: true, muted: false, log: [] as string[], buffered: ranges() });
+    Object.defineProperty(el, 'currentTime', {
+      get: () => t,
+      set: (v: number) => {
+        t = v;
+        el.log.push(`seek ${v.toFixed(3)}`);
+        queueMicrotask(() => el.dispatchEvent(new Event('seeked')));
+      },
+    });
+    el.play = () => {
+      el.log.push(`play muted=${el.muted}`);
+      el.paused = false;
+      t += 1 / 30;
+      el.dispatchEvent(new Event('play'));
+      return Promise.resolve();
+    };
+    el.pause = () => {
+      el.log.push('pause');
+      el.paused = true;
+      el.dispatchEvent(new Event('pause'));
+    };
+    return el;
+  }
+  const SAFARI = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+  const CHROME = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+
+  it('on WebKit: plays one frame muted, pauses, seeks back to the exact time; the store sees none of it', async () => {
+    vi.stubGlobal('navigator', { userAgent: SAFARI });
+    const el = fakeVideo();
+    const events: string[] = [];
+    observeMediaElement(el as unknown as HTMLMediaElement, (e, p) => events.push(`${e} ${JSON.stringify(p)}`));
+    seekMedia(el as unknown as HTMLMediaElement, 0.11);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(el.log).toEqual(['seek 0.110', 'play muted=true', 'pause', 'seek 0.110']);
+    expect(el.muted).toBe(false);
+    expect(el.currentTime).toBeCloseTo(0.11, 6);
+    // No paused / seeking flicker reached the store: one state snapshot at the end.
+    expect(events.filter((e) => e.includes('"paused":false'))).toEqual([]);
+    expect(events.at(-1)).toMatch(/^playback-change .*"currentTime":0\.11/);
+    vi.unstubAllGlobals();
+  });
+
+  it('elsewhere, or while playing: a plain seek', async () => {
+    vi.stubGlobal('navigator', { userAgent: CHROME });
+    const el = fakeVideo();
+    seekMedia(el as unknown as HTMLMediaElement, 0.11);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(el.log).toEqual(['seek 0.110']);
+    vi.unstubAllGlobals();
   });
 });

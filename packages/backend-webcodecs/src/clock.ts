@@ -38,10 +38,11 @@ export interface MediaClock {
   /** Called when the time source changes (reason for QoE). */
   onSource(h: (source: 'audio' | 'performance', reason: string) => void): void;
   /**
-   * Called when a frozen context's time has moved steadily for RECOVER_S and the clock went back to
-   * it; `stallS`: how long its time stood still (wall clock).
+   * Called when the clock went back to a frozen context: its time moved steadily for RECOVER_S, or
+   * (`via`: 'state change') it went through another state (suspended / interrupted) to running.
+   * `stallS`: how long its time stood still (wall clock).
    */
-  onRecover(h: (stallS: number) => void): void;
+  onRecover(h: (stallS: number, via?: 'state change') => void): void;
   /**
    * The context arrives later (created at the page's first user gesture): from now on time follows
    * it, re-anchored seamlessly. Until then the clock ran on performance.now() by design and
@@ -105,7 +106,7 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
    * context that runs now; the clock needs one that has run steadily.
    */
   let audibleOnStandIn = false;
-  let recoverListener: ((stallS: number) => void) | undefined;
+  let recoverListener: ((stallS: number, via?: 'state change') => void) | undefined;
   /** The context's state at the last statechange: a fresh 'running' after another one clears `stuck`. */
   let lastState = initial?.state;
   const usable = (): boolean => ctx !== undefined && ctx.state === 'running' && !stuck;
@@ -211,7 +212,7 @@ export function createClock(initial: AudioContext | undefined, options: ClockOpt
     lastState = state;
     if (usable()) failure = undefined;
     switchTo(usable() ? 'audio' : 'performance', `AudioContext ${ctx?.state ?? 'missing'}`);
-    if (fromStall !== undefined && source === 'audio') recoverListener?.(fromStall);
+    if (fromStall !== undefined && source === 'audio') recoverListener?.(fromStall, 'state change');
   };
   ctx?.addEventListener('statechange', onState);
 
