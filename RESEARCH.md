@@ -112,7 +112,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - `5c0b925`：丢帧 8.5–10.9 %，重试 10.5–15.5 %；
   - `b2d787b`：3.1–7.9 %，重试 9.9–11.3 %。
   
-  已升为缺陷，待查。同期 desktop-safari 的四路 HTTP-FLV 也变差：`5c0b925` 两次都红（13.7–15.4 %、4.6–6.8 %），`b2d787b` 重试才过（6.5–7.5 %，然后 0.8–1.6 %）。而 c93d22f 上是 0 %，2a8ac9a 上是 0.8–2.3 %。四路 WS-FLV 在这两次里都是 0 %，emulated-iphone 都正常。`5c0b925` 起有两处产品改动在这条路上：预热，以及 FLV / TS 源一开始就标 `live`。但预热只是把同样数量的 Worker（3 核 runner 上 3 个）提前起好，分配与以前相同；`live` 只影响界面；而 WS-FLV 走同一条解码路径却没有变差。所以两处都没有证据。本机没有 WebKit，只读 token 不能重跑 CI。
+  已升为缺陷，待查。同期 desktop-safari 的四路 HTTP-FLV 也变差：`5c0b925` 两次都红（13.7–15.4 %、4.6–6.8 %），`b2d787b` 重试才过（6.5–7.5 %，然后 0.8–1.6 %）。而 c93d22f 上是 0 %，2a8ac9a 上是 0.8–2.3 %。第三次（`4597ee6`，只改文档）轮到四路 WS-FLV 红（16.3–18.4 %、8.1–12.2 %），HTTP-FLV 1.2–3.0 %，TS 仍红。所以自 `5c0b925` 起三种传输都会丢帧，emulated-iphone 都正常。`5c0b925` 起有两处产品改动在这条路上：预热，以及 FLV / TS 源一开始就标 `live`。但预热只是把同样数量的 Worker（3 核 runner 上 3 个）提前起好，分配与以前相同；`live` 只影响界面。两处都没有直接证据。本机没有 WebKit，只读 token 不能重跑 CI。
 
 - WebCodecs 墙的首帧与预热（2026-10-30，半天时间盒）：一路 HTTP-FLV 本地首帧的时间线（Chrome）是：页面起 → 解码池 Worker 约 +50 ms → `load` +35 ms → 第一个 FLV 块 +15 ms → 配置与关键帧齐 +3 ms → 第一帧 +25 ms。没有哪一步独大；解码池在第一次 open 时才起 Worker、载入代码。预热（preset 创建时按路数起 Worker 并先载入代码）后一路中位数 Chrome 82 → 78 ms、Firefox 128 → 109 ms，四路 Chrome 99 → 92 ms、Firefox 156 → 126 ms，进产品。和 MSE 参照的差主要不在这里：MSE 一路本地约 55–85 ms，WebCodecs 路径还多了会话的能力探测与选路、解复用器打开流和画到墙上；现行口径（≤ 参照 + 300 ms）留的余量足够。worklet 没法预热：它要 AudioContext，而无手势时不建（ADR-008 F1）。
 - 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
