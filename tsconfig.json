@@ -13,6 +13,8 @@
     "emitDeclarationOnly": false,
     "isolatedDeclarations": false,
     "allowImportingTsExtensions": true,
+    // The React example pages (e2e/site/react-*.tsx).
+    "jsx": "react-jsx",
     // Mirrors the vitest alias: tests resolve workspace packages to their sources.
     "paths": {
       "@otter-player/pipeline/transmux": ["./packages/pipeline/src/transmux/index.ts"],

@@ -1670,8 +1670,13 @@ export const otterAirPlayButton = (): Ctor => remoteButtonClass('airplay');
 /** `M3_ELEMENTS.MiniClose` element class. */
 export const otterMiniClose = (): Ctor => miniCloseClass();
 
-/** Registers the given elements (tag -> factory) once per registry; returns the constructors. */
+/**
+ * Registers the given elements (tag -> factory) once per registry; returns the constructors. On a
+ * server (no `customElements`, no registry given) nothing is defined and nothing is returned: the
+ * browser defines them when the page runs (SSR, ADR-013 batch 3).
+ */
 export function defineElements(elements: Readonly<Record<string, () => Ctor>>, options: DefineOptions = {}): Record<string, Ctor> {
+  if (options.registry === undefined && typeof customElements === 'undefined') return {};
   const registry = options.registry ?? customElements;
   const defined: Record<string, Ctor> = {};
   for (const [tag, make] of Object.entries(elements)) {

@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/react",
   "version": "0.0.0",
-  "description": "React bindings (thin hooks and component wrappers over the Web Components).",
+  "description": "React bindings: a component hosting a preset-made player, and a hook over its store (SSR-safe).",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -18,5 +18,12 @@
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "19.3.1"
+  },
+  "peerDependencies": {
+    "react": ">=18"
   }
 }

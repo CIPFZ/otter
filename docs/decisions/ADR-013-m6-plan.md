@@ -69,6 +69,22 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - 预热（半天时间盒）：surveillance 创建时让解码池按路数起 Worker 并先载入解码代码（`Decoder.warm()`、`DecodePool.warm()`），不等 `load()`。本地一路首帧中位数 Chrome 82 → 78 ms、Firefox 128 → 109 ms，四路 Chrome 99 → 92 ms、Firefox 156 → 126 ms（各 16 / 64 个样本）；有效但小，进产品。worklet 不预热：它要 AudioContext，而无手势时不建上下文（ADR-008 F1）。
   - 同一来源超过 6 路 HTTP(S) 直播流：第 7 路起各发一条非致命错误 `tooManyConnectionsPerHost`（浏览器每主机 6 个 HTTP/1.1 连接，直播流一直占着；HTTP/2 不受限，但页面看不出来，所以只是警告）。
 
+### 8. 第三批第一停：React 绑定与 SSR（2026-10-30 负责人）
+
+- 只做 React 与 SSR 安全；Vue / Svelte 等 React 验收后再开。
+- `@otter-player/react`：`<OtterPlayer create …>`、`useOtterPlayer`、`useOtterState`。只依赖 store 的 `getState` / `getInitialState` / `subscribe`，不导入 Otter 运行时；preset 由宿主经 `create` 传入。播放器在 effect 里建，放进组件盒子里新建的子容器（Strict Mode 的二次挂载不会把外壳建进同一份标记）。服务端与客户端首次渲染都只输出带 `aspect-ratio` / poster 的空盒子。
+- SSR 安全的检查：
+  - `check-side-effects` 改为判定全部入口（含 sub-path，共 64 个）：
+    - 在 Node 里逐个导入，拦截 `window`、`document`、`AudioContext` 等浏览器全局的读取，报错或读取都算失败；
+    - 顶层 `class … extends <浏览器独有全局>` 也算失败，esbuild 会把它当作纯代码删掉，所以摇树判定看不见它。
+    
+    「摇树后为空」仍只要求包入口：sub-path 里有纯的顶层值（vendored 的 mp4 表、`Object.freeze` 的常量、tv 的按键表），不影响服务端。peerDependencies（react）的静态导入不算副作用。
+  - 调用时碰浏览器的三处：
+    - `defineElements()` 不传 registry 时，服务端什么也不做；
+    - TTML 解析在服务端给出明确的错误，不再是 imscJS 里的 ReferenceError；
+    - Shaka / mpegts.js 引擎的创建**没有加守卫**：引擎要 `<video>` 元素才建得出来，服务端走不到这里，按 `window` 守卫只是猜测。现有引擎单测本身就在没有 window 的 Node 里跑。
+- 示例页：basic、vod、surveillance 各一页（`e2e/site/react-*.html`），构建时在 Node 里服务端渲染、浏览器里水合；e2e 查无水合不匹配、能播放、hook 跟随。
+
 ## 代价
 
 - 体积收口要动 SPF 的 L3 拷贝（候选 1）。本地改动变多，UPSTREAM.json 要记清楚，以后同步上游时要合并。

@@ -28,6 +28,9 @@ const textOf = (e: IsdElement): string =>
   e.kind === 'span' && e.text !== undefined ? e.text : e.kind === 'br' ? '\n' : (e.contents ?? []).map(textOf).join(e.kind === 'p' ? '' : '\n');
 
 export async function parseTtml(xml: string, settings: CueSettings, idPrefix = 'ttml'): Promise<TextCue[]> {
+  // imscJS reads window while parsing: on a server say so, instead of a ReferenceError from inside it
+  // (SSR, ADR-013 batch 3). Captions are parsed in the browser, when the track is loaded.
+  if (typeof window === 'undefined') throw new Error('TTML is parsed in a browser only (imscJS reads window); load the track on the client');
   // CommonJS module: the namespace or its default, depending on the bundler's interop.
   const mod = (await import('imsc')) as unknown as Imsc & { default?: Imsc };
   const imsc = typeof mod.fromXML === 'function' ? mod : (mod.default as Imsc);

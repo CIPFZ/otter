@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { liveFlvPlugin } from './live-flv.ts';
 import { liveTsPlugin } from './live-ts.ts';
+import { reactSsrPlugin } from './react-ssr.ts';
 import { liveHlsPlugin } from './live-hls.ts';
 import { throttlePlugin } from './throttle.ts';
 import { whepPlugin } from './whep.ts';
@@ -24,6 +25,8 @@ export default defineConfig({
     whepPlugin(`${mediaDir}whep/clip.ivf`),
     liveHlsPlugin(`${mediaDir}frames/hls-ladder`),
     throttlePlugin(mediaDir),
+    // The inner SSR server (react-ssr.ts) loads this config too: without the plugin itself.
+    ...(process.env['OTTER_SSR_INNER'] === '1' ? [] : [reactSsrPlugin()]),
     // decoder-wasm-hevc loads its WASM next to its own module (otter.assets): in the built site
     // that module lives in assets/.
     {
@@ -72,6 +75,9 @@ export default defineConfig({
         surfaces: fileURLToPath(new URL('./site/surfaces.html', import.meta.url)),
         webcodecs: fileURLToPath(new URL('./site/webcodecs.html', import.meta.url)),
         presets: fileURLToPath(new URL('./site/presets.html', import.meta.url)),
+        'react-basic': fileURLToPath(new URL('./site/react-basic.html', import.meta.url)),
+        'react-vod': fileURLToPath(new URL('./site/react-vod.html', import.meta.url)),
+        'react-surveillance': fileURLToPath(new URL('./site/react-surveillance.html', import.meta.url)),
       },
     },
   },
