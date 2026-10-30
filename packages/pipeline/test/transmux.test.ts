@@ -103,3 +103,38 @@ describe('TS transmuxer input views', () => {
   });
 });
 
+
+describe('FLV samples for WebCodecs (ADR-013 §7)', async () => {
+  const { createFlvSampleReader } = await import('../src/transmux/index.js');
+  it('gives the configs first, then avc-format video frames and raw AAC frames, whatever the chunking', () => {
+    const flv = media('flv/clip.flv');
+    for (const chunk of [1000, 64 * 1024, flv.byteLength]) {
+      const r = createFlvSampleReader();
+      const all = { video: [] as { key: boolean; dts: number; data: Uint8Array }[], audio: [] as { pts: number; data: Uint8Array }[], vc: undefined as unknown, ac: undefined as unknown };
+      for (let o = 0; o < flv.byteLength; o += chunk) {
+        const s = r.push(flv.subarray(o, o + chunk));
+        if (s.videoConfig !== undefined) {
+          expect(all.video).toHaveLength(0);
+          all.vc = s.videoConfig;
+        }
+        if (s.audioConfig !== undefined) all.ac = s.audioConfig;
+        all.video.push(...s.video);
+        all.audio.push(...s.audio);
+      }
+      expect(r.errors).toEqual([]);
+      expect(r.declared).toEqual({ audio: true, video: true });
+      expect(all.vc).toMatchObject({ codec: expect.stringMatching(/^avc1\.42/) as unknown, width: 640, height: 360 });
+      expect(all.ac).toMatchObject({ codec: expect.stringMatching(/^mp4a\.40\./) as unknown, sampleRate: 48000, channels: 2 });
+      expect(all.video[0]?.key).toBe(true);
+      // Length-prefixed NAL units (4-byte lengths in this clip): the first length fits the sample.
+      const first = all.video[0]?.data as Uint8Array;
+      const len = new DataView(first.buffer, first.byteOffset).getUint32(0);
+      expect(len).toBeGreaterThan(0);
+      expect(len + 4).toBeLessThanOrEqual(first.byteLength);
+      // Monotonic decode times; audio frames are raw AAC (no ADTS header 0xFFF).
+      for (let i = 1; i < all.video.length; i++) expect((all.video[i] as { dts: number }).dts).toBeGreaterThanOrEqual((all.video[i - 1] as { dts: number }).dts);
+      expect(all.audio.length).toBeGreaterThan(10);
+      expect(((all.audio[0]?.data[0] ?? 0) << 4) | ((all.audio[0]?.data[1] ?? 0) >> 4)).not.toBe(0xfff);
+    }
+  });
+});

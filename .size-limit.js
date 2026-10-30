@@ -77,6 +77,19 @@ const SCENARIOS = [
   ['editing', '剪辑 / 标注 / 逐帧', null, []],
 ];
 
+/**
+ * The with-engines rows leave out what only the WebCodecs path loads (ADR-013 §5): the FLV / TS
+ * demuxers for WebCodecs (format-flv / format-ts reach them by import(), ADR-013 §7) and mediabunny.
+ */
+const WEBCODECS_ONLY = /^(@otter-player\/engine-pipeline\/demux|@otter-player\/demux-mediabunny|mediabunny)$/;
+const webCodecsOnlyOut = (config) => ({
+  ...config,
+  plugins: [
+    ...(config.plugins ?? []),
+    { name: 'otter-webcodecs-only-out', setup: (build) => build.onResolve({ filter: /.*/ }, (args) => (args.kind === 'dynamic-import' && WEBCODECS_ONLY.test(args.path) ? { path: args.path, external: true } : undefined)) },
+  ],
+});
+
 const scenarios = SCENARIOS.flatMap(([id, row, limit, engines, gatedFrom]) => {
   const own = {
     name: limit === null ? `§19 own code (report): ${row}` : gatedFrom === undefined ? `§19 own code: ${row} (≤ ${limit})` : `§19 own code (report, ≤ ${limit} gated from ${gatedFrom}): ${row}`,
@@ -87,7 +100,7 @@ const scenarios = SCENARIOS.flatMap(([id, row, limit, engines, gatedFrom]) => {
     ...(gatedFrom === undefined && limit !== null ? { limit } : {}),
   };
   if (engines.length === 0) return [own];
-  return [own, { name: `§19 with engines (report): ${row} + ${engines.join(' + ')}`, path: [`tooling/size/scenario-${id}.js`, ...engines.map((e) => ENGINE_FILES[e])], gzip: true, ignore: ENGINES }];
+  return [own, { name: `§19 with engines (report): ${row} + ${engines.join(' + ')}`, path: [`tooling/size/scenario-${id}.js`, ...engines.map((e) => ENGINE_FILES[e])], gzip: true, ignore: ENGINES, modifyEsbuildConfig: webCodecsOnlyOut }];
 });
 
 const engineChunks = Object.entries(ENGINE_FILES).map(([e, path]) => ({ name: `engine chunk (dynamic import): ${e}`, path, gzip: true }));

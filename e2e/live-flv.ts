@@ -1,9 +1,13 @@
 // Local HTTP-FLV live source for the e2e matrix (SPEC §19 "国内直播"): loops e2e/media/flv/clip.flv
 // forever, paced in real time, rewriting tag timestamps so the stream is one continuous live
-// timeline. Served at /live/stream.flv by the e2e Vite server.
+// timeline. Served at /live/stream.flv by the e2e Vite server, over HTTP (chunked) and over a
+// WebSocket (ws://…/live/stream.flv, binary messages: WS-FLV), the latter by a minimal RFC 6455
+// server here (one way, server to client) rather than a dependency.
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import type { ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Duplex } from 'node:stream';
 import type { Connect, Plugin } from 'vite';
 
 interface FlvTag {
@@ -43,7 +47,40 @@ const SCRIPT = 18;
 const VIDEO = 9;
 const AUDIO = 8;
 
-function stream(file: string, res: ServerResponse): void {
+/** Where the stream's bytes go: an HTTP response or a WebSocket. */
+interface Sink {
+  write(b: Buffer): boolean;
+  onClose(h: () => void): void;
+}
+
+function httpSink(res: ServerResponse): Sink {
+  res.writeHead(200, {
+    'Content-Type': 'video/x-flv',
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+    'Transfer-Encoding': 'chunked',
+  });
+  return { write: (b) => res.write(b), onClose: (h) => res.on('close', h) };
+}
+
+/** RFC 6455 server side: the handshake, then each write as one unmasked binary frame. */
+function wsSink(req: IncomingMessage, socket: Duplex): Sink {
+  const accept = createHash('sha1').update(`${String(req.headers['sec-websocket-key'])}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+  // Frames from the client (a close, pings) are not answered: the stream runs until the socket closes.
+  socket.on('data', () => undefined);
+  socket.on('error', () => undefined);
+  return {
+    write(b) {
+      const head = b.length < 126 ? Buffer.from([0x82, b.length]) : b.length < 65536 ? Buffer.from([0x82, 126, b.length >> 8, b.length & 0xff]) : Buffer.concat([Buffer.from([0x82, 127, 0, 0, 0, 0]), Buffer.from([(b.length >>> 24) & 0xff, (b.length >>> 16) & 0xff, (b.length >>> 8) & 0xff, b.length & 0xff])]);
+      socket.write(head);
+      return socket.write(b);
+    },
+    onClose: (h) => socket.on('close', h),
+  };
+}
+
+function stream(file: string, out: Sink): void {
   const { header, tags } = parseFlv(readFileSync(file));
   const media = tags.filter((t) => t.type === VIDEO || t.type === AUDIO);
   const loopDuration = (media.at(-1)?.timestamp ?? 0) + 40;
@@ -52,15 +89,9 @@ function stream(file: string, res: ServerResponse): void {
   const config = media.filter((t) => isConfig(t) && t.timestamp === 0);
   const frames = media.filter((t) => !config.includes(t));
 
-  res.writeHead(200, {
-    'Content-Type': 'video/x-flv',
-    'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
-    'Transfer-Encoding': 'chunked',
-  });
-  res.write(header);
-  for (const t of tags.filter((x) => x.type === SCRIPT)) res.write(retime(t, 0));
-  for (const t of config) res.write(retime(t, 0));
+  out.write(header);
+  for (const t of tags.filter((x) => x.type === SCRIPT)) out.write(retime(t, 0));
+  for (const t of config) out.write(retime(t, 0));
 
   const started = Date.now();
   let loop = 0;
@@ -77,13 +108,13 @@ function stream(file: string, res: ServerResponse): void {
       }
       const ts = loop * loopDuration + tag.timestamp;
       if (ts > elapsed + 300) break;
-      if (!res.write(retime(tag, ts))) break;
+      if (!out.write(retime(tag, ts))) break;
       index++;
     }
   };
   const timer = setInterval(pump, 40);
   pump();
-  res.on('close', () => clearInterval(timer));
+  out.onClose(() => clearInterval(timer));
 }
 
 export function liveFlvPlugin(file: string): Plugin {
@@ -92,15 +123,20 @@ export function liveFlvPlugin(file: string): Plugin {
       next();
       return;
     }
-    stream(file, res);
+    stream(file, httpSink(res));
+  };
+  const upgrade = (req: IncomingMessage, socket: Duplex): void => {
+    if (req.url?.split('?')[0] === '/live/stream.flv' && /websocket/i.test(String(req.headers.upgrade))) stream(file, wsSink(req, socket));
   };
   return {
     name: 'otter-live-flv',
     configureServer: (server) => {
       server.middlewares.use(middleware);
+      server.httpServer?.on('upgrade', upgrade);
     },
     configurePreviewServer: (server) => {
       server.middlewares.use(middleware);
+      server.httpServer.on('upgrade', upgrade);
     },
   };
 }

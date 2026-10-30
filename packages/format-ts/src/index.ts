@@ -1,7 +1,11 @@
 // MPEG-TS format plugin (SPEC §8): mpegts.js adapter in M1, own pipeline with the hls.js TS
-// demuxer (L2) in M3. Live sources must set `live: true`.
+// demuxer (L2) in M3. Live sources must set `live: true` (MSE). The WebCodecs backend is fed a
+// live stream through createDemuxer (mediabunny reading the stream as it arrives, ADR-013 §7:
+// surveillance walls; a URL there is taken as live); the router still tries MSE first unless the
+// policy prefers WebCodecs.
 
-import type { Capabilities, FormatPlugin, Source } from '@otter-player/media';
+import { createError } from '@otter-player/core';
+import type { BackendKind, Capabilities, FormatPlugin, Source } from '@otter-player/media';
 import { createMpegtsEngine } from '@otter-player/engine-adapter-mpegts';
 import { createPipelineEngine, withAdapterFallback } from '@otter-player/engine-pipeline';
 
@@ -30,12 +34,23 @@ export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
   return {
     id: 'ts',
     probe: probeTs,
-    backends: (_source: Source, caps: Capabilities) => (caps.mediaSource || caps.managedMediaSource ? ['mse'] : []),
+    backends: (_source: Source, caps: Capabilities) => {
+      const out: BackendKind[] = [];
+      if (caps.mediaSource || caps.managedMediaSource) out.push('mse');
+      if (caps.webCodecs) out.push('webcodecs');
+      return out;
+    },
     createEngine: (ctx) => {
       const adapter = () => createMpegtsEngine(ctx, { type: 'mpegts', ...(options.config === undefined ? {} : { config: options.config }) });
       if ((options.engine ?? 'otter') === 'mpegts') return adapter();
       const own = createPipelineEngine(ctx, { type: 'ts', ...(options.targetLatency === undefined ? {} : { targetLatency: options.targetLatency }) });
       return withAdapterFallback(own, adapter, { media: ctx.media });
+    },
+    async createDemuxer(ctx) {
+      if (typeof ctx.source.src !== 'string') throw createError({ type: 'other', details: 'notAUrl', fatal: true, recoverable: false, message: 'format-ts plays live stream URLs (files: format-file)' });
+      const { openLiveTs } = await import('@otter-player/demux-mediabunny');
+      const url = new URL(ctx.source.src, typeof location === 'object' ? location.href : undefined).href;
+      return openLiveTs(url, { signal: ctx.signal, createError, ...(ctx.source.headers === undefined ? {} : { headers: ctx.source.headers }) });
     },
   };
 }

@@ -16,6 +16,8 @@ await player.load('https://example.com/master.m3u8');
 | `/vod` | 长视频点播：HLS、DASH、MP4，清晰度、字幕、预览图（字幕与预览图是按需块，`captions: false` / `thumbnails: false` 时不加载） |
 | `/live`、`/lowlatency` | 直播、低延迟直播 |
 | `/danmaku` | 弹幕站：`comments` 选项随每次 `load()` 加载弹幕 |
+| `/surveillance` | 监控多路：一面 GPU 墙，每路走 WebCodecs（HEVC 无硬解时用 WASM），HTTP-FLV / WS-FLV / 直播 MPEG-TS / HLS / 本地文件；同一主机超过 6 路请用 WS-FLV 或 HTTP/2（浏览器每主机 6 个 HTTP/1.1 连接） |
+| `/ott-drm`、`/shorts` | OTT 付费 + DRM；竖屏信息流 |
 | `/tv` | 电视遥控器 |
 | `/background` | 背景视频（Hero），没有控件 |
 

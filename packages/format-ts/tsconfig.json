@@ -17,6 +17,9 @@
       "path": "../core"
     },
     {
+      "path": "../demux-mediabunny"
+    },
+    {
       "path": "../engine-adapter-mpegts"
     },
     {

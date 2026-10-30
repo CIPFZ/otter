@@ -9,6 +9,7 @@ import type { ShortsPlayer } from '@otter-player/presets/shorts';
 import type { SurveillancePlayer } from '@otter-player/presets/surveillance';
 import keys from './media/keys.json' with { type: 'json' };
 
+
 const state = (page: Page) => page.evaluate(() => (window.preset as Player).store.getState());
 const explain = (page: Page) => page.evaluate(() => (window.preset as Player).explain());
 const HLSJS = /hls(\.light)?(\.min)?\.m?js|hls-[\w-]+\.js/;

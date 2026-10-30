@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*",
+    "@otter-player/demux-mediabunny": "workspace:*",
     "@otter-player/engine-adapter-mpegts": "workspace:*",
     "@otter-player/engine-pipeline": "workspace:*",
     "@otter-player/media": "workspace:*"

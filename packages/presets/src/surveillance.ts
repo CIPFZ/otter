@@ -1,11 +1,13 @@
 // Preset `surveillance` (SPEC §19「监控多路 + HEVC」): a wall of streams on one GPU canvas (ADR-008 §7),
 // each tile its own session on the WebCodecs backend (WebCodecs decoders, the WASM HEVC decoder
-// where WebCodecs has no HEVC; one shared decode pool, 16 at a time, more wait), HLS playlists and
-// File / Blob sources. The player's controls act on the focused tile (click / Enter), which is the
-// only one with sound; double-click / Shift+Enter fills the wall with it. Audio follows the
+// where WebCodecs has no HEVC; one shared decode pool, 16 at a time, more wait), HTTP-FLV / WS-FLV
+// and MPEG-TS live streams, HLS playlists and File / Blob sources. The player's controls act on
+// the focused tile (click / Enter), which is the only one with sound; double-click / Shift+Enter
+// fills the wall with it. More than 6 HTTP-FLV / TS streams from one host need WS-FLV or HTTP/2
+// (browsers open 6 HTTP/1.1 connections per host; live streams keep theirs). Audio follows the
 // backend's rules: muted with no AudioContext before a user gesture, the host's mute wish applied
 // at the first one, the context clock with a wall-clock stand-in through device stalls (ADR-008
-// §2: F1 / F8 / F9 / F14). FLV / TS live streams do not feed WebCodecs yet (M6 report).
+// §2: F1 / F8 / F9 / F14). FLV / TS URLs are taken as live streams (ADR-013 §7).
 // The default skin is the host's stylesheet: `import '@otter-player/ui-skin-default'`.
 
 import { createWebCodecsBackendFactory } from '@otter-player/backend-webcodecs';
@@ -13,7 +15,9 @@ import { createCore, type OtterCore, type QoeHook, type RouteExplanation, type S
 import { createWasmHevcDecoder } from '@otter-player/decoder-wasm-hevc';
 import { createWebCodecsDecoder } from '@otter-player/decoder-webcodecs';
 import { createFileFormat } from '@otter-player/format-file';
+import { createFlvFormat } from '@otter-player/format-flv';
 import { createHlsFormat } from '@otter-player/format-hls';
+import { createTsFormat } from '@otter-player/format-ts';
 import { createInputController } from '@otter-player/input';
 import { createMediaPlugin, MEDIA_SLICE, type LoadOptions, type MediaActionMap, type MediaState, type Source } from '@otter-player/media';
 import { createPresentationPlugin, PRESENTATION_SLICE } from '@otter-player/presentation';
@@ -29,7 +33,7 @@ type TileState = MediaState & QoeState;
 export interface SurveillanceOptions {
   /** The wall's box: the default controls are built inside (an empty container). */
   readonly container: HTMLElement;
-  /** One tile per stream: HLS playlist URLs or File / Blob sources. */
+  /** One tile per stream: http(s)-flv / ws(s)-flv / live MPEG-TS URLs, HLS playlists, or File / Blob sources. */
   readonly streams: readonly (string | Source)[];
   /** Tile labels (default "Camera n"). */
   readonly labels?: readonly string[];
@@ -80,7 +84,7 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
   });
   const tiles: { tile: MultiviewTile; core: OtterCore<TileState, MediaActionMap> }[] = [];
   const decoders = [createWebCodecsDecoder(), createWasmHevcDecoder()];
-  const formats = [createHlsFormat(), createFileFormat()];
+  const formats = [createFlvFormat(), createTsFormat(), createHlsFormat(), createFileFormat()];
   for (let i = 0; i < options.streams.length; i++) {
     const tile = wall.add(options.labels?.[i] ?? `Camera ${i + 1}`);
     const media = createMediaPlugin<TileState, MediaActionMap>({

@@ -3,3 +3,4 @@
 
 export { createFlvTransmuxer, createTsTransmuxer, type CaptionData, type InitSegment, type MediaFragment, type Transmuxer, type TransmuxError, type TransmuxResult } from './transmuxer.js';
 export { parseAvcC, parseHvcC, type AvcConfig, type HevcConfig } from './param-sets.js';
+export { createFlvSampleReader, flvVideoConfig, type FlvAudioConfig, type FlvAudioFrame, type FlvSampleReader, type FlvSamples, type FlvVideoConfig, type FlvVideoFrame } from './flv-samples.js';

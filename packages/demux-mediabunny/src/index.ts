@@ -255,3 +255,79 @@ async function open(mb: typeof import('mediabunny'), input: Input, options: Open
     throw muxError('demuxFailed', err);
   }
 }
+
+/** Packets kept for new readers of a live stream (a seek, the audio started at the first gesture). */
+const LIVE_HISTORY_S = 15;
+
+/**
+ * A live MPEG-TS stream over HTTP (ADR-013 §7: surveillance walls): read as it arrives through
+ * mediabunny's ReadableStreamSource (unsized, sequential; its cache keeps the last 32 MiB), one
+ * reader per track, fanned out to the backend's readers. The duration is infinite; media time 0 is
+ * the first video keyframe.
+ */
+export async function openLiveTs(url: string, options: OpenOptions): Promise<Demuxer> {
+  const mb = await lib();
+  createError = options.createError;
+  const { createLiveFanout } = await import('@otter-player/media');
+  let res: Response;
+  try {
+    // no-store: Firefox holds a second request for the same cacheable URL until the first one is
+    // complete, which an endless stream never is (RESEARCH §1).
+    res = await fetch(url, { cache: 'no-store', signal: options.signal, ...(options.headers === undefined ? {} : { headers: { ...options.headers } }) });
+    if (!res.ok || res.body === null) throw new Error(`HTTP ${res.status} for ${url}`);
+  } catch (err) {
+    throw createError({ type: 'network', details: 'tsRequestFailed', fatal: true, recoverable: true, message: err instanceof Error ? err.message : String(err), cause: err });
+  }
+  const input = new mb.Input({ source: new mb.ReadableStreamSource(res.body, { handleUnhandledError: () => undefined }), formats: [mb.MPEG_TS] });
+  const fanout = createLiveFanout(LIVE_HISTORY_S);
+  let info: DemuxInfo;
+  let video: InputVideoTrack | null;
+  let audio: InputAudioTrack | null;
+  try {
+    video = await input.getPrimaryVideoTrack();
+    audio = await input.getPrimaryAudioTrack();
+    // Codec strings as the decoders take them (avc1.42c01e), not mediabunny's names (avc).
+    const vs = video === null ? undefined : await videoSetup(video);
+    const as = audio === null ? undefined : await audioSetup(audio);
+    info = {
+      duration: Number.POSITIVE_INFINITY,
+      startTime: 0,
+      video: video === null || vs === undefined ? null : { id: video.id, codec: vs.codec, width: video.codedWidth, height: video.codedHeight, setup: vs },
+      audio: audio === null || as === undefined ? null : { id: audio.id, codec: as.codec, sampleRate: audio.sampleRate, channels: audio.numberOfChannels, setup: as },
+    };
+  } catch (err) {
+    input.dispose();
+    throw isOtter(err) ? err : muxError('tsDemuxFailed', err);
+  }
+  // Media time 0: the first video keyframe (the first audio packet without video).
+  let base: number | undefined;
+  const pump = async (kind: 'video' | 'audio', track: InputVideoTrack | InputAudioTrack): Promise<void> => {
+    const sink = new mb.EncodedPacketSink(track);
+    for (let p = await sink.getFirstPacket(); p !== null && !options.signal.aborted; p = await sink.getNextPacket(p, { verifyKeyPackets: false })) {
+      if (base === undefined) {
+        if (kind === 'audio' && video !== null) continue;
+        if (kind === 'video' && p.type !== 'key') continue;
+        base = p.timestamp;
+      }
+      const timestamp = Math.round((p.timestamp - base) * 1e6);
+      if (timestamp < 0) continue;
+      fanout.push(kind, { key: p.type === 'key', timestamp, duration: Math.round(p.duration * 1e6), data: p.data });
+    }
+  };
+  const done = Promise.all([video === null ? undefined : pump('video', video), audio === null ? undefined : pump('audio', audio)]);
+  void done.then(
+    () => fanout.end(),
+    () => fanout.end(),
+  );
+  return {
+    info,
+    packets: (track) => fanout.packets(track, 0),
+    seek: (track, time) => Promise.resolve(fanout.packets(track, time)),
+    destroy() {
+      fanout.end();
+      input.dispose();
+    },
+  };
+}
+
+const isOtter = (e: unknown): e is Error => typeof e === 'object' && e !== null && 'details' in e && 'fatal' in e;

@@ -20,6 +20,11 @@
       "@otter-player/source": "./src/fallback.ts",
       "types": "./dist/fallback.d.ts",
       "default": "./dist/fallback.js"
+    },
+    "./demux": {
+      "@otter-player/source": "./src/flv-demux.ts",
+      "types": "./dist/flv-demux.d.ts",
+      "default": "./dist/demux.js"
     }
   },
   "files": [
@@ -37,7 +42,8 @@
   "otter": {
     "entries": {
       "sink": "src/mse-sink.ts",
-      "fallback": "src/fallback.ts"
+      "fallback": "src/fallback.ts",
+      "demux": "src/flv-demux.ts"
     }
   }
 }

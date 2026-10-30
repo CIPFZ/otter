@@ -41,10 +41,16 @@
       "path": "../format-file"
     },
     {
+      "path": "../format-flv"
+    },
+    {
       "path": "../format-hls"
     },
     {
       "path": "../format-mp4-range"
+    },
+    {
+      "path": "../format-ts"
     },
     {
       "path": "../input"

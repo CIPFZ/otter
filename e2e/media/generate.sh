@@ -114,6 +114,9 @@ JSON
 # FLV (VOD file and source of the paced local live stream) and MPEG-TS.
 "${FF[@]}" -f lavfi -i "$SRC_V" -f lavfi -i "$SRC_A" -t 10 "${V360[@]}" "${AAC[@]}" -f flv flv/clip.flv
 "${FF[@]}" -f lavfi -i "$SRC_V" -f lavfi -i "$SRC_A" -t $DUR "${V360[@]}" "${AAC[@]}" -f mpegts ts/clip.ts
+# The same clip three times with continuous timestamps (copy): the paced live MPEG-TS stream
+# /live/stream.ts (e2e/live-ts.ts) for the surveillance preset on WebCodecs (ADR-013 §7).
+"${FF[@]}" -stream_loop 2 -i ts/clip.ts -c copy -f mpegts ts/live-loop.ts
 # Video-only TS (cameras): mpegts.js never reports complete media info without an audio track.
 "${FF[@]}" -f lavfi -i "$SRC_V" -t $DUR "${V360[@]}" -an -f mpegts ts/clip-video-only.ts
 
