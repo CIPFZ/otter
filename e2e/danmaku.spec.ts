@@ -126,7 +126,7 @@ test(`danmaku on ${renderer} follows media time: pause freezes, 2x doubles, posi
 });
 }
 
-test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when the page is busy; each step explained', async ({ page, browserName }) => {
+test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when the page is busy; each step explained', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1400, height: 900 });
   await start(page);
@@ -155,16 +155,6 @@ test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when
         while (performance.now() < end);
       }, 30);
     });
-    if (browserName === 'firefox') {
-      // No Worker renderer on Firefox (M6 test round F4): a busy page keeps drawing on the main
-      // thread, WebGL or (WebGL's own cost too high) back to Canvas 2D; never a Worker step.
-      await page.waitForTimeout(10_000);
-      const st = (await otter(page)).danmakuStatus;
-      expect(st.steps.filter((x) => x.candidate === 'worker')).toEqual([]);
-      expect(['webgl', 'canvas2d']).toContain(st.renderer);
-      ciNotice(`danmaku auto renderer (Firefox, no Worker): ${st.steps.map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`).join(' | ')}`);
-      return;
-    }
     await expect.poll(async () => (await steps()).map((x) => `${x.candidate} ${x.outcome}`), { timeout: 40_000 }).toContainEqual(expect.stringMatching(/^worker (selected|rejected)$/));
     const busy = (await steps()).find((x) => x.candidate === 'worker');
     // Or WebGL itself cost the main thread too much (ADR-012 §5): off it, WebGL not tried again.
@@ -175,13 +165,6 @@ test('auto: Canvas 2D at first, WebGL when the stage gets dense, the Worker when
   const st = (await otter(page)).danmakuStatus;
   expect(st.renderer).toBe(st.steps.filter((x) => x.outcome === 'selected').at(-1)?.candidate);
   ciNotice(`danmaku auto renderer: ${st.steps.map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`).join(' | ')}`);
-});
-
-test('Firefox: the Worker renderer is refused, asked for or not, and the steps say why (M6 test round F4)', async ({ page, browserName }) => {
-  test.skip(browserName !== 'firefox', 'Firefox only');
-  await start(page, '&renderer=worker');
-  await expect.poll(async () => (await otter(page)).danmakuStatus.steps.map((x) => `${x.candidate} ${x.outcome}: ${x.reason}`)).toContainEqual(expect.stringMatching(/^worker rejected: Firefox: an OffscreenCanvas Worker stalls the page/));
-  expect((await otter(page)).danmakuStatus.renderer).toBe('canvas2d');
 });
 
 test('danmaku seek rebuilds the stage at the new time, both ways', async ({ page }) => {

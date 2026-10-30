@@ -158,18 +158,6 @@ describe('renderer policy (ADR-012 §5)', async () => {
   });
 });
 
-describe('renderers blocked by browser (M6 test round F4)', async () => {
-  const { rendererBlocked } = await import('../src/policy.js');
-  it('Firefox gets no Worker renderer; other browsers and renderers are allowed', () => {
-    const firefox = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:159.0) Gecko/20100101 Firefox/159.0';
-    const edge = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0';
-    expect(rendererBlocked('worker', firefox)).toMatch(/^Firefox: an OffscreenCanvas Worker stalls the page/);
-    expect(rendererBlocked('webgl', firefox)).toBeUndefined();
-    expect(rendererBlocked('canvas2d', firefox)).toBeUndefined();
-    expect(rendererBlocked('worker', edge)).toBeUndefined();
-  });
-});
-
 describe('renderer policy on a real GPU (F3)', async () => {
   const { decide } = await import('../src/policy.js');
   const all = new Set(['canvas2d', 'webgl', 'worker'] as const);

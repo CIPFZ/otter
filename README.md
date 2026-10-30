@@ -35,6 +35,7 @@ pnpm typecheck             # strict TS（包源码 + 测试 / 脚本）
 pnpm test                  # Vitest
 pnpm check:boundaries      # 包约定与分层依赖方向
 pnpm check:side-effects    # 无顶层副作用（需先 build）
+pnpm check:docs-text       # docs/ 与顶层 *.md 里没有控制字符
 pnpm size                  # 体积预算（需先 build）
 pnpm e2e                   # Playwright（需先 pnpm exec playwright install）
 pnpm check                 # 以上非 e2e 检查全部跑一遍

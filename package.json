@@ -19,10 +19,11 @@
     "size": "size-limit",
     "check:boundaries": "node scripts/check-boundaries.ts",
     "check:side-effects": "node scripts/check-side-effects.ts",
-    "check": "pnpm check:vendor && pnpm check:boundaries && pnpm typecheck && pnpm build && pnpm test && pnpm check:side-effects && pnpm check:engine-chunks && pnpm size",
+    "check": "pnpm check:vendor && pnpm check:docs-text && pnpm check:boundaries && pnpm typecheck && pnpm build && pnpm test && pnpm check:side-effects && pnpm check:engine-chunks && pnpm size",
     "check:vendor": "node scripts/check-vendor.ts",
     "vendor:sync": "node scripts/vendor-sync.ts",
-    "check:engine-chunks": "node scripts/check-engine-chunks.ts"
+    "check:engine-chunks": "node scripts/check-engine-chunks.ts",
+    "check:docs-text": "node scripts/check-docs-text.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

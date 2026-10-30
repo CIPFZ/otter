@@ -56,8 +56,9 @@ export interface GlStage {
   add(id: number, sprite: SpriteSource): boolean;
   /**
    * Rasterises `paint` into a `width` x `height` (device px) picture and packs it under `id`, like
-   * `add`. Painted on one CPU-backed scratch canvas and uploaded as pixels: WebKit reads a
-   * GPU-backed canvas back for every texture upload (a new canvas per comment cost several ms).
+   * `add`: painted on its own OffscreenCanvas and uploaded from it. No CPU readback
+   * (getImageData): in a Worker that draws WebGL to a transferred canvas, Firefox stops the page's
+   * rAF for ~10 s now and then when that Worker reads a 2D canvas back (M6 F4, RESEARCH §1).
    */
   paint(id: number, width: number, height: number, paint: (ctx: OffscreenCanvasRenderingContext2D) => void): boolean;
   remove(id: number): void;
@@ -118,8 +119,6 @@ export function createGlStage(canvas: HTMLCanvasElement | OffscreenCanvas): GlSt
   gl.activeTexture(gl.TEXTURE0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-
-  let scratch: OffscreenCanvasRenderingContext2D | undefined;
 
   const rows: Row[] = [];
   const slots = new Map<number, Slot>();
@@ -184,24 +183,9 @@ export function createGlStage(canvas: HTMLCanvasElement | OffscreenCanvas): GlSt
       return true;
     },
     paint(id, width, height, paint) {
-      if (width > size) {
-        const big = new OffscreenCanvas(width, height);
-        paint(big.getContext('2d') as OffscreenCanvasRenderingContext2D);
-        return stage.add(id, big);
-      }
-      if (scratch === undefined || scratch.canvas.width < width || scratch.canvas.height < height) {
-        const c = new OffscreenCanvas(Math.max(width, scratch?.canvas.width ?? 512), Math.max(height, scratch?.canvas.height ?? 64));
-        scratch = c.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D;
-      }
-      scratch.clearRect(0, 0, width, height);
-      scratch.save();
-      paint(scratch);
-      scratch.restore();
-      const slot = place(width, height);
-      if (slot === undefined) return false;
-      slots.set(id, slot);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, slot.x, slot.row.y, gl.RGBA, gl.UNSIGNED_BYTE, scratch.getImageData(0, 0, width, height));
-      return true;
+      const c = new OffscreenCanvas(width, height);
+      paint(c.getContext('2d') as OffscreenCanvasRenderingContext2D);
+      return stage.add(id, c);
     },
     remove(id) {
       const slot = slots.get(id);

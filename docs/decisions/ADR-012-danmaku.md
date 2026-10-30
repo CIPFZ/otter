@@ -85,6 +85,7 @@ M5 第四批：新包 `@otter-player/danmaku`（按需加载，首屏不变）�
   - 基本：主块 + 解析块 ≤ 10 KB。
   - 全部块：再加 WebGL、Worker（块 + 脚本）、蒙版 ≤ 15 KB。
   - 三个按需块另外各列一行。
+- 2026-10-30（负责人，F4 修复）：Firefox 上 Worker 卡页的根因是 Worker 里的 `getImageData()`（同一 Worker 正往交来的画布画 WebGL；Linux 与 Windows 正式版 Firefox 都复现，删减表见 RESEARCH §1）。`gl-stage` 的精灵改为画在各自的 OffscreenCanvas 上直接上传，不再回读，所有浏览器同一条路径；Firefox 上 Worker 渲染器的拦截删除。自动策略不变（F3）：真 GPU 上优先主线程 WebGL，主线程繁忙才选 Worker。
 
 ### 9. 已知限制（接受）
 

@@ -96,8 +96,8 @@ for (const p of PATHS) {
     // 0.11, readyState 4; re-seeking and a play-one-frame nudge do not fix it: RESEARCH §1, M6). A
     // platform limitation: frame-exact work on Safari uses the WebCodecs path (the webcodecs case).
     if (p.name === 'video' && browserName === 'webkit') {
-      ciNotice('picture controls on the video path: WebKit paused seeks may not repaint (RESEARCH §1), skipped; the WebCodecs path covers WebKit');
-      test.skip(true, 'WebKit paused seek does not repaint the <video> (RESEARCH §1)');
+      ciNotice('picture controls on the video path: WebKit paused seeks may not repaint (ADR-008 §6.1, RESEARCH §1), skipped; the WebCodecs path covers WebKit');
+      test.skip(true, 'WebKit paused seek does not repaint the <video> (ADR-008 §6.1)');
     }
     await load(page, p);
     // Frame 3: bits 0 and 1, two white blocks side by side at the top-left (a 96 px run of the

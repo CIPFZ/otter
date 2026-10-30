@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>OffscreenCanvas Worker vs page rAF</title>
+<div style="position:relative;width:1280px;height:720px;background:#000">
+<video id="v" muted loop playsinline style="position:absolute;left:0;top:0;width:100%;height:100%"></video>
+<canvas id="c" width="1280" height="720" style="position:absolute;left:0;top:0;width:100%;height:100%"></canvas>
+</div>
+<script>
+// Page side: one message per page rAF to a Worker that owns the transferred canvas; a frame is
+// not posted while the Worker is still drawing the previous one. Measures the page's rAF intervals.
+const q = new URLSearchParams(location.search);
+const mode = q.get('mode') || 'webgl-text';
+// &video=1: a playing <video> under the canvas (the danmaku page's layout).
+if (q.get('video') === '1') { const v = document.getElementById('v'); v.src = 'video.mp4'; v.play(); }
+const results = { mode, video: q.get('video') === '1', intervals: [], workerFrames: 0, error: null };
+window.results = results;
+let worker = null;
+let busy = false;
+if (mode !== 'none') {
+  const off = document.getElementById('c').transferControlToOffscreen();
+  worker = new Worker('worker.js');
+  worker.onmessage = (e) => {
+    if (e.data.t === 'drawn') { busy = false; results.workerFrames++; }
+    else results.error = e.data.reason;
+  };
+  worker.postMessage({ t: 'init', canvas: off, mode }, [off]);
+}
+let last = 0;
+let frame = 0;
+function tick(t) {
+  if (last) results.intervals.push(t - last);
+  last = t;
+  frame++;
+  if (worker && !busy) { busy = true; worker.postMessage({ t: 'frame', frame }); }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script>
