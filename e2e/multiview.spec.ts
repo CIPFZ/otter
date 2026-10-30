@@ -6,6 +6,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
+import { acceptEnvironmentStalls, audioStalls, recordAudioStalls, spanAt, stallSpans } from './audio-stalls';
 import type { WallFixture } from './site/player.ts';
 
 const FPS = 30;
@@ -77,38 +78,8 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   // OTTER_BENCH_SRC=/frames/h264-720p.mp4: the same 720p clip in H.264, for machines without
   // hardware HEVC in WebCodecs (hardware decoding on the GPU instead of the WASM pool).
   const src = process.env['OTTER_BENCH_SRC'];
-  // The shared AudioContext's time, recorded on its own every 20 ms (M6 F9): every stretch of
-  // 300 ms or more in which it said running but its time did not move. `ctxStalls`: as `at+length`
-  // ms after its creation; `ctxSpans`: performance.now() from / to (an open one: to = Infinity).
-  await page.addInitScript(() => {
-    const Native = window.AudioContext;
-    const w = window as unknown as { ctxStalls: string[]; ctxSpans: { from: number; to: number }[] };
-    w.ctxStalls = [];
-    w.ctxSpans = [];
-    window.AudioContext = class extends Native {
-      constructor(options?: AudioContextOptions) {
-        super(options);
-        const t0 = performance.now();
-        let last = -1;
-        let since = 0;
-        let open: { from: number; to: number } | undefined;
-        const id = setInterval(() => {
-          const now = performance.now();
-          if (this.state !== 'running' || this.currentTime !== last) {
-            if (last >= 0 && now - since >= 300) w.ctxStalls.push(`${Math.round(since - t0)}+${Math.round(now - since)}${this.state === 'running' ? '' : ` (${this.state})`}`);
-            if (open !== undefined) open.to = now;
-            open = undefined;
-            last = this.currentTime;
-            since = now;
-          } else if (open === undefined && now - since >= 300) {
-            open = { from: since, to: Infinity };
-            w.ctxSpans.push(open);
-          }
-          if (now - t0 > 60_000) clearInterval(id);
-        }, 20);
-      }
-    };
-  });
+  // The shared AudioContext's own stall record (M6 F9, e2e/audio-stalls.ts).
+  await recordAudioStalls(page);
   await open(page, 16, src);
   // The hardware probes run on the fixture page: WebCodecs exists only in a secure context, and
   // about:blank (before open) is not one, which made both read false until 2026-10-29.
@@ -177,7 +148,7 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
       index: i,
     };
   });
-  const stalls = await page.evaluate(() => (window as unknown as { ctxStalls: string[] }).ctxStalls);
+  const stalls = await audioStalls(page);
   const report = { project: info.project.name, src: src ?? '/frames/hevc-720p.mp4', cores, kind, hevcHardware, browserCpu, perStreamCpu, mainThread: main, wallMs: Math.round(wallMs), workers: after.pool.workers, streams: rows };
   mkdirSync('test-results', { recursive: true });
   writeFileSync(`test-results/multiview-${info.project.name}${src === undefined ? '' : '-' + (src.split('/').pop() ?? '')}.json`, JSON.stringify(report, null, 2));
@@ -185,44 +156,18 @@ test('16 x 720p HEVC on one canvas: every tile plays its stream, the main thread
   const worst = rows.reduce((m, r) => ({ cpu: Math.max(m.cpu, r.cpuPercentOfOneCore ?? 0), lost: Math.max(m.lost, r.droppedByClock + r.replacedOnCanvas), slow: Math.min(m.slow, r.advancedS) }), { cpu: 0, lost: 0, slow: Infinity });
   ciNotice(`multiview 16 x 720p ${src === undefined ? 'HEVC' : src} (${rows[0]?.backend}, ${after.pool.workers} workers, ${kind}): main thread ${main.frames} rAF in 10 s, ${main.over20} > 20 ms, ${main.over34} > 34 ms, longest ${Math.round(main.longest)} ms, ${main.longTasks} long tasks; per stream worst CPU ${worst.cpu}% of a core (decoder pool), whole browser ${perStreamCpu}% of a core per stream (${JSON.stringify(browserCpu)}), hardware HEVC ${hevcHardware}, worst lost frames ${worst.lost}, slowest ${worst.slow} s played; hardware H.264 ${h264Hardware}; AudioContext stalls ≥ 300 ms: ${stalls.join(', ') || 'none'}`);
 
-  // A frozen-clock report is accepted only as an environment stall (owner 2026-10-29): the
-  // independent record shows the context's time standing >= 0.5 s around the report (the watchdog
-  // fires 0.5 s into a stall), and the clock is back on the context within 5 s of the stall's end.
-  const spans = await page.evaluate(() => (window as unknown as { ctxSpans: { from: number; to: number | null }[] }).ctxSpans.map((x) => ({ from: x.from, to: Number.isFinite(x.to) ? x.to : null })));
-  const environment: string[] = [];
-  for (const r of rows) {
-    const kept: string[] = [];
-    for (const [k, e] of r.errors.entries()) {
-      const at = r.errorAt[k] as number;
-      const span = spans.find((x) => (x.to ?? Infinity) - x.from >= 500 && at >= x.from + 450 && at <= (x.to ?? Infinity) + 100);
-      if (e !== 'audioClockUnavailable' || !/time frozen/.test(r.messages[k] ?? '') || span === undefined) {
-        kept.push(e);
-        continue;
-      }
-      // The stall ends (if it has not), then within 5 s the route says the clock is back.
-      await expect.poll(() => page.evaluate(() => (window as unknown as { ctxSpans: { to: number }[] }).ctxSpans.every((x) => Number.isFinite(x.to))), { timeout: 15_000 }).toBe(true);
-      const end = await page.evaluate((from) => (window as unknown as { ctxSpans: { from: number; to: number }[] }).ctxSpans.find((x) => x.from === from)?.to ?? 0, span.from);
-      // The recovery step, and when it appeared: within 5 s of the stall's end (not just by now).
-      const recovered = () =>
-        page.evaluate(async (i) => {
-          const x = await (window.wall as Promise<WallFixture>);
-          const st = x.tiles()[i]?.stepsAt.find((y) => /^audio clock: back on the AudioContext after a [\d.]+ s stall( \(via a state change\))?$/.test(y.reason));
-          return st === undefined ? null : `${st.reason} (${Math.round(st.at)} ms)`;
-        }, r.index);
-      const recoveredAt = () =>
-        page.evaluate(async (i) => (await (window.wall as Promise<WallFixture>)).tiles()[i]?.stepsAt.find((y) => /^audio clock: back on the AudioContext/.test(y.reason))?.at ?? null, r.index);
-      const wait = Math.max(500, end + 5000 - (await page.evaluate(() => performance.now())));
-      await expect.poll(recovered, { timeout: wait, message: `${r.tile}: back on the AudioContext within 5 s of the stall's end` }).not.toBeNull();
-      expect((await recoveredAt()) as number, `${r.tile}: the recovery came ${Math.round(((await recoveredAt()) as number) - end)} ms after the stall's end`).toBeLessThanOrEqual(end + 5000);
-      environment.push(`${r.tile}: environment stall ${Math.round(span.from)}..${Math.round(end)} ms (${((end - span.from) / 1000).toFixed(2)} s), reported at ${Math.round(at)} ms; ${await recovered()}`);
-    }
-    r.errors = kept;
-  }
+  // A frozen-clock report is accepted only as an environment stall (owner 2026-10-29; the rule is
+  // in e2e/audio-stalls.ts).
+  const { kept, accepted: environment } = await acceptEnvironmentStalls(page, rows, (i) =>
+    page.evaluate(async (i) => (await (window.wall as Promise<WallFixture>)).tiles()[i]?.stepsAt.find((y) => /^audio clock: back on the AudioContext/.test(y.reason)) ?? null, i),
+  );
+  rows.forEach((r, i) => (r.errors = kept[i] ?? []));
+  const spans = await stallSpans(page);
   if (environment.length > 0) ciNotice(`multiview: 环境停顿 (environment stall, accepted): ${environment.join(' | ')}`);
   // Audio underruns (surveillance acceptance, M6 F14): in a recorded stall window (from 50 ms before
   // it to 500 ms after it) they are the environment's; the others decide on an ADR for audio
   // decoding in a Worker (desktop-chrome / real Edge). Recorded, not failed.
-  const underruns = rows.flatMap((r) => r.underruns.map((u) => ({ tile: r.tile, ...u, stall: spans.some((x) => u.at >= x.from - 50 && u.at <= (x.to ?? Infinity) + 500) })));
+  const underruns = rows.flatMap((r) => r.underruns.map((u) => ({ tile: r.tile, ...u, stall: spanAt(spans, u.at) !== undefined })));
   ciNotice(
     `multiview audio underruns (${src ?? 'HEVC'}): ${underruns.filter((u) => !u.stall).length} outside an environment stall, ${underruns.filter((u) => u.stall).length} in one` +
       (underruns.length > 0 ? `: ${underruns.map((u) => `${u.tile} ${u.message}${u.stall ? ' (环境停顿)' : ''}`).join(' | ')}` : ''),

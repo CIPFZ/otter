@@ -108,6 +108,18 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - 真 Firefox 159（Windows 实例）：`MediaStreamAudioSourceNode` → `AudioWorkletNode` 录 WHEP 音轨，`process()` 只跑约 2.7 s（30 s 内 500–1000 次）就不再被调用，期间输入一直不空。worklet 改经 gain 0 接 destination、页面持有全部节点的引用，没有改善（M6 F12，按负责人「有界一次」不再深挖；该录音用例在真 Firefox 上 skip）。同一台机器上产品自己的音频 worklet（WebCodecs 后端，440 Hz 片子 30 s）3 次里有 2 次在某一处出现连续 2 s 无声，Edge 3 次都没有；未查，记待验（2026-10-29）。
 - M6 F14 观测（2026-10-29，真 Edge / 真 Firefox 各 5 次，440 Hz 片子 30 s）：静音的那几秒里，worklet 一条 0.2 s 汇总都没发出，即 `process()` 根本没被调用，是音频渲染线程停住了（与上文虚拟声卡约 2 s 的停顿同源），不是 sink 空了。全部运行里：空队列补零 0、块间时间戳不连续 0.000 s、时间戳缺口补零每次 37–233 个采样（只在 seek 处）、队列领先最低 0.57 s（Firefox）/ 0.68 s（Edge）。无头 Chrome 本地 10 次没有静音。CI（`c49802c`，各项目 5 次）：desktop-safari / emulated-iphone 10 次全有声，队列领先最低 0.41 s，从不空；desktop-chrome 5 次全有声（一次领先低到 0.06 s）；**emulated-android 5 次里 4 次 sink 真的空了**（补零 1,459–25,780 个采样，领先降到 0.06 s 或空队列），静音那一秒前解码队列一直停在 17（泵的上限是 > 16 就不再送），队列在约 0.8 s 内从 0.41 s 降到 0.06 s：解码器的输出跟不上实时。只在 emulated-android 上出现，推测是仿真手机的高像素比（2.625）让 SwiftShader 下的绘制占满主线程，`AudioDecoder` 的输出回调排不上，未证实。
 - 直播流在 fetch 里（2026-10-30，ADR-013 §7）：Firefox 对同一个可缓存 URL 的第二个请求要等第一个完成（缓存条目锁），无尽的直播流永远不完成，于是同一 URL 的第二路一直卡在 loading；`fetch(url, { cache: 'no-store' })` 绕开。另外浏览器对同一主机最多 6 个 HTTP/1.1 连接，直播流一直占着：一面墙上同一主机的 HTTP-FLV / TS 超过 6 路时，第 7 路起不来（本地 8 路实测 6 路在播）；要用 WS-FLV（WebSocket 不占这 6 个）或 HTTP/2。mediabunny 1.61 的 `ReadableStreamSource` 能读不断增长、长度未知的 MPEG-TS：头 64 KB 到达约 110 ms 就有了轨道，之后数据到一点出一点包（顺序读；缓存上限默认 32 MiB）。
+- 监控墙的直播 TS 在 CI WebKit 上不稳（2026-10-30，负责人定为 flaky）：`2a8ac9a` 的 CI 里 desktop-safari 和 emulated-iphone 的四路直播 TS 第一次都失败，重试通过。失败值：safari 一路丢帧 5.3 %（口径 ≤ 5 %），iphone 5 s 只播 4.49 s（口径 > 4.5 s）；同一次运行里 FLV 两条都一次通过，`c93d22f` 上也一次通过。原因未查（嫌疑是 WebKit 上 mediabunny 读流时主线程更忙）。**升级条件：之后 5 次 CI 里再红 2 次（含重试后才过的）就升为缺陷去查。** 用例带 flaky 标注，通知里写第几次尝试。
+- WebCodecs 墙的首帧与预热（2026-10-30，半天时间盒）：一路 HTTP-FLV 本地首帧的时间线（Chrome）是：页面起 → 解码池 Worker 约 +50 ms → `load` +35 ms → 第一个 FLV 块 +15 ms → 配置与关键帧齐 +3 ms → 第一帧 +25 ms。没有哪一步独大；解码池在第一次 open 时才起 Worker、载入代码。预热（preset 创建时按路数起 Worker 并先载入代码）后一路中位数 Chrome 82 → 78 ms、Firefox 128 → 109 ms，四路 Chrome 99 → 92 ms、Firefox 156 → 126 ms，进产品。和 MSE 参照的差主要不在这里：MSE 一路本地约 55–85 ms，WebCodecs 路径还多了会话的能力探测与选路、解复用器打开流和画到墙上；现行口径（≤ 参照 + 300 ms）留的余量足够。worklet 没法预热：它要 AudioContext，而无手势时不建（ADR-008 F1）。
+- 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
+  - **约 2 s：环境，不是产品。** 夹具服务只在 `localhost` 上监听，Windows 上 Node 解析成 `[::1]`，只监听 IPv6。Firefox 连 `localhost` 时有时先试 127.0.0.1，Windows 上连一个没人监听的本机端口要约 2 s 才失败，然后才换 ::1。WebSocket 每次都中（`new WebSocket` 到 open 恒为约 2.0 s，Edge 0 ms），HTTP 时有时无。服务改为监听全部地址、页面用 `http://127.0.0.1:4173` 后，WS 打开约 6 ms，四路 WS-FLV 首帧 240 ms。（`OTTER_E2E_BASE_URL` 会关掉 Playwright 的 webServer，要自己起 preview，见 tmp/winps/round22.cmd 的写法。）
+  - **约 10–12 s：没查到，记为已知限制。** 偶发，一阵一阵：一出现就连着几页都中（一路、四路、两个主机名、WS-FLV、直播 TS 都中，时长几乎相同，10.2–10.8 s 或 12.2–12.9 s），同一时段 MSE 参照只要 120–160 ms，之后又一直正常。没有出现过的条件：Edge（几十次）、Linux 正式版 Firefox 159（Xvfb）。对照数据：
+    - 时间线探针 36 页 0 次；
+    - 插桩的 surveillance.spec 3 轮 × 3 用例 0 次；
+    - 未插桩的 surveillance.spec 4 轮里 2 轮中招，都在该轮开头。
+    
+    能排除的：与连接数无关（四路同主机 / 两个主机名 / WS 都中），与传输无关，与路数无关（一路也中）；只在 WebCodecs 路径。嫌疑：Firefox 在 Windows 上起硬件解码（GPU / RDD 进程里的 WebCodecs 解码器）的超时回退，这点无证据。
+    
+    产品侧没有修改。presets README 写明了这个限制。**WS-FLV 不能绕开它**：去掉 localhost 问题后，WS 和 HTTP 首帧相同，10 s 时两者都中。所以没有按原计划写「Firefox 多路推荐 WS-FLV」，WS-FLV 只用于超过 6 路的场景。
 - 逐帧对齐（蒙版与画面 ≤ 1 帧）在无头浏览器里与并行的其他用例共享软件合成器时测不准：帧会迟到一两帧，误差来自机器而非代码。这类用例单独一步、一个 worker 跑（`@solo`）。
 
 ## 2. 格式 / 协议 / 编码全景

@@ -95,3 +95,45 @@ describe('tv preset keys', () => {
     expect(TV_HOTKEYS['ArrowLeft']).toEqual({ type: 'seek-by', seconds: -10 });
   });
 });
+
+describe('surveillance preset', () => {
+  it('warns (non-fatal) on each tile past the sixth endless HTTP stream to one origin, not on WS-FLV, HLS or other origins', async () => {
+    // happy-dom has no canvas: a WebGL2 context that draws nothing (a wall past 4 tiles needs one;
+    // the tiles never get a picture here).
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string) {
+      if (type !== 'webgl2') return null;
+      const gl: Record<string, unknown> = { canvas: this, getShaderParameter: () => true, getProgramParameter: () => true, getParameter: () => 4096, getExtension: () => null, isContextLost: () => false };
+      return new Proxy(gl, { get: (t, k) => (k in t ? t[k as string] : typeof k === 'string' && /^[A-Z_0-9]+$/.test(k) ? 1 : () => ({})) });
+    } as typeof getContext;
+    try {
+      const { createSurveillancePlayer } = await import('../src/surveillance.js');
+      const box = document.createElement('div');
+      document.body.append(box);
+      const streams = [
+        ...Array.from({ length: 7 }, (_, i) => `http://cam.example/live/${i}.flv`),
+        'http://cam.example/live/7.ts',
+        'ws://cam.example/live/8.flv',
+        'http://cam.example/live/9.m3u8',
+        'http://other.example/live/10.flv',
+      ];
+      const p = createSurveillancePlayer({ container: box, streams });
+      const warned: number[] = [];
+      p.tiles.forEach((t, i) =>
+        t.qoe.on('error', ({ error }) => {
+          if (error.details === 'tooManyConnectionsPerHost') {
+            expect(error.fatal).toBe(false);
+            warned.push(i);
+          }
+        }),
+      );
+      await p.ready;
+      expect(warned).toEqual([6, 7]);
+      // FLV / TS sources are loaded as live (the WebCodecs demuxers are live-only).
+      expect(p.tiles.map((t) => t.store.getState().source?.live ?? false)).toEqual([...Array(9).fill(true), false, true]);
+      await p.destroy();
+    } finally {
+      HTMLCanvasElement.prototype.getContext = getContext;
+    }
+  });
+});

@@ -71,6 +71,10 @@ export function createWebCodecsDecoder(options: WebCodecsDecoderOptions = {}): D
       if (typeof VideoDecoder !== 'function' || options.disableVideo === true) return false;
       return videoSupport(codec, requireHardware);
     },
+    warm(count) {
+      if (options.pool === false || typeof Worker !== 'function' || typeof VideoDecoder !== 'function' || options.disableVideo === true) return;
+      (options.pool ?? sharedDecodePool()).warm(workerCodec(), count);
+    },
     create(config) {
       if (config.sampleRate !== undefined) return createAudio(config);
       const pool = options.pool === false || typeof Worker !== 'function' ? undefined : (options.pool ?? sharedDecodePool());

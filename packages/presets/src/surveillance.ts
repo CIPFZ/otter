@@ -7,17 +7,20 @@
 // (browsers open 6 HTTP/1.1 connections per host; live streams keep theirs). Audio follows the
 // backend's rules: muted with no AudioContext before a user gesture, the host's mute wish applied
 // at the first one, the context clock with a wall-clock stand-in through device stalls (ADR-008
-// §2: F1 / F8 / F9 / F14). FLV / TS URLs are taken as live streams (ADR-013 §7).
+// §2: F1 / F8 / F9 / F14). FLV / TS sources are live streams here (`live: true` unless the source
+// says `live: false`, which plays through MSE: the WebCodecs FLV / TS demuxers are live-only,
+// ADR-013 §7). More than 6 HTTP(S) FLV / TS streams from one origin: a non-fatal
+// `tooManyConnectionsPerHost` error on each tile past the sixth.
 // The default skin is the host's stylesheet: `import '@otter-player/ui-skin-default'`.
 
 import { createWebCodecsBackendFactory } from '@otter-player/backend-webcodecs';
-import { createCore, type OtterCore, type QoeHook, type RouteExplanation, type StoreView, type Unsubscribe } from '@otter-player/core';
+import { createCore, createError, type OtterCore, type QoeHook, type RouteExplanation, type StoreView, type Unsubscribe } from '@otter-player/core';
 import { createWasmHevcDecoder } from '@otter-player/decoder-wasm-hevc';
 import { createWebCodecsDecoder } from '@otter-player/decoder-webcodecs';
 import { createFileFormat } from '@otter-player/format-file';
-import { createFlvFormat } from '@otter-player/format-flv';
+import { createFlvFormat, probeFlv } from '@otter-player/format-flv';
 import { createHlsFormat } from '@otter-player/format-hls';
-import { createTsFormat } from '@otter-player/format-ts';
+import { createTsFormat, probeTs } from '@otter-player/format-ts';
 import { createInputController } from '@otter-player/input';
 import { createMediaPlugin, MEDIA_SLICE, type LoadOptions, type MediaActionMap, type MediaState, type Source } from '@otter-player/media';
 import { createPresentationPlugin, PRESENTATION_SLICE } from '@otter-player/presentation';
@@ -70,6 +73,34 @@ export interface SurveillancePlayer {
   destroy(): Promise<void>;
 }
 
+/** Browsers' HTTP/1.1 connections per origin (RESEARCH §1): endless HTTP streams keep theirs. */
+const CONNECTIONS_PER_HOST = 6;
+
+/** The source a tile loads: FLV / TS taken as live unless it says otherwise. */
+function tileSource(s: string | Source): Source {
+  const source = typeof s === 'string' ? { src: s } : s;
+  if (source.live !== undefined || (probeFlv(source) === 0 && probeTs(source) === 0)) return source;
+  return { ...source, live: true };
+}
+
+/** Per tile: the endless HTTP(S) stream's position among those to its origin (1-based), or 0. */
+function httpStreamRanks(sources: readonly Source[], base: string | undefined): number[] {
+  const seen = new Map<string, number>();
+  return sources.map((s) => {
+    if (typeof s.src !== 'string' || s.live !== true) return 0;
+    let url: URL;
+    try {
+      url = new URL(s.src, base);
+    } catch {
+      return 0;
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return 0;
+    const n = (seen.get(url.origin) ?? 0) + 1;
+    seen.set(url.origin, n);
+    return n;
+  });
+}
+
 export function createSurveillancePlayer(options: SurveillanceOptions): SurveillancePlayer {
   const root = options.container;
   if (options.lang !== undefined) root.lang = options.lang;
@@ -85,6 +116,9 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
   const tiles: { tile: MultiviewTile; core: OtterCore<TileState, MediaActionMap> }[] = [];
   const decoders = [createWebCodecsDecoder(), createWasmHevcDecoder()];
   const formats = [createFlvFormat(), createTsFormat(), createHlsFormat(), createFileFormat()];
+  // Prewarm: the decode pool's Workers start with the decoder code loaded while the page sets up,
+  // not at the first packet. (The AudioWorklet needs the AudioContext, which waits for a gesture: F1.)
+  for (const d of decoders) d.warm?.(options.streams.length);
   for (let i = 0; i < options.streams.length; i++) {
     const tile = wall.add(options.labels?.[i] ?? `Camera ${i + 1}`);
     const media = createMediaPlugin<TileState, MediaActionMap>({
@@ -117,7 +151,21 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
     input.attach(root);
     offs.push(wall.on('focus', onFocus), () => input.destroy(), bindActivity(root, focusStore.view));
     onFocus(wall.focused);
-    options.streams.forEach((s, i) => views[i]?.dispatch('load', { source: typeof s === 'string' ? { src: s } : s, options: { autoplay: true } }));
+    const sources = options.streams.map(tileSource);
+    // Past the sixth endless HTTP stream to one origin the browser holds the request until another
+    // ends, which a live stream never does: said, not silent (HTTP/2 servers are not limited).
+    httpStreamRanks(sources, root.ownerDocument.defaultView?.location.href).forEach((rank, i) => {
+      if (rank <= CONNECTIONS_PER_HOST) return;
+      const error = createError({
+        type: 'network',
+        details: 'tooManyConnectionsPerHost',
+        fatal: false,
+        recoverable: false,
+        message: `stream ${i + 1} is HTTP stream ${rank} to its host: browsers open ${CONNECTIONS_PER_HOST} HTTP/1.1 connections per host and live streams keep theirs, so it waits (use WS-FLV or HTTP/2)`,
+      });
+      tiles[i]?.core.qoe.emit('error', { error, fallback: [] });
+    });
+    sources.forEach((source, i) => views[i]?.dispatch('load', { source, options: { autoplay: true } }));
   })();
   return {
     element: root,
@@ -141,7 +189,7 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
     },
     async load(i, source, loadOptions) {
       await ready;
-      views[i]?.dispatch('load', { source: typeof source === 'string' ? { src: source } : source, ...(loadOptions === undefined ? {} : { options: loadOptions }) });
+      views[i]?.dispatch('load', { source: tileSource(source), ...(loadOptions === undefined ? {} : { options: loadOptions }) });
     },
     async destroy() {
       await ready.catch(() => undefined);

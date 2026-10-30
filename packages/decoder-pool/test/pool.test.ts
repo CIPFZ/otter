@@ -52,6 +52,20 @@ describe('decode pool', () => {
     expect(FakeWorker.all.every((w) => w.terminated)).toBe(true);
   });
 
+  it('prewarms: Workers start with the kind loaded before the first open, which then reuses them (surveillance TTFF)', () => {
+    const pool = createDecodePool({ size: 4, maxDecoders: 16 });
+    pool.warm(codec, 3);
+    expect(FakeWorker.all).toHaveLength(3);
+    expect(FakeWorker.all.map((w) => w.posted.map((m) => [m.t, m['source']]))).toEqual(Array(3).fill([['kind', codec.source]]));
+    pool.warm(codec, 3);
+    expect(FakeWorker.all.every((w) => w.posted.length === 1)).toBe(true);
+    for (let i = 0; i < 3; i++) pool.open(codec, config());
+    // No new Worker, no second copy of the code.
+    expect(FakeWorker.all).toHaveLength(3);
+    expect(FakeWorker.all.map((w) => w.posted.filter((m) => m.t === 'open').map((m) => m['source']))).toEqual([[''], [''], ['']]);
+    pool.destroy();
+  });
+
   it('queues decoders beyond maxDecoders with a reason and starts them in order as slots free', () => {
     const pool = createDecodePool({ size: 1, maxDecoders: 2 });
     const reasons: string[] = [];

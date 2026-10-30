@@ -49,4 +49,6 @@ export interface Decoder {
   create(config: DecoderConfig): DecoderInstance;
   /** How this decoder runs here (build, SIMD, threads, Worker), for the route explanation. */
   describe?(): string;
+  /** Prepares for `count` instances before the first load (Workers started, code loaded): a wall's prewarm. */
+  warm?(count: number): void;
 }

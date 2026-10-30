@@ -63,6 +63,11 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
 - TS 视 mediabunny 而定：先验证它对流式 MPEG-TS（HTTP 分块、无限长）的支持，限半天；能流式就接进 surveillance，不能则记为 1.0 之后的已知限制，不自研。
 - PS 不进浏览器：经网关转 FLV。
 - 排期：「F4 根因 + WebKit 暂停 seek 不刷新」那一停之后、第三批之前，单独一停；不扩到 PS，不扩到 MSE 路径。e2e 用 `/live/stream.flv` 夹具 4 路进多宫格（TTFF、丢帧按现有口径），真 Edge 16 路各 5 次；监控行重量，只记录。
+- 收尾（c93d22f 验收，2026-10-30 负责人）：
+  - WebCodecs 的 FLV / TS 解复用器只用于直播：格式插件只对 `live: true` 的源提供 webcodecs，`createDemuxer` 拒绝点播源（`liveOnly`）；偏好 WebCodecs 的点播地址回落 MSE。**点播 FLV / TS 走 WebCodecs 不在 1.0。** surveillance 把 FLV / TS 源标为直播，源自己写了 `live: false` 的除外。
+  - 首帧口径进 SPEC §19 的注并判定：单路 FLV 中位数 ≤ MSE 参照 + 300 ms，直播 TS ≤ 1 s，16 路每路 ≤ 3 s。
+  - 预热（半天时间盒）：surveillance 创建时让解码池按路数起 Worker 并先载入解码代码（`Decoder.warm()`、`DecodePool.warm()`），不等 `load()`。本地一路首帧中位数 Chrome 82 → 78 ms、Firefox 128 → 109 ms，四路 Chrome 99 → 92 ms、Firefox 156 → 126 ms（各 16 / 64 个样本）；有效但小，进产品。worklet 不预热：它要 AudioContext，而无手势时不建上下文（ADR-008 F1）。
+  - 同一来源超过 6 路 HTTP(S) 直播流：第 7 路起各发一条非致命错误 `tooManyConnectionsPerHost`（浏览器每主机 6 个 HTTP/1.1 连接，直播流一直占着；HTTP/2 不受限，但页面看不出来，所以只是警告）。
 
 ## 代价
 

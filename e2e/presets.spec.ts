@@ -86,6 +86,22 @@ test('vod preset: builds the shell, plays HLS on the own engine, controls drive 
   await expect.poll(async () => (await state(page)).paused).toBe(true);
 });
 
+test('vod preset on MSE: the WebCodecs-only chunks (FLV demuxer, mediabunny) are never fetched, as the size rows assume', async ({ page }) => {
+  // The with-engines size rows leave them out since 2a8ac9a (ADR-013 §5); this keeps that true.
+  // Chunk names change per build: the scripts are told apart by strings only they carry.
+  const bodies: Promise<string>[] = [];
+  page.on('response', (r) => {
+    if (/\.m?js(\?|$)/.test(r.url())) bodies.push(r.text().then((t) => `${r.url()}\n${t}`, () => ''));
+  });
+  await page.goto('/presets.html?preset=vod&src=/hls-fmp4/master.m3u8');
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(1);
+  expect((await state(page)).backend).toBe('mse');
+  const texts = await Promise.all(bodies);
+  expect(texts.length).toBeGreaterThan(0);
+  const webCodecsOnly = texts.filter((t) => t.includes('flvOpenTimeout') || t.includes('EncodedPacketSink')).map((t) => t.split('\n', 1)[0]);
+  expect(webCodecsOnly).toEqual([]);
+});
+
 test('vod preset with captions and thumbnails off: plays, no caption tracks or caption state, no preview-picture provider', async ({ page }) => {
   await page.goto('/presets.html?preset=vod&captions=0&thumbs=0&src=/hls-fmp4/master.m3u8');
   await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.5);

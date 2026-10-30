@@ -461,6 +461,10 @@ M0 接口落点（ADR-002）：
 
 注：短视频行原为 30KB，2026-10-29 负责人改为 32KB。`presets/basic` 在 1.0 时约 29.9KB（滑块修正与中英文读时间之前）；多出的 2KB 是给修复留的余量，不用于加功能。
 
+注：「含第三方引擎」列的量法自 `2a8ac9a`（2026-10-30）起变更：只在 WebCodecs 路径才加载的块（`engine-pipeline/demux`、`demux-mediabunny`、mediabunny）不再计入（ADR-013 §5）。此前 format-hls 经 `createDemuxer` 把 mediabunny 也算了进去，所以这一天之前的数字（如长视频 536 KB）偏大，不可与之后的比较。e2e 断言 MSE 路径的长视频页不请求这些块。
+
+注：监控行的首帧口径（2026-10-30 负责人，e2e/surveillance.spec.ts 判定）：单路 FLV 首帧中位数 ≤ 同流 MSE 管线参照 + 300 ms；直播 TS 每路 ≤ 1 s；16 路墙每路首帧 ≤ 3 s。WebCodecs 路径的 FLV / TS 解复用只用于直播（`live: true`），点播 FLV / TS 走 MSE。
+
 体积口径（ADR-004、ADR-009、ADR-010）：「自有代码」指 Otter 各包及其非引擎 L1 依赖，不含 hls.js / Shaka / mpegts.js / WASM 解码器；「含第三方引擎」在此基础上加上该场景首次播放必须加载的引擎块。两条独立门禁：自有代码列为 M1–M6 门禁；自研 CMAF-HLS 引擎块（`format-hls` 的按需块及其独有依赖）点播 ≤ 12KB、含直播 ≤ 15KB，M5 起门禁。含第三方引擎列只记录到 M6。引擎库只能在 `Engine.load()` / `Decoder.create()` 中以 `import()` 按需加载，不得进入首屏 chunk。
 
 ## 20. 自研与复用的边界

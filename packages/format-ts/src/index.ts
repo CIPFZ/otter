@@ -1,8 +1,8 @@
 // MPEG-TS format plugin (SPEC §8): mpegts.js adapter in M1, own pipeline with the hls.js TS
-// demuxer (L2) in M3. Live sources must set `live: true` (MSE). The WebCodecs backend is fed a
-// live stream through createDemuxer (mediabunny reading the stream as it arrives, ADR-013 §7:
-// surveillance walls; a URL there is taken as live); the router still tries MSE first unless the
-// policy prefers WebCodecs.
+// demuxer (L2) in M3. Live sources must set `live: true`. The WebCodecs backend is fed live sources
+// only, through createDemuxer (mediabunny reading the stream as it arrives, ADR-013 §7:
+// surveillance walls; VOD TS on WebCodecs is not in 1.0); the router still tries MSE first unless
+// the policy prefers WebCodecs.
 
 import { createError } from '@otter-player/core';
 import type { BackendKind, Capabilities, FormatPlugin, Source } from '@otter-player/media';
@@ -34,10 +34,11 @@ export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
   return {
     id: 'ts',
     probe: probeTs,
-    backends: (_source: Source, caps: Capabilities) => {
+    backends: (source: Source, caps: Capabilities) => {
       const out: BackendKind[] = [];
       if (caps.mediaSource || caps.managedMediaSource) out.push('mse');
-      if (caps.webCodecs) out.push('webcodecs');
+      // The WebCodecs demuxer is live-only (ADR-013 §7): VOD FLV / TS stays on MSE in 1.0.
+      if (caps.webCodecs && source.live === true) out.push('webcodecs');
       return out;
     },
     createEngine: (ctx) => {
@@ -47,6 +48,7 @@ export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
       return withAdapterFallback(own, adapter, { media: ctx.media });
     },
     async createDemuxer(ctx) {
+      if (ctx.source.live !== true) throw createError({ type: 'other', details: 'liveOnly', fatal: true, recoverable: false, message: 'TS on WebCodecs plays live streams only (set `live: true`; VOD goes through MSE)' });
       if (typeof ctx.source.src !== 'string') throw createError({ type: 'other', details: 'notAUrl', fatal: true, recoverable: false, message: 'format-ts plays live stream URLs (files: format-file)' });
       const { openLiveTs } = await import('@otter-player/demux-mediabunny');
       const url = new URL(ctx.source.src, typeof location === 'object' ? location.href : undefined).href;

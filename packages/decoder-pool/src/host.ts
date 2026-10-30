@@ -3,7 +3,7 @@
 // any kind; a kind's worker code arrives once as a function source and is loaded with
 // importScripts (no eval).
 //
-// Protocol (main -> worker): open { id, kind, source, env, config }, decode { id, chunk }, flush
+// Protocol (main -> worker): kind { kind, source, env } (prewarm), open { id, kind, source, env, config }, decode { id, chunk }, flush
 // { id, n }, reset { id, gen }, close { id }. Worker -> main: q { id, n, busy } (queue size after
 // a decode and the slot's decode time so far), f { id, gen, frame } (transferred), flushed { id, n },
 // error { id, details, message }.
@@ -86,6 +86,11 @@ export function host(): void {
   };
   g.onmessage = (e) => {
     const m = e.data as { t: string; id: number; [k: string]: unknown };
+    if (m.t === 'kind') {
+      // A prewarm: the kind's code loaded before its first open.
+      loadKind(m.kind as string, m.source as string, m.env).catch(() => undefined);
+      return;
+    }
     if (m.t === 'open') {
       const s: Slot = { inst: undefined, pending: [], gen: 0, busy: 0, closed: false };
       slots.set(m.id, s);

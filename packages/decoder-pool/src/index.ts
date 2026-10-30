@@ -54,6 +54,8 @@ export interface DecodePool {
   readonly maxDecoders: number;
   /** A DecoderInstance backed by a pool Worker; queued (not failed) beyond maxDecoders. */
   open(codec: WorkerCodec, config: DecoderConfig, options?: PoolOpenOptions): DecoderInstance;
+  /** Starts up to `count` Workers (at most `size`) with the kind's code loaded, ahead of the first open. */
+  warm(codec: WorkerCodec, count: number): void;
   stats(): PoolStats;
   destroy(): void;
 }
@@ -283,6 +285,15 @@ export function createDecodePool(options: DecodePoolOptions = {}): DecodePool {
           if (wasActive) release(s);
         },
       };
+    },
+    warm(codec, count) {
+      if (destroyed) return;
+      while (workers.length < Math.min(size, count)) spawn();
+      for (const w of workers.slice(0, Math.min(size, count))) {
+        if (w.kinds.has(codec.kind)) continue;
+        w.kinds.add(codec.kind);
+        w.worker.postMessage({ t: 'kind', kind: codec.kind, source: codec.source, env: codec.env });
+      }
     },
     stats() {
       return {
