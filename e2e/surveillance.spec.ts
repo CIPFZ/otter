@@ -180,7 +180,11 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
     if (transport !== 'http') return;
     // A click focuses the top-right tile (a gesture): within 1 s only it is unmuted (F1: the others
     // stay muted; the first gesture lifts the gate).
-    await page.locator('[data-otter-multiview-tile]').nth(1).click();
+    // Clear of the bars and the centre buttons, which small players put over the tiles (as in
+    // multiview.spec; the emulated iPhone timed out on the tile's centre at d7163de).
+    const tile = page.locator('[data-otter-multiview-tile="2"]');
+    const box = (await tile.boundingBox()) as { width: number; height: number };
+    await tile.click({ position: { x: box.width * 0.85, y: box.height * 0.6 } });
     await expect.poll(() => page.evaluate(() => (window.preset as SurveillancePlayer).focused)).toBe(1);
     await expect.poll(async () => (await tiles(page)).map((t) => t.muted), { timeout: 1000 }).toEqual([true, false, true, true]);
   });
