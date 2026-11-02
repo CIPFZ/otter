@@ -293,21 +293,38 @@ test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
   // second): an underrun whose media time falls in a sink summary that ran dry with the decode
   // queue at its cap. Known too; any other underrun still fails.
   const underruns = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).events.filter((e) => e.type === 'error' && (e.payload as { error: { details: string } }).error.details === 'audioUnderrun').map((e) => (e.payload as { error: { message?: string } }).error.message ?? ''));
-  const knownUnderrun = (message: string): boolean => {
+  // The sink summary an underrun matched: the nearest dry one with dq at the cap within 0.4 s of its
+  // media time; `adjacent` when only a neighbouring summary (0.2-0.4 s away, the summaries are
+  // 0.2 s windows) matched. Owner 2026-11-02: listed in every report; the rule goes if dq >= 17 is
+  // never actually seen.
+  const f14Match = (message: string) => {
     const at = Number(/dry at ([\d.]+) s/.exec(message)?.[1] ?? Number.NaN);
-    return info.project.name === 'emulated-android' && sinkStats.some((x) => Math.abs(x.media - at) <= 0.4 && x.under > 0 && x.dq >= 17);
+    if (info.project.name !== 'emulated-android') return undefined;
+    const hit = sinkStats
+      .filter((x) => Math.abs(x.media - at) <= 0.4 && x.under > 0 && x.dq >= 17)
+      .sort((a, b) => Math.abs(a.media - at) - Math.abs(b.media - at))[0];
+    return hit === undefined ? undefined : { ...hit, at, adjacent: Math.abs(hit.media - at) > 0.2 };
   };
+  const knownUnderrun = (message: string): boolean => f14Match(message) !== undefined;
   const knownUnderruns = underruns.filter(knownUnderrun);
   // Every CI report says how often the signature fired (owner 2026-11-02; tally in RESEARCH §1 F14).
-  if (info.project.name === 'emulated-android') ciNotice(`audio worklet 30 s: F14 signature fired ${known.length} times (silent seconds with the decode queue at its cap and the sink dry); ${knownUnderruns.length} underruns with it (no silent second)`);
+  if (info.project.name === 'emulated-android') {
+    ciNotice(`audio worklet 30 s: F14 signature fired ${known.length} times (silent seconds with the decode queue at its cap and the sink dry); ${knownUnderruns.length} underruns with it (no silent second)`);
+    const lines = knownUnderruns.map((u) => {
+      const m = f14Match(u) as NonNullable<ReturnType<typeof f14Match>>;
+      return `${u} -> summary [media ${m.media.toFixed(3)} ahead ${m.ahead.toFixed(2)} under ${m.under} dq ${m.dq}] ${m.adjacent ? 'adjacent' : 'same'} window (${Math.abs(m.media - m.at).toFixed(3)} s)`;
+    });
+    if (lines.length > 0) ciNotice(`audio worklet 30 s: F14 underruns let through: ${lines.join(' | ')}`);
+  }
   if (known.length > 0) {
     info.annotations.push({ type: 'issue', description: `M6 F14 known issue (emulated Android): silent seconds ${known.join(', ')} with the decode queue at its cap and the sink dry` });
     ciNotice(`audio worklet 30 s: F14 已知问题 (emulated Android, decode queue at its cap, sink dry): silent seconds ${known.join(', ')} not counted`);
   }
   expect(first.muted).toBe(false);
   expect(silent.filter((i) => !environment.includes(i) && !known.includes(i)), `silent seconds outside an environment stall (RMS ${rms.map((x) => x.toFixed(3)).join(' ')})`).toEqual([]);
-  // A dry sink is reported, not silent: none expected outside the known issue (which says so).
-  expect(known.length > 0 ? [] : underruns.filter((u) => !knownUnderrun(u)), `underruns outside F14's signature; sink: ${sinkStats.filter((x) => x.under > 0).map((x) => `[media ${x.media.toFixed(2)} ahead ${x.ahead.toFixed(2)} under ${x.under} dq ${x.dq}]`).join(' ')}`).toEqual([]);
+  // A dry sink is reported, not silent: none expected outside the known issue's signature (owner
+  // 2026-11-02: a silent second of F14 does not excuse the other underruns).
+  expect(underruns.filter((u) => !knownUnderrun(u)), `underruns outside F14's signature; sink: ${sinkStats.filter((x) => x.under > 0).map((x) => `[media ${x.media.toFixed(2)} ahead ${x.ahead.toFixed(2)} under ${x.under} dq ${x.dq}]`).join(' ')}`).toEqual([]);
 });
 
 test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it as the clock', async ({ page }) => {

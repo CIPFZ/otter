@@ -121,7 +121,9 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     | `48252e1` | 1（4 个静音秒，第 14–17 秒，dq 17） |
     | `d7163de` | 0 个静音秒；但两次尝试都有欠载：放空 4–318 ms，不满一整秒，用例按「无欠载」判红。签名能否成立没法核对，因为当时只在静音秒里打印 dq。`2026-11-02` 起，用例把「媒体时间落在放空且 dq 达上限的汇总里」的欠载也记为 F14、不计入，失败时打印 sink 汇总 |
 
-    累计 9 次运行，6 次没有触发。
+    | `5a8a65b` | 0 |
+
+    累计 10 次运行，7 次没有触发。2026-11-02 负责人：放过的欠载在每次 CI 通知里逐条列出对应的 sink 汇总（media / ahead / under / dq）及「同窗 / 相邻窗」；实际没观测到 dq ≥ 17 的，这条放宽撤回。
 - 直播流在 fetch 里（2026-10-30，ADR-013 §7）：Firefox 对同一个可缓存 URL 的第二个请求要等第一个完成（缓存条目锁），无尽的直播流永远不完成，于是同一 URL 的第二路一直卡在 loading；`fetch(url, { cache: 'no-store' })` 绕开。另外浏览器对同一主机最多 6 个 HTTP/1.1 连接，直播流一直占着：一面墙上同一主机的 HTTP-FLV / TS 超过 6 路时，第 7 路起不来（本地 8 路实测 6 路在播）；要用 WS-FLV（WebSocket 不占这 6 个）或 HTTP/2。mediabunny 1.61 的 `ReadableStreamSource` 能读不断增长、长度未知的 MPEG-TS：头 64 KB 到达约 110 ms 就有了轨道，之后数据到一点出一点包（顺序读；缓存上限默认 32 MiB）。
 - 监控墙的直播 TS 在 CI WebKit 上不稳（2026-10-30，负责人定为 flaky）：`2a8ac9a` 的 CI 里 desktop-safari 和 emulated-iphone 的四路直播 TS 第一次都失败，重试通过。失败值：safari 一路丢帧 5.3 %（口径 ≤ 5 %），iphone 5 s 只播 4.49 s（口径 > 4.5 s）；同一次运行里 FLV 两条都一次通过，`c93d22f` 上也一次通过。原因未查（嫌疑是 WebKit 上 mediabunny 读流时主线程更忙）。**升级条件：之后 5 次 CI 里再红 2 次（含重试后才过的）就升为缺陷去查。** 用例带 flaky 标注，通知里写第几次尝试。**已触发（2026-10-30）**：`5c0b925` 与 `b2d787b` 两次都红，desktop-safari 两次尝试都没过：
   - `5c0b925`：丢帧 8.5–10.9 %，重试 10.5–15.5 %；
@@ -141,7 +143,14 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   | `2571943` | c93d22f 的树放 main 的位置 | 5.3 % | 1.6 % | 6.5 % | — |
   | `f03b714` | main（泄漏已修） | 16.0 %，重试 2.3 %（一路首帧中位数 574 > 256 + 300 ms） | 6.2 %，重试 4.8 % | 15.3 %（5 s 只播 4.42 s），重试首帧 1128–1451 ms | 7.2–10.4；WHEP 0 路 |
 
-  emulated-iphone 在所有这些位置都是 0–0.8 %。`f03b714` 的首帧分解显示，负载下慢在解码：HTTP / WS 从「解码器配好」到「第一帧解出」要 0.8–1.2 s（空闲时 60–90 ms）；TS 从首字节到首关键帧稳定约 330 ms（mediabunny），负载下解码同样拉长。按 ADR-008 §7 把丢帧与首帧判定挪到 @solo（ADR-013 §7a）。
+  emulated-iphone 在所有这些位置都是 0–0.8 %。`f03b714` 的首帧分解显示，负载下慢在解码：HTTP / WS 从「解码器配好」到「第一帧解出」要 0.8–1.2 s（空闲时 60–90 ms）；TS 从首字节到首关键帧稳定约 330 ms（mediabunny），负载下解码同样拉长。按 ADR-008 §7 把丢帧与首帧判定挪到 @solo（ADR-013 §7a）。**结案（2026-11-02）**：solo 下 desktop-safari 连续 2 次达标：
+
+  | solo 次序 | 运行 | HTTP-FLV 丢帧 | WS-FLV 丢帧 | 直播 TS 丢帧 | 直播 TS 首帧 |
+  |---|---|---|---|---|---|
+  | 1 | `d7163de` | 1.7–2.4 % | 0–0.8 % | 0–1.6 % | 634–939 ms |
+  | 2 | `5a8a65b`（夜间定时运行；push 那次被它按并发规则取消） | 0–0.8 % | 0–1.6 % | 0.8 % | 531–821 ms |
+
+  不立 F15。直播 TS 的首字节到首关键帧稳定约 310–345 ms（mediabunny 读到第一个关键帧），是 TS 首帧里最大的一段，记在这里备查。
 - e2e 的 WHEP 夹具会话泄漏（2026-11-02，已修）：会话只在收到 `DELETE` 时停发，页面直接关闭时不发 `DELETE`，那路会话会在预览服务里一直发到步骤结束（视频每 16 ms、音频每 10 ms 一次）。werift 的 `connectionState` 只跟 ICE，看不到对端 DTLS 的 close_notify；现在 DTLS 关闭、连接 disconnected / failed / closed、或 30 s 收不到 RTCP 都会停发，global teardown 断言跑完后没有会话还在发。
 - 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
   - **约 2 s：环境，不是产品。** 夹具服务只在 `localhost` 上监听，Windows 上 Node 解析成 `[::1]`，只监听 IPv6。Firefox 连 `localhost` 时有时先试 127.0.0.1，Windows 上连一个没人监听的本机端口要约 2 s 才失败，然后才换 ::1。WebSocket 每次都中（`new WebSocket` 到 open 恒为约 2.0 s，Edge 0 ms），HTTP 时有时无。服务改为监听全部地址、页面用 `http://127.0.0.1:4173` 后，WS 打开约 6 ms，四路 WS-FLV 首帧 240 ms。（`OTTER_E2E_BASE_URL` 会关掉 Playwright 的 webServer，要自己起 preview，见 tmp/winps/round22.cmd 的写法。）
