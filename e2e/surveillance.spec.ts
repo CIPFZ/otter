@@ -5,7 +5,9 @@
 // the MSE pipeline's, live TS within 1 s, all 16 tiles of the bench within 3 s. Browsers open at most 6 HTTP/1.1 connections per host,
 // which endless HTTP-FLV streams keep: more tiles from one host take WS-FLV (or HTTP/2).
 
+import { execFile } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
+import { loadavg, platform } from 'node:os';
 import type { Browser, Page } from '@playwright/test';
 import { acceptEnvironmentStalls, audioStalls, recordAudioStalls } from './audio-stalls';
 import { expect, test } from './fixtures';
@@ -85,11 +87,30 @@ const geometry = (page: Page): Promise<string> =>
     return `canvas ${c?.width ?? 0}x${c?.height ?? 0} (${px} px per tile, css ${Math.round(c?.clientWidth ?? 0)}x${Math.round(c?.clientHeight ?? 0)}), dpr ${devicePixelRatio}, workers ${(window as unknown as { workersMade: number }).workersMade}, cores ${navigator.hardwareConcurrency}`;
   });
 
+// TEMPORARY (M6 WebKit lost-frame regression, owner 2026-11-02): the machine during a play window:
+// a 2 s `top` delta (macOS), load average, WHEP sessions the fixture still sends to. OTTER_CI_TAG
+// says which CI step this is.
+const TAG = process.env['OTTER_CI_TAG'] ?? 'main';
+const machineLoad = (page: Page): Promise<string> =>
+  new Promise((resolve) => {
+    const whep = page.request.get('/whep/sessions').then((r) => r.text(), () => '?');
+    const finish = (top: string): void => void whep.then((n) => resolve(`[${TAG}] whep sessions ${n}; load ${loadavg().map((x) => x.toFixed(1)).join(' ')}; ${top}`));
+    if (platform() !== 'darwin') return finish('');
+    execFile('top', ['-l', '2', '-s', '2', '-n', '6', '-o', 'cpu', '-stats', 'cpu,th,rsize,command'], { timeout: 8000 }, (_e, out) => {
+      const second = String(out).split(/^Processes:/m).at(-1) ?? '';
+      const cpu = /CPU usage:[^\n]*/.exec(second)?.[0] ?? '';
+      const procs = second.split('\n').filter((l) => /^\s*[\d.]+\s+\d/.test(l)).map((l) => l.trim().replace(/\s+/g, ' ')).join(' | ');
+      finish(`${cpu}; ${procs}`);
+    });
+  });
+
 /** `seconds` of play: per tile media time advanced and the share of frames lost. */
 async function play(page: Page, seconds: number) {
   const before = await tiles(page);
+  const load = machineLoad(page);
   await page.waitForTimeout(seconds * 1000);
   const after = await tiles(page);
+  ciNotice(`surveillance machine (${test.info().title.slice(14, 30)}, attempt ${test.info().retry + 1}): ${await load}`);
   return after.map((t, i) => {
     const b = before[i] as Tile;
     const total = t.total - b.total;
@@ -150,7 +171,7 @@ for (const transport of ['http', 'ws'] as const) {
       ttffNote = `one tile TTFF median ${Math.round(median(one))} ms (${one.map(Math.round).join(' / ')}) vs MSE pipeline ${Math.round(median(ref))} ms (${ref.map(Math.round).join(' / ')}); `;
       test.info().annotations.push({ type: 'ttff', description: `${one.join(' ')} | ${ref.join(' ')}` });
     }
-    ciNotice(`surveillance ${transport}-flv x4 (${k} wall${abNote(ab)}): ${await geometry(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+    ciNotice(`surveillance ${transport}-flv x4 (${k} wall${abNote(ab)}, ${TAG}): ${await geometry(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
     for (const r of rows) expect(r.advanced).toBeGreaterThan(4.5);
     // The lost-frame criterion is the GPU wall's (a 2D wall draws on the main thread: headless Firefox).
     if (k === 'gpu') for (const r of rows) expect(r.lost).toBeLessThanOrEqual(0.05);
@@ -170,7 +191,7 @@ test(`surveillance: four live MPEG-TS streams on WebCodecs (mediabunny reading t
   for (const t of await tiles(page)) expect(t).toMatchObject({ backend: 'webcodecs', format: 'ts', live: true, error: null });
   const rows = await play(page, 5);
   const k = await kind(page);
-  ciNotice(`surveillance live ts x4 (${k} wall${abNote(ab)}${flaky ? `, known flaky, attempt ${test.info().retry + 1}` : ''}): ${await geometry(page)}; TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+  ciNotice(`surveillance live ts x4 (${k} wall${abNote(ab)}, ${TAG}${flaky ? `, known flaky, attempt ${test.info().retry + 1}` : ''}): ${await geometry(page)}; TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
   for (const r of rows) expect(r.advanced).toBeGreaterThan(4.5);
   if (k === 'gpu') for (const r of rows) expect(r.lost).toBeLessThanOrEqual(0.05);
   for (const r of rows) expect(r.ttff ?? Infinity, `${r.tile}: live TS TTFF ≤ 1 s`).toBeLessThanOrEqual(1000);

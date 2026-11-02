@@ -176,6 +176,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, clip: () => Cli
   const path = req.url?.split('?')[0] ?? '';
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Expose-Headers', 'Location');
+  // TEMPORARY (M6 WebKit lost-frame regression, owner 2026-11-02): live sessions, for the notices.
+  if (path === '/whep/sessions') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' }).end(String(sessions.size));
+    return;
+  }
   if (req.method === 'DELETE') {
     sessions.get(path)?.();
     sessions.delete(path);

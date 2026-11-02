@@ -120,6 +120,10 @@ jobs:
       - run: pnpm exec playwright install --with-deps ${{ matrix.browsers }}
       # Public streams (@network) are not deterministic; they run in network-nightly.
       # Each step keeps its notices (tooling/e2e-step.sh: Playwright empties test-results/ per run).
+      # TEMPORARY (M6 WebKit lost-frame regression, owner 2026-11-02): removed when found.
+      - if: ${{ matrix.name == 'webkit' }}
+        name: WebKit surveillance, fresh server, early (temporary)
+        run: sh tooling/ab-webkit.sh early
       - run: STEP=main sh tooling/e2e-step.sh ${{ matrix.projects }} --grep-invert "@network|@bench|@solo"
       # The own HLS engine as it ships: format-hls renames its internal `_` properties at build time
       # (ADR-013); its e2e also run against the built package, not only the source.
@@ -137,8 +141,11 @@ jobs:
       # runner is too small (e2e/multiview.spec.ts: 8+ cores).
       # TEMPORARY (M6 WebKit lost-frame regression A/B, owner 2026-11-02): removed when found.
       - if: ${{ !cancelled() && matrix.name == 'webkit' }}
-        name: WebKit surveillance A/B (temporary)
-        run: sh tooling/ab-webkit.sh
+        name: WebKit surveillance, fresh server, late (temporary)
+        run: sh tooling/ab-webkit.sh late
+      - if: ${{ !cancelled() && matrix.name == 'webkit' }}
+        name: WebKit surveillance, c93d22f at the main step's position (temporary)
+        run: sh tooling/ab-webkit.sh old
       - if: ${{ !cancelled() && matrix.name == 'chromium + firefox' }}
         run: STEP=bench sh tooling/e2e-step.sh --project=desktop-chrome --grep @bench --workers=1
       # The danmaku benchmark on WebKit (the only WebKit there is), alone on the runner: numbers as a
