@@ -76,14 +76,10 @@ export interface SurveillancePlayer {
 /** Browsers' HTTP/1.1 connections per origin (RESEARCH §1): endless HTTP streams keep theirs. */
 const CONNECTIONS_PER_HOST = 6;
 
-// TEMPORARY (M6 WebKit lost-frame regression A/B, owner 2026-11-02; removed when found): the e2e
-// site may switch prewarm / live-only off through this page global. Default: both on.
-const ciSwitch = (name: 'prewarm' | 'liveOnly'): boolean => (globalThis as { __otterCiSwitches?: Partial<Record<string, boolean>> }).__otterCiSwitches?.[name] !== false;
-
 /** The source a tile loads: FLV / TS taken as live unless it says otherwise. */
 function tileSource(s: string | Source): Source {
   const source = typeof s === 'string' ? { src: s } : s;
-  if (!ciSwitch('liveOnly') || source.live !== undefined || (probeFlv(source) === 0 && probeTs(source) === 0)) return source;
+  if (source.live !== undefined || (probeFlv(source) === 0 && probeTs(source) === 0)) return source;
   return { ...source, live: true };
 }
 
@@ -122,7 +118,7 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
   const formats = [createFlvFormat(), createTsFormat(), createHlsFormat(), createFileFormat()];
   // Prewarm: the decode pool's Workers start with the decoder code loaded while the page sets up,
   // not at the first packet. (The AudioWorklet needs the AudioContext, which waits for a gesture: F1.)
-  if (ciSwitch('prewarm')) for (const d of decoders) d.warm?.(options.streams.length);
+  for (const d of decoders) d.warm?.(options.streams.length);
   for (let i = 0; i < options.streams.length; i++) {
     const tile = wall.add(options.labels?.[i] ?? `Camera ${i + 1}`);
     const media = createMediaPlugin<TileState, MediaActionMap>({

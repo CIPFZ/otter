@@ -50,10 +50,14 @@ describe('WHEP fixture sessions', () => {
     const r = await receiver();
     await expect.poll(() => r.packets(), { timeout: 10_000 }).toBeGreaterThan(20);
     // A browser closing the page ends DTLS with a close_notify alert; werift's close() does not
-    // send one, so the stand-in does it (one alert record on its DTLS session), then closes.
+    // send one, so the stand-in does it (one alert record on its DTLS session). The alert is UDP:
+    // closing the receiver's socket right after can drop it on a busy machine (CI f10779c), so the
+    // receiver closes once the sender has stopped, as a page's process outlives its last packets.
+    const at = Date.now();
     await sendCloseNotify(r.pc);
+    await expect.poll(() => r.ended(), { timeout: 2000 }).toBe(1);
+    expect(Date.now() - at).toBeLessThanOrEqual(1000);
     await r.pc.close();
-    await expect.poll(() => r.ended(), { timeout: 1000 }).toBe(1);
     r.server.close();
     expect(r.ended()).toBe(1);
   }, 20_000);
