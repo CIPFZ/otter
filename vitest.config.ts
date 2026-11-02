@@ -1,9 +1,13 @@
 import { fileURLToPath } from 'node:url';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vitest/config';
 
 const packagesDir = fileURLToPath(new URL('./packages/', import.meta.url));
 
 export default defineConfig({
+  // .svelte files (the Svelte bindings' component): compiled for the DOM in happy-dom tests and for
+  // the server in node ones.
+  plugins: [svelte()],
   resolve: {
     // Tests run against package sources; no build needed.
     alias: [

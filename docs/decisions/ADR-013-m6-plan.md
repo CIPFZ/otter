@@ -100,6 +100,21 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
     - Shaka / mpegts.js 引擎的创建**没有加守卫**：引擎要 `<video>` 元素才建得出来，服务端走不到这里，按 `window` 守卫只是猜测。现有引擎单测本身就在没有 window 的 Node 里跑。
 - 示例页：basic、vod、surveillance 各一页（`e2e/site/react-*.html`），构建时在 Node 里服务端渲染、浏览器里水合；e2e 查无水合不匹配、能播放、hook 跟随。
 
+### 9. 第三批：Vue 与 Svelte（2026-11-02 负责人：范围与 React 一致）
+
+- `@otter-player/vue`：`OtterPlayer`（setup 函数组件，以选项对象导出：顶层不调用 `defineComponent`，导入时什么都不执行）、`useOtterPlayer`、`useOtterState`（store、ref 或 getter；服务端读初始状态，挂载后才订阅）。
+- `@otter-player/svelte`：
+  - 主入口是纯 TypeScript，不导入 Svelte：`otterPlayer` action 与 `otterState` store（Svelte store 约定）。
+  - 组件 `OtterPlayer.svelte` 以源码经 `svelte` 导出条件发布，由宿主的工具链编译，是 Svelte 库的通行做法。
+  - store 不判断环境（那会读 `document`），服务端由 Svelte 订阅后立刻退订。
+- 示例页三框架 × 三 preset，九页，都在构建时于 Node 里服务端渲染：`e2e/framework-ssr.ts` 取代 react-ssr.ts。`e2e/bindings.spec.ts` 九条判定：
+  - 送出的 HTML 已带标记；
+  - 水合保留了服务端的盒子元素（解析时打标记，水合后检查）；
+  - 框架报告的水合错误为空；
+  - 能播放，状态绑定跟随 store。
+- Node 里的 SSR 用例每个框架一条，陷阱只计 Otter 代码的读取：Vue 与 Svelte 自身的 `typeof window` / `document` 检查不算。`check-side-effects` 的服务端导入检查也这样排除框架 peer 的读取。
+- Svelte 的水合在 e2e 里查，不在单测里：单测环境里组件只按 DOM 编译一次。
+
 ## 代价
 
 - 体积收口要动 SPF 的 L3 拷贝（候选 1）。本地改动变多，UPSTREAM.json 要记清楚，以后同步上游时要合并。

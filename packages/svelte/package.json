@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/svelte",
   "version": "0.0.0",
-  "description": "Svelte bindings (thin wrappers over the Web Components).",
+  "description": "Svelte bindings: an action and a component hosting a preset-made player, and a store over its state (SSR-safe).",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -10,6 +10,10 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./OtterPlayer.svelte": {
+      "svelte": "./src/OtterPlayer.svelte",
+      "default": "./src/OtterPlayer.svelte"
     }
   },
   "files": [
@@ -18,5 +22,11 @@
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  },
+  "devDependencies": {
+    "svelte": "5.57.3"
+  },
+  "peerDependencies": {
+    "svelte": ">=5"
   }
 }

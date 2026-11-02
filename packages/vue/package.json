@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/vue",
   "version": "0.0.0",
-  "description": "Vue bindings (thin composables and component wrappers over the Web Components).",
+  "description": "Vue bindings: a component hosting a preset-made player, and composables over its store (SSR-safe).",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,
@@ -18,5 +18,11 @@
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
+  },
+  "devDependencies": {
+    "vue": "3.5.44"
+  },
+  "peerDependencies": {
+    "vue": ">=3.3"
   }
 }

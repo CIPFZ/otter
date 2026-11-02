@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import { liveFlvPlugin } from './live-flv.ts';
 import { liveTsPlugin } from './live-ts.ts';
-import { reactSsrPlugin } from './react-ssr.ts';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { frameworkSsrPlugin } from './framework-ssr.ts';
 import { liveHlsPlugin } from './live-hls.ts';
 import { throttlePlugin } from './throttle.ts';
 import { whepPlugin } from './whep.ts';
@@ -25,8 +26,10 @@ export default defineConfig({
     whepPlugin(`${mediaDir}whep/clip.ivf`),
     liveHlsPlugin(`${mediaDir}frames/hls-ladder`),
     throttlePlugin(mediaDir),
-    // The inner SSR server (react-ssr.ts) loads this config too: without the plugin itself.
-    ...(process.env['OTTER_SSR_INNER'] === '1' ? [] : [reactSsrPlugin()]),
+    // The Svelte bindings' component and the Svelte example app.
+    svelte(),
+    // The inner SSR server (framework-ssr.ts) loads this config too: without the plugin itself.
+    ...(process.env['OTTER_SSR_INNER'] === '1' ? [] : [frameworkSsrPlugin()]),
     // decoder-wasm-hevc loads its WASM next to its own module (otter.assets): in the built site
     // that module lives in assets/.
     {
@@ -50,6 +53,7 @@ export default defineConfig({
       { find: /^@otter-player\/engine-pipeline\/demux$/, replacement: `${packagesDir}engine-pipeline/src/flv-demux.ts` },
       { find: /^@otter-player\/presentation\/picture$/, replacement: `${packagesDir}presentation/src/picture.ts` },
       { find: /^@otter-player\/presentation\/single-audio$/, replacement: `${packagesDir}presentation/src/single-audio.ts` },
+      { find: /^@otter-player\/svelte\/OtterPlayer\.svelte$/, replacement: `${packagesDir}svelte/src/OtterPlayer.svelte` },
       { find: /^@otter-player\/presets\/([a-z0-9-]+)$/, replacement: `${packagesDir}presets/src/$1.ts` },
       // OTTER_E2E_DIST=format-hls,...: those packages from their built dist/ (what ships: format-hls
       // renames its internal `_` properties at build time, ADR-013); everything else from source.
@@ -78,6 +82,12 @@ export default defineConfig({
         'react-basic': fileURLToPath(new URL('./site/react-basic.html', import.meta.url)),
         'react-vod': fileURLToPath(new URL('./site/react-vod.html', import.meta.url)),
         'react-surveillance': fileURLToPath(new URL('./site/react-surveillance.html', import.meta.url)),
+        'vue-basic': fileURLToPath(new URL('./site/vue-basic.html', import.meta.url)),
+        'vue-vod': fileURLToPath(new URL('./site/vue-vod.html', import.meta.url)),
+        'vue-surveillance': fileURLToPath(new URL('./site/vue-surveillance.html', import.meta.url)),
+        'svelte-basic': fileURLToPath(new URL('./site/svelte-basic.html', import.meta.url)),
+        'svelte-vod': fileURLToPath(new URL('./site/svelte-vod.html', import.meta.url)),
+        'svelte-surveillance': fileURLToPath(new URL('./site/svelte-surveillance.html', import.meta.url)),
       },
     },
   },

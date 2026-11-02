@@ -12,7 +12,8 @@
 // - no top-level class extending a browser-only global (`class X extends HTMLElement`): esbuild
 //   drops them as pure, yet they throw on a server at import;
 // - imported in this Node with window, document, AudioContext, ... absent (read traps), the entry
-//   loads without an error and without reading any of them.
+//   loads without an error and without reading any of them (reads from a framework peer's own code,
+//   e.g. Vue's runtime-dom, are the framework's and not counted).
 // The tree-shaking rule applies to every entry; on a sub-path, top-level values that survive are
 // allowed only when declared in one of the files of SUBPATH_PURE_VALUES (pure tables that do not
 // touch the browser, ADR-013 §8): each one is traced to its source file through the `//#region`
@@ -167,7 +168,9 @@ const probe = `
 const touched = [];
 for (const name of ${JSON.stringify(TRAPS)}) {
   if (name in globalThis) continue;
-  Object.defineProperty(globalThis, name, { configurable: true, get() { touched.push(name); return undefined; } });
+  // Reads from a framework peer's own module code (Vue's runtime-dom checks \`typeof document\` at
+  // import) are the framework's: only reads from Otter's files count.
+  Object.defineProperty(globalThis, name, { configurable: true, get() { const at = String(new Error().stack).split('\\n')[2] ?? ''; if (!at.includes('/node_modules/')) touched.push(name); return undefined; } });
 }
 const out = [];
 for (const [dir, entry] of JSON.parse(process.argv[1])) {
