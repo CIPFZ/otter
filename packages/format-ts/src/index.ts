@@ -30,6 +30,10 @@ export function probeTs(source: Source): number {
   return TS_EXT.test(source.src) ? 0.8 : 0;
 }
 
+// TEMPORARY (M6 WebKit lost-frame regression A/B, owner 2026-11-02; removed when found): the e2e
+// site may switch prewarm / live-only off through this page global. Default: both on.
+const ciSwitch = (name: 'liveOnly'): boolean => (globalThis as { __otterCiSwitches?: Partial<Record<string, boolean>> }).__otterCiSwitches?.[name] !== false;
+
 export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
   return {
     id: 'ts',
@@ -38,7 +42,7 @@ export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
       const out: BackendKind[] = [];
       if (caps.mediaSource || caps.managedMediaSource) out.push('mse');
       // The WebCodecs demuxer is live-only (ADR-013 §7): VOD FLV / TS stays on MSE in 1.0.
-      if (caps.webCodecs && source.live === true) out.push('webcodecs');
+      if (caps.webCodecs && (source.live === true || !ciSwitch('liveOnly'))) out.push('webcodecs');
       return out;
     },
     createEngine: (ctx) => {
@@ -48,7 +52,7 @@ export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
       return withAdapterFallback(own, adapter, { media: ctx.media });
     },
     async createDemuxer(ctx) {
-      if (ctx.source.live !== true) throw createError({ type: 'other', details: 'liveOnly', fatal: true, recoverable: false, message: 'TS on WebCodecs plays live streams only (set `live: true`; VOD goes through MSE)' });
+      if (ctx.source.live !== true && ciSwitch('liveOnly')) throw createError({ type: 'other', details: 'liveOnly', fatal: true, recoverable: false, message: 'TS on WebCodecs plays live streams only (set `live: true`; VOD goes through MSE)' });
       if (typeof ctx.source.src !== 'string') throw createError({ type: 'other', details: 'notAUrl', fatal: true, recoverable: false, message: 'format-ts plays live stream URLs (files: format-file)' });
       const { openLiveTs } = await import('@otter-player/demux-mediabunny');
       const url = new URL(ctx.source.src, typeof location === 'object' ? location.href : undefined).href;

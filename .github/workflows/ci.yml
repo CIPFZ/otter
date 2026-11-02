@@ -135,6 +135,10 @@ jobs:
         run: STEP=solo OTTER_REPEAT_F14=${{ inputs.repeat || '1' }} sh tooling/e2e-step.sh ${{ matrix.projects }} --grep @solo --workers=1
       # Benchmarks need the runner to themselves (one worker); they skip, with a notice, where the
       # runner is too small (e2e/multiview.spec.ts: 8+ cores).
+      # TEMPORARY (M6 WebKit lost-frame regression A/B, owner 2026-11-02): removed when found.
+      - if: ${{ !cancelled() && matrix.name == 'webkit' }}
+        name: WebKit surveillance A/B (temporary)
+        run: sh tooling/ab-webkit.sh
       - if: ${{ !cancelled() && matrix.name == 'chromium + firefox' }}
         run: STEP=bench sh tooling/e2e-step.sh --project=desktop-chrome --grep @bench --workers=1
       # The danmaku benchmark on WebKit (the only WebKit there is), alone on the runner: numbers as a

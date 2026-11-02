@@ -78,7 +78,12 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
     - 在 Node 里逐个导入，拦截 `window`、`document`、`AudioContext` 等浏览器全局的读取，报错或读取都算失败；
     - 顶层 `class … extends <浏览器独有全局>` 也算失败，esbuild 会把它当作纯代码删掉，所以摇树判定看不见它。
     
-    「摇树后为空」仍只要求包入口：sub-path 里有纯的顶层值（vendored 的 mp4 表、`Object.freeze` 的常量、tv 的按键表），不影响服务端。peerDependencies（react）的静态导入不算副作用。
+    「摇树后为空」对全部入口都要求；sub-path 里只放行三处纯的顶层值，按入口与源文件列白名单（`check-side-effects.ts` 的 `SUBPATH_PURE_VALUES`，2026-11-02 负责人），别处新增的照样报告：
+    - `pipeline/transmux`、`engine-pipeline/demux`：hls.js 的 MP4 盒子表与写盒子的类（vendored，L3，`mp4-generator.ts`、`mp4-tools.ts`），加 mpegts.js AMF 解析器的字节序探测（一个对 ArrayBuffer 的立即执行函数，`amf-parser.ts`）。改成摇树后为空要改 vendored 代码，同步上游时要合并。
+    - `pipeline/captions`：CEA-608 解析器 `Object.freeze` 的默认笔样式（vendored）。
+    - `presets/tv`：TV 按键表，由 input 的默认按键表去掉上下键生成（`tv.ts`，连带 `input/src/index.ts` 的 `DEFAULT_HOTKEYS`）。
+    
+    它们只用 ArrayBuffer、`Object.freeze` 这类服务端也有的东西，服务端导入检查照样通过。来源靠构建产物里的 `//#region` 注释定位。peerDependencies（react）的静态导入不算副作用。
   - 调用时碰浏览器的三处：
     - `defineElements()` 不传 registry 时，服务端什么也不做；
     - TTML 解析在服务端给出明确的错误，不再是 imscJS 里的 ReferenceError；

@@ -289,6 +289,8 @@ test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
   const knownIssue = (i: number): boolean =>
     info.project.name === 'emulated-android' && sinkStats.some((x) => x.wall >= (walls[i] as number) - 1400 && x.wall <= (walls[i] as number) + 200 && x.ahead < 0 && x.under > 0 && x.dq >= 17);
   const known = silent.filter((i) => !environment.includes(i) && knownIssue(i));
+  // Every CI report says how often the signature fired (owner 2026-11-02; tally in RESEARCH §1 F14).
+  if (info.project.name === 'emulated-android') ciNotice(`audio worklet 30 s: F14 signature fired ${known.length} times (silent seconds with the decode queue at its cap and the sink dry)`);
   if (known.length > 0) {
     info.annotations.push({ type: 'issue', description: `M6 F14 known issue (emulated Android): silent seconds ${known.join(', ')} with the decode queue at its cap and the sink dry` });
     ciNotice(`audio worklet 30 s: F14 已知问题 (emulated Android, decode queue at its cap, sink dry): silent seconds ${known.join(', ')} not counted`);

@@ -13,8 +13,11 @@
 //   drops them as pure, yet they throw on a server at import;
 // - imported in this Node with window, document, AudioContext, ... absent (read traps), the entry
 //   loads without an error and without reading any of them.
-// The tree-shaking rule applies to the index entries (sub-paths may keep pure top-level values,
-// e.g. vendored tables). A package's peerDependencies (react) are static imports by design.
+// The tree-shaking rule applies to every entry; on a sub-path, top-level values that survive are
+// allowed only when declared in one of the files of SUBPATH_PURE_VALUES (pure tables that do not
+// touch the browser, ADR-013 §8): each one is traced to its source file through the `//#region`
+// comments of the built chunk. New ones elsewhere are still reported. A package's
+// peerDependencies (react) are static imports by design.
 //
 // CSS-only skins declare `"sideEffects": ["*.css"]` (ADR-002, Q7). For them the gate checks that
 // the JS output is empty: dist/ must contain no JavaScript at all.
@@ -22,7 +25,7 @@
 //   node scripts/check-side-effects.ts        (run after `pnpm build`)
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { build } from 'esbuild';
 import { topLevelBrowserClasses } from './lib/dom-classes.ts';
 
@@ -59,6 +62,52 @@ const missing = [
 if (missing.length > 0) {
   console.error(`✗ not built: ${missing.join(', ')}. Run \`pnpm build\` first.`);
   process.exit(1);
+}
+
+/**
+ * Per sub-path entry, the source files whose top-level values may survive tree-shaking there
+ * (ADR-013 §8): hls.js's MP4 box tables and writer (vendored, L3), the CEA-608 parser's frozen pen
+ * styles (vendored), and the TV preset's key map built from input's default key map.
+ */
+// (mpegts.js's AMF parser adds its endianness probe, an IIFE over an ArrayBuffer, to the same two entries.)
+const MP4_TABLES = ['vendor/hls.js/src/remux/mp4-generator.ts', 'vendor/hls.js/src/utils/mp4-tools.ts', 'vendor/mpegts.js/src/demux/amf-parser.ts'];
+const SUBPATH_PURE_VALUES: Readonly<Record<string, readonly string[]>> = {
+  'pipeline/transmux': MP4_TABLES,
+  'engine-pipeline/demux': MP4_TABLES,
+  'pipeline/captions': ['packages/pipeline/src/vendor/hls.js/cea-608-parser.ts'],
+  'presets/tv': ['packages/presets/src/tv.ts', 'packages/input/src/index.ts'],
+};
+
+/** The source file (repo-relative, from the chunk's `//#region`) that declares `name` at the top level of one of `files`. */
+function declaredIn(name: string, files: readonly string[]): string | undefined {
+  const decl = new RegExp(`^(?:export\\s+)?(?:var|let|const|function|class)\\s+${name.replace(/\$/g, '\\$')}\\b`);
+  for (const file of files) {
+    const lines = readFileSync(file, 'utf8').split('\n');
+    const at = lines.findIndex((l) => decl.test(l));
+    if (at < 0) continue;
+    for (let i = at; i >= 0; i--) {
+      // Past the end of a region: not in one (the chunk's own code).
+      if (i < at && /^\/\/#endregion/.test(lines[i] as string)) break;
+      const m = /^\/\/#region (.+)$/.exec(lines[i] as string);
+      // Region paths are relative to the package (packages/<name>/dist/<chunk>.js).
+      if (m !== null) return relative(root, join(dirname(file), '..', (m[1] as string).trim()));
+    }
+    return relative(root, file);
+  }
+  return undefined;
+}
+
+/** What survives tree-shaking in a sub-path entry outside SUBPATH_PURE_VALUES (empty: allowed). */
+function unexpectedSubpathCode(entry: string, code: string, files: readonly string[]): string[] {
+  const allowed = SUBPATH_PURE_VALUES[entry] ?? [];
+  const out: string[] = [];
+  for (const line of code.split('\n')) {
+    if (!/^\S/.test(line) || /^[\]})]/.test(line)) continue;
+    const name = /^(?:var|let|const|function|class)\s+([\w$]+)/.exec(line)?.[1];
+    const from = name === undefined ? undefined : declaredIn(name, files);
+    if (from === undefined || !allowed.includes(from.split(sep).join('/'))) out.push(`${line.slice(0, 100)}${from === undefined ? '' : `   (${from})`}`);
+  }
+  return out;
 }
 
 const peersOf = (dir: string): Set<string> =>
@@ -98,6 +147,11 @@ for (const { dir, entry } of entries) {
     .replace(/^\s*\/\/.*$/gm, '')
     .trim();
   if (code !== '' && isIndex) offenders.push({ dir, code });
+  if (code !== '' && !isIndex) {
+    const files = Object.keys(result.metafile?.inputs ?? {}).map((f) => join(root, f)).filter((f) => existsSync(f));
+    const unexpected = unexpectedSubpathCode(dir, code, files);
+    if (unexpected.length > 0) offenders.push({ dir, code: `top-level code outside the allowed pure values (ADR-013 §8):\n${unexpected.join('\n')}` });
+  }
   // The static graph's own files: browser-only base classes at their top level.
   for (const input of Object.keys(result.metafile?.inputs ?? {})) {
     const file = join(root, input);
@@ -150,5 +204,5 @@ if (offenders.length > 0) {
   process.exit(1);
 }
 console.log(
-  `✓ side effects: ${entries.filter((e) => !e.dir.includes('/')).length} JS packages tree-shake to nothing when unused; ${entries.length} entries (indexes and sub-paths) import on a server without browser globals; ${skins.length} skins ship no JS`,
+  `✓ side effects: ${entries.filter((e) => !e.dir.includes('/')).length} JS packages tree-shake to nothing when unused (sub-paths: only the allowed pure values, ${Object.keys(SUBPATH_PURE_VALUES).length} entries); ${entries.length} entries (indexes and sub-paths) import on a server without browser globals; ${skins.length} skins ship no JS`,
 );

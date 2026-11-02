@@ -27,6 +27,10 @@ declare global {
 }
 
 const params = new URLSearchParams(location.search);
+// TEMPORARY (M6 WebKit lost-frame A/B, owner 2026-11-02): ?ab=off|prewarm|live|on switches the
+// surveillance preset's prewarm and live-only (packages/presets/src/surveillance.ts, ciSwitch).
+const ab = params.get('ab');
+if (ab !== null) (globalThis as { __otterCiSwitches?: Record<string, boolean> }).__otterCiSwitches = { prewarm: ab === 'on' || ab === 'prewarm', liveOnly: ab === 'on' || ab === 'live' };
 const src = params.get('src') ?? '';
 const kind = params.get('preset');
 const container = document.getElementById('player') as HTMLElement;

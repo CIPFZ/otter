@@ -19,12 +19,28 @@ const ciNotice = (text: string): void => {
 type Tile = { label: string; currentTime: number; backend: string | null; format: string | null; live: boolean; error: unknown; ttff: number | null; dropped: number; total: number; errors: string[]; messages: string[]; errorAt: number[] };
 type Log = { errors: string[][]; messages: string[][]; errorAt: number[][]; stepsAt: { at: number; reason: string }[][] };
 
-async function wall(page: Page, streams: readonly string[]): Promise<void> {
-  // Each tile's errors (audioUnderrun counted apart) and route steps, with when they came.
+// TEMPORARY (M6 WebKit lost-frame A/B, owner 2026-11-02): OTTER_CI_AB=1 runs the four-tile cases
+// once per switch group (?ab=off|prewarm|live|on: prewarm / live-only off or on); unset, once as shipped.
+const AB_GROUPS: readonly (string | undefined)[] = process.env['OTTER_CI_AB'] === '1' ? ['off', 'prewarm', 'live', 'on'] : [undefined];
+const abQuery = (g: string | undefined): string => (g === undefined ? '' : `&ab=${g}`);
+const abNote = (g: string | undefined): string => (g === undefined ? '' : `, ab ${g}`);
+
+async function wall(page: Page, streams: readonly string[], ab?: string): Promise<void> {
+  // Each tile's errors (audioUnderrun counted apart) and route steps, with when they came; the
+  // Workers the page starts (decode pool, render).
   await page.addInitScript(() => {
     (window as unknown as { tileLog: Log }).tileLog = { errors: [], messages: [], errorAt: [], stepsAt: [] };
+    const w = window as unknown as { workersMade: number };
+    w.workersMade = 0;
+    const Native = window.Worker;
+    window.Worker = class extends Native {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        w.workersMade++;
+      }
+    };
   });
-  await page.goto(`/presets.html?preset=surveillance&streams=${streams.map(encodeURIComponent).join(',')}`);
+  await page.goto(`/presets.html?preset=surveillance&streams=${streams.map(encodeURIComponent).join(',')}${abQuery(ab)}`);
   test.skip(!(await page.evaluate(() => typeof VideoDecoder === 'function')), 'no WebCodecs here');
   await page.evaluate(() => {
     const log = (window as unknown as { tileLog: Log }).tileLog;
@@ -60,6 +76,15 @@ const tiles = (page: Page): Promise<Tile[]> =>
 
 const kind = (page: Page): Promise<string> => page.evaluate(() => (window.preset as SurveillancePlayer).wall.kind);
 
+/** What the wall draws here (M6 WebKit regression): canvas pixels per tile, DPR, Workers, cores. */
+const geometry = (page: Page): Promise<string> =>
+  page.evaluate(() => {
+    const c = document.querySelector('[data-otter-multiview] canvas') as HTMLCanvasElement | null;
+    const n = (window.preset as SurveillancePlayer).tiles.length;
+    const px = c === null ? 0 : Math.round((c.width * c.height) / n);
+    return `canvas ${c?.width ?? 0}x${c?.height ?? 0} (${px} px per tile, css ${Math.round(c?.clientWidth ?? 0)}x${Math.round(c?.clientHeight ?? 0)}), dpr ${devicePixelRatio}, workers ${(window as unknown as { workersMade: number }).workersMade}, cores ${navigator.hardwareConcurrency}`;
+  });
+
 /** `seconds` of play: per tile media time advanced and the share of frames lost. */
 async function play(page: Page, seconds: number) {
   const before = await tiles(page);
@@ -94,20 +119,21 @@ async function mseTtff(browser: Browser): Promise<number> {
 }
 
 /** TTFF of a one-tile surveillance wall, in a page of its own. */
-async function oneTileTtff(browser: Browser, url: string): Promise<number> {
+async function oneTileTtff(browser: Browser, url: string, ab?: string): Promise<number> {
   const one = await browser.newPage();
-  await one.goto(`/presets.html?preset=surveillance&streams=${encodeURIComponent(url)}`);
+  await one.goto(`/presets.html?preset=surveillance&streams=${encodeURIComponent(url)}${abQuery(ab)}`);
   await expect.poll(() => one.evaluate(() => (window.preset as SurveillancePlayer).tiles[0]?.store.getState().qoe.ttff ?? null), { timeout: 20_000 }).not.toBeNull();
   const ttff = (await one.evaluate(() => (window.preset as SurveillancePlayer).tiles[0]?.store.getState().qoe.ttff)) as number;
   await one.close();
   return ttff;
 }
 
+for (const ab of AB_GROUPS)
 for (const transport of ['http', 'ws'] as const) {
-  test(`surveillance: four ${transport === 'http' ? 'HTTP' : 'WS'}-FLV live streams on WebCodecs, each in real time${transport === 'http' ? '; one tile\'s TTFF against the MSE pipeline' : ''}`, async ({ page, browser, baseURL }) => {
+  test(`surveillance: four ${transport === 'http' ? 'HTTP' : 'WS'}-FLV live streams on WebCodecs, each in real time${transport === 'http' ? '; one tile\'s TTFF against the MSE pipeline' : ''}${ab === undefined ? '' : ` [ab ${ab}]`}`, async ({ page, browser, baseURL }) => {
     test.setTimeout(90_000);
     const url = transport === 'http' ? '/live/stream.flv' : `${(baseURL as string).replace(/^http/, 'ws')}/live/stream.flv`;
-    await wall(page, Array(4).fill(url));
+    await wall(page, Array(4).fill(url), ab);
     await expect.poll(async () => (await tiles(page)).map((t) => t.currentTime > 1), { timeout: 30_000 }).toEqual([true, true, true, true]);
     for (const t of await tiles(page)) expect(t).toMatchObject({ backend: 'webcodecs', format: 'flv', live: true, error: null });
     const rows = await play(page, 5);
@@ -119,12 +145,12 @@ for (const transport of ['http', 'ws'] as const) {
       // TTFF like for like, one stream each: a one-tile wall against the MSE player, three of each.
       for (let n = 0; n < 3; n++) {
         ref.push(await mseTtff(browser));
-        one.push(await oneTileTtff(browser, '/live/stream.flv'));
+        one.push(await oneTileTtff(browser, '/live/stream.flv', ab));
       }
       ttffNote = `one tile TTFF median ${Math.round(median(one))} ms (${one.map(Math.round).join(' / ')}) vs MSE pipeline ${Math.round(median(ref))} ms (${ref.map(Math.round).join(' / ')}); `;
       test.info().annotations.push({ type: 'ttff', description: `${one.join(' ')} | ${ref.join(' ')}` });
     }
-    ciNotice(`surveillance ${transport}-flv x4 (${k} wall): ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+    ciNotice(`surveillance ${transport}-flv x4 (${k} wall${abNote(ab)}): ${await geometry(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
     for (const r of rows) expect(r.advanced).toBeGreaterThan(4.5);
     // The lost-frame criterion is the GPU wall's (a 2D wall draws on the main thread: headless Firefox).
     if (k === 'gpu') for (const r of rows) expect(r.lost).toBeLessThanOrEqual(0.05);
@@ -132,18 +158,19 @@ for (const transport of ['http', 'ws'] as const) {
   });
 }
 
-test('surveillance: four live MPEG-TS streams on WebCodecs (mediabunny reading the stream as it arrives), each in real time', async ({ page, browserName }) => {
+for (const ab of AB_GROUPS)
+test(`surveillance: four live MPEG-TS streams on WebCodecs (mediabunny reading the stream as it arrives), each in real time${ab === undefined ? '' : ` [ab ${ab}]`}`, async ({ page, browserName }) => {
   test.setTimeout(90_000);
   // Known flaky on CI WebKit (owner 2026-10-30, RESEARCH §1): the first attempt lost 5.3 % / played
   // 4.49 s of 5 on 2a8ac9a, the retry passed. Two more red runs in the next five CI runs make it a defect.
   const flaky = browserName === 'webkit';
   if (flaky) test.info().annotations.push({ type: 'flaky', description: 'CI WebKit live TS x4: lost 5.3 % (safari) / played 4.49 s (iphone) on the first attempt at 2a8ac9a; RESEARCH §1' });
-  await wall(page, Array(4).fill('/live/stream.ts'));
+  await wall(page, Array(4).fill('/live/stream.ts'), ab);
   await expect.poll(async () => (await tiles(page)).map((t) => t.currentTime > 1), { timeout: 30_000 }).toEqual([true, true, true, true]);
   for (const t of await tiles(page)) expect(t).toMatchObject({ backend: 'webcodecs', format: 'ts', live: true, error: null });
   const rows = await play(page, 5);
   const k = await kind(page);
-  ciNotice(`surveillance live ts x4 (${k} wall${flaky ? `, known flaky, attempt ${test.info().retry + 1}` : ''}): TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+  ciNotice(`surveillance live ts x4 (${k} wall${abNote(ab)}${flaky ? `, known flaky, attempt ${test.info().retry + 1}` : ''}): ${await geometry(page)}; TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
   for (const r of rows) expect(r.advanced).toBeGreaterThan(4.5);
   if (k === 'gpu') for (const r of rows) expect(r.lost).toBeLessThanOrEqual(0.05);
   for (const r of rows) expect(r.ttff ?? Infinity, `${r.tile}: live TS TTFF ≤ 1 s`).toBeLessThanOrEqual(1000);
