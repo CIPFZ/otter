@@ -1,9 +1,17 @@
-// The surveillance preset on FLV live streams (ADR-013 §7): HTTP-FLV and WS-FLV through the
-// pipeline's FLV samples into the WebCodecs backend, tiles on one wall. TTFF against the MSE
-// pipeline on the same stream; real time and lost frames as the wall's acceptance (ADR-008 §7: GPU
-// walls). TTFF (SPEC §19 surveillance row, owner 2026-10-30): one FLV tile's median within 300 ms of
-// the MSE pipeline's, live TS within 1 s, all 16 tiles of the bench within 3 s. Browsers open at most 6 HTTP/1.1 connections per host,
-// which endless HTTP-FLV streams keep: more tiles from one host take WS-FLV (or HTTP/2).
+// The surveillance preset on live streams (ADR-013 §7): HTTP-FLV and WS-FLV through the pipeline's
+// FLV samples, live MPEG-TS through mediabunny, into the WebCodecs backend, tiles on one wall.
+//
+// Two kinds of case per transport (owner 2026-11-02, ADR-013 §7):
+// - function, in the main step: the four tiles play on WebCodecs; a click focuses one tile, which
+//   alone has sound; a 7th HTTP stream to one host is warned about (tooManyConnectionsPerHost).
+// - measurement, @solo (one worker, its own preview server: ADR-008 §7, a benchmark has the runner
+//   to itself): real time and lost frames (GPU walls), and TTFF (SPEC §19 surveillance row, owner
+//   2026-10-30): one FLV tile's median within 300 ms of the MSE pipeline's, live TS within 1 s, all
+//   16 tiles of the @bench within 3 s. In the main step these swung with the runner's load (CI
+//   macOS, M6 RESEARCH §1).
+//
+// Browsers open at most 6 HTTP/1.1 connections per host, which endless HTTP-FLV streams keep: more
+// tiles from one host take WS-FLV (or HTTP/2).
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { loadavg } from 'node:os';
@@ -17,14 +25,43 @@ const ciNotice = (text: string): void => {
   appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
 };
 
-type Tile = { label: string; currentTime: number; backend: string | null; format: string | null; live: boolean; error: unknown; ttff: number | null; dropped: number; total: number; errors: string[]; messages: string[]; errorAt: number[] };
+type Tile = { label: string; muted: boolean; currentTime: number; backend: string | null; format: string | null; live: boolean; error: unknown; ttff: number | null; dropped: number; total: number; errors: string[]; messages: string[]; errorAt: number[] };
 type Log = { errors: string[][]; messages: string[][]; errorAt: number[][]; stepsAt: { at: number; reason: string }[][] };
 
 async function wall(page: Page, streams: readonly string[]): Promise<void> {
   // Each tile's errors (audioUnderrun counted apart) and route steps, with when they came; the
   // Workers the page starts (decode pool, render).
   await page.addInitScript(() => {
-    (window as unknown as { tileLog: Log }).tileLog = { errors: [], messages: [], errorAt: [], stepsAt: [] };
+    const log: Log = { errors: [], messages: [], errorAt: [], stepsAt: [] };
+    (window as unknown as { tileLog: Log }).tileLog = log;
+    // The tiles' errors and route steps from the moment the page sets window.preset: a warning
+    // said while the wall starts (tooManyConnectionsPerHost) comes before the load event.
+    let preset: unknown;
+    Object.defineProperty(window, 'preset', {
+      configurable: true,
+      get: () => preset,
+      set(p: SurveillancePlayer) {
+        preset = p;
+        p.tiles.forEach((t, i) => {
+          const errors: string[] = (log.errors[i] = []);
+          const messages: string[] = (log.messages[i] = []);
+          const errorAt: number[] = (log.errorAt[i] = []);
+          const stepsAt: { at: number; reason: string }[] = (log.stepsAt[i] = []);
+          t.qoe.on('error', (e) => {
+            const err = (e as { error: { details: string; message?: string } }).error;
+            errors.push(err.details);
+            messages.push(`${err.details}: ${err.message ?? ''}`);
+            errorAt.push(performance.now());
+          });
+          t.store.select(
+            (st) => st.route?.steps,
+            (steps, prev) => {
+              for (const x of (steps ?? []).slice(prev?.length ?? 0)) stepsAt.push({ at: performance.now(), reason: x.reason });
+            },
+          );
+        });
+      },
+    });
     const w = window as unknown as { workersMade: number };
     w.workersMade = 0;
     const Native = window.Worker;
@@ -37,27 +74,6 @@ async function wall(page: Page, streams: readonly string[]): Promise<void> {
   });
   await page.goto(`/presets.html?preset=surveillance&streams=${streams.map(encodeURIComponent).join(',')}`);
   test.skip(!(await page.evaluate(() => typeof VideoDecoder === 'function')), 'no WebCodecs here');
-  await page.evaluate(() => {
-    const log = (window as unknown as { tileLog: Log }).tileLog;
-    (window.preset as SurveillancePlayer).tiles.forEach((t, i) => {
-      const errors: string[] = (log.errors[i] = []);
-      const messages: string[] = (log.messages[i] = []);
-      const errorAt: number[] = (log.errorAt[i] = []);
-      const stepsAt: { at: number; reason: string }[] = (log.stepsAt[i] = []);
-      t.qoe.on('error', (p) => {
-        const e = (p as { error: { details: string; message?: string } }).error;
-        errors.push(e.details);
-        messages.push(`${e.details}: ${e.message ?? ''}`);
-        errorAt.push(performance.now());
-      });
-      t.store.select(
-        (s) => s.route?.steps,
-        (steps, prev) => {
-          for (const st of (steps ?? []).slice(prev?.length ?? 0)) stepsAt.push({ at: performance.now(), reason: st.reason });
-        },
-      );
-    });
-  });
 }
 
 const tiles = (page: Page): Promise<Tile[]> =>
@@ -65,7 +81,7 @@ const tiles = (page: Page): Promise<Tile[]> =>
     (window.preset as SurveillancePlayer).tiles.map((t, i) => {
       const s = t.store.getState();
       const log = (window as unknown as { tileLog: Log }).tileLog;
-      return { label: t.label, currentTime: s.currentTime, backend: s.backend, format: s.format, live: s.live, error: s.error, ttff: s.qoe.ttff, dropped: s.qoe.droppedFrames, total: s.qoe.totalFrames, errors: log.errors[i] ?? [], messages: log.messages[i] ?? [], errorAt: log.errorAt[i] ?? [] };
+      return { label: t.label, muted: s.muted, currentTime: s.currentTime, backend: s.backend, format: s.format, live: s.live, error: s.error, ttff: s.qoe.ttff, dropped: s.qoe.droppedFrames, total: s.qoe.totalFrames, errors: log.errors[i] ?? [], messages: log.messages[i] ?? [], errorAt: log.errorAt[i] ?? [] };
     }),
   );
 
@@ -142,18 +158,41 @@ async function oneTileTtff(browser: Browser, url: string): Promise<number> {
   return ttff;
 }
 
-for (const transport of ['http', 'ws'] as const) {
-  test(`surveillance: four ${transport === 'http' ? 'HTTP' : 'WS'}-FLV live streams on WebCodecs, each in real time${transport === 'http' ? '; one tile\'s TTFF against the MSE pipeline' : ''}`, async ({ page, browser, baseURL }) => {
+type Transport = 'http' | 'ws' | 'ts';
+const NAMES: Record<Transport, string> = { http: 'HTTP-FLV', ws: 'WS-FLV', ts: 'live MPEG-TS' };
+const urlOf = (transport: Transport, baseURL: string): string =>
+  transport === 'http' ? '/live/stream.flv' : transport === 'ws' ? `${baseURL.replace(/^http/, 'ws')}/live/stream.flv` : '/live/stream.ts';
+
+/** Four tiles of `transport` on a wall, all playing on WebCodecs as live streams. */
+async function fourPlaying(page: Page, transport: Transport, baseURL: string): Promise<void> {
+  await wall(page, Array(4).fill(urlOf(transport, baseURL)));
+  await expect.poll(async () => (await tiles(page)).map((t) => t.currentTime > 1), { timeout: 30_000 }).toEqual([true, true, true, true]);
+  for (const t of await tiles(page)) expect(t).toMatchObject({ backend: 'webcodecs', format: transport === 'ts' ? 'ts' : 'flv', live: true, error: null });
+}
+
+for (const transport of ['http', 'ws', 'ts'] as const) {
+  test(`surveillance: four ${NAMES[transport]} live streams play on WebCodecs${transport === 'http' ? '; a click focuses a tile, which alone has sound' : ''}`, async ({ page, baseURL }) => {
+    test.setTimeout(60_000);
+    await fourPlaying(page, transport, baseURL as string);
+    // Function only (the measurement is the @solo case): every tile's time moves.
+    const rows = await play(page, 2);
+    for (const r of rows) expect(r.advanced, `${r.tile} moves`).toBeGreaterThan(0.5);
+    if (transport !== 'http') return;
+    // A click focuses the top-right tile (a gesture): within 1 s only it is unmuted (F1: the others
+    // stay muted; the first gesture lifts the gate).
+    await page.locator('[data-otter-multiview-tile]').nth(1).click();
+    await expect.poll(() => page.evaluate(() => (window.preset as SurveillancePlayer).focused)).toBe(1);
+    await expect.poll(async () => (await tiles(page)).map((t) => t.muted), { timeout: 1000 }).toEqual([true, false, true, true]);
+  });
+
+  test(`surveillance: four ${NAMES[transport]} live streams, measured alone: each in real time, lost frames${transport === 'http' ? ', one tile\'s TTFF against the MSE pipeline' : ''}${transport === 'ts' ? ', TTFF within 1 s' : ''} @solo`, async ({ page, browser, baseURL }) => {
     test.setTimeout(90_000);
-    const url = transport === 'http' ? '/live/stream.flv' : `${(baseURL as string).replace(/^http/, 'ws')}/live/stream.flv`;
-    await wall(page, Array(4).fill(url));
-    await expect.poll(async () => (await tiles(page)).map((t) => t.currentTime > 1), { timeout: 30_000 }).toEqual([true, true, true, true]);
-    for (const t of await tiles(page)) expect(t).toMatchObject({ backend: 'webcodecs', format: 'flv', live: true, error: null });
+    await fourPlaying(page, transport, baseURL as string);
     const rows = await play(page, 5);
     const k = await kind(page);
     let ttffNote = '';
-    let one: number[] = [];
-    let ref: number[] = [];
+    const one: number[] = [];
+    const ref: number[] = [];
     if (transport === 'http') {
       // TTFF like for like, one stream each: a one-tile wall against the MSE player, three of each.
       for (let n = 0; n < 3; n++) {
@@ -163,29 +202,29 @@ for (const transport of ['http', 'ws'] as const) {
       ttffNote = `one tile TTFF median ${Math.round(median(one))} ms (${one.map(Math.round).join(' / ')}) vs MSE pipeline ${Math.round(median(ref))} ms (${ref.map(Math.round).join(' / ')}); `;
       test.info().annotations.push({ type: 'ttff', description: `${one.join(' ')} | ${ref.join(' ')}` });
     }
-    ciNotice(`surveillance ${transport}-flv x4 (${k} wall): ${await geometry(page)}; TTFF phases ${await ttffPhases(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
-    for (const r of rows) expect(r.advanced).toBeGreaterThan(4.5);
+    const name = transport === 'ts' ? 'live ts' : `${transport}-flv`;
+    ciNotice(`surveillance ${name} x4 (${k} wall, solo, attempt ${test.info().retry + 1}): ${await geometry(page)}; TTFF phases ${await ttffPhases(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+    for (const r of rows) expect(r.advanced, `${r.tile}: real time`).toBeGreaterThan(4.5);
     // The lost-frame criterion is the GPU wall's (a 2D wall draws on the main thread: headless Firefox).
-    if (k === 'gpu') for (const r of rows) expect(r.lost).toBeLessThanOrEqual(0.05);
+    if (k === 'gpu') for (const r of rows) expect(r.lost, `${r.tile}: lost frames`).toBeLessThanOrEqual(0.05);
     if (transport === 'http') expect(median(one), `one tile's TTFF median against the MSE pipeline's (${Math.round(median(ref))} ms) + 300 ms`).toBeLessThanOrEqual(median(ref) + 300);
+    if (transport === 'ts') for (const r of rows) expect(r.ttff ?? Infinity, `${r.tile}: live TS TTFF ≤ 1 s`).toBeLessThanOrEqual(1000);
   });
 }
 
-test('surveillance: four live MPEG-TS streams on WebCodecs (mediabunny reading the stream as it arrives), each in real time', async ({ page, browserName }) => {
-  test.setTimeout(90_000);
-  // Known flaky on CI WebKit (owner 2026-10-30, RESEARCH §1): the first attempt lost 5.3 % / played
-  // 4.49 s of 5 on 2a8ac9a, the retry passed. Two more red runs in the next five CI runs make it a defect.
-  const flaky = browserName === 'webkit';
-  if (flaky) test.info().annotations.push({ type: 'flaky', description: 'CI WebKit live TS x4: lost 5.3 % (safari) / played 4.49 s (iphone) on the first attempt at 2a8ac9a; RESEARCH §1' });
-  await wall(page, Array(4).fill('/live/stream.ts'));
-  await expect.poll(async () => (await tiles(page)).map((t) => t.currentTime > 1), { timeout: 30_000 }).toEqual([true, true, true, true]);
-  for (const t of await tiles(page)) expect(t).toMatchObject({ backend: 'webcodecs', format: 'ts', live: true, error: null });
-  const rows = await play(page, 5);
-  const k = await kind(page);
-  ciNotice(`surveillance live ts x4 (${k} wall${flaky ? `, known flaky, attempt ${test.info().retry + 1}` : ''}): ${await geometry(page)}; TTFF phases ${await ttffPhases(page)}; TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
-  for (const r of rows) expect(r.advanced).toBeGreaterThan(4.5);
-  if (k === 'gpu') for (const r of rows) expect(r.lost).toBeLessThanOrEqual(0.05);
-  for (const r of rows) expect(r.ttff ?? Infinity, `${r.tile}: live TS TTFF ≤ 1 s`).toBeLessThanOrEqual(1000);
+test('surveillance: a 7th HTTP-FLV stream to one host is warned about (tooManyConnectionsPerHost, non-fatal); six of the seven play', async ({ page }) => {
+  test.setTimeout(60_000);
+  // Seven tiles need the GPU wall (a 2D wall takes 4): not on headless Firefox.
+  const gl = await page.goto('/presets.html').then(() => page.evaluate(() => document.createElement('canvas').getContext('webgl2') !== null));
+  test.skip(!gl, 'no WebGL2 here: a 2D wall takes at most 4 tiles');
+  await wall(page, Array(7).fill('/live/stream.flv'));
+  const log = () => page.evaluate(() => (window as unknown as { tileLog: Log }).tileLog.errors.map((e) => e.filter((x) => x === 'tooManyConnectionsPerHost').length));
+  await expect.poll(log).toEqual([0, 0, 0, 0, 0, 0, 1]);
+  // Six connections: six tiles play, one waits (which one is the browser's choice: the order the
+  // requests went out in, not the list's).
+  await expect.poll(async () => (await tiles(page)).filter((t) => t.currentTime > 1).length, { timeout: 30_000 }).toBe(6);
+  await page.waitForTimeout(2000);
+  expect((await tiles(page)).filter((t) => t.currentTime > 1)).toHaveLength(6);
 });
 
 // A benchmark (@bench): 16 WS-FLV tiles (16 HTTP-FLV from one host do not fit the browser's 6

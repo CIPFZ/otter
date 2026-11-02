@@ -69,6 +69,16 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - 预热（半天时间盒）：surveillance 创建时让解码池按路数起 Worker 并先载入解码代码（`Decoder.warm()`、`DecodePool.warm()`），不等 `load()`。本地一路首帧中位数 Chrome 82 → 78 ms、Firefox 128 → 109 ms，四路 Chrome 99 → 92 ms、Firefox 156 → 126 ms（各 16 / 64 个样本）；有效但小，进产品。worklet 不预热：它要 AudioContext，而无手势时不建上下文（ADR-008 F1）。
   - 同一来源超过 6 路 HTTP(S) 直播流：第 7 路起各发一条非致命错误 `tooManyConnectionsPerHost`（浏览器每主机 6 个 HTTP/1.1 连接，直播流一直占着；HTTP/2 不受限，但页面看不出来，所以只是警告）。
 
+### 7a. 监控墙用例拆成功能与测量（2026-11-02 负责人）
+
+- 依据：ADR-008 §7「基准独占 runner」。CI macOS 的 main 步骤里，四路墙的丢帧率与首帧随 runner 负载摆动：负载 7–18（4 核），空闲 CPU 低到 2 %；同一棵树 c93d22f 放在 main 的位置也超 5 %（RESEARCH §1）。所以这不是产品回归，判定放错了地方。
+- surveillance 四路的三条用例（HTTP-FLV、WS-FLV、直播 TS）各拆成两条：
+  - **功能，留在 main**：四路都在 WebCodecs 上播（直播、无致命错误、时间在走）；点一下右上那路，焦点到它，1 s 内只有它不静音；另有一条：同一主机 7 路 HTTP-FLV，第 7 路有非致命的 `tooManyConnectionsPerHost`，7 路里 6 路在播。哪一路被浏览器压住由请求发出的先后决定，不一定是第 7 路，所以产品消息改为「其中一路会等」。
+  - **测量，进 @solo**（`--workers=1`，solo 步骤自己起预览服务）：5 s 实时（> 4.5 s）、GPU 墙丢帧 ≤ 5 %、首帧（一路 FLV 中位数 ≤ MSE 参照 + 300 ms，直播 TS 每路 ≤ 1 s）。
+- 16 路 @bench 不动。SPEC §19 的口径数字不动。
+- 直播 TS 的 flaky 标注撤掉：原因已定，判定换到了 solo。
+- 结案条件：solo 里 desktop-safari 三种传输丢帧 ≤ 5 %、TS 首帧 ≤ 1 s，连续 2 次。solo 里丢帧仍 > 5 % 就作为产品缺陷另开编号；TS 首帧仍 > 1 s 就立 F15，先看首字节到首关键帧那约 300 ms 是 mediabunny 读探测字节还是在等 PAT / PMT。
+
 ### 8. 第三批第一停：React 绑定与 SSR（2026-10-30 负责人）
 
 - 只做 React 与 SSR 安全；Vue / Svelte 等 React 验收后再开。

@@ -161,7 +161,9 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
         details: 'tooManyConnectionsPerHost',
         fatal: false,
         recoverable: false,
-        message: `stream ${i + 1} is HTTP stream ${rank} to its host: browsers open ${CONNECTIONS_PER_HOST} HTTP/1.1 connections per host and live streams keep theirs, so it waits (use WS-FLV or HTTP/2)`,
+        // Which stream the browser holds back is its choice (the order the requests go out), not
+        // necessarily this one: the warning goes on each stream past the sixth in the list.
+        message: `stream ${i + 1} is HTTP stream ${rank} to its host: browsers open ${CONNECTIONS_PER_HOST} HTTP/1.1 connections per host and live streams keep theirs, so one of them waits (use WS-FLV or HTTP/2)`,
       });
       tiles[i]?.core.qoe.emit('error', { error, fallback: [] });
     });
