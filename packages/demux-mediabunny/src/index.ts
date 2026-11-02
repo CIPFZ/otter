@@ -278,7 +278,17 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
   } catch (err) {
     throw createError({ type: 'network', details: 'tsRequestFailed', fatal: true, recoverable: true, message: err instanceof Error ? err.message : String(err), cause: err });
   }
-  const input = new mb.Input({ source: new mb.ReadableStreamSource(res.body, { handleUnhandledError: () => undefined }), formats: [mb.MPEG_TS] });
+  // When the response answered and its first bytes came (the startup breakdown).
+  const timing: { connectedAt: number; firstBytesAt?: number } = { connectedAt: performance.now() };
+  const body = res.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, out) {
+        timing.firstBytesAt ??= performance.now();
+        out.enqueue(chunk);
+      },
+    }),
+  );
+  const input = new mb.Input({ source: new mb.ReadableStreamSource(body, { handleUnhandledError: () => undefined }), formats: [mb.MPEG_TS] });
   const fanout = createLiveFanout(LIVE_HISTORY_S);
   let info: DemuxInfo;
   let video: InputVideoTrack | null;
@@ -321,6 +331,7 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
   );
   return {
     info,
+    timing,
     packets: (track) => fanout.packets(track, 0),
     seek: (track, time) => Promise.resolve(fanout.packets(track, time)),
     destroy() {

@@ -23,11 +23,12 @@ const HISTORY_S = 15;
 /** After the video is ready, how long to wait for the audio configuration of a stream that declares audio. */
 const AUDIO_WAIT_MS = 1500;
 
-/** Bytes as they arrive: streaming fetch for http(s), binary messages for ws(s). */
-function openBytes(url: string, options: FlvDemuxOptions, onChunk: (b: Uint8Array) => void, onEnd: (err?: unknown) => void): () => void {
+/** Bytes as they arrive: streaming fetch for http(s), binary messages for ws(s). `onOpen`: the connection answered. */
+function openBytes(url: string, options: FlvDemuxOptions, onChunk: (b: Uint8Array) => void, onEnd: (err?: unknown) => void, onOpen: () => void): () => void {
   if (/^wss?:/i.test(url)) {
     const ws = new WebSocket(url);
     ws.binaryType = 'arraybuffer';
+    ws.onopen = onOpen;
     ws.onmessage = (e: MessageEvent<ArrayBuffer | string>) => {
       if (typeof e.data !== 'string') onChunk(new Uint8Array(e.data));
     };
@@ -44,6 +45,7 @@ function openBytes(url: string, options: FlvDemuxOptions, onChunk: (b: Uint8Arra
       // complete, which an endless live stream never is (a wall with one URL twice; RESEARCH §1).
       const response = await fetch(url, { cache: 'no-store', ...(options.headers === undefined ? {} : { headers: options.headers }), signal: abort.signal });
       if (!response.ok || response.body === null) throw new Error(`HTTP ${response.status} for ${url}`);
+      onOpen();
       const reader = response.body.getReader();
       for (;;) {
         const { done, value } = await reader.read();
@@ -67,6 +69,8 @@ export function openFlvDemuxer(url: string, options: FlvDemuxOptions): Promise<D
   /** FLV ms of media time 0 (the first video keyframe; the first audio frame without video). */
   let base: number | undefined;
   let videoSeen = false;
+  /** The connection answered; the first bytes came (the startup breakdown). */
+  const timing: { connectedAt?: number; firstBytesAt?: number } = {};
 
   const take = (samples: FlvSamples): void => {
     if (samples.videoConfig !== undefined) videoConfig ??= samples.videoConfig;
@@ -133,6 +137,7 @@ export function openFlvDemuxer(url: string, options: FlvDemuxOptions): Promise<D
       const info: DemuxInfo = { duration: Number.POSITIVE_INFINITY, startTime: 0, video, audio };
       resolve({
         info,
+        timing,
         packets: (track) => fanout.packets(track, 0),
         seek: (track, time) => Promise.resolve(fanout.packets(track, time)),
         destroy() {
@@ -145,6 +150,7 @@ export function openFlvDemuxer(url: string, options: FlvDemuxOptions): Promise<D
       url,
       options,
       (chunk) => {
+        timing.firstBytesAt ??= performance.now();
         take(reader.push(chunk));
         const fatal = reader.errors.find((e) => e.fatal);
         if (fatal !== undefined) return fail(new Error(fatal.message), fatal.details);
@@ -155,6 +161,7 @@ export function openFlvDemuxer(url: string, options: FlvDemuxOptions): Promise<D
         if (err !== undefined && !options.signal.aborted) fail(err, 'flvRequestFailed');
         else if (!settled) fail(new Error('the FLV stream ended before it could play'), 'flvRequestFailed');
       },
+      () => (timing.connectedAt ??= performance.now()),
     );
     options.signal.addEventListener('abort', () => fail(new Error('aborted'), 'flvAborted'), { once: true });
   });

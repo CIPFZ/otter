@@ -246,6 +246,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   let seek: { target: number; candidate: DecodedFrame | undefined; resume: boolean } | undefined;
   let shownAt = Number.NEGATIVE_INFINITY;
   let firstFrame = false;
+  /** Startup moments (performance.now()) for the breakdown said on the route at the first frame. */
+  const startup: { load?: number; keyframe?: number; configured?: number; decoded?: number } = {};
   let dropped = 0;
   let total = 0;
   let lastTimeUpdate = 0;
@@ -283,8 +285,25 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     sinkOut.draw(frame as VideoFrame | I420Frame);
     if (!firstFrame) {
       firstFrame = true;
-      bus.emit('first-frame', { at: performance.now() });
+      const at = performance.now();
+      bus.emit('first-frame', { at });
+      sayStartup(at);
     }
+  };
+
+  /**
+   * The time to the first frame in phases, from load (ms): connection answered, first media bytes,
+   * the demuxer's first keyframe (with the tracks), the video decoder configured, first frame
+   * decoded, first frame on the surface. Live demuxers say the first two (Demuxer.timing).
+   */
+  const sayStartup = (shown: number): void => {
+    const t0 = startup.load;
+    if (t0 === undefined) return;
+    const ms = (at: number | undefined): string => (at === undefined ? '-' : String(Math.round(at - t0)));
+    const timing = demuxer?.timing;
+    bus.emit('route-detail', {
+      reason: `startup ms: connect ${ms(timing?.connectedAt)}, first bytes ${ms(timing?.firstBytesAt)}, keyframe ${ms(startup.keyframe)}, decoder configured ${ms(startup.configured)}, decoded ${ms(startup.decoded)}, shown ${ms(shown)}`,
+    });
   };
 
   const finishSeek = (frame: DecodedFrame | undefined): void => {
@@ -312,6 +331,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
 
   const onVideoFrame = (lane: Lane, g: number, frame: DecodedFrame): void => {
     if (destroyed || g !== vgen) return closeFrame(frame);
+    startup.decoded ??= performance.now();
     lane.outputs++;
     if (seek === undefined && frameTime(frame) < discardBeforeUs) {
       // Decoded from the keyframe before the clock on a video restart: not shown, not dropped.
@@ -375,6 +395,9 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       },
       started: () => {
         owner.lane.queued = false;
+      },
+      configured: () => {
+        startup.configured ??= performance.now();
       },
     });
   };
@@ -810,8 +833,11 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     attach: () => undefined,
     async load(source, opts) {
       if (ctx.format.createDemuxer === undefined) throw fatal('other', 'noDemuxer', `format ${ctx.format.id} cannot feed WebCodecs`);
+      startup.load = performance.now();
       demuxer = await ctx.format.createDemuxer({ source, options: opts, caps: ctx.caps, qoe: ctx.qoe, signal: abort.signal });
       if (destroyed) return demuxer.destroy();
+      // A live demuxer resolves with the tracks and the first keyframe in.
+      startup.keyframe = performance.now();
       info = demuxer.info;
       const v = info.video;
       const a = info.audio;

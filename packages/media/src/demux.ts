@@ -30,6 +30,14 @@ export interface DemuxAudioTrack extends DemuxTrack {
 }
 
 /** Tracks and timing of a source, after `open()`. Times in seconds. */
+/** When an opened stream's first bytes arrived (performance.now()), for the startup breakdown. */
+export interface DemuxTiming {
+  /** The connection answered (HTTP response headers, WebSocket open). */
+  readonly connectedAt?: number;
+  /** The first media bytes (FLV tag / TS packet) arrived. */
+  readonly firstBytesAt?: number;
+}
+
 export interface DemuxInfo {
   readonly duration: number;
   /** Timestamp of the first packet; media time 0 starts here. */

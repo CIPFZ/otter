@@ -6,7 +6,7 @@ import type { BackendKind } from './backend.js';
 import type { Capabilities } from './capabilities.js';
 import type { EngineCodecs } from './codec-families.js';
 import type { CmcdDecorator } from './cmcd.js';
-import type { DemuxDownload, DemuxInfo, PacketStream, PositionedStream } from './demux.js';
+import type { DemuxDownload, DemuxInfo, DemuxTiming, PacketStream, PositionedStream } from './demux.js';
 import type { LoadOptions, Source } from './source.js';
 import type { ThumbnailProvider } from './thumbnails.js';
 import type { InbandCues, TrackList } from './tracks.js';
@@ -80,6 +80,8 @@ export interface DemuxContext {
  */
 export interface Demuxer {
   readonly info: DemuxInfo;
+  /** When the stream connected and its first bytes came (live demuxers), for the startup breakdown. */
+  readonly timing?: DemuxTiming;
   /** Packets from the start (time 0), in decode order. */
   packets(track: 'video' | 'audio'): PacketStream;
   /** Packets from the last keyframe at or before `time`, in decode order. */

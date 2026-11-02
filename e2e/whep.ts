@@ -55,7 +55,7 @@ export function parseOggOpus(file: Buffer): Buffer[] {
   return packets.slice(2);
 }
 
-interface Clip {
+export interface Clip {
   readonly fps: number;
   readonly frames: IvfFrame[];
   /** 20 ms Opus packets. */
@@ -82,11 +82,14 @@ const readBody = (req: IncomingMessage): Promise<string> =>
     req.on('error', reject);
   });
 
+/** Sessions still sending, by Location (GET /whep/sessions: their count). */
 const sessions = new Map<string, () => void>();
+/** Sending stops when the receiver has sent no RTCP for this long (a page that closed without DELETE). */
+export const RTCP_SILENCE_MS = 30_000;
 let nextId = 0;
 
 /** Sends the clip in a loop on `track`, paced at its frame rate, with continuing RTP timestamps. */
-function play(track: MediaStreamTrack, clip: Clip): () => void {
+export function play(track: MediaStreamTrack, clip: Clip): () => void {
   let seq = Math.floor(Math.random() * 0xffff);
   let n = 0;
   const step = Math.round(90_000 / clip.fps);
@@ -124,7 +127,13 @@ function playAudio(track: MediaStreamTrack, opus: Buffer[]): () => void {
   return () => clearInterval(timer);
 }
 
-async function answer(offer: string, clip: Clip): Promise<{ sdp: string; close: () => void }> {
+/**
+ * Answers a WHEP offer and sends the clip once connected. Sending stops on close(), when the
+ * connection goes disconnected / failed / closed, or after RTCP_SILENCE_MS without RTCP from the
+ * receiver; `onEnd` runs once then (the server forgets the session). A page that just closes sends
+ * no DELETE: before this, its session kept sending for the rest of the server's life.
+ */
+export async function answer(offer: string, clip: Clip, onEnd: () => void = () => undefined, silenceMs = RTCP_SILENCE_MS): Promise<{ sdp: string; close: () => void }> {
   const pc = new RTCPeerConnection({
     codecs: {
       video: [new RTCRtpCodecParameters({ mimeType: 'video/VP8', clockRate: 90_000 })],
@@ -150,18 +159,34 @@ async function answer(offer: string, clip: Clip): Promise<{ sdp: string; close: 
   // Non-trickle: the answer carries every candidate.
   if (pc.iceGatheringState !== 'complete') await new Promise<void>((r) => pc.iceGatheringStateChange.subscribe((s) => s === 'complete' && r()));
   let stop: (() => void) | undefined;
+  let ended = false;
+  let lastRtcp = Date.now();
+  const end = (): void => {
+    if (ended) return;
+    ended = true;
+    clearInterval(watchdog);
+    stop?.();
+    void pc.close();
+    onEnd();
+  };
+  for (const t of [video, audio]) t?.sender.onRtcp.subscribe(() => (lastRtcp = Date.now()));
+  const watchdog = setInterval(() => {
+    if (stop !== undefined && Date.now() - lastRtcp > silenceMs) end();
+  }, Math.min(1000, silenceMs / 2));
+  // The DTLS session closed by the receiver (close_notify, sent by browsers when the page goes):
+  // werift does not carry that into connectionState, which follows ICE only.
+  const watchDtls = (): void => {
+    for (const t of pc.dtlsTransports) t.onStateChange.subscribe((s) => (s === 'closed' || s === 'failed' ? end() : undefined));
+  };
   pc.connectionStateChange.subscribe((s) => {
+    if (s === 'disconnected' || s === 'failed' || s === 'closed') return end();
+    if (s === 'connected') watchDtls();
     if (s !== 'connected' || stop !== undefined) return;
+    lastRtcp = Date.now();
     const stops = [play(track, clip), ...(audio === undefined ? [] : [playAudio(sound, clip.opus)])];
     stop = () => stops.forEach((f) => f());
   });
-  return {
-    sdp: pc.localDescription?.sdp ?? '',
-    close: () => {
-      stop?.();
-      void pc.close();
-    },
-  };
+  return { sdp: pc.localDescription?.sdp ?? '', close: end };
 }
 
 /** The answer with every candidate replaced by one nobody answers (TEST-NET-1, RFC 5737). */
@@ -176,7 +201,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, clip: () => Cli
   const path = req.url?.split('?')[0] ?? '';
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Expose-Headers', 'Location');
-  // TEMPORARY (M6 WebKit lost-frame regression, owner 2026-11-02): live sessions, for the notices.
+  // Sessions still sending (main's global teardown expects 0; surveillance notices).
   if (path === '/whep/sessions') {
     res.writeHead(200, { 'Content-Type': 'text/plain' }).end(String(sessions.size));
     return;
@@ -200,8 +225,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, clip: () => Cli
     return;
   }
   const offer = await readBody(req);
-  const { sdp, close } = await answer(offer, clip());
   const location = `/whep/session/${++nextId}`;
+  const { sdp, close } = await answer(offer, clip(), () => sessions.delete(location));
   if (path === '/whep/ice-fail') close();
   else sessions.set(location, close);
   res.writeHead(201, { 'Content-Type': 'application/sdp', Location: location }).end(path === '/whep/ice-fail' ? unreachable(sdp) : sdp);

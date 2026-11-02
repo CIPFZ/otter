@@ -79,6 +79,8 @@ if (tvCdpUrl !== undefined) {
 export default defineConfig<object, OtterWorkerOptions>({
   testDir: 'e2e',
   testMatch: '**/*.spec.ts',
+  // The WHEP fixture has no session left sending (e2e/global-teardown.ts).
+  globalTeardown: './e2e/global-teardown.ts',
   forbidOnly: process.env['CI'] !== undefined,
   retries: process.env['CI'] !== undefined ? 1 : 0,
   reporter: process.env['CI'] !== undefined ? [['github'], ['html', { open: 'never' }]] : [['list']],

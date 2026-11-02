@@ -6,6 +6,7 @@
 // Protocol (main -> worker): kind { kind, source, env } (prewarm), open { id, kind, source, env, config }, decode { id, chunk }, flush
 // { id, n }, reset { id, gen }, close { id }. Worker -> main: q { id, n, busy } (queue size after
 // a decode and the slot's decode time so far), f { id, gen, frame } (transferred), flushed { id, n },
+// configured { id } (the slot's decoder exists),
 // error { id, details, message }.
 
 /* eslint-disable */
@@ -99,6 +100,7 @@ export function host(): void {
         .then((inst) => {
           if (s.closed) return inst.close();
           s.inst = inst;
+          g.postMessage({ t: 'configured', id: m.id });
           const queued = s.pending ?? [];
           s.pending = undefined;
           for (const p of queued) run(s, m.id, p as { t: string });

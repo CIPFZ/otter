@@ -78,6 +78,17 @@ const tiles = (page: Page): Promise<Tile[]> =>
 
 const kind = (page: Page): Promise<string> => page.evaluate(() => (window.preset as SurveillancePlayer).wall.kind);
 
+/**
+ * Each tile's time to first frame in phases (the backend's `startup ms:` route step, owner
+ * 2026-11-02): connect / first bytes / keyframe / decoder configured / decoded / shown, ms from load.
+ */
+const ttffPhases = (page: Page): Promise<string> =>
+  page.evaluate(() =>
+    (window.preset as SurveillancePlayer).tiles
+      .map((t, i) => `${i + 1}: ${(t.explain()?.steps.find((s) => s.reason.startsWith('startup ms:'))?.reason ?? 'no breakdown').replace('startup ms: ', '')}`)
+      .join(' | '),
+  );
+
 /** What the wall draws here (M6 WebKit regression): canvas pixels per tile, DPR, Workers, cores. */
 const geometry = (page: Page): Promise<string> =>
   page.evaluate(() => {
@@ -171,7 +182,7 @@ for (const transport of ['http', 'ws'] as const) {
       ttffNote = `one tile TTFF median ${Math.round(median(one))} ms (${one.map(Math.round).join(' / ')}) vs MSE pipeline ${Math.round(median(ref))} ms (${ref.map(Math.round).join(' / ')}); `;
       test.info().annotations.push({ type: 'ttff', description: `${one.join(' ')} | ${ref.join(' ')}` });
     }
-    ciNotice(`surveillance ${transport}-flv x4 (${k} wall${abNote(ab)}, ${TAG}): ${await geometry(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+    ciNotice(`surveillance ${transport}-flv x4 (${k} wall${abNote(ab)}, ${TAG}): ${await geometry(page)}; TTFF phases ${await ttffPhases(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
     for (const r of rows) expect(r.advanced).toBeGreaterThan(4.5);
     // The lost-frame criterion is the GPU wall's (a 2D wall draws on the main thread: headless Firefox).
     if (k === 'gpu') for (const r of rows) expect(r.lost).toBeLessThanOrEqual(0.05);
@@ -191,7 +202,7 @@ test(`surveillance: four live MPEG-TS streams on WebCodecs (mediabunny reading t
   for (const t of await tiles(page)) expect(t).toMatchObject({ backend: 'webcodecs', format: 'ts', live: true, error: null });
   const rows = await play(page, 5);
   const k = await kind(page);
-  ciNotice(`surveillance live ts x4 (${k} wall${abNote(ab)}, ${TAG}${flaky ? `, known flaky, attempt ${test.info().retry + 1}` : ''}): ${await geometry(page)}; TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+  ciNotice(`surveillance live ts x4 (${k} wall${abNote(ab)}, ${TAG}${flaky ? `, known flaky, attempt ${test.info().retry + 1}` : ''}): ${await geometry(page)}; TTFF phases ${await ttffPhases(page)}; TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
   for (const r of rows) expect(r.advanced).toBeGreaterThan(4.5);
   if (k === 'gpu') for (const r of rows) expect(r.lost).toBeLessThanOrEqual(0.05);
   for (const r of rows) expect(r.ttff ?? Infinity, `${r.tile}: live TS TTFF ≤ 1 s`).toBeLessThanOrEqual(1000);

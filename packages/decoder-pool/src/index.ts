@@ -102,7 +102,7 @@ let hostUrl: string | undefined;
 const workerUrl = (): string => (hostUrl ??= URL.createObjectURL(new Blob([`(${host.toString()})();`], { type: 'text/javascript' })));
 
 const configOnly = (c: DecoderConfig): Record<string, unknown> => {
-  const { output: _o, error: _e, queued: _q, started: _s, ...rest } = c;
+  const { output: _o, error: _e, queued: _q, started: _s, configured: _c, ...rest } = c;
   return rest;
 };
 
@@ -143,6 +143,8 @@ export function createDecodePool(options: DecodePoolOptions = {}): DecodePool {
       if (m.ack === 1) s.inFlight = Math.max(0, s.inFlight - 1);
       s.queue = m.n ?? 0;
       s.busy = m.busy ?? s.busy;
+    } else if (m.t === 'configured') {
+      s.config.configured?.();
     } else if (m.t === 'flushed') {
       s.flushes.get(m.n as number)?.();
       s.flushes.delete(m.n as number);

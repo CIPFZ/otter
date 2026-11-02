@@ -104,6 +104,7 @@ function createVideo(config: DecoderConfig, requireHardware: boolean): DecoderIn
       hardwareAcceleration: requireHardware ? 'prefer-hardware' : (config.hardwareAcceleration ?? 'no-preference'),
     });
   configure();
+  config.configured?.();
   return wrap(decoder, configure, (chunk) => new EncodedVideoChunk(init(chunk)));
 }
 

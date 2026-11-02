@@ -32,6 +32,8 @@ export interface DecoderConfig {
   readonly queued?: (reason: string) => void;
   /** A decoder that was queued got its slot. */
   readonly started?: () => void;
+  /** The decoder is configured and takes chunks (a pool decoder: in its Worker, once the code is loaded). */
+  readonly configured?: () => void;
 }
 
 export interface DecoderInstance {
