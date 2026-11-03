@@ -111,6 +111,9 @@ test('video PiP of the WebCodecs canvas: enter and leave without interrupting pl
 });
 
 test('Document PiP still works with the WebCodecs canvas picture', async ({ page }) => {
+  // Known flaky on CI emulated-android (owner 2026-11-03, RESEARCH §1): failed once and passed on
+  // retry at f369598. Two more red runs in the next five CI runs make it a defect.
+  test.info().annotations.push({ type: 'flaky', description: 'CI emulated-android Document PiP: failed once at f369598, retry passed; RESEARCH §1' });
   test.setTimeout(60_000);
   await load(page, '&pip=document');
   const caps = await page.evaluate(async () => ((await window.otter) as OtterFixture).state().presentation?.capabilities.docpip);

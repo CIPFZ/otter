@@ -76,6 +76,10 @@ if (tvCdpUrl !== undefined) {
   });
 }
 
+// TEMPORARY (M6, owner 2026-11-03): OTTER_PROJECTS_REVERSED=1 runs the projects in reverse order
+// (Playwright runs them in config order with one worker).
+if (env('OTTER_PROJECTS_REVERSED') === '1') projects.reverse();
+
 export default defineConfig<object, OtterWorkerOptions>({
   testDir: 'e2e',
   testMatch: '**/*.spec.ts',

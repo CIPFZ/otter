@@ -194,6 +194,10 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     ciNotice('WHEP recording: WebKit recording path unreliable (pitch x1.054 / 0.31 s phase jumps), skipped; acceptance on the real Edge');
     test.skip(true, 'WebKit recording path unreliable (RESEARCH §1)');
   }
+  // Known flaky on CI desktop-chrome (owner 2026-11-03, RESEARCH §1): f369598 red twice (seam gaps
+  // 3.77 s; an extra seam, 3.05 + 1.00 s), stable at 4.02 s in the four runs before. Two more red
+  // runs in the next five CI runs make it a defect.
+  info.annotations.push({ type: 'flaky', description: 'CI desktop-chrome WHEP recording seams: 3.77 s / 3.05 + 1.00 s at f369598; RESEARCH §1' });
   await routeDocuments(page, browserName);
   await page.goto('/player.html?idle=0');
   if (!(await gathers(page))) {
@@ -351,6 +355,16 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
   ciNotice(
     `WHEP recording (${rate} Hz, ${(x.length / rate).toFixed(1)} s, RMS ${rms.toFixed(3)}): tone ${f0.toFixed(2)} Hz, share per second min ${Math.min(...shares).toFixed(3)}; seams at ${inner.map((t) => t.toFixed(2)).join(', ') || 'none'} s (gaps ${gaps.map((g) => g.toFixed(2)).join(', ')}); ${file}`,
   );
+  // The fixture's side of the session (owner 2026-11-03): connection state changes and RTCP arrival
+  // intervals, next to the seams (a jump in the seams with a gap in RTCP is the transport's).
+  // The latest session the fixture answered (this case runs alone, @solo).
+  const log = (await (await page.request.get('/whep/log/last')).json()) as { states: { at: number; what: string }[]; rtcp: number[] } | null;
+  if (log !== null) {
+    const iv = log.rtcp.slice(1).map((t, i) => t - (log.rtcp[i] as number));
+    const sorted = [...iv].sort((p, q) => p - q);
+    const p = (q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
+    ciNotice(`WHEP recording, fixture session: states ${log.states.map((s) => `${s.what} @${s.at}`).join(', ')}; RTCP ${log.rtcp.length} packets, interval p50 ${p(0.5)} / p95 ${p(0.95)} / max ${p(1)} ms${iv.some((x) => x > 1000) ? `; gaps > 1 s at ${log.rtcp.filter((_, i) => (iv[i - 1] ?? 0) > 1000).join(', ')} ms` : ''}`);
+  }
   if (rec.stalls.length > 0) {
     // The device stood still during the recording: stream audio is dropped there, the seams move.
     ciNotice(`WHEP recording: 环境停顿 (environment stall) at ${rec.stalls.join(', ')}; checks skipped`);

@@ -84,6 +84,16 @@ const readBody = (req: IncomingMessage): Promise<string> =>
 
 /** Sessions still sending, by Location (GET /whep/sessions: their count). */
 const sessions = new Map<string, () => void>();
+/**
+ * Per session (by Location): its connection / DTLS state changes and RTCP arrival times, ms from
+ * the offer (GET /whep/log/<n> or /whep/log/last: the JSON, for the recording case's notices;
+ * owner 2026-11-03).
+ */
+export interface SessionLog {
+  readonly states: { at: number; what: string }[];
+  readonly rtcp: number[];
+}
+const logs = new Map<string, SessionLog>();
 /** Sending stops when the receiver has sent no RTCP for this long (a page that closed without DELETE). */
 export const RTCP_SILENCE_MS = 30_000;
 let nextId = 0;
@@ -133,7 +143,9 @@ function playAudio(track: MediaStreamTrack, opus: Buffer[]): () => void {
  * receiver; `onEnd` runs once then (the server forgets the session). A page that just closes sends
  * no DELETE: before this, its session kept sending for the rest of the server's life.
  */
-export async function answer(offer: string, clip: Clip, onEnd: () => void = () => undefined, silenceMs = RTCP_SILENCE_MS): Promise<{ sdp: string; close: () => void }> {
+export async function answer(offer: string, clip: Clip, onEnd: () => void = () => undefined, silenceMs = RTCP_SILENCE_MS, log?: SessionLog): Promise<{ sdp: string; close: () => void }> {
+  const t0 = Date.now();
+  const note = (what: string): void => void log?.states.push({ at: Date.now() - t0, what });
   const pc = new RTCPeerConnection({
     codecs: {
       video: [new RTCRtpCodecParameters({ mimeType: 'video/VP8', clockRate: 90_000 })],
@@ -164,21 +176,32 @@ export async function answer(offer: string, clip: Clip, onEnd: () => void = () =
   const end = (): void => {
     if (ended) return;
     ended = true;
+    note('ended');
     clearInterval(watchdog);
     stop?.();
     void pc.close();
     onEnd();
   };
-  for (const t of [video, audio]) t?.sender.onRtcp.subscribe(() => (lastRtcp = Date.now()));
+  for (const t of [video, audio])
+    t?.sender.onRtcp.subscribe(() => {
+      lastRtcp = Date.now();
+      if (log !== undefined && log.rtcp.length < 2000) log.rtcp.push(lastRtcp - t0);
+    });
   const watchdog = setInterval(() => {
     if (stop !== undefined && Date.now() - lastRtcp > silenceMs) end();
   }, Math.min(1000, silenceMs / 2));
   // The DTLS session closed by the receiver (close_notify, sent by browsers when the page goes):
   // werift does not carry that into connectionState, which follows ICE only.
   const watchDtls = (): void => {
-    for (const t of pc.dtlsTransports) t.onStateChange.subscribe((s) => (s === 'closed' || s === 'failed' ? end() : undefined));
+    for (const t of pc.dtlsTransports)
+      t.onStateChange.subscribe((s) => {
+        note(`dtls ${s}`);
+        if (s === 'closed' || s === 'failed') end();
+      });
   };
+  pc.iceConnectionStateChange.subscribe((s) => note(`ice ${s}`));
   pc.connectionStateChange.subscribe((s) => {
+    note(`connection ${s}`);
     if (s === 'disconnected' || s === 'failed' || s === 'closed') return end();
     if (s === 'connected') watchDtls();
     if (s !== 'connected' || stop !== undefined) return;
@@ -202,6 +225,12 @@ async function handle(req: IncomingMessage, res: ServerResponse, clip: () => Cli
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Expose-Headers', 'Location');
   // Sessions still sending (main's global teardown expects 0; surveillance notices).
+  const logPath = /^\/whep\/log\/(\d+|last)$/.exec(path);
+  if (logPath !== null) {
+    const log = logPath[1] === 'last' ? [...logs.values()].at(-1) : logs.get(`/whep/session/${logPath[1]}`);
+    res.writeHead(log === undefined ? 404 : 200, { 'Content-Type': 'application/json' }).end(JSON.stringify(log ?? null));
+    return;
+  }
   if (path === '/whep/sessions') {
     res.writeHead(200, { 'Content-Type': 'text/plain' }).end(String(sessions.size));
     return;
@@ -226,7 +255,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, clip: () => Cli
   }
   const offer = await readBody(req);
   const location = `/whep/session/${++nextId}`;
-  const { sdp, close } = await answer(offer, clip(), () => sessions.delete(location));
+  const log: SessionLog = { states: [], rtcp: [] };
+  logs.set(location, log);
+  // Logs of the last 20 sessions only.
+  for (const k of [...logs.keys()].slice(0, -20)) logs.delete(k);
+  const { sdp, close } = await answer(offer, clip(), () => sessions.delete(location), RTCP_SILENCE_MS, log);
   if (path === '/whep/ice-fail') close();
   else sessions.set(location, close);
   res.writeHead(201, { 'Content-Type': 'application/sdp', Location: location }).end(path === '/whep/ice-fail' ? unreachable(sdp) : sdp);

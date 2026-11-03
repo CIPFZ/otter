@@ -104,7 +104,12 @@ const geometry = (page: Page): Promise<string> =>
     const c = document.querySelector('[data-otter-multiview] canvas') as HTMLCanvasElement | null;
     const n = (window.preset as SurveillancePlayer).tiles.length;
     const px = c === null ? 0 : Math.round((c.width * c.height) / n);
-    return `canvas ${c?.width ?? 0}x${c?.height ?? 0} (${px} px per tile, css ${Math.round(c?.clientWidth ?? 0)}x${Math.round(c?.clientHeight ?? 0)}), dpr ${devicePixelRatio}, workers ${(window as unknown as { workersMade: number }).workersMade}, cores ${navigator.hardwareConcurrency}`;
+    const tiles = (window.preset as SurveillancePlayer).tiles;
+    // The decoder each tile runs on (`<codec> on <decoder> (<hardware|software>)`) and every route
+    // step that depends on the platform (owner 2026-11-03: does a mobile UA pick a weaker path?).
+    const decoders = [...new Set(tiles.map((t) => /^(\S+) on (\S+) \((\w+)\)/.exec(t.explain()?.steps.find((x) => / on \S+ \((hardware|software)\)/.test(x.reason))?.reason ?? '')?.slice(1).join(' ') ?? 'none'))];
+    const platform = [...new Set(tiles.flatMap((t) => (t.explain()?.steps ?? []).filter((x) => /iPhone|mobile|touch|coarse|ManagedMediaSource|MMS|user ?agent/i.test(x.reason)).map((x) => `${x.candidate}: ${x.reason}`)))];
+    return `canvas ${c?.width ?? 0}x${c?.height ?? 0} (${px} px per tile, css ${Math.round(c?.clientWidth ?? 0)}x${Math.round(c?.clientHeight ?? 0)}), dpr ${devicePixelRatio}, workers ${(window as unknown as { workersMade: number }).workersMade}, cores ${navigator.hardwareConcurrency}, decoders ${decoders.join(' / ')}, coarse pointer ${matchMedia('(pointer: coarse)').matches}, platform route steps ${platform.join(' | ') || 'none'}`;
   });
 
 /** The machine during a play window: load average, WHEP sessions the fixture still sends to (M6). */
@@ -191,6 +196,9 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
 
   test(`surveillance: four ${NAMES[transport]} live streams, measured alone: each in real time, lost frames${transport === 'http' ? ', one tile\'s TTFF against the MSE pipeline' : ''}${transport === 'ts' ? ', TTFF within 1 s' : ''} @solo`, async ({ page, browser, baseURL }) => {
     test.setTimeout(90_000);
+    // The shared AudioContext's own stall record (e2e/audio-stalls.ts): a tile that falls behind
+    // real time may be its clock standing (owner 2026-11-03).
+    await recordAudioStalls(page);
     await fourPlaying(page, transport, baseURL as string);
     const rows = await play(page, 5);
     const k = await kind(page);
@@ -207,7 +215,7 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
       test.info().annotations.push({ type: 'ttff', description: `${one.join(' ')} | ${ref.join(' ')}` });
     }
     const name = transport === 'ts' ? 'live ts' : `${transport}-flv`;
-    ciNotice(`surveillance ${name} x4 (${k} wall, solo, attempt ${test.info().retry + 1}): ${await geometry(page)}; TTFF phases ${await ttffPhases(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+    ciNotice(`surveillance ${name} x4 (${k} wall, solo, attempt ${test.info().retry + 1}): ${await geometry(page)}; AudioContext stalls ≥ 300 ms ${(await audioStalls(page)).join(', ') || 'none'}; tile errors ${rows.flatMap((r) => r.messages).join(' | ') || 'none'}; TTFF phases ${await ttffPhases(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
     for (const r of rows) expect(r.advanced, `${r.tile}: real time`).toBeGreaterThan(4.5);
     // The lost-frame criterion is the GPU wall's (a 2D wall draws on the main thread: headless Firefox).
     if (k === 'gpu') for (const r of rows) expect(r.lost, `${r.tile}: lost frames`).toBeLessThanOrEqual(0.05);

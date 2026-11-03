@@ -151,6 +151,9 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   | 2 | `5a8a65b`（夜间定时运行；push 那次被它按并发规则取消） | 0–0.8 % | 0–1.6 % | 0.8 % | 531–821 ms |
 
   不立 F15。直播 TS 的首字节到首关键帧稳定约 310–345 ms（mediabunny 读到第一个关键帧），是 TS 首帧里最大的一段，记在这里备查。
+- CI 上两个 flaky（2026-11-03 负责人，标 flaky；升级规则同直播 TS：之后 5 次 CI 里再红 2 次就升为缺陷）：
+  - desktop-chrome 的 cn-live WHEP 录音（@solo）：`f369598` 两次尝试都红。接缝间隔一次 3.77 s（下限 3.77），一次多出一个接缝（3.05 + 1.00 s）；此前 4 次 CI 都稳定在 4.02 s 左右。用例通知里加了夹具那一路会话的连接状态变迁与 RTCP 到达间隔（`/whep/log/last`）。本地一次：ICE 242 ms 连上，RTCP 173 个，间隔 p50 117 / p95 204 ms，最长一次 1.33 s（在 2.2 s 处，录音开始前）。
+  - emulated-android 的 Document PiP 与 WebCodecs 画面：`f369598` 第一次失败、重试通过。
 - e2e 的 WHEP 夹具会话泄漏（2026-11-02，已修）：会话只在收到 `DELETE` 时停发，页面直接关闭时不发 `DELETE`，那路会话会在预览服务里一直发到步骤结束（视频每 16 ms、音频每 10 ms 一次）。werift 的 `connectionState` 只跟 ICE，看不到对端 DTLS 的 close_notify；现在 DTLS 关闭、连接 disconnected / failed / closed、或 30 s 收不到 RTCP 都会停发，global teardown 断言跑完后没有会话还在发。
 - 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
   - **约 2 s：环境，不是产品。** 夹具服务只在 `localhost` 上监听，Windows 上 Node 解析成 `[::1]`，只监听 IPv6。Firefox 连 `localhost` 时有时先试 127.0.0.1，Windows 上连一个没人监听的本机端口要约 2 s 才失败，然后才换 ::1。WebSocket 每次都中（`new WebSocket` 到 open 恒为约 2.0 s，Edge 0 ms），HTTP 时有时无。服务改为监听全部地址、页面用 `http://127.0.0.1:4173` 后，WS 打开约 6 ms，四路 WS-FLV 首帧 240 ms。（`OTTER_E2E_BASE_URL` 会关掉 Playwright 的 webServer，要自己起 preview，见 tmp/winps/round22.cmd 的写法。）
