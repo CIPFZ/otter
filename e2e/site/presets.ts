@@ -23,6 +23,8 @@ declare global {
     OTTER_DRM?: DrmConfig;
     /** Whether a preview-picture provider is installed on the player (vod loads it on demand). */
     hasThumbnails?: () => boolean;
+    /** shorts: the likes the preset reported (double taps). */
+    likes?: { index: number; x: number; y: number }[];
   }
 }
 
@@ -46,7 +48,8 @@ if (kind === 'background') {
   player = createOttDrmPlayer({ ...common, ...(window.OTTER_DRM === undefined ? {} : { drm: window.OTTER_DRM }) });
 } else if (kind === 'shorts') {
   // ?feed=<url>,<url>: the preset loads the first itself.
-  window.preset = createShortsPlayer({ container, idleMs: 0, feed: (params.get('feed') ?? src).split(','), ...(lang === null ? {} : { lang }) });
+  window.likes = [];
+  window.preset = createShortsPlayer({ container, idleMs: 0, feed: (params.get('feed') ?? src).split(','), onLike: (index, at) => window.likes?.push({ index, ...at }), ...(lang === null ? {} : { lang }) });
 } else if (kind === 'surveillance') {
   // ?streams=<url>,<url>,...: one tile each.
   window.preset = createSurveillancePlayer({ container, title: 'Preset surveillance', idleMs: 0, streams: (params.get('streams') ?? src).split(','), ...(lang === null ? {} : { lang }) });

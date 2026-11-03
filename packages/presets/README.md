@@ -17,7 +17,8 @@ await player.load('https://example.com/master.m3u8');
 | `/live`、`/lowlatency` | 直播、低延迟直播 |
 | `/danmaku` | 弹幕站：`comments` 选项随每次 `load()` 加载弹幕 |
 | `/surveillance` | 监控多路：一面 GPU 墙，每路走 WebCodecs（HEVC 无硬解时用 WASM），HTTP-FLV / WS-FLV / 直播 MPEG-TS / HLS / 本地文件；同一主机超过 6 路请用 WS-FLV 或 HTTP/2（浏览器每主机 6 个 HTTP/1.1 连接；第 7 路起每路一条非致命错误 `tooManyConnectionsPerHost`）；FLV / TS 按直播处理，`live: false` 的源走 MSE。已知限制：真 Windows Firefox 上偶发首帧约 10 s（各传输都会，原因未查明，RESEARCH §1） |
-| `/ott-drm`、`/shorts` | OTT 付费 + DRM；竖屏信息流 |
+| `/ott-drm` | OTT 付费 + DRM |
+| `/shorts` | 竖屏信息流。手势：在画面上上滑看下一条、下滑看上一条（超过高度的 20 %，或短距离快滑：最后 100 ms 内速度 ≥ 0.5 px/ms 且移动 ≥ 30 px）；单击暂停 / 播放；双击调用宿主的 `onLike(index, at)`；长按期间 2 倍速。参数都在 `gestures` 选项里，`gestures: false` 只留按键和 API。只有一个 `<video>` 和一个引擎：切换时先拆掉前一条再加载下一条，不预加载，同时存活的解码实例上限为 1 |
 | `/tv` | 电视遥控器 |
 | `/background` | 背景视频（Hero），没有控件 |
 
