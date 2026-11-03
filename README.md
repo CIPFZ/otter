@@ -36,6 +36,8 @@ pnpm test                  # Vitest
 pnpm check:boundaries      # 包约定与分层依赖方向
 pnpm check:side-effects    # 无顶层副作用；全部入口（含 sub-path）在 Node 里可导入、不碰浏览器全局（需先 build）
 pnpm check:docs-text       # docs/ 与顶层 *.md 里没有控制字符
+pnpm check:docs-site       # 从源码生成文档站到 docs-site/dist（也随 e2e 示例站构建到 /docs/）
+pnpm docs:serve            # 构建并预览 e2e 示例站，文档在 /docs/，示例链接可直接运行
 pnpm size                  # 体积预算（需先 build）
 pnpm e2e                   # Playwright（需先 pnpm exec playwright install）
 pnpm check                 # 以上非 e2e 检查全部跑一遍

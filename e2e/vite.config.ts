@@ -32,6 +32,15 @@ export default defineConfig({
     ...(process.env['OTTER_SSR_INNER'] === '1' ? [] : [frameworkSsrPlugin()]),
     // decoder-wasm-hevc loads its WASM next to its own module (otter.assets): in the built site
     // that module lives in assets/.
+    // The generated docs site under /docs/ (scripts/docs-site.ts): its preset and binding pages link
+    // to this site's example pages and fixtures (pnpm docs:serve).
+    {
+      name: 'otter-docs-site',
+      async writeBundle(options) {
+        const { buildDocsSite } = await import('../scripts/docs-site.ts');
+        buildDocsSite(`${options.dir as string}/docs`);
+      },
+    },
     {
       name: 'otter-wasm-assets',
       writeBundle(options) {

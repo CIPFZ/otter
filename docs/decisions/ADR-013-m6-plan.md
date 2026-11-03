@@ -165,6 +165,25 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - 需要引擎接口新增「从缓存字节起播」。
 - 体积：竖屏行（shorts + 最小皮肤）31.67 / 60 KB，门禁。
 
+### 12. 第四批第三项：文档站（2026-11-03 负责人：构建进 CI，不部署）
+
+- 生成器 `scripts/docs-site.ts` 用 TypeScript 5 的 checker（`ts5`，`scripts/lib/api-surface.ts`）读每个包 `exports` 里的源入口：
+  - 每个导出的种类、签名、文档注释；
+  - 接口的成员表；
+  - 纯 CSS 皮肤设置的 `--otter-*` 变量。
+  
+  输出静态 HTML，不手写。
+- 页面：
+  - 首页按交接 §7 的用途分组；
+  - 每个包一页，先放包的 README，再放全部入口；
+  - preset 一页一示例：代码取自 e2e 示例页 `e2e/site/presets.ts` 里该 preset 的那段，带一个用 e2e 夹具运行的链接，链接与 `e2e/presets.spec.ts` 里打开的地址相同；
+  - 绑定三页：包 README、示例应用源码，以及服务端渲染示例页的链接。
+- 构建：
+  - `pnpm check:docs-site` 进 `pnpm check`，即 CI 的 verify 步骤；
+  - e2e 示例站构建时把文档生成到 `/docs/`，所以 `pnpm docs:serve` 一条命令就能看文档、跑示例；
+  - `e2e/docs-site.spec.ts`（desktop-chrome）遍历全部页面与链接，并从 basic、vod、React 三页的链接打开示例、确认在播。
+- 当前文档注释覆盖 242 / 654 个导出，只记录。TSDoc 约定与中英文取舍（交接 §7 留的两个问题）没有在这一项里定。
+
 ## 代价
 
 - 体积收口要动 SPF 的 L3 拷贝（候选 1）。本地改动变多，UPSTREAM.json 要记清楚，以后同步上游时要合并。

@@ -34,3 +34,6 @@ tmp/
 
 # e2e/tv.spec.ts screenshots (a CI artifact)
 tv-screenshots/
+
+# The generated docs site (scripts/docs-site.ts)
+docs-site/dist/
