@@ -27,7 +27,10 @@ async function play(page: Page): Promise<void> {
   await expect.poll(async () => (await state(page)).t, { timeout: 15_000 }).toBeGreaterThan(0.2);
 }
 
-test('a later tab playing with sound mutes the earlier one; nothing comes back on pause or close', async ({ page }) => {
+test('a later tab playing with sound mutes the earlier one; nothing comes back on pause or close', async ({ page, browserName }) => {
+  // Known flaky on CI desktop-safari (owner 2026-11-03, RESEARCH §1): failed once and passed on retry
+  // at 474e466. Two more red runs in the next five CI runs make it a defect.
+  if (browserName === 'webkit') test.info().annotations.push({ type: 'flaky', description: 'CI desktop-safari tab mute: failed once at 474e466, retry passed; RESEARCH §1' });
   test.setTimeout(60_000);
   await play(page);
   expect(await state(page)).toMatchObject({ paused: false, muted: false, yields: 0 });

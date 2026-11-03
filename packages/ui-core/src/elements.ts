@@ -401,7 +401,7 @@ const seekButtonClass = () =>
         return this.seconds < 0 ? { back: RotateCcw } : { forward: RotateCw };
       }
       protected override extraCss(): string {
-        return `.n { position: absolute; font: 700 9px/1 ${T.font}; top: 50%; left: 50%; transform: translate(-50%, -38%); pointer-events: none; }`;
+        return `.n { position: absolute; font: 700 calc(9px * var(--otter-ui-text-scale, 1))/1 ${T.font}; top: 50%; left: 50%; transform: translate(-50%, -38%); pointer-events: none; }`;
       }
       protected override extraHtml(): string {
         return `<span class="n" aria-hidden="true">${Math.abs(this.seconds)}</span>`;
@@ -456,7 +456,7 @@ const timeDisplayClass = () =>
         if (this.#text !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>:host([hidden]){display:none}
-:host{display:inline-flex;align-items:center;white-space:nowrap;font:500 13px/1 ${T.font};font-variant-numeric:tabular-nums;
+:host{display:inline-flex;align-items:center;white-space:nowrap;font:500 calc(13px * var(--otter-ui-text-scale, 1))/1 ${T.font};font-variant-numeric:tabular-nums;
   color:${T.fg};text-shadow:${T.textShadow}}
 .d{color:${T.muted}}</style><span part="text"></span>`;
         this.#text = root.querySelector('span') as HTMLElement;
@@ -732,7 +732,7 @@ const tooltipClass = () =>
         root.innerHTML = `<style>:host { position: absolute; z-index: 10; pointer-events: none; }
 :host([hidden]) { display: none; }
 span { display: block; padding: 4px 8px; border-radius: ${T.radiusSm}; white-space: nowrap; ${glass()}
-  color: ${T.fg}; font: 500 11px/1.3 ${T.font}; }
+  color: ${T.fg}; font: 500 calc(11px * var(--otter-ui-text-scale, 1))/1.3 ${T.font}; }
 ${glassFallback('span')}</style><span part="tooltip" role="tooltip"></span>`;
         this.#tip = root.querySelector('span') as HTMLElement;
         this.hidden = true;
@@ -1044,7 +1044,7 @@ const menuCss = (): string => `
 [aria-checked="true"] > .switch::after { transform: translateX(14px); }
 .preview { margin: 4px 16px 8px; padding: 18px 8px; border-radius: ${T.radius}; text-align: center;
   background: linear-gradient(135deg, #2b3a4d, #10161e); }
-.preview span { font-size: calc(15px * var(--otter-cue-user-scale, 1)); padding: 2px 8px; border-radius: 4px;
+.preview span { font-size: calc(15px * var(--otter-cue-user-scale, 1) * var(--otter-ui-text-scale, 1)); padding: 2px 8px; border-radius: 4px;
   color: var(--otter-cue-user-color, #fff); background: var(--otter-cue-user-background, rgb(0 0 0 / 0.55));
   text-shadow: var(--otter-cue-user-shadow, 0 0 4px rgb(0 0 0 / 0.9)); font-family: var(--otter-cue-user-font, inherit); }
 ${glassFallback('.panel')}

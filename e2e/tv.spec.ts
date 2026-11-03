@@ -236,6 +236,32 @@ test('tv skin: the outermost controls, focused and scaled, keep their ring and h
   }
 });
 
+test('tv skin: every visible text in the control bar is 28 px or more (time, quality / speed labels, live badge)', async ({ page }) => {
+  await open(page);
+  await page.keyboard.press('ArrowDown');
+  // Text nodes under the bar, through open shadow roots, whose element is drawn: their font size.
+  const texts = await page.evaluate(() => {
+    const out: { text: string; size: number; host: string }[] = [];
+    const visit = (n: Node, host: string): void => {
+      if (n.nodeType === Node.TEXT_NODE) {
+        const el = n.parentElement;
+        const text = (n.textContent ?? '').trim();
+        if (el === null || text === '') return;
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        if (r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && el.closest('[aria-hidden="true"], [hidden], [role="menu"], [role="tooltip"]') === null) out.push({ text, size: parseFloat(s.fontSize), host });
+        return;
+      }
+      if (n instanceof Element && n.shadowRoot !== null) visit(n.shadowRoot, n.tagName.toLowerCase());
+      for (const c of Array.from(n.childNodes)) visit(c, n instanceof Element && n.tagName.startsWith('OTTER-') ? n.tagName.toLowerCase() : host);
+    };
+    visit(document.querySelector('[data-otter-controls]') as Element, '');
+    return out;
+  });
+  expect(texts.length, JSON.stringify(texts)).toBeGreaterThanOrEqual(2);
+  for (const t of texts) expect(t.size, `${t.host} "${t.text}"`).toBeGreaterThanOrEqual(28);
+});
+
 test('tv skin, reduced motion: the focused control is not scaled and has no halo, the focus ring stays', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await open(page);

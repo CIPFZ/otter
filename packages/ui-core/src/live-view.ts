@@ -65,12 +65,12 @@ export function mountLiveIndicator(host: HTMLElement, root: ShadowRoot, ui: () =
   root.innerHTML = `<style>
 :host { display: inline-flex; align-items: center; }
 :host([hidden]), :host([data-otter-unsupported]) { display: none; }
-.badge, button { display: inline-flex; align-items: center; gap: 6px; height: 24px; font: 600 13px/1 ${T.font}; color: ${T.fg};
+.badge, button { display: inline-flex; align-items: center; gap: 6px; height: 24px; font: 600 calc(13px * var(--otter-ui-text-scale, 1))/1 ${T.font}; color: ${T.fg};
   text-shadow: ${T.textShadow}; white-space: nowrap; }
 .badge svg, button svg { width: 8px; height: 8px; color: ${T.live}; }
 .badge[hidden], button[hidden] { display: none; }
 button { all: unset; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 999px;
-  border: 1px solid ${T.accent}; cursor: pointer; font: 600 13px/1 ${T.font}; color: ${T.fg}; }
+  border: 1px solid ${T.accent}; cursor: pointer; font: 600 calc(13px * var(--otter-ui-text-scale, 1))/1 ${T.font}; color: ${T.fg}; }
 button svg { color: ${T.dim}; }
 button:hover { background: ${T.hover}; }
 button:focus-visible { outline: 2px solid ${T.accentDeep}; outline-offset: 2px; }

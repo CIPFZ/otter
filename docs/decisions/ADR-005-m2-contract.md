@@ -85,6 +85,7 @@ M2 要做引擎侧的 ABR 规则叠加、CMCD 和错误恢复，以及渲染侧�
 - Announcer 是 `aria-live=polite` 的区域，播报播放 / 暂停、音量、字幕开关、清晰度切换和错误。
 - 原语不硬编码文案，标签与播报文案走 `strings` 表（默认英文 + 中文），以后的 i18n 只需替换这张表。
 - 默认皮肤 `ui-skin-default` 只有 CSS：以 Vidstack default layout 为参考（L2 vendoring 改为 L4），布局重写，用 `--otter-*` 变量，支持 `prefers-reduced-motion`、`prefers-contrast` 和 `pointer: coarse`。理由：REUSE §4 原计划 L2 vendoring Vidstack 的 CSS，但它与 Vidstack 自己的元素与 data 属性强耦合，换成 `otter-*` 原语后几乎要全部重写，复制过来反而多一层改名噪音。REUSE §4 同步修改。
+- 公开 CSS 变量 `--otter-ui-text-scale`（2026-11-03 负责人，M6 第四批）：ui-core 里所有面向用户的文字字号都乘以它，默认 1；只放大文字，不放大盒子。用于 10 英尺界面（`ui-skin-tv`）与不支持 CSS `zoom` 的浏览器。变量清单见 `packages/ui-core/README.md`。
 - 验收：
   - axe 零 serious / critical；
   - 全部控件键盘可达，焦点可见（e2e 逐控件 Tab 遍历并截图检查外框）；

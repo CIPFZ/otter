@@ -890,8 +890,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
             sink = await createAudioSink(c);
             sink.setVolume(volume, muted);
             // A dry worklet is said, not just heard as silence (M6 F14).
-            sink.onUnderrun((media, ms) =>
-              bus.emit('error', createError({ type: 'media', details: 'audioUnderrun', fatal: false, recoverable: true, message: `audio ran dry at ${media.toFixed(3)} s for ${Math.round(ms)} ms` })),
+            sink.onUnderrun((media, ms, dq) =>
+              bus.emit('error', createError({ type: 'media', details: 'audioUnderrun', fatal: false, recoverable: true, message: `audio ran dry at ${media.toFixed(3)} s for ${Math.round(ms)} ms (decode queue ${dq})` })),
             );
             audio = decoder.create({ ...a.setup, output: onAudioData, error: fail });
           } catch (err) {

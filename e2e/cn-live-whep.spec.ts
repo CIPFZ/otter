@@ -5,6 +5,7 @@
 
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
+import { gapsAsStalls } from './audio-stalls';
 import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
 
@@ -195,9 +196,9 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     test.skip(true, 'WebKit recording path unreliable (RESEARCH §1)');
   }
   // Known flaky on CI desktop-chrome (owner 2026-11-03, RESEARCH §1): f369598 red twice (seam gaps
-  // 3.77 s; an extra seam, 3.05 + 1.00 s), stable at 4.02 s in the four runs before. Two more red
-  // runs in the next five CI runs make it a defect.
-  info.annotations.push({ type: 'flaky', description: 'CI desktop-chrome WHEP recording seams: 3.77 s / 3.05 + 1.00 s at f369598; RESEARCH §1' });
+  // 3.77 s; an extra seam, 3.05 + 1.00 s), 474e466 red twice (extra seams 0.73 / 0.79 s). Kept
+  // until the RTCP-gap rule is decided (M6.md: the gaps are in every recording).
+  info.annotations.push({ type: 'flaky', description: 'CI desktop-chrome WHEP recording seams: f369598, 474e466; RESEARCH §1' });
   await routeDocuments(page, browserName);
   await page.goto('/player.html?idle=0');
   if (!(await gathers(page))) {
@@ -206,6 +207,10 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
   }
   await load(page, { src: '/whep/live', type: 'application/whep', live: true });
   await expect.poll(async () => (await state(page)).t, { timeout: 20_000 }).toBeGreaterThan(1);
+  // The fixture's clock at the start and end of the recording (ms after its session's offer), to
+  // place the RTCP record on the recording.
+  const fixtureNow = async (): Promise<number | null> => ((await (await page.request.get('/whep/log/last')).json()) as { now?: number } | null)?.now ?? null;
+  const recFrom = await fixtureNow();
   const rec = await page.evaluate(async (seconds) => {
     const stream = (document.querySelector('video') as HTMLVideoElement).srcObject as MediaStream;
     if (stream.getAudioTracks().length === 0) return { running: true, tracks: 0, rate: 0, b64: '', got: 0, messages: 0, calls: 0, empty: 0, stalls: [] as string[] };
@@ -272,6 +277,7 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     if (performance.now() - since >= 500) stalls.push(`${((since - t0) / 1000).toFixed(2)} s + open`);
     return { running, tracks: 1, rate, b64: btoa(bin), got: n, messages, calls, empty, stalls };
   }, 20);
+  const recTo = await fixtureNow();
   expect(rec.tracks).toBe(1);
   if (!rec.running) {
     ciNotice('WHEP recording: no running AudioContext here, nothing to record');
@@ -356,14 +362,17 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     `WHEP recording (${rate} Hz, ${(x.length / rate).toFixed(1)} s, RMS ${rms.toFixed(3)}): tone ${f0.toFixed(2)} Hz, share per second min ${Math.min(...shares).toFixed(3)}; seams at ${inner.map((t) => t.toFixed(2)).join(', ') || 'none'} s (gaps ${gaps.map((g) => g.toFixed(2)).join(', ')}); ${file}`,
   );
   // The fixture's side of the session (owner 2026-11-03): connection state changes and RTCP arrival
-  // intervals, next to the seams (a jump in the seams with a gap in RTCP is the transport's).
+  // intervals, with the gaps over 1 s that fall in the recording. Not a skip rule (yet): locally
+  // every run had such gaps in its recording (4 of 4, seams all 4.02 s), so they do not tell a bad
+  // recording from a good one (M6.md, awaiting the owner).
   // The latest session the fixture answered (this case runs alone, @solo).
   const log = (await (await page.request.get('/whep/log/last')).json()) as { states: { at: number; what: string }[]; rtcp: number[] } | null;
+  const rtcpStalls = log === null || recFrom === null || recTo === null ? [] : gapsAsStalls(log.rtcp, 1000, recFrom, recTo);
   if (log !== null) {
     const iv = log.rtcp.slice(1).map((t, i) => t - (log.rtcp[i] as number));
     const sorted = [...iv].sort((p, q) => p - q);
     const p = (q: number): number => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] ?? 0;
-    ciNotice(`WHEP recording, fixture session: states ${log.states.map((s) => `${s.what} @${s.at}`).join(', ')}; RTCP ${log.rtcp.length} packets, interval p50 ${p(0.5)} / p95 ${p(0.95)} / max ${p(1)} ms${iv.some((x) => x > 1000) ? `; gaps > 1 s at ${log.rtcp.filter((_, i) => (iv[i - 1] ?? 0) > 1000).join(', ')} ms` : ''}`);
+    ciNotice(`WHEP recording, fixture session: states ${log.states.map((s) => `${s.what} @${s.at}`).join(', ')}; recording ${recFrom}..${recTo} ms; RTCP ${log.rtcp.length} packets, interval p50 ${p(0.5)} / p95 ${p(0.95)} / max ${p(1)} ms${iv.some((x) => x > 1000) ? `; gaps > 1 s at ${log.rtcp.filter((_, i) => (iv[i - 1] ?? 0) > 1000).join(', ')} ms` : ''}; in the recording ${rtcpStalls.map((x) => `${x.from}..${x.to ?? 'open'}`).join(', ') || 'none'}`);
   }
   if (rec.stalls.length > 0) {
     // The device stood still during the recording: stream audio is dropped there, the seams move.

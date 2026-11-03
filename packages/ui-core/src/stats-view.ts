@@ -65,7 +65,7 @@ export function mountStats(host: HTMLElement & { readonly strings: UiStrings }, 
   root.innerHTML = `<style>
 :host([hidden]) { display: none; }
 :host { display: block; box-sizing: border-box; max-width: 360px; padding: 10px 12px 8px; border-radius: ${T.radius}; ${d.glass()}
-  color: ${T.fg}; font: 500 11px/18px ${T.font}; }
+  color: ${T.fg}; font: 500 calc(11px * var(--otter-ui-text-scale, 1))/1.6 ${T.font}; }
 .bar { display: flex; justify-content: flex-end; gap: 2px; margin: -6px -8px 0 0; float: right; }
 .bar button { all: unset; cursor: pointer; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: ${T.muted}; }
 .bar button:hover { background: ${T.hover}; color: ${T.fg}; }
@@ -76,7 +76,7 @@ dl + dl { margin-top: 6px; }
 dt { color: ${T.muted}; } dd { margin: 0; font-family: ${T.mono}; overflow-wrap: anywhere; }
 details { margin-top: 6px; color: ${T.muted}; }
 summary { cursor: pointer; } summary:focus-visible { outline: 2px solid ${T.accentDeep}; border-radius: 4px; }
-pre { white-space: pre-wrap; margin: 4px 0 0; max-height: 12em; overflow: auto; font: 10px/1.4 ${T.mono}; color: ${T.fg}; }
+pre { white-space: pre-wrap; margin: 4px 0 0; max-height: 12em; overflow: auto; font: calc(10px * var(--otter-ui-text-scale, 1))/1.4 ${T.mono}; color: ${T.fg}; }
 ${d.glassFallback(':host')}
 </style><section part="panel"><div class="bar"><button part="copy" type="button" data-action="copy">${d.icon(d.Copy)}</button><button part="close" type="button" data-action="close">${d.icon(d.X)}</button></div>
 <div class="body"></div><details part="route"><summary>Route (router.explain)</summary><pre></pre></details></section>`;

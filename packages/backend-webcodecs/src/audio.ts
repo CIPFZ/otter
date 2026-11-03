@@ -15,17 +15,19 @@ class OtterAudio extends AudioWorkletProcessor {
     this.q = [];
     this.a = null;
     // Observation (M6 F14), summed over about 0.2 s and posted as 'stat': samples output as zeros
-    // because the queue was dry (under) or the next chunk starts later (gap), chunks dropped as
-    // already past (late), the largest discontinuity between consecutive chunks (disc, s), the
-    // decode queue depth sent with the last chunk (dq).
-    this.s = { n: 0, under: 0, gap: 0, late: 0, disc: 0, dq: 0 };
+    // because the queue was dry while audio flowed (under), dry during the first fill after a load
+    // or seek (fill: expected, not a fault), or because the next chunk starts later (gap); chunks
+    // dropped as already past (late), the largest discontinuity between consecutive chunks (disc,
+    // s), the decode queue depth sent with the last chunk (dq).
+    this.s = { n: 0, under: 0, fill: 0, gap: 0, late: 0, disc: 0, dq: 0 };
     this.lastEnd = null;
     // Underrun (M6 F14): the queue ran dry while playing after audio had been flowing, i.e. after
     // it once reached 0.1 s ahead (the first fill after a load or seek is not over with its
     // first chunk); reported with its length once audio flows again (a dry end of the media is
-    // not reported).
+    // not reported), with the decode queue depth when it went dry (dryDq).
     this.flowing = false;
     this.dryFrom = null;
+    this.dryDq = 0;
     this.port.onmessage = (e) => {
       const m = e.data;
       if (m.t === 'chunk') {
@@ -79,20 +81,24 @@ class OtterAudio extends AudioWorkletProcessor {
         out[ch][i] = j + 1 < p.length ? v + (p[j + 1] - v) * f : v;
       }
     }
-    s.under += n - i;
+    if (this.flowing) s.under += n - i;
+    else s.fill += n - i;
     s.n += n;
     // Audio in this quantum after a dry stretch in earlier ones: that stretch is over.
     if (i > 0) {
-      if (this.dryFrom !== null) this.port.postMessage({ t: 'underrun', media: this.dryFrom, ms: (t0 - this.dryFrom) * 1000 });
+      if (this.dryFrom !== null) this.port.postMessage({ t: 'underrun', media: this.dryFrom, ms: (t0 - this.dryFrom) * 1000, dq: this.dryDq });
       this.dryFrom = null;
       const last = q[q.length - 1];
       if (last !== undefined && end(last) - t0 >= 0.1) this.flowing = true;
     }
-    if (i < n && this.flowing && this.dryFrom === null) this.dryFrom = t0 + i / sampleRate;
+    if (i < n && this.flowing && this.dryFrom === null) {
+      this.dryFrom = t0 + i / sampleRate;
+      this.dryDq = s.dq;
+    }
     if (s.n >= sampleRate / 5) {
       const last = q[q.length - 1];
       this.port.postMessage({ t: 'stat', at: currentTime, media: t0, ahead: last === undefined ? -1 : end(last) - t0, queued: q.length, ...s });
-      this.s = { n: 0, under: 0, gap: 0, late: 0, disc: 0, dq: s.dq };
+      this.s = { n: 0, under: 0, fill: 0, gap: 0, late: 0, disc: 0, dq: s.dq };
     }
     return true;
   }
@@ -130,8 +136,11 @@ export interface AudioSink {
   readonly bufferedEnd: number;
   setAnchor(a: ClockAnchor): void;
   setVolume(volume: number, muted: boolean): void;
-  /** The worklet ran dry while playing (media time it began, ms of silence), once audio flows again. */
-  onUnderrun(h: (media: number, ms: number) => void): void;
+  /**
+   * The worklet ran dry while playing (media time it began, ms of silence, the decoder's queue depth
+   * when it went dry), once audio flows again.
+   */
+  onUnderrun(h: (media: number, ms: number, decodeQueue: number) => void): void;
   destroy(): void;
 }
 
@@ -141,9 +150,9 @@ export async function createAudioSink(ctx: AudioContext): Promise<AudioSink> {
   const gain = ctx.createGain();
   node.connect(gain).connect(ctx.destination);
   let bufferedEnd = Number.NEGATIVE_INFINITY;
-  let underrun: ((media: number, ms: number) => void) | undefined;
-  node.port.onmessage = (e: MessageEvent<{ t: string; media?: number; ms?: number }>) => {
-    if (e.data.t === 'underrun') underrun?.(e.data.media as number, e.data.ms as number);
+  let underrun: ((media: number, ms: number, decodeQueue: number) => void) | undefined;
+  node.port.onmessage = (e: MessageEvent<{ t: string; media?: number; ms?: number; dq?: number }>) => {
+    if (e.data.t === 'underrun') underrun?.(e.data.media as number, e.data.ms as number, e.data.dq ?? 0);
   };
   return {
     push(data, decodeQueue = 0) {

@@ -57,7 +57,7 @@ button {
   all: unset; box-sizing: border-box; cursor: pointer; position: relative;
   min-width: ${T.size}; height: ${T.size};
   display: inline-flex; align-items: center; justify-content: center; gap: 4px;
-  color: ${T.fg}; border-radius: ${T.radius}; font: 600 13px/1 ${T.font}; text-shadow: ${T.textShadow};
+  color: ${T.fg}; border-radius: ${T.radius}; font: 600 calc(13px * var(--otter-ui-text-scale, 1))/1 ${T.font}; text-shadow: ${T.textShadow};
   -webkit-tap-highlight-color: transparent;
 }
 button svg { width: ${T.icon}; height: ${T.icon}; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.45));
@@ -74,7 +74,7 @@ button:disabled .icon > svg[data-on] { transform: none; }
 button[aria-pressed="true"]::after { content: ''; position: absolute; left: 30%; right: 30%; bottom: 5px; height: 2px;
   border-radius: 1px; background: ${T.accent}; }
 .tip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); padding: 4px 8px;
-  border-radius: ${T.radiusSm}; ${glass()} color: ${T.fg}; font: 500 11px/1.3 ${T.font}; white-space: nowrap;
+  border-radius: ${T.radiusSm}; ${glass()} color: ${T.fg}; font: 500 calc(11px * var(--otter-ui-text-scale, 1))/1.3 ${T.font}; white-space: nowrap;
   pointer-events: none; opacity: 0; transition: opacity ${T.fast} ${T.easeOut}; text-shadow: none; z-index: 1; }
 :host(:hover) .tip { opacity: 1; transition-delay: 400ms; }
 :host([data-tip-align="end"]) .tip { left: auto; right: 0; transform: none; }

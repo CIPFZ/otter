@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { PROCESSOR } from '../src/audio.js';
 
 interface Port {
-  posted: { t: string; media?: number; ms?: number }[];
+  posted: { t: string; media?: number; ms?: number; dq?: number; under?: number; fill?: number; gap?: number; late?: number }[];
   onmessage: ((e: { data: unknown }) => void) | null;
   postMessage(m: unknown): void;
 }
@@ -91,6 +91,37 @@ describe('audio worklet underruns (M6 F14)', () => {
     w.render(0.6);
     // The media ended (no more chunks): dry, never reported.
     w.render(0.5);
+    expect(w.underruns()).toEqual([]);
+  });
+
+  it('zeros of the first fill are counted as fill, not under; a dry stretch while flowing is under, with the decode queue depth then', () => {
+    const w = worklet();
+    // 0.1 s of nothing (first fill), then audio to 0.5 s, then dry to 0.7 s with dq 17 on the last chunk.
+    w.render(0.1);
+    for (let t = 0.1; t < 0.5 - 1e-9; t += 0.1) w.send({ t: 'chunk', start: t, rate: RATE, planes: [new Float32Array(RATE / 10).fill(0.5)], dq: 17 });
+    w.render(0.6);
+    w.chunks(0.7, 1.2);
+    w.render(0.4);
+    const stats = w.p.port.posted.filter((m) => m.t === 'stat');
+    const sum = (k: 'under' | 'fill') => stats.reduce((n, x) => n + (x[k] ?? 0), 0);
+    // The first 0.1 s: fill (4800 samples, to a quantum), not under.
+    expect(sum('fill')).toBeGreaterThanOrEqual(4800 - 128);
+    expect(sum('fill')).toBeLessThanOrEqual(4800 + 128);
+    // The dry 0.2 s while flowing: under.
+    expect(sum('under')).toBeGreaterThanOrEqual(9600 - 128);
+    expect(sum('under')).toBeLessThanOrEqual(9600 + 128);
+    expect(w.underruns()[0]).toMatchObject({ dq: 17 });
+  });
+
+  it('a later chunk with a hole before it: the hole is gap, not under (no underrun)', () => {
+    const w = worklet();
+    w.chunks(0, 0.3);
+    // Next chunk starts 50 ms after the last one ended: queued already, so a gap.
+    w.chunks(0.35, 0.8);
+    w.render(0.7);
+    const stats = w.p.port.posted.filter((m) => m.t === 'stat');
+    expect(stats.reduce((n, x) => n + (x.gap ?? 0), 0)).toBeGreaterThanOrEqual(2400 - 128);
+    expect(stats.reduce((n, x) => n + (x.under ?? 0), 0)).toBe(0);
     expect(w.underruns()).toEqual([]);
   });
 });

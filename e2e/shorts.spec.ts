@@ -7,9 +7,15 @@
 // The swipes are pointer events dispatched on the picture with pointerType touch, at real time
 // steps (Playwright has no touch drag; the recognizer reads pointer events whatever made them).
 // The tap is a real touchscreen tap.
+import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { ShortsPlayer } from '@otter-player/presets/shorts';
+
+const ciNotice = (text: string): void => {
+  mkdirSync('test-results', { recursive: true });
+  appendFileSync('test-results/ci-notices.txt', `${test.info().project.name}: ${text}\n`);
+};
 
 const FEED = ['/frames/h264.mp4', '/hls-fmp4/master.m3u8', '/frames/h264.mp4'];
 
@@ -63,8 +69,28 @@ const swipe = (page: Page, dy: number, ms: number, steps = 8) =>
         ev('pointermove', y0 + (dy * i) / steps);
       }
       ev('pointerup', y0 + dy);
+      return performance.now();
     },
     [dy, ms, steps] as const,
+  );
+
+/**
+ * From a swipe's release to the next video's first frame, ms (owner 2026-11-03: recorded, not
+ * judged; no preloading, ADR-013 §11). Polled in the page every 10 ms: the feed index moved and the
+ * new load's TTFF is in.
+ */
+const switchMs = (page: Page, release: number, index: number) =>
+  page.evaluate(
+    async ([t0, want]) => {
+      const p = window.preset as ShortsPlayer;
+      for (;;) {
+        const s = p.store.getState();
+        if (p.index === want && s.qoe.ttff !== null && s.currentTime > 0) return performance.now() - t0;
+        if (performance.now() - t0 > 15_000) return Number.NaN;
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    },
+    [release, index] as const,
   );
 
 const height = (page: Page) => page.evaluate(() => (document.getElementById('player') as HTMLElement).getBoundingClientRect().height);
@@ -73,13 +99,15 @@ test('shorts: swipe up / down switches past the distance; a short quick flick sw
   await open(page);
   const h = await height(page);
   // Long, slow swipe up (past 20 % of the height): next.
-  await swipe(page, -0.4 * h, 600);
+  const toHls = await switchMs(page, await swipe(page, -0.4 * h, 600), 1);
   await expect.poll(async () => (await shorts(page)).index).toBe(1);
   await expect.poll(async () => (await shorts(page)).s.currentTime, { timeout: 15_000 }).toBeGreaterThan(0.3);
   expect((await shorts(page)).s.format).toBe('hls');
   // Short (40 px) and quick (60 ms): a flick, next again.
-  await swipe(page, -40, 60, 4);
+  const toMp4 = await switchMs(page, await swipe(page, -40, 60, 4), 2);
   await expect.poll(async () => (await shorts(page)).index).toBe(2);
+  ciNotice(`shorts: swipe release to first frame (180 ms of slide-out included, no preloading): HLS ${Math.round(toHls)} ms, MP4 ${Math.round(toMp4)} ms`);
+  test.info().annotations.push({ type: 'switch', description: `release to first frame: HLS ${Math.round(toHls)} ms, MP4 ${Math.round(toMp4)} ms` });
   await expect.poll(async () => (await shorts(page)).s.currentTime, { timeout: 15_000 }).toBeGreaterThan(0.3);
   // Short (40 px) and slow (800 ms): no switch, the picture snaps back.
   await swipe(page, 40, 800);

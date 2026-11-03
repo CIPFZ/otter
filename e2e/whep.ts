@@ -92,6 +92,8 @@ const sessions = new Map<string, () => void>();
 export interface SessionLog {
   readonly states: { at: number; what: string }[];
   readonly rtcp: number[];
+  /** Date.now() of the offer: the log's times are ms after it. */
+  t0?: number;
 }
 const logs = new Map<string, SessionLog>();
 /** Sending stops when the receiver has sent no RTCP for this long (a page that closed without DELETE). */
@@ -145,6 +147,7 @@ function playAudio(track: MediaStreamTrack, opus: Buffer[]): () => void {
  */
 export async function answer(offer: string, clip: Clip, onEnd: () => void = () => undefined, silenceMs = RTCP_SILENCE_MS, log?: SessionLog): Promise<{ sdp: string; close: () => void }> {
   const t0 = Date.now();
+  if (log !== undefined) log.t0 = t0;
   const note = (what: string): void => void log?.states.push({ at: Date.now() - t0, what });
   const pc = new RTCPeerConnection({
     codecs: {
@@ -228,7 +231,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, clip: () => Cli
   const logPath = /^\/whep\/log\/(\d+|last)$/.exec(path);
   if (logPath !== null) {
     const log = logPath[1] === 'last' ? [...logs.values()].at(-1) : logs.get(`/whep/session/${logPath[1]}`);
-    res.writeHead(log === undefined ? 404 : 200, { 'Content-Type': 'application/json' }).end(JSON.stringify(log ?? null));
+    // `now`: ms after the offer at this request (a client aligns its own times with the log's).
+    res.writeHead(log === undefined ? 404 : 200, { 'Content-Type': 'application/json' }).end(JSON.stringify(log === undefined ? null : { ...log, now: Date.now() - (log.t0 ?? Date.now()) }));
     return;
   }
   if (path === '/whep/sessions') {

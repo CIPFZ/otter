@@ -107,3 +107,21 @@ export async function acceptEnvironmentStalls(
   }
   return { kept, accepted };
 }
+
+/**
+ * Gaps between consecutive event times (ms) longer than `limitMs`, as stall spans, and those that
+ * overlap [from, to]: the same shape as the AudioContext's record, for a transport's own record
+ * (the WHEP fixture's RTCP arrivals, owner 2026-11-03).
+ */
+export function gapsAsStalls(times: readonly number[], limitMs: number, from = Number.NEGATIVE_INFINITY, to = Number.POSITIVE_INFINITY): StallSpan[] {
+  const out: StallSpan[] = [];
+  for (let i = 1; i < times.length; i++) {
+    const a = times[i - 1] as number;
+    const b = times[i] as number;
+    if (b - a > limitMs && b >= from && a <= to) out.push({ from: a, to: b });
+  }
+  // Still open at `to`: nothing since the last one.
+  const last = times.at(-1);
+  if (last !== undefined && to < Number.POSITIVE_INFINITY && to - last > limitMs && last <= to) out.push({ from: last, to: null });
+  return out;
+}
