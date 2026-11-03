@@ -102,7 +102,7 @@ jobs:
           - name: chromium + firefox
             os: ubuntu-24.04
             browsers: chromium firefox
-            projects: --project=desktop-chrome --project=desktop-firefox --project=emulated-android
+            projects: --project=desktop-chrome --project=desktop-firefox --project=emulated-android --project=tv-1080
           - name: webkit
             os: macos-15
             browsers: webkit
@@ -135,11 +135,6 @@ jobs:
         run: STEP=solo OTTER_REPEAT_F14=${{ inputs.repeat || '1' }} sh tooling/e2e-step.sh ${{ matrix.projects }} --grep @solo --workers=1
       # Benchmarks need the runner to themselves (one worker); they skip, with a notice, where the
       # runner is too small (e2e/multiview.spec.ts: 8+ cores).
-      # TEMPORARY (M6, owner 2026-11-03: emulated-iphone live TS in solo): the surveillance solo cases
-      # once more with the projects in reverse order (emulated-iphone first, a fresh preview server).
-      - if: ${{ !cancelled() && matrix.name == 'webkit' }}
-        name: Surveillance solo, iPhone first (temporary)
-        run: STEP=solo-iphone-first OTTER_PROJECTS_REVERSED=1 sh tooling/e2e-step.sh --project=emulated-iphone --project=desktop-safari e2e/surveillance.spec.ts --grep "measured alone" --workers=1 || true
       - if: ${{ !cancelled() && matrix.name == 'chromium + firefox' }}
         run: STEP=bench sh tooling/e2e-step.sh --project=desktop-chrome --grep @bench --workers=1
       # The danmaku benchmark on WebKit (the only WebKit there is), alone on the runner: numbers as a

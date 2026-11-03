@@ -34,6 +34,8 @@ const projects: Project<PlaywrightTestOptions, PlaywrightWorkerOptions & OtterWo
   { name: 'desktop-safari', use: { ...devices['Desktop Safari'] }, metadata: { matrix: 'desktop' } },
   { name: 'emulated-iphone', use: { ...devices['iPhone 15'] }, metadata: { matrix: 'emulated' } },
   { name: 'emulated-android', use: { ...devices['Pixel 7'] }, metadata: { matrix: 'emulated' } },
+  // A TV screen (ADR-013 batch 4): Chromium at 1920 x 1080, DPR 1, keyboard as the remote; only the TV spec.
+  { name: 'tv-1080', use: { ...devices['Desktop Chrome'], viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 }, testMatch: /tv\.spec\.ts$/, metadata: { matrix: 'emulated' } },
 ];
 
 // Real Windows desktop with the installed Edge (headed, so the GPU video pipeline is the real one).
@@ -75,10 +77,6 @@ if (tvCdpUrl !== undefined) {
     metadata: { matrix: 'real' },
   });
 }
-
-// TEMPORARY (M6, owner 2026-11-03): OTTER_PROJECTS_REVERSED=1 runs the projects in reverse order
-// (Playwright runs them in config order with one worker).
-if (env('OTTER_PROJECTS_REVERSED') === '1') projects.reverse();
 
 export default defineConfig<object, OtterWorkerOptions>({
   testDir: 'e2e',

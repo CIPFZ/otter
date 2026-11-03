@@ -58,7 +58,9 @@ if (kind === 'background') {
   player = createLowLatencyPlayer(common);
 } else if (kind === 'tv') {
   // A TV keeps its own idle delay (5 s); 0 here would keep the controls up for the focus checks anyway.
-  player = createTvPlayer({ container, title: 'Preset tv', muted: true, ...(lang === null ? {} : { lang }) });
+  // ?keys=back:b|x,ok:o: the remote's key map for a logical key replaced (configurable map, ADR-013 batch 4).
+  const keys = Object.fromEntries((params.get('keys') ?? '').split(',').filter((k) => k.includes(':')).map((k) => { const [name, list] = k.split(':') as [string, string]; return [name, list.split('|').map((x) => (/^\d+$/.test(x) ? Number(x) : x))]; }));
+  player = createTvPlayer({ container, title: 'Preset tv', muted: true, ...(lang === null ? {} : { lang }), ...(Object.keys(keys).length === 0 ? {} : { remote: { keys } }) });
 } else if (kind === 'danmaku') {
   // One call: the comments come with each load (?comments=<url>, default the fixture's ladder.xml).
   player = createDanmakuPlayer({

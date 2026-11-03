@@ -10,6 +10,11 @@
       "@otter-player/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./remote": {
+      "@otter-player/source": "./src/remote.ts",
+      "types": "./dist/remote.d.ts",
+      "default": "./dist/remote.js"
     }
   },
   "files": [
@@ -21,5 +26,10 @@
   },
   "dependencies": {
     "@otter-player/core": "workspace:*"
+  },
+  "otter": {
+    "entries": {
+      "remote": "src/remote.ts"
+    }
   }
 }

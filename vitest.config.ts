@@ -22,6 +22,7 @@ export default defineConfig({
       { find: /^@otter-player\/engine-pipeline\/demux$/, replacement: `${packagesDir}engine-pipeline/src/flv-demux.ts` },
       { find: /^@otter-player\/presentation\/picture$/, replacement: `${packagesDir}presentation/src/picture.ts` },
       { find: /^@otter-player\/presentation\/single-audio$/, replacement: `${packagesDir}presentation/src/single-audio.ts` },
+      { find: /^@otter-player\/input\/remote$/, replacement: `${packagesDir}input/src/remote.ts` },
       { find: /^@otter-player\/presets\/([a-z0-9-]+)$/, replacement: `${packagesDir}presets/src/$1.ts` },
       { find: /^@otter-player\/([a-z0-9-]+)$/, replacement: `${packagesDir}$1/src/index.ts` },
     ],

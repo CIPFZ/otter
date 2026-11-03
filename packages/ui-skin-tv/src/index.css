@@ -1,4 +1,90 @@
 /*
- * @otter-player/ui-skin-tv (SPEC §14.4): CSS only.
- * TV skin: large focus rings, arrow-key-only navigation. Layout lands with ui-core primitives (M2 / M6); theme tokens come from ui-skin-default.
+ * @otter-player/ui-skin-tv (SPEC §14.4, ADR-013 batch 4): CSS only. The default skin with a
+ * 10-foot layer on top, for a 1920 x 1080 screen seen from about 3 m and driven by a remote:
+ * - type and controls sized for the distance (text 28 px and up, controls 72 px);
+ * - the bars inside the title-safe area (5 % of each edge; overscan on older sets);
+ * - large focus rings that follow the remote's focus (4 px ring, halo, 1.1x), no hover tooltips;
+ * - menus, preview cards and badges scaled up as a whole.
+ * Hosts import this instead of ui-skin-default (it contains it: the build inlines the import).
  */
+@import '../../ui-skin-default/src/index.css';
+
+:where(:root) {
+  --otter-control-size: 72px;
+  --otter-icon-size: 40px;
+  --otter-bar-height: 104px;
+  --otter-bar-padding-x: 0px;
+  --otter-gap: 16px;
+  --otter-progress-height: 8px;
+  --otter-progress-thumb: 24px;
+  --otter-radius: 12px;
+  --otter-radius-lg: 16px;
+  --otter-tv-ring: 4px;
+  --otter-tv-halo: rgb(30 233 230 / 0.28);
+  --otter-tv-scale: 1.1;
+  /* Menus, preview cards and badges are drawn at desktop sizes in their shadow roots: scaled. */
+  --otter-tv-zoom: 1.75;
+}
+
+/* ---- Title-safe area: 5 % of the width each side, 5 % of a 16:9 height top and bottom ---- */
+:where([data-otter-player]) {
+  --otter-tv-safe-x: 5cqw;
+  --otter-tv-safe-y: 2.8125cqw;
+}
+:where([data-otter-top]) {
+  padding: var(--otter-tv-safe-y) var(--otter-tv-safe-x) 0;
+}
+:where([data-otter-controls]) {
+  padding: 0 var(--otter-tv-safe-x) var(--otter-tv-safe-y);
+}
+:where([data-otter-top])::before {
+  height: calc(var(--otter-tv-safe-y) + 160px);
+}
+:where([data-otter-controls])::before {
+  height: calc(var(--otter-tv-safe-y) + 260px);
+}
+:where([data-otter-controls]) > otter-time-slider {
+  margin: 0 0 12px;
+}
+
+/* ---- 10-foot type ------------------------------------------------------------------------- */
+:where([data-otter-title]) {
+  font-size: 36px;
+}
+:where([data-otter-player]) :is(otter-time-display, otter-live-indicator) {
+  font-size: 28px;
+}
+:where([data-otter-player]) *::part(menu),
+:where([data-otter-player]) *::part(preview),
+:where([data-otter-player]) *::part(badge) {
+  zoom: var(--otter-tv-zoom);
+}
+
+/* ---- Focus follows the remote ------------------------------------------------------------- */
+:where([data-otter-player]) *::part(button) {
+  transition: transform var(--otter-t-fast) var(--otter-ease-out);
+}
+:where([data-otter-player]) *::part(button):focus-visible {
+  outline: var(--otter-tv-ring) solid var(--otter-accent);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 14px var(--otter-tv-halo);
+  transform: scale(var(--otter-tv-scale));
+}
+:where([data-otter-player]) *::part(input):focus-visible {
+  outline: var(--otter-tv-ring) solid var(--otter-accent);
+  outline-offset: 8px;
+}
+/* No pointer on a TV: hover tooltips would only ever show on focus and cover the next control. */
+:where([data-otter-player]) *::part(tooltip) {
+  display: none;
+}
+/* The picture itself takes the focus when the controls are left (Back): no ring around the video. */
+:where([data-otter-player]:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where([data-otter-player]) *::part(button):focus-visible {
+    transform: none;
+  }
+}

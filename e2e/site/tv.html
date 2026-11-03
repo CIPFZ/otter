@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Otter TV preset fixture</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/@otter-skin-tv/index.css" />
+    <style>
+      /* The player fills the 1920 x 1080 screen, as on a TV. */
+      body { margin: 0; background: #000; color: #fff; font: 14px system-ui, sans-serif; }
+      main { width: 100vw; }
+      h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+      #hero { width: 640px; height: 360px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Otter TV preset fixture</h1>
+      <!-- An empty container: the preset builds the shell (?preset=vod|live), or a Hero video goes in it. -->
+      <div id="player"></div>
+      <div id="hero"></div>
+    </main>
+    <script type="module" src="./presets.ts"></script>
+  </body>
+</html>

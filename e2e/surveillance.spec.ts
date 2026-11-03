@@ -8,7 +8,8 @@
 //   to itself): real time and lost frames (GPU walls), and TTFF (SPEC §19 surveillance row, owner
 //   2026-10-30): one FLV tile's median within 300 ms of the MSE pipeline's, live TS within 1 s, all
 //   16 tiles of the @bench within 3 s. In the main step these swung with the runner's load (CI
-//   macOS, M6 RESEARCH §1).
+//   macOS, M6 RESEARCH §1). Judged on desktop-safari, desktop-chrome and the real Edge; the
+//   emulated phones and headless Firefox are measured only (owner 2026-11-03, ADR-013 §7a).
 //
 // Browsers open at most 6 HTTP/1.1 connections per host, which endless HTTP-FLV streams keep: more
 // tiles from one host take WS-FLV (or HTTP/2).
@@ -215,7 +216,13 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
       test.info().annotations.push({ type: 'ttff', description: `${one.join(' ')} | ${ref.join(' ')}` });
     }
     const name = transport === 'ts' ? 'live ts' : `${transport}-flv`;
-    ciNotice(`surveillance ${name} x4 (${k} wall, solo, attempt ${test.info().retry + 1}): ${await geometry(page)}; AudioContext stalls ≥ 300 ms ${(await audioStalls(page)).join(', ') || 'none'}; tile errors ${rows.flatMap((r) => r.messages).join(' | ') || 'none'}; TTFF phases ${await ttffPhases(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+    // The performance criteria are desktop-safari's and desktop-chrome's (and the real Edge's), not
+    // the emulated phones' or headless Firefox's (owner 2026-11-03, ADR-013 §7a: a surveillance wall
+    // is not a phone scenario; the real iPhone is M7). Elsewhere: measured and noted only.
+    const judged = ['desktop-safari', 'desktop-chrome', 'real-windows-edge'].includes(test.info().project.name);
+    if (!judged) test.info().annotations.push({ type: 'measured only', description: 'performance criteria on desktop-safari / desktop-chrome (ADR-013 §7a)' });
+    ciNotice(`surveillance ${name} x4 (${k} wall, solo, ${judged ? 'judged' : 'measured only'}, attempt ${test.info().retry + 1}): ${await geometry(page)}; AudioContext stalls ≥ 300 ms ${(await audioStalls(page)).join(', ') || 'none'}; tile errors ${rows.flatMap((r) => r.messages).join(' | ') || 'none'}; TTFF phases ${await ttffPhases(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
+    if (!judged) return;
     for (const r of rows) expect(r.advanced, `${r.tile}: real time`).toBeGreaterThan(4.5);
     // The lost-frame criterion is the GPU wall's (a 2D wall draws on the main thread: headless Firefox).
     if (k === 'gpu') for (const r of rows) expect(r.lost, `${r.tile}: lost frames`).toBeLessThanOrEqual(0.05);

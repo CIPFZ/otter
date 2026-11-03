@@ -79,6 +79,13 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
 - 直播 TS 的 flaky 标注撤掉：原因已定，判定换到了 solo。
 - 结案条件：solo 里 desktop-safari 三种传输丢帧 ≤ 5 %、TS 首帧 ≤ 1 s，连续 2 次。solo 里丢帧仍 > 5 % 就作为产品缺陷另开编号；TS 首帧仍 > 1 s 就立 F15，先看首字节到首关键帧那约 300 ms 是 mediabunny 读探测字节还是在等 PAT / PMT。
 
+- **判定的范围（2026-11-03 负责人）**：性能口径（实时、丢帧、首帧）只判 desktop-safari 与 desktop-chrome（另加真 Edge）；emulated-iphone、emulated-android 与无头 Firefox 只测量、记录，不判定。依据：
+  - 监控墙不是手机场景，真 iPhone 在 M7；
+  - `f369598` 上 emulated-iphone 的直播 TS 在 solo 里红，随后在 `87499d6` 上查了三样，都排除了产品原因：
+    - 两边实际选中的解码器相同（avc1.42c01e，WebCodecs，hardware），解码池加渲染 Worker 都是 5 个、核数都是 4；产品里没有按 UA 或触屏分支的代码，路由步骤里也没有平台相关的一步，只是 iPhone 仿真的 `pointer: coarse` 为 true，没有代码读它；iPhone 每路画布像素反而少（164,887 对 518,400）。
+    - 在 solo 里对调运行顺序（iPhone 先跑）：两种顺序都达标，首帧 529–725 ms，丢帧 0 %。
+    - 当时只播 4.01–4.25 s 的那次没有任何错误事件，但没有停顿记录可核；`87499d6` 起装了独立停顿记录，这一跑没有停顿。
+
 ### 8. 第三批第一停：React 绑定与 SSR（2026-10-30 负责人）
 
 - 只做 React 与 SSR 安全；Vue / Svelte 等 React 验收后再开。
@@ -114,6 +121,30 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - 能播放，状态绑定跟随 store。
 - Node 里的 SSR 用例每个框架一条，陷阱只计 Otter 代码的读取：Vue 与 Svelte 自身的 `typeof window` / `document` 检查不算。`check-side-effects` 的服务端导入检查也这样排除框架 peer 的读取。
 - Svelte 的水合在 e2e 里查，不在单测里：单测环境里组件只按 DOM 编译一次。
+
+### 10. 第四批第一项：ui-skin-tv 与遥控器输入（2026-11-03 负责人）
+
+- `@otter-player/ui-skin-tv`（纯 CSS）：默认皮肤加 10 英尺层。
+  - 字号：标题 36 px，时间 28 px；控件 72 px。
+  - 安全区：栏在 title-safe 区（各边 5 %）。
+  - 焦点环：4 px、带光晕、1.1 倍。
+  - 不显示悬停提示。
+  - 菜单、预览卡与徽标整体放大（`zoom`），因为它们在 shadow root 里用固定 px。
+  
+  构建时把相对 `@import` 的默认皮肤内联（`tooling/copy-css.ts`），dist 用 `<link>` 直接可用。
+- `@otter-player/input/remote`（sub-path）：
+  - 可配置的按键表：逻辑键 → 键名或平台 keyCode，默认含 Tizen 10009 / 10252、webOS 461、HbbTV 415 / 19 / 417 / 412。
+  - 空间导航。
+  - Back：先关菜单，再离开控件。
+  - 画面上 OK 播放 / 暂停。
+  - 长按左右加速快进：默认 10 s，按住 1.5 s 后 30 s，4 s 后 60 s，每 250 ms 至多一步。
+  
+  tv preset 从这里取，`remote` 选项传按键表与步长。
+- 验收：
+  - CI 新项目 `tv-1080`（Chromium，1920×1080，只跑 `e2e/tv.spec.ts`）；
+  - 真 Edge 键盘模拟；
+  - axe 在 tv 皮肤下零 serious / critical；
+  - 电视行体积改量 tv preset + ui-skin-tv（≤ 90 KB 门禁），另加 ui-skin-tv CSS 预算 ≤ 10 KB。
 
 ## 代价
 

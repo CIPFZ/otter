@@ -42,6 +42,7 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^\/@otter-skin\/(.*)$/, replacement: `${packagesDir}ui-skin-default/src/$1` },
+      { find: /^\/@otter-skin-tv\/(.*)$/, replacement: `${packagesDir}ui-skin-tv/src/$1` },
       { find: /^@otter-player\/pipeline\/transmux$/, replacement: `${packagesDir}pipeline/src/transmux/index.ts` },
       { find: /^@otter-player\/pipeline\/captions$/, replacement: `${packagesDir}pipeline/src/captions/cea608.ts` },
       { find: /^@otter-player\/text\/render$/, replacement: `${packagesDir}text/src/render.ts` },
@@ -53,6 +54,7 @@ export default defineConfig({
       { find: /^@otter-player\/engine-pipeline\/demux$/, replacement: `${packagesDir}engine-pipeline/src/flv-demux.ts` },
       { find: /^@otter-player\/presentation\/picture$/, replacement: `${packagesDir}presentation/src/picture.ts` },
       { find: /^@otter-player\/presentation\/single-audio$/, replacement: `${packagesDir}presentation/src/single-audio.ts` },
+      { find: /^@otter-player\/input\/remote$/, replacement: `${packagesDir}input/src/remote.ts` },
       { find: /^@otter-player\/svelte\/OtterPlayer\.svelte$/, replacement: `${packagesDir}svelte/src/OtterPlayer.svelte` },
       { find: /^@otter-player\/presets\/([a-z0-9-]+)$/, replacement: `${packagesDir}presets/src/$1.ts` },
       // OTTER_E2E_DIST=format-hls,...: those packages from their built dist/ (what ships: format-hls
@@ -79,6 +81,7 @@ export default defineConfig({
         surfaces: fileURLToPath(new URL('./site/surfaces.html', import.meta.url)),
         webcodecs: fileURLToPath(new URL('./site/webcodecs.html', import.meta.url)),
         presets: fileURLToPath(new URL('./site/presets.html', import.meta.url)),
+        tv: fileURLToPath(new URL('./site/tv.html', import.meta.url)),
         'react-basic': fileURLToPath(new URL('./site/react-basic.html', import.meta.url)),
         'react-vod': fileURLToPath(new URL('./site/react-vod.html', import.meta.url)),
         'react-surveillance': fileURLToPath(new URL('./site/react-surveillance.html', import.meta.url)),

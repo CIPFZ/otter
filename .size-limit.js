@@ -36,6 +36,7 @@ const budgets = [
     modifyEsbuildConfig: firstScreenOnly,
   },
   { name: 'budget: ui-skin-default CSS (UI-DESIGN §11, ≤ 8 KB)', path: 'packages/ui-skin-default/dist/index.css', gzip: true, limit: '8 KB' },
+  { name: 'budget: ui-skin-tv CSS, default skin included (≤ 10 KB)', path: 'packages/ui-skin-tv/dist/index.css', gzip: true, limit: '10 KB' },
 ];
 
 // SPEC §19 scenarios, two scopes (ADR-004):
@@ -53,7 +54,7 @@ const ENGINES = Object.keys(ENGINE_FILES);
  * id, SPEC §19 row, own-code limit, engines loaded by the scenario's default first playback,
  * and the milestone the limit becomes blocking. Since M6 (ADR-013) each row measures its preset as
  * a host imports it, with the default skin: long-vod = `vod`, live = `live` and `lowlatency`,
- * danmaku = `danmaku`, tv = `tv` (default skin until ui-skin-tv), Hero = `background` (gated at 5 KB),
+ * danmaku = `danmaku`, tv = `tv` with ui-skin-tv, Hero = `background` (gated at 5 KB),
  * short-vod = `basic` with the minimal skin (its own assembly, not createPlayer), shorts = `shorts`
  * (on basic) with the minimal skin, OTT = `ott-drm`, surveillance = `surveillance`; editing and
  * cn-live are compositions (no preset).

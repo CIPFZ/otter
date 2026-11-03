@@ -1,4 +1,4 @@
-// SPEC §19 电视遥控器: the `tv` preset (HLS / DASH on MSE, remote focus navigation) with the default
-// skin until ui-skin-tv lands (M6 batch 4, ADR-013).
+// SPEC §19 电视遥控器: the `tv` preset (HLS / DASH on MSE, remote navigation from
+// @otter-player/input/remote) with ui-skin-tv (the default skin plus the 10-foot layer).
 export * from '../../packages/presets/dist/tv.js';
-import '../../packages/ui-skin-default/dist/index.css';
+import '../../packages/ui-skin-tv/dist/index.css';
