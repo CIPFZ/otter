@@ -92,6 +92,8 @@ const sessions = new Map<string, () => void>();
 export interface SessionLog {
   readonly states: { at: number; what: string }[];
   readonly rtcp: number[];
+  /** When the audio pump actually ran and wrote packets (ms after the offer; F17: send timeline). */
+  readonly audioSent?: number[];
   /** Date.now() of the offer: the log's times are ms after it. */
   t0?: number;
 }
@@ -122,18 +124,20 @@ export function play(track: MediaStreamTrack, clip: Clip): () => void {
   return () => clearInterval(timer);
 }
 
-/** Sends the Opus packets in a loop on `track`, one per 20 ms (960 samples at 48 kHz). */
-function playAudio(track: MediaStreamTrack, opus: Buffer[]): () => void {
+/** Sends the Opus packets in a loop on `track`, one per 20 ms (960 samples at 48 kHz); `sent(n)`: a pump run wrote n packets. */
+function playAudio(track: MediaStreamTrack, opus: Buffer[], sent: (n: number) => void = () => undefined): () => void {
   let seq = Math.floor(Math.random() * 0xffff);
   let n = 0;
   const started = Date.now();
   const pump = (): void => {
     const due = Math.floor((Date.now() - started) / 20);
+    const before = n;
     for (; n <= due; n++) {
       const header = new RtpHeader({ payloadType: 111, sequenceNumber: seq, timestamp: (n * 960) >>> 0, marker: n === 0 });
       seq = (seq + 1) & 0xffff;
       track.writeRtp(new RtpPacket(header, opus[n % opus.length] as Buffer));
     }
+    if (n > before) sent(n - before);
   };
   const timer = setInterval(pump, 10);
   return () => clearInterval(timer);
@@ -209,7 +213,13 @@ export async function answer(offer: string, clip: Clip, onEnd: () => void = () =
     if (s === 'connected') watchDtls();
     if (s !== 'connected' || stop !== undefined) return;
     lastRtcp = Date.now();
-    const stops = [play(track, clip), ...(audio === undefined ? [] : [playAudio(sound, clip.opus)])];
+    const stops = [
+      play(track, clip),
+      ...(audio === undefined ? [] : [playAudio(sound, clip.opus, () => {
+        const sent = log?.audioSent as number[] | undefined;
+        if (sent !== undefined && sent.length < 5000) sent.push(Date.now() - t0);
+      })]),
+    ];
     stop = () => stops.forEach((f) => f());
   });
   return { sdp: pc.localDescription?.sdp ?? '', close: end };
@@ -259,7 +269,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, clip: () => Cli
   }
   const offer = await readBody(req);
   const location = `/whep/session/${++nextId}`;
-  const log: SessionLog = { states: [], rtcp: [] };
+  const log: SessionLog = { states: [], rtcp: [], audioSent: [] };
   logs.set(location, log);
   // Logs of the last 20 sessions only.
   for (const k of [...logs.keys()].slice(0, -20)) logs.delete(k);

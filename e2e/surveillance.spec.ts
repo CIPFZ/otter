@@ -93,11 +93,18 @@ const kind = (page: Page): Promise<string> => page.evaluate(() => (window.preset
  * 2026-11-02): connect / first bytes / keyframe / decoder configured / decoded / shown, ms from load.
  */
 const ttffPhases = (page: Page): Promise<string> =>
-  page.evaluate(() =>
-    (window.preset as SurveillancePlayer).tiles
-      .map((t, i) => `${i + 1}: ${(t.explain()?.steps.find((s) => s.reason.startsWith('startup ms:'))?.reason ?? 'no breakdown').replace('startup ms: ', '')}`)
-      .join(' | '),
-  );
+  page.evaluate(() => {
+    const tiles = (window.preset as SurveillancePlayer).tiles;
+    const steps = tiles.map((t) => t.explain()?.steps ?? []);
+    const phases = steps.map((st, i) => `${i + 1}: ${(st.find((s) => s.reason.startsWith('startup ms:'))?.reason ?? 'no breakdown').replace('startup ms: ', '')}`).join(' | ');
+    // F15: the tiles' configure spans on the page clock: do they overlap (in parallel) or follow
+    // each other (serialised)? And each tile's decoder (hardware / software).
+    const spans = steps.map((st) => /\(at (\d+)\.\.(\d+) page ms\)/.exec(st.find((s) => s.reason.startsWith('startup ms:'))?.reason ?? '')).map((m) => (m === null ? null : [Number(m[1]), Number(m[2])] as const));
+    const known = spans.filter((x): x is readonly [number, number] => x !== null).sort((a, b) => a[0] - b[0]);
+    const overlapped = known.slice(1).filter((x, i) => x[0] < (known[i] as readonly [number, number])[1]).length;
+    const decoders = steps.map((st) => /on (\S+) \((hardware|software)\)/.exec(st.find((s) => / on \S+ \((hardware|software)\)/.test(s.reason))?.reason ?? '')?.slice(1).join(' ') ?? '?');
+    return `${phases}; configure spans ${known.map((x) => `${x[0]}..${x[1]}`).join(', ')} (${overlapped} of ${Math.max(0, known.length - 1)} start before the previous ends); decoders ${decoders.join(' / ')}`;
+  });
 
 /** What the wall draws here: canvas pixels per tile, DPR, Workers made, cores (M6: 3.1x between desktop-safari and emulated-iphone, RESEARCH §1). */
 const geometry = (page: Page): Promise<string> =>

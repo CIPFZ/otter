@@ -222,6 +222,10 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   // Playwright over WebDriver BiDi (stock Firefox) sends a double-click as two clicks of detail
   // 1 and no dblclick event (RESEARCH §1).
   test.skip(test.info().project.name === 'real-windows-firefox', 'no dblclick through WebDriver BiDi');
+  // Known flaky on CI emulated-iphone (owner 2026-11-03, RESEARCH §1): at 821a099 both attempts had
+  // all four tiles muted with the page already activated (before any click); 9cea9bd passed. Two
+  // more red runs in the next five CI runs make it a defect.
+  if (test.info().project.name === 'emulated-iphone') test.info().annotations.push({ type: 'flaky', description: 'CI emulated-iphone: all tiles muted after activation at 821a099; RESEARCH §1' });
   await open(page, 4);
   const w = wall(page);
   expect(await w.eval((x) => x.focused())).toBe(0);
@@ -232,11 +236,20 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   // after load, seen on CI), the gate is lifted and the focused tile has the sound it was given.
   const atLoad = await w.eval((x) => x.activatedAtLoad);
   const activation = () => page.evaluate(() => (navigator as { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive ?? true);
+  // Attribution if it fails (owner 2026-11-03): the focused tile, each tile's muted, the activation,
+  // and what is under the point the click below will use (no click has happened yet here).
+  const attribution = async (): Promise<string> => {
+    const t = page.locator('[data-otter-multiview-tile="2"]');
+    const b = (await t.boundingBox()) as { x: number; y: number; width: number; height: number } | null;
+    const hit = b === null ? 'no tile box' : await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e === null ? 'nothing' : `${e.tagName.toLowerCase()}${e.id === '' ? '' : `#${e.id}`}${e.getAttribute('data-otter-multiview-tile') === null ? '' : `[tile ${e.getAttribute('data-otter-multiview-tile')}]`}`; }, [b.x + b.width * 0.85, b.y + b.height * 0.6] as const);
+    const tiles = await w.eval((x) => x.tiles().map((tile) => ({ muted: tile.muted, status: tile.status })));
+    return `focused tile ${await w.eval((x) => x.focused())}, tiles ${JSON.stringify(tiles)}, hasBeenActive ${await activation()} (at load ${atLoad}), at the click point ${hit}`;
+  };
   await expect
     .poll(async () => {
       const muted = await w.eval((x) => x.tiles().map((t) => t.muted));
       const want = (await activation()) ? [false, true, true, true] : [true, true, true, true];
-      return JSON.stringify(muted) === JSON.stringify(want) ? 'ok' : `muted ${JSON.stringify(muted)}, activation at load ${atLoad}, now ${await activation()}`;
+      return JSON.stringify(muted) === JSON.stringify(want) ? 'ok' : `muted ${JSON.stringify(muted)}; ${await attribution()}`;
     }, { timeout: 1000 })
     .toBe('ok');
   // Tile 2 is top right; click clear of the bars and the centre buttons (small players put them
@@ -247,8 +260,8 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   // A click focuses it (and is a gesture): within 1 s only it is audible, the shell's controls
   // show its state.
   await tile.click(at);
-  expect(await w.eval((x) => x.focused())).toBe(1);
-  await expect.poll(() => w.eval((x) => x.tiles().map((t) => t.muted)), { timeout: 1000 }).toEqual([true, false, true, true]);
+  expect(await w.eval((x) => x.focused()), await attribution()).toBe(1);
+  await expect.poll(() => w.eval((x) => x.tiles().map((t) => t.muted)), { timeout: 1000, message: await attribution() }).toEqual([true, false, true, true]);
   await expect(tile).toHaveAttribute('aria-pressed', 'true');
   // The shell's play button acts on the focused tile only.
   await page.locator('otter-play-button:visible').first().click();

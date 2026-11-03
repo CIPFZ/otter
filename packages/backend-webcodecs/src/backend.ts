@@ -247,7 +247,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   let shownAt = Number.NEGATIVE_INFINITY;
   let firstFrame = false;
   /** Startup moments (performance.now()) for the breakdown said on the route at the first frame. */
-  const startup: { load?: number; keyframe?: number; configured?: number; decoded?: number } = {};
+  const startup: { load?: number; keyframe?: number; configure?: number; configured?: number; decoded?: number } = {};
   let dropped = 0;
   let total = 0;
   let lastTimeUpdate = 0;
@@ -302,7 +302,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     const ms = (at: number | undefined): string => (at === undefined ? '-' : String(Math.round(at - t0)));
     const timing = demuxer?.timing;
     bus.emit('route-detail', {
-      reason: `startup ms: connect ${ms(timing?.connectedAt)}, first bytes ${ms(timing?.firstBytesAt)}, keyframe ${ms(startup.keyframe)}, decoder configured ${ms(startup.configured)}, decoded ${ms(startup.decoded)}, shown ${ms(shown)}`,
+      reason: `startup ms: connect ${ms(timing?.connectedAt)}, first bytes ${ms(timing?.firstBytesAt)}, keyframe ${ms(startup.keyframe)}, decoder configure ${ms(startup.configure)}..${ms(startup.configured)} (at ${startup.configure === undefined ? '-' : Math.round(startup.configure)}..${startup.configured === undefined ? '-' : Math.round(startup.configured)} page ms), decoded ${ms(startup.decoded)}, shown ${ms(shown)}`,
     });
   };
 
@@ -383,6 +383,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   /** A decoder from the current video plugin; its callbacks follow `owner`. */
   const newDecoder = (track: DemuxVideoTrack, owner: DecoderOwner): DecoderInstance => {
     const plugin = videoPlugin as Decoder;
+    // When the first decoder was asked for (F15: configure start / end per tile on a wall).
+    startup.configure ??= performance.now();
     return plugin.create({
       ...track.setup,
       output: (frame) => onVideoFrame(owner.lane, owner.g, frame),

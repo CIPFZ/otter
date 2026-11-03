@@ -195,10 +195,28 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     ciNotice('WHEP recording: WebKit recording path unreliable (pitch x1.054 / 0.31 s phase jumps), skipped; acceptance on the real Edge');
     test.skip(true, 'WebKit recording path unreliable (RESEARCH §1)');
   }
-  // Known flaky on CI desktop-chrome (owner 2026-11-03, RESEARCH §1): f369598 red twice (seam gaps
-  // 3.77 s; an extra seam, 3.05 + 1.00 s), 474e466 red twice (extra seams 0.73 / 0.79 s). Kept
-  // until the RTCP-gap rule is decided (M6.md: the gaps are in every recording).
-  info.annotations.push({ type: 'flaky', description: 'CI desktop-chrome WHEP recording seams: f369598, 474e466; RESEARCH §1' });
+  // F17 (owner 2026-11-03): extra seams in the recording. The receiver's own record, sampled every
+  // 100 ms from the page's RTCPeerConnection (inbound-rtp audio: concealed samples, concealment
+  // events, packets lost, jitter buffer delay), is lined up with the seams and the fixture's send
+  // timeline below.
+  await page.addInitScript(() => {
+    const Native = window.RTCPeerConnection;
+    const w = window as unknown as { rx: { at: number; concealed: number; events: number; lost: number; jbDelay: number; jbEmitted: number; received: number }[] };
+    w.rx = [];
+    window.RTCPeerConnection = class extends Native {
+      constructor(config?: RTCConfiguration) {
+        super(config);
+        const id = setInterval(() => {
+          if (this.connectionState === 'closed') return clearInterval(id);
+          void this.getStats().then((report) => {
+            report.forEach((r: { type: string; kind?: string; concealedSamples?: number; concealmentEvents?: number; packetsLost?: number; jitterBufferDelay?: number; jitterBufferEmittedCount?: number; packetsReceived?: number }) => {
+              if (r.type === 'inbound-rtp' && r.kind === 'audio') w.rx.push({ at: performance.now(), concealed: r.concealedSamples ?? 0, events: r.concealmentEvents ?? 0, lost: r.packetsLost ?? 0, jbDelay: r.jitterBufferDelay ?? 0, jbEmitted: r.jitterBufferEmittedCount ?? 0, received: r.packetsReceived ?? 0 });
+            });
+          });
+        }, 100);
+      }
+    } as typeof RTCPeerConnection;
+  });
   await routeDocuments(page, browserName);
   await page.goto('/player.html?idle=0');
   if (!(await gathers(page))) {
@@ -213,20 +231,26 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
   const recFrom = await fixtureNow();
   const rec = await page.evaluate(async (seconds) => {
     const stream = (document.querySelector('video') as HTMLVideoElement).srcObject as MediaStream;
-    if (stream.getAudioTracks().length === 0) return { running: true, tracks: 0, rate: 0, b64: '', got: 0, messages: 0, calls: 0, empty: 0, stalls: [] as string[] };
+    if (stream.getAudioTracks().length === 0) return { running: true, tracks: 0, rate: 0, b64: '', got: 0, messages: 0, calls: 0, empty: 0, stalls: [] as string[], zeroQuanta: [] as number[] };
     const ctx = new AudioContext();
     const running = await Promise.race([ctx.resume().then(() => ctx.state === 'running'), new Promise<boolean>((r) => setTimeout(() => r(false), 1000))]);
-    if (!running) return { running, tracks: 1, rate: 0, b64: '', got: 0, messages: 0, calls: 0, empty: 0, stalls: [] as string[] };
+    if (!running) return { running, tracks: 1, rate: 0, b64: '', got: 0, messages: 0, calls: 0, empty: 0, stalls: [] as string[], zeroQuanta: [] as number[] };
     // Batches of 0.1 s; `calls` and `empty` (process() without an input channel) for a failure.
     const code = `registerProcessor('otter-rec', class extends AudioWorkletProcessor {
-      constructor() { super(); this.buf = new Float32Array(4800); this.n = 0; this.calls = 0; this.empty = 0; }
+      constructor() { super(); this.buf = new Float32Array(4800); this.n = 0; this.calls = 0; this.empty = 0; this.zeroQuanta = []; this.total = 0; }
       process(inputs) {
         this.calls++;
         const ch = inputs[0] && inputs[0][0];
         if (!ch) { this.empty++; return true; }
+        // F17: render quanta that arrived as exact zeros (the MediaStream source had nothing to give):
+        // their sample offset in the recording.
+        let allZero = true;
+        for (let i = 0; i < ch.length; i++) if (ch[i] !== 0) { allZero = false; break; }
+        if (allZero && this.zeroQuanta.length < 200) this.zeroQuanta.push(this.total);
+        this.total += ch.length;
         for (let i = 0; i < ch.length; i++) {
           this.buf[this.n++] = ch[i];
-          if (this.n === this.buf.length) { this.port.postMessage({ s: this.buf, calls: this.calls, empty: this.empty }); this.buf = new Float32Array(4800); this.n = 0; }
+          if (this.n === this.buf.length) { this.port.postMessage({ s: this.buf, calls: this.calls, empty: this.empty, zeroQuanta: this.zeroQuanta }); this.buf = new Float32Array(4800); this.n = 0; }
         }
         return true;
       }
@@ -241,6 +265,7 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     // device standing still (M6: the test instance's virtual sound card), which drops stream audio.
     const stalls: string[] = [];
     const t0 = performance.now();
+    (window as unknown as { recT0: number }).recT0 = t0;
     let lastT = -1;
     let since = t0;
     const watch = setInterval(() => {
@@ -253,12 +278,13 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     }, 20);
     let calls = 0;
     let empty = 0;
+    let zeroQuanta: number[] = [];
     await new Promise<void>((resolve) => {
       // At most 10 s more than the recording: what arrived by then is reported.
       setTimeout(resolve, (seconds + 10) * 1000);
-      node.port.onmessage = (e: MessageEvent<{ s: Float32Array; calls: number; empty: number }>) => {
+      node.port.onmessage = (e: MessageEvent<{ s: Float32Array; calls: number; empty: number; zeroQuanta: number[] }>) => {
         messages++;
-        ({ calls, empty } = e.data);
+        ({ calls, empty, zeroQuanta } = e.data);
         for (const v of e.data.s) {
           if (n >= want) break;
           out[n++] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
@@ -275,7 +301,7 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     clearInterval(watch);
     if (performance.now() - since >= 500) stalls.push(`${((since - t0) / 1000).toFixed(2)} s + open`);
-    return { running, tracks: 1, rate, b64: btoa(bin), got: n, messages, calls, empty, stalls };
+    return { running, tracks: 1, rate, b64: btoa(bin), got: n, messages, calls, empty, stalls, zeroQuanta };
   }, 20);
   const recTo = await fixtureNow();
   expect(rec.tracks).toBe(1);
@@ -357,6 +383,35 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
   // The first half second may still be the stream starting.
   const inner = seams.filter((t) => t > 0.5);
   const gaps = inner.slice(1).map((t, i) => t - (inner[i] as number));
+  // F17: each seam that is not on the loop (more than 0.25 s off a multiple of LOOP_S from the
+  // first) with, within 0.5 s of it, the receiver's concealment / loss / jitter-buffer changes and
+  // the fixture's audio send gaps over 60 ms (it sends every 20 ms).
+  {
+    const rx = await page.evaluate(() => {
+      const w = window as unknown as { rx: { at: number; concealed: number; events: number; lost: number; jbDelay: number; jbEmitted: number; received: number }[]; recT0: number };
+      return { rx: w.rx, t0: w.recT0 };
+    });
+    const sentLog = (await (await page.request.get('/whep/log/last')).json()) as { audioSent?: number[] } | null;
+    const sent = sentLog?.audioSent ?? [];
+    const first = inner[0] ?? 0;
+    const odd = inner.filter((t) => { const k = Math.round((t - first) / LOOP_S); return Math.abs(t - first - k * LOOP_S) > 0.25; });
+    // Recording seconds to the fixture's clock: recFrom (fixture ms) is the recording's start.
+    const fixtureAt = (t: number): number => (recFrom ?? 0) + t * 1000;
+    const pageAt = (t: number): number => rx.t0 + t * 1000;
+    const sendGaps = sent.slice(1).flatMap((t, i) => (t - (sent[i] as number) > 60 ? [{ from: sent[i] as number, to: t }] : []));
+    const lines = (odd.length > 0 ? odd : inner.slice(0, 1)).map((t) => {
+      const near = rx.rx.filter((x) => Math.abs(x.at - pageAt(t)) <= 500);
+      const a = near[0];
+      const b = near.at(-1);
+      const d = a === undefined || b === undefined ? 'no receiver stats' : `concealed +${b.concealed - a.concealed} samples, concealment events +${b.events - a.events}, lost +${b.lost - a.lost}, received +${b.received - a.received}, jitter buffer ${b.jbEmitted > 0 ? Math.round((b.jbDelay / b.jbEmitted) * 1000) : '?'} ms`;
+      const g = sendGaps.filter((x) => x.to >= fixtureAt(t) - 500 && x.from <= fixtureAt(t) + 500).map((x) => `${x.to - x.from} ms at ${Math.round((x.from - (recFrom ?? 0)) / 10) / 100} s`);
+      // Silent render quanta (exact zeros from the MediaStream source) within 50 ms of the seam.
+      const z = rec.zeroQuanta.filter((q) => Math.abs(q / rate - t) <= 0.05).length;
+      return `${odd.length > 0 ? 'odd seam' : 'seam'} ${t.toFixed(2)} s: ${d}; recorder got ${z} all-zero render quanta there; fixture audio send gaps > 60 ms ${g.join(', ') || 'none'}`;
+    });
+    const whole = `${rx.rx.length > 1 ? `whole recording: concealment events ${(rx.rx.at(-1)?.events ?? 0) - (rx.rx[0]?.events ?? 0)}, lost ${(rx.rx.at(-1)?.lost ?? 0) - (rx.rx[0]?.lost ?? 0)}` : 'no receiver stats'}; all-zero render quanta ${rec.zeroQuanta.length} (at ${rec.zeroQuanta.slice(0, 12).map((q) => (q / rate).toFixed(2)).join(', ')} s); fixture send gaps > 60 ms ${sendGaps.length}`;
+    ciNotice(`WHEP recording, F17: ${lines.join(' | ')}; ${whole}`);
+  }
   const rms = Math.sqrt(x.reduce((acc, v) => acc + v * v, 0) / x.length);
   ciNotice(
     `WHEP recording (${rate} Hz, ${(x.length / rate).toFixed(1)} s, RMS ${rms.toFixed(3)}): tone ${f0.toFixed(2)} Hz, share per second min ${Math.min(...shares).toFixed(3)}; seams at ${inner.map((t) => t.toFixed(2)).join(', ') || 'none'} s (gaps ${gaps.map((g) => g.toFixed(2)).join(', ')}); ${file}`,
