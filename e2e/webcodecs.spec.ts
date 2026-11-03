@@ -368,7 +368,11 @@ test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
   // (owner 2026-11-03: the 0ca7823 underrun had dq 0 / ahead 1.28 at its window's end).
   const others = underruns.filter((u) => !knownUnderrun(u));
   if (others.length > 0) {
-    const full = await page.evaluate(() => (window as unknown as { stats: { media: number; ahead: number; under: number; fill?: number; gap: number; late: number; disc: number; dq: number; wall: number }[]; longTasks: { at: number; ms: number }[] }));
+    // The two records only (the window itself does not serialize).
+    const full = await page.evaluate(() => {
+      const w = window as unknown as { stats: { media: number; ahead: number; under: number; fill?: number; gap: number; late: number; disc: number; dq: number; wall: number }[]; longTasks: { at: number; ms: number }[] };
+      return { stats: w.stats, longTasks: w.longTasks };
+    });
     const lines = others.map((u) => {
       const at = Number(/dry at ([\d.]+) s/.exec(u)?.[1] ?? Number.NaN);
       const near = full.stats.filter((x) => x.media >= at - 0.5 && x.media <= at + 0.5);
