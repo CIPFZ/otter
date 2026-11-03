@@ -2,6 +2,7 @@
 // `tv-1080` (Chromium) and the real Windows Edge (keyboard as the remote): the 10-foot layer (type,
 // title-safe area, focus ring), spatial navigation, Back, OK, hold-to-seek acceleration, the
 // configurable key map with platform key codes, and axe with the TV skin.
+import { mkdirSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
@@ -25,6 +26,34 @@ const focused = (page: Page) =>
     const root = a?.getRootNode();
     const host = root instanceof ShadowRoot ? (root.host as Element) : a;
     return host === null || host === undefined ? '' : host.id === 'player' ? 'player' : host.tagName.toLowerCase();
+  });
+
+/** The 1080p screenshots of the focus and menu states, a CI artifact (tv-screenshots/, owner 2026-11-03). */
+const shot = async (page: Page, name: string): Promise<void> => {
+  if (test.info().project.name !== 'tv-1080' || test.info().retry > 0) return;
+  mkdirSync('tv-screenshots', { recursive: true });
+  await page.screenshot({ path: `tv-screenshots/${name}.png` });
+};
+
+/**
+ * The visible menu items of the open menu, through shadow roots: their font size as drawn (the
+ * computed size times the CSS zoom applied to them) and their height.
+ */
+const menuText = (page: Page) =>
+  page.evaluate(() => {
+    const out: { size: number; height: number }[] = [];
+    const visit = (n: Document | ShadowRoot | Element): void => {
+      for (const el of Array.from(n.querySelectorAll('*'))) {
+        if (/^menuitem/.test(el.getAttribute('role') ?? '')) {
+          const r = el.getBoundingClientRect();
+          const zoom = (el as Element & { currentCSSZoom?: number }).currentCSSZoom ?? 1;
+          if (r.height > 0) out.push({ size: Math.round(parseFloat(getComputedStyle(el).fontSize) * zoom * 10) / 10, height: r.height });
+        }
+        if (el.shadowRoot !== null) visit(el.shadowRoot);
+      }
+    };
+    visit(document);
+    return out;
   });
 
 async function open(page: Page, query = ''): Promise<void> {
@@ -75,6 +104,7 @@ test('tv skin: 10-foot type, the bars inside the title-safe area, a large focus 
   expect(ring).toMatchObject({ style: 'solid' });
   expect(ring.width).toBeGreaterThanOrEqual(4);
   expect(ring.transform).not.toBe('none');
+  await shot(page, 'focus-play');
   // No hover tooltips on a TV.
   expect(await page.locator('[data-otter-controls] otter-play-button').evaluate((h) => getComputedStyle(h.shadowRoot?.querySelector('[part="tooltip"]') as Element).display)).toBe('none');
 });
@@ -162,6 +192,89 @@ test('remote: the key map is configurable; platform key codes work (Tizen Back 1
   await page.keyboard.press('ArrowDown');
   await pressCode(page, 461);
   expect(await focused(page)).toBe('player');
+});
+
+test('tv skin: the outermost controls, focused and scaled, keep their ring and halo inside the picture', async ({ page }) => {
+  await open(page);
+  await page.keyboard.press('ArrowDown');
+  const box = (await page.locator('#player').boundingBox()) as { x: number; y: number; width: number; height: number };
+  // The bar's leftmost and rightmost focusable controls (by position), focused one after the other.
+  const edges = await page.evaluate(() => {
+    const out: { tag: string; left: number; right: number }[] = [];
+    const visit = (n: Document | ShadowRoot | Element): void => {
+      for (const el of Array.from(n.querySelectorAll('button, input'))) {
+        const r = el.getBoundingClientRect();
+        const host = (el.getRootNode() as ShadowRoot).host as Element | undefined;
+        if (r.width > 0 && host?.closest('[data-otter-controls]') != null) out.push({ tag: host.tagName.toLowerCase(), left: r.left, right: r.right });
+      }
+      for (const el of Array.from(n.querySelectorAll('*'))) if (el.shadowRoot !== null) visit(el.shadowRoot);
+    };
+    visit(document);
+    const buttons = out.filter((x) => x.tag !== 'otter-time-slider' && x.tag !== 'otter-volume-slider');
+    buttons.sort((a, b) => a.left - b.left);
+    return [buttons[0]?.tag, buttons.at(-1)?.tag];
+  });
+  for (const tag of edges) {
+    const button = page.locator(`[data-otter-controls] ${tag as string}`).getByRole('button').first();
+    await button.focus();
+    await page.waitForTimeout(250);
+    // The scaled border box plus what draws outside it: the outline (offset + width) and the halo
+    // (box-shadow spread), scaled with it.
+    const extent = await button.evaluate((b) => {
+      const s = getComputedStyle(b);
+      const r = b.getBoundingClientRect();
+      const scale = r.width / (b as HTMLElement).offsetWidth;
+      const outline = parseFloat(s.outlineOffset) + parseFloat(s.outlineWidth);
+      const spread = Math.max(0, ...[...s.boxShadow.matchAll(/(-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px (-?[\d.]+)px/g)].map((m) => parseFloat(m[4] as string)));
+      const out = Math.max(outline, spread) * scale;
+      return { left: r.left - out, right: r.right + out, top: r.top - out, bottom: r.bottom + out, scale };
+    });
+    expect(extent.scale, `${tag}: focused and scaled`).toBeGreaterThan(1.05);
+    expect(extent.left, `${tag}: halo left edge`).toBeGreaterThanOrEqual(box.x);
+    expect(extent.right, `${tag}: halo right edge`).toBeLessThanOrEqual(box.x + box.width);
+    expect(extent.bottom, `${tag}: halo bottom edge`).toBeLessThanOrEqual(box.y + box.height);
+  }
+});
+
+test('tv skin, reduced motion: the focused control is not scaled and has no halo, the focus ring stays', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await open(page);
+  await page.keyboard.press('ArrowDown');
+  const play = page.locator('[data-otter-controls] otter-play-button').getByRole('button');
+  const s = await play.evaluate((b) => { const c = getComputedStyle(b); return { transform: c.transform, shadow: c.boxShadow, outline: parseFloat(c.outlineWidth), style: c.outlineStyle }; });
+  expect(s.transform).toBe('none');
+  expect(s.shadow).toBe('none');
+  expect(s.style).toBe('solid');
+  expect(s.outline).toBeGreaterThanOrEqual(4);
+});
+
+test('tv skin: menu text is 28 px or more, with CSS zoom and with the no-zoom fallback', async ({ page }) => {
+  await open(page);
+  await page.keyboard.press('ArrowDown');
+  await page.locator('[data-otter-controls] otter-settings-menu').getByRole('button').first().click();
+  await expect.poll(async () => (await menuText(page)).length).toBeGreaterThan(0);
+  await shot(page, 'menu-settings');
+  // With zoom (Chromium): the text as drawn.
+  const zoomed = await menuText(page);
+  for (const m of zoomed) expect(m.size, `zoomed menu text ${JSON.stringify(m)}`).toBeGreaterThanOrEqual(28);
+  // The fallback as a browser without zoom applies it: the @supports not (zoom: 2) block's rules
+  // made unconditional, zoom turned off.
+  await page.evaluate(() => {
+    const rules: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (const rule of Array.from(sheet.cssRules)) {
+        if (rule instanceof CSSSupportsRule && /not\s*\(\s*zoom/.test(rule.conditionText)) for (const r of Array.from(rule.cssRules)) rules.push(r.cssText);
+      }
+    }
+    if (rules.length === 0) throw new Error('no @supports not (zoom) block in the TV skin');
+    const style = document.createElement('style');
+    style.textContent = `${rules.join('\n')}\n[data-otter-player] *::part(menu), [data-otter-player] *::part(preview), [data-otter-player] *::part(badge) { zoom: 1 !important; }`;
+    document.head.append(style);
+  });
+  await page.waitForTimeout(100);
+  const fallback = await menuText(page);
+  expect(fallback.length).toBeGreaterThan(0);
+  for (const m of fallback) expect(m.size, `menu text without zoom ${JSON.stringify(m)}`).toBeGreaterThanOrEqual(28);
 });
 
 test('tv skin: no serious or critical axe violations while playing with the controls focused, and with the settings menu open', async ({ page }, info) => {

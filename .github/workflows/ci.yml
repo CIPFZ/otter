@@ -160,6 +160,14 @@ jobs:
           path: playwright-report
           if-no-files-found: ignore
       # Background mode: time until the picture caught up with the clock (ADR-011 §4, 20 main runs).
+      # The TV skin's focus and menu states at 1080p (e2e/tv.spec.ts, project tv-1080; owner 2026-11-03).
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() && matrix.name == 'chromium + firefox' }}
+        with:
+          name: tv-screenshots
+          path: tv-screenshots
+          retention-days: 90
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v7
         if: always()
         with:

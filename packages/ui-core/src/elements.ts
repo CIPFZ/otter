@@ -509,7 +509,7 @@ const timeSliderClass = () =>
 .card:not([data-thumb]) .thumb { width: auto; height: auto; border: none; background: none; box-shadow: none; overflow: visible; }
 /* Without a thumbnail the time is a small version of the card (same frame and corner). */
 .time { display: block; padding: 5px 10px; border-radius: ${T.radius}; border: 2px solid rgb(255 255 255 / 0.85); ${glass()}
-  color: ${T.fg}; font: 600 12px/1.2 ${T.font}; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  color: ${T.fg}; font: 600 calc(12px * var(--otter-ui-text-scale, 1))/1.2 ${T.font}; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* With a thumbnail it sits inside the card's bottom-right corner (mockup). */
 .card[data-thumb] .time { position: absolute; right: 6px; bottom: 6px; padding: 2px 6px; border: none; border-radius: ${T.radiusSm};
   background: rgb(0 0 0 / 0.65); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: none; }
@@ -852,7 +852,7 @@ const feedbackClass = () =>
         if (this.#badge !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
         root.innerHTML = `<style>:host { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-.b { min-width: 72px; padding: 12px 16px; border-radius: 999px; ${glass()} color: ${T.fg}; font: 600 15px/1 ${T.font};
+.b { min-width: 72px; padding: 12px 16px; border-radius: 999px; ${glass()} color: ${T.fg}; font: 600 calc(15px * var(--otter-ui-text-scale, 1))/1 ${T.font};
   text-align: center; opacity: 0; transform: scale(0.8); transition: opacity ${T.hide} ${T.easeIn}, transform ${T.hide} ${T.easeIn}; }
 .b[data-show] { opacity: 1; transform: scale(1); transition-duration: ${T.show}; transition-timing-function: ${T.easeOut}; }
 .b[data-kind="rate"] { position: absolute; top: 16px; }
@@ -1007,7 +1007,7 @@ const menuCss = (): string => `
 .panel { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 5; box-sizing: border-box;
   min-width: var(--otter-menu-min-width, 160px); width: var(--otter-menu-panel-width, auto);
   max-height: var(--otter-menu-max-height, 60vh); overflow: hidden auto; overscroll-behavior: contain;
-  padding: 6px 0; border-radius: ${T.radiusLg}; ${glass()} color: ${T.fg}; font: 500 14px/1.2 ${T.font};
+  padding: 6px 0; border-radius: ${T.radiusLg}; ${glass()} color: ${T.fg}; font: 500 calc(14px * var(--otter-ui-text-scale, 1))/1.2 ${T.font};
   scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.3) transparent;
   opacity: 0; transform: translateY(8px); transition: opacity 100ms ${T.easeIn}, transform 100ms ${T.easeIn}; }
 .panel[hidden] { display: none; }
@@ -1016,7 +1016,7 @@ const menuCss = (): string => `
 .view[data-enter="back"] { animation: in-b ${T.show} ${T.easeOut}; }
 @keyframes in-f { from { transform: translateX(24px); opacity: 0; } }
 @keyframes in-b { from { transform: translateX(-24px); opacity: 0; } }
-[role="group"] > .gh { padding: 10px 16px 4px; font: 600 11px/1 ${T.font}; letter-spacing: 0.06em; text-transform: uppercase; color: ${T.dim}; }
+[role="group"] > .gh { padding: 10px 16px 4px; font: 600 calc(11px * var(--otter-ui-text-scale, 1))/1 ${T.font}; letter-spacing: 0.06em; text-transform: uppercase; color: ${T.dim}; }
 [role^="menuitem"], ::slotted(otter-menu-item) { box-sizing: border-box; display: flex; align-items: center; gap: 12px;
   min-height: var(--otter-menu-row, 40px); padding: 0 16px; cursor: pointer; outline: none; position: relative; }
 [role^="menuitem"]:hover { background: ${T.hover}; }
@@ -1026,15 +1026,15 @@ const menuCss = (): string => `
 .ic svg { width: 24px; height: 24px; }
 [role="menuitemradio"] .ic svg { color: ${T.accent}; }
 .lb { flex: 1; min-width: 0; display: grid; gap: 2px; }
-.lb small { font: 400 12px/1.2 ${T.font}; color: ${T.muted}; }
-.val { color: ${T.muted}; font: 400 13px/1 ${T.font}; white-space: nowrap; }
+.lb small { font: 400 calc(12px * var(--otter-ui-text-scale, 1))/1.2 ${T.font}; color: ${T.muted}; }
+.val { color: ${T.muted}; font: 400 calc(13px * var(--otter-ui-text-scale, 1))/1 ${T.font}; white-space: nowrap; }
 .val[data-on] { color: ${T.accent}; }
 .chev { width: 18px; height: 18px; color: ${T.muted}; flex: none; }
 .chev svg, .back svg { width: 18px; height: 18px; }
 .back { min-height: 44px; border-bottom: 1px solid ${T.glassBorder}; margin-bottom: 4px; font-weight: 600; }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 12px 8px; }
 .seg [aria-checked] { flex: 1 0 auto; justify-content: center; min-height: 30px; padding: 0 8px; border-radius: 999px;
-  background: rgb(255 255 255 / 0.08); font: 600 12px/1 ${T.font}; gap: 0; }
+  background: rgb(255 255 255 / 0.08); font: 600 calc(12px * var(--otter-ui-text-scale, 1))/1 ${T.font}; gap: 0; }
 .seg [aria-checked="true"] { background: ${T.accent}; color: #0b1b24; }
 .switch { width: 34px; height: 20px; border-radius: 999px; background: rgb(255 255 255 / 0.25); position: relative; flex: none;
   transition: background ${T.fast}; }

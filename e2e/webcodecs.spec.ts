@@ -93,6 +93,23 @@ for (const clip of CLIPS) {
 
   test(`${clip.name}: plays on the AudioContext clock, the picture follows it`, async ({ page }) => {
     test.setTimeout(60_000);
+    // The audio sink's 0.2 s summaries (media / ahead / under / dq), printed if an error comes
+    // (owner 2026-11-03: an underrun here is still a failure; the summaries say whether it was F14's
+    // signature, for the next decision).
+    await page.addInitScript(() => {
+      const Native = window.AudioWorkletNode;
+      const w = window as unknown as { sinkStats: { media: number; ahead: number; under: number; dq: number }[] };
+      w.sinkStats = [];
+      window.AudioWorkletNode = class extends Native {
+        constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+          super(context, name, options);
+          this.port.addEventListener('message', (e: MessageEvent<{ t: string; media: number; ahead: number; under: number; dq: number }>) => {
+            if (e.data.t === 'stat') w.sinkStats.push({ media: e.data.media, ahead: e.data.ahead, under: e.data.under, dq: e.data.dq });
+          });
+          this.port.start();
+        }
+      };
+    });
     await page.goto('/webcodecs.html');
     await page.evaluate(async (name) => (await (window.wc as Promise<WebCodecsFixture>)).load(name, 6), clip.name);
     // A real click: play() runs inside a user gesture, so the AudioContext may start.
@@ -133,7 +150,8 @@ for (const clip of CLIPS) {
     // Where an AudioContext can run it is the clock; where it cannot (headless Firefox on Linux:
     // resume() never settles) playback keeps time on performance.now() and says so, once.
     if (audioRuns) {
-      expect(run.errors, JSON.stringify(run.messages)).toEqual([]);
+      const sink = run.errors.length === 0 ? [] : await page.evaluate(() => (window as unknown as { sinkStats: { media: number; ahead: number; under: number; dq: number }[] }).sinkStats);
+      expect(run.errors, `${JSON.stringify(run.messages)}; sink summaries: ${sink.map((x) => `[media ${x.media.toFixed(2)} ahead ${x.ahead.toFixed(2)} under ${x.under} dq ${x.dq}]`).join(' ')}`).toEqual([]);
     } else {
       // Reported once resume() has had its 3 s grace (RESUME_GRACE_MS), not before.
       await expect

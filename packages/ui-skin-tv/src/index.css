@@ -22,8 +22,9 @@
   --otter-tv-ring: 4px;
   --otter-tv-halo: rgb(30 233 230 / 0.28);
   --otter-tv-scale: 1.1;
-  /* Menus, preview cards and badges are drawn at desktop sizes in their shadow roots: scaled. */
-  --otter-tv-zoom: 1.75;
+  /* Menus, preview cards and badges are drawn at desktop sizes in their shadow roots: scaled so the
+     smallest menu text (12 px chips) reaches 28 px; rows (14 px) become 33 px. */
+  --otter-tv-zoom: 2.34;
 }
 
 /* ---- Title-safe area: 5 % of the width each side, 5 % of a 16:9 height top and bottom ---- */
@@ -83,8 +84,22 @@
   outline: none;
 }
 
+/* Without CSS zoom (older TV browsers): the shadow roots' text grows through ui-core's text scale
+   instead (the boxes around it follow the text; widths stay). */
+@supports not (zoom: 2) {
+  :where([data-otter-player]) {
+    --otter-ui-text-scale: var(--otter-tv-zoom);
+    --otter-menu-width: 640px;
+  }
+}
+
+/* Reduced motion: no scaling and no halo, the focus ring only. */
 @media (prefers-reduced-motion: reduce) {
+  :where([data-otter-player]) *::part(button) {
+    transition: none;
+  }
   :where([data-otter-player]) *::part(button):focus-visible {
     transform: none;
+    box-shadow: none;
   }
 }

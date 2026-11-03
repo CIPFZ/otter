@@ -31,3 +31,6 @@ e2e/media/bench/
 
 # Local scratch and credentials (instance tokens, API keys): never committed.
 tmp/
+
+# e2e/tv.spec.ts screenshots (a CI artifact)
+tv-screenshots/
