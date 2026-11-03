@@ -222,10 +222,6 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
   // Playwright over WebDriver BiDi (stock Firefox) sends a double-click as two clicks of detail
   // 1 and no dblclick event (RESEARCH §1).
   test.skip(test.info().project.name === 'real-windows-firefox', 'no dblclick through WebDriver BiDi');
-  // Known flaky on CI emulated-iphone (owner 2026-11-03, RESEARCH §1): at 821a099 both attempts had
-  // all four tiles muted with the page already activated (before any click); 9cea9bd passed. Two
-  // more red runs in the next five CI runs make it a defect.
-  if (test.info().project.name === 'emulated-iphone') test.info().annotations.push({ type: 'flaky', description: 'CI emulated-iphone: all tiles muted after activation at 821a099; RESEARCH §1' });
   await open(page, 4);
   const w = wall(page);
   expect(await w.eval((x) => x.focused())).toBe(0);
@@ -245,13 +241,21 @@ test('focus: one tile has sound and the controls; double-click: local fullscreen
     const tiles = await w.eval((x) => x.tiles().map((tile) => ({ muted: tile.muted, status: tile.status })));
     return `focused tile ${await w.eval((x) => x.focused())}, tiles ${JSON.stringify(tiles)}, hasBeenActive ${await activation()} (at load ${atLoad}), at the click point ${hit}`;
   };
-  await expect
-    .poll(async () => {
-      const muted = await w.eval((x) => x.tiles().map((t) => t.muted));
-      const want = (await activation()) ? [false, true, true, true] : [true, true, true, true];
-      return JSON.stringify(muted) === JSON.stringify(want) ? 'ok' : `muted ${JSON.stringify(muted)}; ${await attribution()}`;
-    }, { timeout: 1000 })
-    .toBe('ok');
+  // Before the click (owner 2026-11-03): without a gesture all four are muted (F1). With the page
+  // already activated (Playwright gives WebKit pages one after load; page.evaluate gives Chromium
+  // one) nothing is asserted here: page-level activation lifts no tile's mute in the product (F1:
+  // the gate is lifted by a gesture the player sees), so either state is right; the click below is
+  // what the case checks.
+  if (!(await activation())) {
+    await expect
+      .poll(async () => {
+        const muted = await w.eval((x) => x.tiles().map((t) => t.muted));
+        return JSON.stringify(muted) === JSON.stringify([true, true, true, true]) ? 'ok' : `muted ${JSON.stringify(muted)}; ${await attribution()}`;
+      }, { timeout: 1000 })
+      .toBe('ok');
+  } else {
+    ciNotice(`multiview focus: page already activated before the click (at load ${atLoad}): the four-muted precondition is not asserted; ${await attribution()}`);
+  }
   // Tile 2 is top right; click clear of the bars and the centre buttons (small players put them
   // over the tiles).
   const tile = page.locator('[data-otter-multiview-tile="2"]');

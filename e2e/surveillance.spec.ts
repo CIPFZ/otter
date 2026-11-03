@@ -17,7 +17,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import type { Browser, Page } from '@playwright/test';
-import { acceptEnvironmentStalls, audioStalls, recordAudioStalls } from './audio-stalls';
+import { acceptEnvironmentStalls, audioStalls, f14Notice, f14Verdict, recordAudioStalls, recordSinkStats, sinkStats } from './audio-stalls';
 import { expect, test } from './fixtures';
 import type { SurveillancePlayer } from '@otter-player/presets/surveillance';
 
@@ -207,6 +207,7 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
     // The shared AudioContext's own stall record (e2e/audio-stalls.ts): a tile that falls behind
     // real time may be its clock standing (owner 2026-11-03).
     await recordAudioStalls(page);
+    await recordSinkStats(page);
     await fourPlaying(page, transport, baseURL as string);
     const rows = await play(page, 5);
     const k = await kind(page);
@@ -223,6 +224,12 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
       test.info().annotations.push({ type: 'ttff', description: `${one.join(' ')} | ${ref.join(' ')}` });
     }
     const name = transport === 'ts' ? 'live ts' : `${transport}-flv`;
+    // Underruns are recorded here, not judged; on emulated-android F14's tally per case
+    // (e2e/audio-stalls.ts; the tiles share one sink record, the backend's summaries of every tile).
+    if (test.info().project.name === 'emulated-android') {
+      const underruns = rows.flatMap((r) => r.messages.filter((m) => m.startsWith('audioUnderrun')).map((m) => m.replace(/^audioUnderrun: /, '')));
+      ciNotice(f14Notice(`surveillance ${name}`, f14Verdict('emulated-android', underruns, await sinkStats(page))));
+    }
     // The performance criteria are desktop-safari's and desktop-chrome's (and the real Edge's), not
     // the emulated phones' or headless Firefox's (owner 2026-11-03, ADR-013 §7a: a surveillance wall
     // is not a phone scenario; the real iPhone is M7). Elsewhere: measured and noted only.

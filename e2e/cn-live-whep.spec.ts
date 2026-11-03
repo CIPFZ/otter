@@ -6,6 +6,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { gapsAsStalls } from './audio-stalls';
+import { analyzeTone, stepAt, stretchedGaps } from './recording';
 import { expect, test } from './fixtures';
 import type { OtterFixture } from './site/player.ts';
 
@@ -159,22 +160,6 @@ function wav(samples: Int16Array, rate: number): Buffer {
 }
 
 /** Share of a window's energy at `f` Hz (Goertzel; 1 for a pure tone at f). */
-function toneShare(x: Float64Array, from: number, n: number, f: number, rate: number): number {
-  const w = (2 * Math.PI * f) / rate;
-  const c = 2 * Math.cos(w);
-  let s1 = 0;
-  let s2 = 0;
-  let energy = 0;
-  for (let i = from; i < from + n; i++) {
-    const v = x[i] as number;
-    const s0 = v + c * s1 - s2;
-    s2 = s1;
-    s1 = s0;
-    energy += v * v;
-  }
-  const power = s1 * s1 + s2 * s2 - c * s1 * s2;
-  return energy === 0 ? 0 : (2 * power) / (n * energy);
-}
 
 // The WHEP audio as heard by the page (test round decision 3b, 2026-10-28): 20 s of the received
 // track recorded through WebAudio, written as WAV (test-results/, attached to the report), and
@@ -201,7 +186,7 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
   // timeline below.
   await page.addInitScript(() => {
     const Native = window.RTCPeerConnection;
-    const w = window as unknown as { rx: { at: number; concealed: number; events: number; lost: number; jbDelay: number; jbEmitted: number; received: number }[] };
+    const w = window as unknown as { rx: { at: number; concealed: number; events: number; lost: number; jbDelay: number; jbEmitted: number; received: number; inserted: number; removed: number }[] };
     w.rx = [];
     window.RTCPeerConnection = class extends Native {
       constructor(config?: RTCConfiguration) {
@@ -209,8 +194,8 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
         const id = setInterval(() => {
           if (this.connectionState === 'closed') return clearInterval(id);
           void this.getStats().then((report) => {
-            report.forEach((r: { type: string; kind?: string; concealedSamples?: number; concealmentEvents?: number; packetsLost?: number; jitterBufferDelay?: number; jitterBufferEmittedCount?: number; packetsReceived?: number }) => {
-              if (r.type === 'inbound-rtp' && r.kind === 'audio') w.rx.push({ at: performance.now(), concealed: r.concealedSamples ?? 0, events: r.concealmentEvents ?? 0, lost: r.packetsLost ?? 0, jbDelay: r.jitterBufferDelay ?? 0, jbEmitted: r.jitterBufferEmittedCount ?? 0, received: r.packetsReceived ?? 0 });
+            report.forEach((r: { type: string; kind?: string; concealedSamples?: number; concealmentEvents?: number; packetsLost?: number; jitterBufferDelay?: number; jitterBufferEmittedCount?: number; packetsReceived?: number; insertedSamplesForDeceleration?: number; removedSamplesForAcceleration?: number }) => {
+              if (r.type === 'inbound-rtp' && r.kind === 'audio') w.rx.push({ at: performance.now(), concealed: r.concealedSamples ?? 0, events: r.concealmentEvents ?? 0, lost: r.packetsLost ?? 0, jbDelay: r.jitterBufferDelay ?? 0, jbEmitted: r.jitterBufferEmittedCount ?? 0, received: r.packetsReceived ?? 0, inserted: r.insertedSamplesForDeceleration ?? 0, removed: r.removedSamplesForAcceleration ?? 0 });
             });
           });
         }, 100);
@@ -319,82 +304,34 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
 
   const x = Float64Array.from(pcm, (v) => v / 32768);
   const rate = rec.rate;
-  // The tone's frequency: the strongest of 400-480 Hz over the whole recording (the received clock
-  // may differ from the source's by a fraction of a hertz; WebKit's recording path now and then by
-  // x1.054, which the notice then shows).
-  let f0 = 440;
-  let best = 0;
-  // Coarse on one second (1 Hz wide peaks), fine on the whole recording.
-  const from = Math.min(2 * rate, Math.max(0, x.length - rate));
-  for (let f = 400; f <= 480; f += 0.5) {
-    const share = toneShare(x, from, Math.min(rate, x.length - from), f, rate);
-    if (share > best) [best, f0] = [share, f];
-  }
-  const coarse = f0;
-  best = 0;
-  for (let f = coarse - 0.5; f <= coarse + 0.5; f += 0.05) {
-    const share = toneShare(x, 0, x.length, f, rate);
-    if (share > best) [best, f0] = [share, f];
-  }
-  // Every second: most of the energy at the tone. Ten 100 ms windows per second, each on its own
-  // (a seam's phase jump would cancel a coherent 1 s sum).
-  const shares: number[] = [];
-  const tenth = Math.round(rate / 10);
-  for (let s = 0; s + 10 * tenth <= x.length; s += 10 * tenth) {
-    let sum = 0;
-    for (let k = 0; k < 10; k++) sum += toneShare(x, s + k * tenth, tenth, f0, rate);
-    shares.push(sum / 10);
-  }
-  // Loop seams: a phase jump. Each 10 ms window is fitted with a sine at f0 (least squares on sin
-  // and cos); a seam leaves a residual far above the windows around it. Merged within 300 ms (the
-  // jitter buffer may smear one seam over a few windows).
-  const win = Math.round(rate * 0.01);
-  const w0 = (2 * Math.PI * f0) / rate;
-  const residuals: number[] = [];
-  for (let s = 0; s + win <= x.length; s += win) {
-    let ss = 0;
-    let cc = 0;
-    let sc = 0;
-    let xs = 0;
-    let xc = 0;
-    let xx = 0;
-    for (let i = s; i < s + win; i++) {
-      const v = x[i] as number;
-      const sn = Math.sin(w0 * i);
-      const cs = Math.cos(w0 * i);
-      ss += sn * sn;
-      cc += cs * cs;
-      sc += sn * cs;
-      xs += v * sn;
-      xc += v * cs;
-      xx += v * v;
-    }
-    const det = ss * cc - sc * sc;
-    const a = (xs * cc - xc * sc) / det;
-    const b = (xc * ss - xs * sc) / det;
-    residuals.push(xx === 0 ? 1 : Math.max(0, xx - a * xs - b * xc) / xx);
-  }
-  const median = [...residuals].sort((p, q) => p - q)[residuals.length >> 1] as number;
-  const seams: number[] = [];
-  residuals.forEach((r, i) => {
-    const t = (i * win) / rate;
-    if (r > Math.max(0.01, 10 * median) && (seams.length === 0 || t - (seams.at(-1) as number) > 0.3)) seams.push(t);
+  // The tone, its share per second, the loop seams; seams on the recorder's own drops (exact zeros
+  // from the MediaStream source: F17, the recording path) are set apart (e2e/recording.ts).
+  const tone = analyzeTone(x, rate);
+  const { f0, shares } = tone;
+  const inner = [...tone.seams];
+  if (tone.recorderSeams.length > 0) ciNotice(`WHEP recording: F17 recorder drops ${tone.drops.map((d) => `${d.at.toFixed(2)} s (${d.samples} zero samples)`).join(', ')}; seams on them not counted: ${tone.recorderSeams.map((t) => t.toFixed(2)).join(', ')} s`);
+  // The receiver's net time-stretching (inserted - removed samples at 48 kHz) by recording time:
+  // the jitter buffer moving the seams without concealment (F17, owner 2026-11-03: it is the
+  // receiver's playout, not the stream's); each gap is judged with it taken out.
+  const rxStretch = await page.evaluate(() => {
+    const w = window as unknown as { rx?: { at: number; inserted: number; removed: number }[]; recT0?: number };
+    const t0 = w.recT0 ?? 0;
+    const base = w.rx?.find((x) => x.at >= t0);
+    return (w.rx ?? []).filter((x) => x.at >= t0).map((x) => ({ at: (x.at - t0) / 1000, value: ((x.inserted - (base?.inserted ?? 0)) - (x.removed - (base?.removed ?? 0))) / 48_000 }));
   });
-  // The first half second may still be the stream starting.
-  const inner = seams.filter((t) => t > 0.5);
-  const gaps = inner.slice(1).map((t, i) => t - (inner[i] as number));
+  const { raw: gaps, corrected: stretchCorrected } = stretchedGaps(inner, stepAt(rxStretch));
   // F17: each seam that is not on the loop (more than 0.25 s off a multiple of LOOP_S from the
   // first) with, within 0.5 s of it, the receiver's concealment / loss / jitter-buffer changes and
   // the fixture's audio send gaps over 60 ms (it sends every 20 ms).
   {
     const rx = await page.evaluate(() => {
-      const w = window as unknown as { rx: { at: number; concealed: number; events: number; lost: number; jbDelay: number; jbEmitted: number; received: number }[]; recT0: number };
+      const w = window as unknown as { rx: { at: number; concealed: number; events: number; lost: number; jbDelay: number; jbEmitted: number; received: number; inserted: number; removed: number }[]; recT0: number };
       return { rx: w.rx, t0: w.recT0 };
     });
     const sentLog = (await (await page.request.get('/whep/log/last')).json()) as { audioSent?: number[] } | null;
     const sent = sentLog?.audioSent ?? [];
     const first = inner[0] ?? 0;
-    const odd = inner.filter((t) => { const k = Math.round((t - first) / LOOP_S); return Math.abs(t - first - k * LOOP_S) > 0.25; });
+    const odd = [...inner.filter((t) => { const k = Math.round((t - first) / LOOP_S); return Math.abs(t - first - k * LOOP_S) > 0.25; }), ...tone.recorderSeams];
     // Recording seconds to the fixture's clock: recFrom (fixture ms) is the recording's start.
     const fixtureAt = (t: number): number => (recFrom ?? 0) + t * 1000;
     const pageAt = (t: number): number => rx.t0 + t * 1000;
@@ -409,12 +346,18 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
       const z = rec.zeroQuanta.filter((q) => Math.abs(q / rate - t) <= 0.05).length;
       return `${odd.length > 0 ? 'odd seam' : 'seam'} ${t.toFixed(2)} s: ${d}; recorder got ${z} all-zero render quanta there; fixture audio send gaps > 60 ms ${g.join(', ') || 'none'}`;
     });
-    const whole = `${rx.rx.length > 1 ? `whole recording: concealment events ${(rx.rx.at(-1)?.events ?? 0) - (rx.rx[0]?.events ?? 0)}, lost ${(rx.rx.at(-1)?.lost ?? 0) - (rx.rx[0]?.lost ?? 0)}` : 'no receiver stats'}; all-zero render quanta ${rec.zeroQuanta.length} (at ${rec.zeroQuanta.slice(0, 12).map((q) => (q / rate).toFixed(2)).join(', ')} s); fixture send gaps > 60 ms ${sendGaps.length}`;
+    // The receiver's time-stretching over the recording (its jitter buffer slowing playout down /
+    // speeding it up): moves the seams without any concealment.
+    const inRec = rx.rx.filter((x) => x.at >= rx.t0 && x.at <= rx.t0 + 20_000);
+    const r0 = inRec[0];
+    const r1 = inRec.at(-1);
+    const stretch = r0 === undefined || r1 === undefined ? '' : `, samples inserted to slow down ${r1.inserted - r0.inserted} (${((r1.inserted - r0.inserted) / 48).toFixed(0)} ms at 48 kHz), removed to speed up ${r1.removed - r0.removed}, jitter buffer ${r0.jbEmitted > 0 ? Math.round((r0.jbDelay / r0.jbEmitted) * 1000) : '?'} -> ${r1.jbEmitted > 0 ? Math.round(((r1.jbDelay - r0.jbDelay) / Math.max(1, r1.jbEmitted - r0.jbEmitted)) * 1000) : '?'} ms`;
+    const whole = `${rx.rx.length > 1 ? `whole recording: concealment events ${(rx.rx.at(-1)?.events ?? 0) - (rx.rx[0]?.events ?? 0)}, lost ${(rx.rx.at(-1)?.lost ?? 0) - (rx.rx[0]?.lost ?? 0)}${stretch}` : 'no receiver stats'}; all-zero render quanta ${rec.zeroQuanta.length} (at ${rec.zeroQuanta.slice(0, 12).map((q) => (q / rate).toFixed(2)).join(', ')} s); fixture send gaps > 60 ms ${sendGaps.length}`;
     ciNotice(`WHEP recording, F17: ${lines.join(' | ')}; ${whole}`);
   }
   const rms = Math.sqrt(x.reduce((acc, v) => acc + v * v, 0) / x.length);
   ciNotice(
-    `WHEP recording (${rate} Hz, ${(x.length / rate).toFixed(1)} s, RMS ${rms.toFixed(3)}): tone ${f0.toFixed(2)} Hz, share per second min ${Math.min(...shares).toFixed(3)}; seams at ${inner.map((t) => t.toFixed(2)).join(', ') || 'none'} s (gaps ${gaps.map((g) => g.toFixed(2)).join(', ')}); ${file}`,
+    `WHEP recording (${rate} Hz, ${(x.length / rate).toFixed(1)} s, RMS ${rms.toFixed(3)}): tone ${f0.toFixed(2)} Hz, share per second min ${Math.min(...shares).toFixed(3)}; seams at ${inner.map((t) => t.toFixed(2)).join(', ') || 'none'} s (gaps ${gaps.map((g) => g.toFixed(2)).join(', ')}; with the receiver's stretch taken out ${stretchCorrected.map((g) => g.toFixed(2)).join(', ')}); ${file}`,
   );
   // The fixture's side of the session (owner 2026-11-03): connection state changes and RTCP arrival
   // intervals, with the gaps over 1 s that fall in the recording. Not a skip rule (yet): locally
@@ -441,10 +384,11 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
   // nothing else (20 s: four or five). The receiver's jitter buffer stretches and shrinks playout a
   // little, so a single gap may be off by ~0.15 s; on average they are the loop.
   expect(inner.length).toBeGreaterThanOrEqual(4);
-  for (const g of gaps) {
-    expect(g).toBeGreaterThan(LOOP_S - 0.25);
-    expect(g).toBeLessThan(LOOP_S + 0.25);
+  // Judged with the receiver's time-stretching taken out (F17); the raw gaps are in the notice.
+  for (const g of stretchCorrected) {
+    expect(g, `gap ${g.toFixed(2)} s with the receiver's stretch taken out (raw ${gaps.map((x) => x.toFixed(2)).join(', ')})`).toBeGreaterThan(LOOP_S - 0.25);
+    expect(g, `gap ${g.toFixed(2)} s with the receiver's stretch taken out (raw ${gaps.map((x) => x.toFixed(2)).join(', ')})`).toBeLessThan(LOOP_S + 0.25);
   }
-  const mean = ((inner.at(-1) as number) - (inner[0] as number)) / (inner.length - 1);
-  expect(Math.abs(mean - LOOP_S)).toBeLessThan(0.05);
+  const mean = stretchCorrected.reduce((a, b) => a + b, 0) / Math.max(1, stretchCorrected.length);
+  expect(Math.abs(mean - LOOP_S), `mean gap ${mean.toFixed(3)} s with the stretch taken out`).toBeLessThan(0.05);
 });

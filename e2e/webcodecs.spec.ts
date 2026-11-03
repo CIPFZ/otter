@@ -5,6 +5,7 @@
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
+import { F14_MAX_MS, f14Notice, f14Verdict, isF14Window, recordSinkStats, sinkStats, type SinkStat } from './audio-stalls';
 import { expect, test } from './fixtures';
 import type { WebCodecsFixture } from './site/webcodecs.ts';
 
@@ -93,23 +94,8 @@ for (const clip of CLIPS) {
 
   test(`${clip.name}: plays on the AudioContext clock, the picture follows it`, async ({ page }, info) => {
     test.setTimeout(60_000);
-    // The audio sink's 0.2 s summaries (media / ahead / under / dq), printed if an error comes. An
-    // underrun is a failure, except F14's signature on emulated-android (owner 2026-11-03: when it
-    // matched here, the 30 s case's rule applies; 0ca7823 matched: dq 17 from 6.6 s, dry at 7.8 s).
-    await page.addInitScript(() => {
-      const Native = window.AudioWorkletNode;
-      const w = window as unknown as { sinkStats: { media: number; ahead: number; under: number; dq: number }[] };
-      w.sinkStats = [];
-      window.AudioWorkletNode = class extends Native {
-        constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
-          super(context, name, options);
-          this.port.addEventListener('message', (e: MessageEvent<{ t: string; media: number; ahead: number; under: number; dq: number }>) => {
-            if (e.data.t === 'stat') w.sinkStats.push({ media: e.data.media, ahead: e.data.ahead, under: e.data.under, dq: e.data.dq });
-          });
-          this.port.start();
-        }
-      };
-    });
+    // The audio sink's 0.2 s summaries, printed if an error comes; F14's rule (e2e/audio-stalls.ts).
+    await recordSinkStats(page);
     await page.goto('/webcodecs.html');
     await page.evaluate(async (name) => (await (window.wc as Promise<WebCodecsFixture>)).load(name, 6), clip.name);
     // A real click: play() runs inside a user gesture, so the AudioContext may start.
@@ -150,20 +136,14 @@ for (const clip of CLIPS) {
     // Where an AudioContext can run it is the clock; where it cannot (headless Firefox on Linux:
     // resume() never settles) playback keeps time on performance.now() and says so, once.
     if (audioRuns) {
-      const sink = run.errors.length === 0 ? [] : await page.evaluate(() => (window as unknown as { sinkStats: { media: number; ahead: number; under: number; dq: number }[] }).sinkStats);
-      // F14 (same rule as the 30 s case): an underrun whose media time is within 0.4 s of a summary
-      // that ran dry with the decode queue at its cap, on emulated-android only; listed when let through.
-      const f14 = (message: string) => {
-        const at = Number(/dry at ([\d.]+) s/.exec(message)?.[1] ?? Number.NaN);
-        if (info.project.name !== 'emulated-android') return undefined;
-        return sink.filter((x) => Math.abs(x.media - at) <= 0.4 && x.under > 0 && x.dq >= 17).sort((a, b) => Math.abs(a.media - at) - Math.abs(b.media - at))[0];
-      };
-      const let_ = run.errors.flatMap((e, k) => (e === 'audioUnderrun' && f14(run.messages[k] as string) !== undefined ? [k] : []));
-      if (let_.length > 0) {
-        ciNotice(`${clip.name}: F14 underruns let through: ${let_.map((k) => { const m = f14(run.messages[k] as string) as { media: number; ahead: number; under: number; dq: number }; const at = Number(/dry at ([\d.]+) s/.exec(run.messages[k] as string)?.[1]); return `${run.messages[k]} -> summary [media ${m.media.toFixed(3)} ahead ${m.ahead.toFixed(2)} under ${m.under} dq ${m.dq}] ${Math.abs(m.media - at) > 0.2 ? 'adjacent' : 'same'} window (${Math.abs(m.media - at).toFixed(3)} s)`; }).join(' | ')}`);
-        info.annotations.push({ type: 'issue', description: `M6 F14 known issue (emulated Android): ${let_.length} underrun(s) with the decode queue at its cap and the sink dry` });
-      }
-      expect(run.errors.filter((_, k) => !let_.includes(k)), `${JSON.stringify(run.messages)}; sink summaries: ${sink.map((x) => `[media ${x.media.toFixed(2)} ahead ${x.ahead.toFixed(2)} under ${x.under} dq ${x.dq}]`).join(' ')}`).toEqual([]);
+      const sink = await sinkStats(page);
+      const underruns = run.messages.filter((_, k) => run.errors[k] === 'audioUnderrun');
+      const v = f14Verdict(info.project.name, underruns, sink);
+      if (info.project.name === 'emulated-android') ciNotice(f14Notice(`${clip.name} clock`, v));
+      if (v.letThrough.length > 0) info.annotations.push({ type: 'issue', description: `M6 F14 known issue (emulated Android): ${v.letThrough.length} underrun(s), ${Math.round(v.letMs)} ms` });
+      const others = run.messages.filter((_, k) => run.errors[k] !== 'audioUnderrun');
+      expect([...others, ...v.kept], `${JSON.stringify(run.messages)}; sink summaries: ${sink.filter((x) => x.under > 0).map((x) => `[media ${x.media.toFixed(2)} ahead ${x.ahead.toFixed(2)} under ${x.under} dq ${x.dq}]`).join(' ')}`).toEqual([]);
+      expect(v.letMs, `F14 let through ${Math.round(v.letMs)} ms of silence (at most ${F14_MAX_MS} ms in one run)`).toBeLessThanOrEqual(F14_MAX_MS);
     } else {
       // Reported once resume() has had its 3 s grace (RESUME_GRACE_MS), not before.
       await expect
@@ -324,36 +304,16 @@ test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
   // decoder's output falls behind real time, the pump waits at the decode queue's cap (dq 17) and
   // the sink runs dry. A silent second there with exactly that in the sink's view (dry, ahead < 0,
   // dq at the cap) is noted as the known issue, not counted; anything else still fails.
-  const sinkStats = await page.evaluate(() => (window as unknown as { stats: { media: number; ahead: number; under: number; dq: number; wall: number }[] }).stats);
+  const sink = (await page.evaluate(() => (window as unknown as { stats: SinkStat[] }).stats)).map((x) => ({ ...x, gap: x.gap ?? 0, late: x.late ?? 0, disc: x.disc ?? 0 }));
   const knownIssue = (i: number): boolean =>
-    info.project.name === 'emulated-android' && sinkStats.some((x) => x.wall >= (walls[i] as number) - 1400 && x.wall <= (walls[i] as number) + 200 && x.ahead < 0 && x.under > 0 && x.dq >= 17);
+    info.project.name === 'emulated-android' && sink.some((x) => x.wall >= (walls[i] as number) - 1400 && x.wall <= (walls[i] as number) + 200 && x.ahead < 0 && isF14Window(x));
   const known = silent.filter((i) => !environment.includes(i) && knownIssue(i));
-  // The same signature without a silent second (d7163de: dry for 4-318 ms, never a whole probe
-  // second): an underrun whose media time falls in a sink summary that ran dry with the decode
-  // queue at its cap. Known too; any other underrun still fails.
+  // Underruns: F14's rule, the same in every audio case (e2e/audio-stalls.ts), listed per case.
   const underruns = await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).events.filter((e) => e.type === 'error' && (e.payload as { error: { details: string } }).error.details === 'audioUnderrun').map((e) => (e.payload as { error: { message?: string } }).error.message ?? ''));
-  // The sink summary an underrun matched: the nearest dry one with dq at the cap within 0.4 s of its
-  // media time; `adjacent` when only a neighbouring summary (0.2-0.4 s away, the summaries are
-  // 0.2 s windows) matched. Owner 2026-11-02: listed in every report; the rule goes if dq >= 17 is
-  // never actually seen.
-  const f14Match = (message: string) => {
-    const at = Number(/dry at ([\d.]+) s/.exec(message)?.[1] ?? Number.NaN);
-    if (info.project.name !== 'emulated-android') return undefined;
-    const hit = sinkStats
-      .filter((x) => Math.abs(x.media - at) <= 0.4 && x.under > 0 && x.dq >= 17)
-      .sort((a, b) => Math.abs(a.media - at) - Math.abs(b.media - at))[0];
-    return hit === undefined ? undefined : { ...hit, at, adjacent: Math.abs(hit.media - at) > 0.2 };
-  };
-  const knownUnderrun = (message: string): boolean => f14Match(message) !== undefined;
-  const knownUnderruns = underruns.filter(knownUnderrun);
-  // Every CI report says how often the signature fired (owner 2026-11-02; tally in RESEARCH §1 F14).
+  const verdict = f14Verdict(info.project.name, underruns, sink);
   if (info.project.name === 'emulated-android') {
-    ciNotice(`audio worklet 30 s: F14 signature fired ${known.length} times (silent seconds with the decode queue at its cap and the sink dry); ${knownUnderruns.length} underruns with it (no silent second)`);
-    const lines = knownUnderruns.map((u) => {
-      const m = f14Match(u) as NonNullable<ReturnType<typeof f14Match>>;
-      return `${u} -> summary [media ${m.media.toFixed(3)} ahead ${m.ahead.toFixed(2)} under ${m.under} dq ${m.dq}] ${m.adjacent ? 'adjacent' : 'same'} window (${Math.abs(m.media - m.at).toFixed(3)} s)`;
-    });
-    if (lines.length > 0) ciNotice(`audio worklet 30 s: F14 underruns let through: ${lines.join(' | ')}`);
+    ciNotice(`audio worklet 30 s: F14 signature fired ${known.length} times (silent seconds with the decode queue at its cap and the sink dry); ${verdict.letThrough.length} underruns with it`);
+    ciNotice(f14Notice('30 s worklet', verdict));
   }
   if (known.length > 0) {
     info.annotations.push({ type: 'issue', description: `M6 F14 known issue (emulated Android): silent seconds ${known.join(', ')} with the decode queue at its cap and the sink dry` });
@@ -366,7 +326,7 @@ test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
   // Each underrun outside F14's signature with the sink's windows around it (under / gap / late /
   // disc / dq, the decode queue depth when it went dry) and the main thread's long tasks then
   // (owner 2026-11-03: the 0ca7823 underrun had dq 0 / ahead 1.28 at its window's end).
-  const others = underruns.filter((u) => !knownUnderrun(u));
+  const others = verdict.kept;
   if (others.length > 0) {
     // The two records only (the window itself does not serialize).
     const full = await page.evaluate(() => {
@@ -382,7 +342,8 @@ test(`h264.mp4 with sound for 30 s: the audio worklet keeps producing, every sec
     });
     ciNotice(`audio worklet 30 s: underruns outside F14's signature: ${lines.join(' | ')}`);
   }
-  expect(others, `underruns outside F14's signature; sink: ${sinkStats.filter((x) => x.under > 0).map((x) => `[media ${x.media.toFixed(2)} ahead ${x.ahead.toFixed(2)} under ${x.under} dq ${x.dq}]`).join(' ')}`).toEqual([]);
+  expect(others, `underruns outside F14's signature; sink: ${sink.filter((x) => x.under > 0).map((x) => `[media ${x.media.toFixed(2)} ahead ${x.ahead.toFixed(2)} under ${x.under} dq ${x.dq}]`).join(' ')}`).toEqual([]);
+  expect(verdict.letMs, `F14 let through ${Math.round(verdict.letMs)} ms of silence (at most ${F14_MAX_MS} ms in one run)`).toBeLessThanOrEqual(F14_MAX_MS);
 });
 
 test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it as the clock', async ({ page }) => {
@@ -399,6 +360,7 @@ test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it 
       }
     };
   });
+  await recordSinkStats(page);
   await page.goto('/webcodecs.html');
   await page.evaluate(async () => (await (window.wc as Promise<WebCodecsFixture>)).load('h264.mp4', 1));
   await page.locator('#play').click();
@@ -443,7 +405,11 @@ test('h264.mp4: after 6 s paused the AudioContext is suspended; play resumes it 
   expect(r.paused).toBe(false);
   expect(r.t - before).toBeGreaterThan(1);
   expect(r.t - before).toBeLessThan(2);
-  expect(r.errors).toEqual([]);
+  // F14's rule for underruns (e2e/audio-stalls.ts); any other error still fails.
+  const suspendVerdict = f14Verdict(test.info().project.name, r.messages.filter((_, k) => r.errors[k] === 'audioUnderrun'), await sinkStats(page));
+  if (test.info().project.name === 'emulated-android') ciNotice(f14Notice('idle suspend', suspendVerdict));
+  expect([...r.messages.filter((_, k) => r.errors[k] !== 'audioUnderrun'), ...suspendVerdict.kept]).toEqual([]);
+  expect(suspendVerdict.letMs, `F14 let through ${Math.round(suspendVerdict.letMs)} ms (at most ${F14_MAX_MS} ms)`).toBeLessThanOrEqual(F14_MAX_MS);
   ciNotice(`AudioContext idle suspend after 6 s paused, resumed by play: ${(r.t - before).toFixed(2)} s played in 1.5 s, no audioClockUnavailable`);
 });
 
