@@ -309,7 +309,9 @@ test('cn-live WHEP recording: 20 s of the received audio, a 440 Hz tone with the
   const tone = analyzeTone(x, rate);
   const { f0, shares } = tone;
   const inner = [...tone.seams];
-  if (tone.recorderSeams.length > 0) ciNotice(`WHEP recording: F17 recorder drops ${tone.drops.map((d) => `${d.at.toFixed(2)} s (${d.samples} zero samples)`).join(', ')}; seams on them not counted: ${tone.recorderSeams.map((t) => t.toFixed(2)).join(', ')} s`);
+  // Every run says how many seams the recorder-drop window let through (owner 2026-11-03: tallied
+  // like F14 in RESEARCH; three CI runs in a row green only through it are listed apart).
+  ciNotice(`WHEP recording: F17 recorder-drop seams let through ${tone.recorderSeams.length}${tone.recorderSeams.length > 0 ? ` (at ${tone.recorderSeams.map((t) => t.toFixed(2)).join(', ')} s; drops ${tone.drops.map((d) => `${d.at.toFixed(2)} s, ${d.samples} zero samples`).join('; ')})` : ''}`);
   // The receiver's net time-stretching (inserted - removed samples at 48 kHz) by recording time:
   // the jitter buffer moving the seams without concealment (F17, owner 2026-11-03: it is the
   // receiver's playout, not the stream's); each gap is judged with it taken out.

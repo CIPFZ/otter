@@ -141,6 +141,8 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     | idle suspend（暂停 6 s 后挂起恢复） | `9cea9bd` 两次尝试各有欠载、dq 17，当时没有规则，判红 | 否 |
     | surveillance 三条 solo（只记录，不判定） | 新加 | — |
     
+    `05f4572`（helper 之后第一次）：idle suspend 放过 2 条（共 170 ms，dq 17）；30 s worklet 放过 1 条（9 ms，dq 17）；三条时钟用例与 surveillance 三条都是 0。
+    
     多宫格基准只在 desktop-chrome / 真 Edge 上跑，欠载在那里只记录（ADR-008 §7），不在 emulated-android 上，所以没有调用。
 
     累计 16 次运行，11 次没有触发。**规则状态：已证实，保留**（2026-11-03 负责人）。`031ec7d` 实测到放过的欠载对应的汇总 dq 17、ahead −1、under 5106，都在同窗，签名成立。此前「没观测到 dq ≥ 17 就撤回」的待定状态结束。`vp9.webm` 时钟用例原先不加这条放宽，只在失败时打印 sink 汇总，等出现签名匹配再按 30 s 用例的规则处理。`0ca7823` 上它在 emulated-android 第一次尝试失败：欠载在 7.695 s，汇总显示 dq 从 6.6 s 起停在 17，ahead 一路降到 0.08，7.8 s 处 ahead −1、under 3902，签名匹配。按负责人的预先决定，这条用例也套用 30 s 用例的规则：只在 emulated-android 上、只放过签名匹配的欠载，逐条列出。
@@ -204,6 +206,14 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     
     本地 8 次扣除后都在 4.01–4.03 s。
   - 判定树里的「有隐藏事件 + 夹具准时 → 产品抖动缓冲」与「夹具发包空档 → 环境」两支，目前都没出现过。
+  - **第一个原因的状态：放过，未解释**（2026-11-03 负责人）。录音 worklet 收到约 8.5 ms 的精确零，而接收端没有隐藏。嫌疑在 MediaStreamTrack → MediaStreamAudioSourceNode → AudioWorklet 的桥接（两边各有自己的时钟，桥接处的缓冲偶尔给不出数据），没有证实。每次运行的通知里写 `F17 recorder-drop seams let through N`，按运行累计在下表；连续 3 次 CI 都是靠这个 50 ms 窗口放过才绿的，单独列出。
+
+    | CI 提交 | desktop-chrome | emulated-android |
+    |---|---|---|
+    | `74548b2`（改前，只有零量子计数） | 1（9.63 s，判红前就已重试通过） | 0 |
+    | `05f4572` | 0 | 0 |
+
+  - **第二个原因：接收端的无隐藏时间伸缩，是浏览器的行为**（2026-11-03 负责人：记入已知限制）。WebRTC 的抖动缓冲由浏览器决定，Chrome 本地约每 20 s 插入 95–300 ms 放慢播放。播放器不补偿。凡是用接收端 `currentTime` 推算延迟或做对齐的地方都受影响：WHEP 的延迟读数、与其他源的对时、本用例的接缝间隔（已在测试里扣除）。
 - **emulated-iphone 多宫格聚焦**（2026-11-03 负责人：先标 flaky；随后改为前置断言按 `hasBeenActive` 分支，摘掉 flaky）：
   - 产品的 F1 逻辑：页面级激活不解除任何一路的静音，静音门只在播放器自己看到的手势时解除。所以「页面已激活、四路仍全静音」与产品一致。
   - 用例改为：`hasBeenActive` 为 false 时断言四路静音；为 true 时不断言这一前置状态、留通知，直接进入点击流程。点击之后的断言不变。
