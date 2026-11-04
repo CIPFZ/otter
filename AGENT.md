@@ -51,6 +51,7 @@
   6. 术语表放 `docs/design/GLOSSARY.md`（2026-11-04 定稿）。公开 API 已有标识符的概念，表跟 API 走；想改名的列在术语表末尾的「改名候选」由负责人定，不在 TSDoc 里改。
   - 覆盖门禁只管用户面向入口：core、presets 全部 sub-path、react / vue / svelte、ui-core、input（含 `/remote`）、各 `format-*`、各 `engine-adapter-*` 与 `engine-pipeline` 的入口。这些入口的导出必须 100 % 有文档注释，导出接口的每个成员也必须有（`UiStrings` 每个键一行）；纯结构类型（如 `Unsubscribe` 这种只是函数签名别名的）按 `入口#名字` 列进 `scripts/lib/docs-gate.ts` 的 `STRUCTURAL` 才可免；镜像第三方结构的类型（Shaka 的 track / error / variant 等）列进 `MIRRORS`，成员免逐个注释，但类型注释必须写明上游（`Upstream: shaka.extern.Track`）。内部包只在文档站首页记录覆盖率，不门禁。
   - **评审清单（提交前人工过一遍，门禁查不了）**：diff 里新增或改动的 TSDoc，摘要是否说了做什么 / 何时用而不是复述类型（约定 1）；用词是否与术语表一致；`@defaultValue` 写的是否真是代码里的默认值。
+- **注释与提交信息只写观测到的事实**（2026-11-04 负责人）：原因、机制这类判断，没有数据证实之前必须写明是假设（「假设：…，待 CI 数据验证」），不得写成「X 因为 Y」「已修复」。验证后改成事实或删掉。起因：`c2b3dfe` 的提交信息与 `audio-feed.ts` 注释把未验证的「Safari 的 AAC 解码器压两帧」写成了原因，下一次 CI 的数据否定了它。
 - **删除只用 `rm`**（2026-11-04）：不要把任何东西 `mv` / `cp` 到 `/dev/null`（root 下会把设备换成普通文件），也不要经仓库外的符号链接删除仓库里的文件。
 - **`pnpm check` 返回 0 才提交**（2026-10-26）：以退出码为准，不看输出里有没有报错字样；命令链里要显式判断（`pnpm -s check; [ $? -eq 0 ] && git commit …`），检查失败时不得提交或推送。
 

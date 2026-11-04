@@ -37,4 +37,3 @@ tv-screenshots/
 
 # The generated docs site (scripts/docs-site.ts)
 docs-site/dist/
-dist-cdn

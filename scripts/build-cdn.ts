@@ -3,21 +3,22 @@
 // always needs inlined, and its on-demand parts (engines, captions, preview pictures, the WebCodecs
 // path) as chunks beside it, loaded by relative URL only when used: inlining them makes a 2.8 MB
 // "single file" (hls.js, Shaka, mediabunny...), most of which a page never runs. Minified, with
-// the skin's stylesheet next to it. Built from the packages' dist (run `pnpm build` first), into
-// dist-cdn/<name>/:
+// the skin's stylesheet next to it. Built from the packages' dist (the build of @otter-player/cdn,
+// after presets and the skins), into <outDir>/<name>/:
 //   otter-basic/otter-basic.esm.js + chunks + otter-basic.css (ui-skin-minimal)
 //   otter-vod/otter-vod.esm.js + chunks + otter-vod.css (ui-skin-default)
-// The release workflow attaches them to the GitHub Release.
+// and <outDir>/inputs.json, every source file built in (the license audit and NOTICE of the
+// package, scripts/release-files.ts). Published as @otter-player/cdn (jsDelivr's npm path).
 //
-//   node scripts/build-cdn.ts [outDir]
+//   node scripts/build-cdn.ts [outDir]      (default packages/cdn/dist)
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { build, type Plugin } from 'esbuild';
 
 const root = join(import.meta.dirname, '..');
-const out = process.argv[2] ?? join(root, 'dist-cdn');
+const out = resolve(process.argv[2] ?? join(root, 'packages/cdn/dist'));
 
 /** `@otter-player/<pkg>[/<sub>]` → that export's built file (its `default` condition). */
 const workspace: Plugin = {
@@ -41,7 +42,9 @@ const bundles = [
   { name: 'otter-vod', entry: '@otter-player/presets/vod', skin: 'ui-skin-default' },
 ] as const;
 
+rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
+const inputs = new Set<string>();
 for (const b of bundles) {
   const dir = join(out, b.name);
   const file = join(dir, `${b.name}.esm.js`);
@@ -59,8 +62,10 @@ for (const b of bundles) {
     chunkNames: 'chunks/[name]-[hash]',
     metafile: true,
     plugins: [workspace],
+    absWorkingDir: root,
     logLevel: 'error',
   });
+  for (const f of Object.keys(result.metafile.inputs)) if (f !== '<stdin>') inputs.add(relative(root, resolve(root, f)));
   const css = join(root, 'packages', b.skin, 'dist', 'index.css');
   if (!existsSync(css)) throw new Error(`${b.skin} is not built: run pnpm build`);
   copyFileSync(css, join(dir, `${b.name}.css`));
@@ -69,3 +74,4 @@ for (const b of bundles) {
   const total = outputs.reduce((n, f) => n + gz(join(root, f)), 0);
   console.log(`${b.name}.esm.js  ${(statSync(file).size / 1024).toFixed(1)} kB, ${gz(file).toFixed(1)} kB gzip; ${outputs.length - 1} on-demand chunks, ${total.toFixed(1)} kB gzip in all  (+ ${b.name}.css from ${b.skin})`);
 }
+writeFileSync(join(out, 'inputs.json'), `${JSON.stringify([...inputs].sort(), null, 1)}\n`);

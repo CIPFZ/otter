@@ -17,7 +17,7 @@
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { audit, classify, licenseProblems, type Item } from './lib/licenses.ts';
+import { audit, cdnInputs, classify, licenseProblems, type Item } from './lib/licenses.ts';
 
 const root = join(import.meta.dirname, '..');
 
@@ -47,8 +47,45 @@ function installedVersion(pkgDir: string, name: string, bundled: readonly string
   throw new Error(`cannot find the installed version of ${name} (bundled into ${pkgDir})`);
 }
 
+/** The license text of an npm package: tooling/licenses/<name>.txt, else its own LICENSE file. */
+function npmLicenseText(name: string, dir: string): string {
+  const kept = join(root, 'tooling/licenses', `${name.replace('/', '__')}.txt`);
+  if (existsSync(kept)) return readFileSync(kept, 'utf8').trim();
+  const own = readdirSync(dir).find((f) => /^licen[cs]e(\.(md|txt))?$/i.test(f));
+  if (own === undefined) throw new Error(`${name}: no LICENSE file in ${dir}; add tooling/licenses/${name.replace('/', '__')}.txt`);
+  return readFileSync(join(dir, own), 'utf8').trim();
+}
+
 /** The third-party code in a package, with where it sits. */
 export function thirdParty(pkgDir: string): { upstream: Upstream; where: string; text: string }[] {
+  const manifest0 = readJson<{ otter?: { cdn?: boolean } }>(join(pkgDir, 'package.json'));
+  if (manifest0.otter?.cdn === true) {
+    // A CDN build: the copied and bundled code of the workspace packages it took in, and every npm
+    // package it took files from (bundled, so their notices travel with it).
+    const inputs = cdnInputs(root, pkgDir);
+    const seen = new Set<string>();
+    const out: { upstream: Upstream; where: string; text: string }[] = [];
+    for (const ws of inputs.workspace) {
+      for (const p of thirdParty(join(root, 'packages', ws))) {
+        if (p.where.startsWith('a dependency installed from npm')) continue;
+        const key = `${p.upstream.project}@${p.upstream.commit}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ ...p, where: `in @otter-player/${ws} (${p.where}), built into dist/` });
+      }
+    }
+    for (const n of inputs.npm) {
+      const key = `${n.name}@${n.version}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // MPL-2.0 code built into a minified file stays MPL-2.0: say where its source form is.
+      const repo = readJson<{ repository?: string | { url?: string } }>(join(n.dir, 'package.json')).repository;
+      const source = (typeof repo === 'string' ? repo : repo?.url ?? `https://www.npmjs.com/package/${n.name}`).replace(/^git\+/, '').replace(/\.git$/, '');
+      const where = classify(n.license) === 'mpl' ? `bundled from npm into dist/ (in on-demand chunks); these parts remain under ${n.license}, their source form is at ${source} (version ${n.version})` : 'bundled from npm into dist/';
+      out.push({ upstream: { project: n.name, repo: `https://www.npmjs.com/package/${n.name}`, commit: n.version, license: n.license }, where, text: npmLicenseText(n.name, n.dir) });
+    }
+    return out;
+  }
   const out: { upstream: Upstream; where: string; text: string }[] = [];
   const text = (project: string): string => {
     const file = join(root, 'tooling/licenses', `${project}.txt`);
@@ -102,7 +139,9 @@ export function auditTable(): string {
   const cell = (items: Item[], kind: Item['kind']): string => {
     const by = new Map<string, Set<string>>();
     for (const i of items.filter((x) => x.kind === kind)) {
-      const who = kind === 'copied' ? (i.name.split('/vendor/')[1]?.split('/')[0] ?? i.name) : kind === 'bundled' ? (i.name.startsWith('vendor/') ? (i.name.split('/')[1] ?? i.name) : i.name) : i.name;
+      // A copied file: its project (the directory under vendor/); a package: name@version.
+      const vendored = /(?:^|\/)vendor\/([^/]+)\//.exec(i.name)?.[1];
+      const who = vendored ?? i.name;
       by.set(i.license, (by.get(i.license) ?? new Set()).add(who));
     }
     return by.size === 0 ? '—' : [...by].map(([l, w]) => `${l}: ${[...w].join(', ')}`).join('; ');

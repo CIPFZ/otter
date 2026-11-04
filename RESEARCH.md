@@ -153,13 +153,17 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     - 本地复现：emulated-android 加 6 个满载进程跑 4 次，所有欠载放空时 dq 都是 17，即 F14，没有复现 dq 0 的那种。
     - **结论：原因未查明**，按负责人规则记为 F16，列入发版已知限制（ADR-014）。`39b2fe5` 的 CI 里 emulated-android 所有欠载放空那一刻的 dq 都是 17（F14），没有再出现 dq 低的那种。下次 CI 出现时，看放空时刻的 dq 与长任务：dq ≥ 17 归 F14；dq 低且有长任务，归主线程繁忙；两者都不是，再查送料侧的时间戳。
     - **第二个平台的数据点（2026-11-04 负责人：记入 F16）**：`f3e56a6` 的 CI，desktop-safari solo 的直播 TS 四路墙（第 1 次尝试即通过，这一组不按欠载判定）tile errors 里有 4 条 `audioUnderrun`：6.464 s 放空 8 ms、5.440 s 51 ms、5.781 s 43 ms、6.464 s 又一路，消息里放空那一刻都是 `decode queue 0`。同一次 HTTP-FLV / WS-FLV 两组没有。不是 F14 的签名（dq 不在上限），与 emulated-android 30 s 用例那次同型。F16 因此不是 Android 模拟环境独有：WebCodecs 音频路径在 Chromium 与 WebKit 上都观察到。
-    - **半天时间盒（2026-11-04 负责人）：桌面 Safari 这一型查清，已修。**
-      - 原片没有缺口：`ffprobe -show_packets` 看 `live-loop.ts`，1128 个 AAC 帧的 PTS 间隔全部是 21.333 ms，5.3–6.6 s 段与全片都没有缺口或重叠（负责人判定树里「夹具有缺口」那一支不成立）。
-      - 但音频按 PES 成块到达：每个 PES 16 帧，0.341 s，PES 起点（媒体时间）… 5.141、5.483、5.824、6.165、6.507 …。`f3e56a6` 与 `101ac9d` 两次 CI 的欠载都在 5.440、5.781、6.464 s，**各比一个 PES 起点早 42.7 ms，正好两帧**。
-      - 机制：Safari 的 AAC 解码器把最后两帧压着，等后面的输入才吐出。直播里下一个 PES 还没到时，解码器的输出比已收到的音频少两帧，sink 在 PES 末尾前 42.7 ms 放空。Chromium 的 AAC 解码器不压帧，所以 desktop-chrome 没有这一型。夹具按平均码率发送（音频相对开播时刻的提前量在 −0.11 到 +0.10 s 之间摆动），只是让下一个 PES 时早时晚，不是根因。
-      - 修复（产品）：`backend-webcodecs` 的音频泵在下一个包 25 ms 内没到、且上次 flush 后喂过数据时，flush 一次音频解码器，把压着的帧放出来；之后照常解码（AAC / Opus 每帧都是关键块）。`packages/backend-webcodecs/src/audio-feed.ts`，单测 `test/audio-feed.test.ts`：模拟压两帧的解码器与「16 帧、停 200 ms、再 16 帧」的流，旧的泵在停顿里只放出 14 帧，新的放出 16 帧。
-      - **CI `c2b3dfe` 没有验证通过**：修复上线后 desktop-safari 直播 TS 墙仍在 5.440 s（43 ms）、5.781 s（40 ms）放空，0.320 s 处也有一次（21 ms，一帧）。时刻仍是 PES 起点前两帧，但 flush 没有让它消失，所以「解码器压着两帧」这个机制没有被证实（也可能是 Safari 的 flush 不放出这两帧，或这两帧根本没送进解码器）。flush 的改动保留（无害，单测在），**F16 的桌面 Safari 这一型改回「原因未查明」**。
-      - 加了观测（同一提交之后）：欠载消息带上覆盖放空时刻的那个音频块何时送进解码器、何时出了输出，以及下一个块的同样两项（`…; its chunk T s fed N ms ago, out M ms ago; next …`）。下次 CI 据此分：送得晚（到达）、送了没出（解码器）、根本没有这一块（解复用）。emulated-android 30 s 用例那一次（dq 0、ahead 1.28）是文件源，不归这一型，仍按 F16 记录。
+    - **更正（2026-11-04）**：`c2b3dfe` 的提交信息（「F16 Safari cause fixed」）与 `audio-feed.ts` 的注释把「Safari 的 AAC 解码器压着两帧」写成了原因，那是**未验证的判断，已被数据否定**：`487a400` 加的观测显示，放空时刻那一块在放空结束前 3–11 ms 才送进解码器，送进后 1–2 ms 就有输出，解码器没有压帧，是数据到得晚。flush 改动与它的单测已删除（`audio-feed.ts`）。另外，我当时算的「各比一个 PES 起点早 42.7 ms」用错了时间基准（音频起点 1.400 s 而不是媒体时间 0 = 首个视频关键帧 1.421 s）；换算正确后，这些放空时刻正是**每个 PES 的最后一帧**（5.440 s = 6.541 s 那个 PES 的第 16 帧，5.781、6.123、6.464 同样，0.320 s 是第一个 17 帧 PES 的最后一帧）。（AGENT §4 因此加了「只写观测到的事实」一条。）
+    - **原因（2026-11-04 半小时验证，已证实）**：在 Node 里按夹具的节奏（提前 300 ms、每 40 ms 一批整 188 字节包）把 `live-loop.ts` 喂给 mediabunny 的 `ReadableStreamSource`，记每个 AAC 包吐出的时刻：
+      - 358 帧全部在**下一个音频 PES 开始到达之后**才吐出：mediabunny 的 `readSection` 要看到同一 PID 的下一个 PES 起点才算读完一个 PES（夹具的音频 PES 带 `PES_packet_length`，它没有用）；
+      - 每个 PES 的**最后一帧**还要再等一个 PES（实测比该 PES 其余帧晚 443 ms）：`PacketBuffer.readNext` 要拿到下一个包才能算当前包的时长（`ensureCurrentPacketHasNext`）。
+      - 结果：最后一帧在播放时刻之后才到，sink 在那一帧上放空；和 CI 的放空时刻（每个 PES 最后一帧）一致。Chromium 也有（CI 与本地 desktop-chrome、emulated-android 都在 0.320 s 放空 75 ms），不是 Safari 特有。
+      - 夹具没有缺口：AAC 时间戳全片连续（`ffprobe -show_packets`），所以「补静音」那一支不适用。
+    - **修复（`demux-mediabunny`）**：直播 TS 的 AAC 由适配层自己读（`src/ts-aac.ts`：PAT → PMT → ADTS 流；PES 按 `PES_packet_length` 收齐即完成，没有长度的到下一个 PES 起点；帧时长 1024 / 采样率，不等下一个包）。同一字节流 `tee` 一份给它，视频仍由 mediabunny 读。顺带：旧代码在首个视频关键帧之前到的音频会被丢掉（live 音频从 0.149 s 起），现在等媒体时间 0 定下来再放出，从 0 起。
+      - 单测在旧代码上失败：只送到第 5 个音频 PES 之前的字节，第 4 个 PES 已完整，旧代码只放出到 1.003 s，新代码到 1.365 s；与 mediabunny 读整个文件的前 40 帧逐字节、逐时刻相同；无 `PES_packet_length` 的流结果不变。
+      - 本地 e2e：desktop-chrome 与 emulated-android 的直播 TS 四路墙，旧代码两者都在 0.320 s 放空 75 ms，新代码没有欠载。CI（含 desktop-safari）待验证。
+      - 上游 issue 草稿：`docs/reports/m6/mediabunny-live-ts-issue.md`（我没有向上游仓库发 issue 的凭据）。
+    - emulated-android 30 s 用例那一次（dq 0、ahead 1.28）是文件源，不归这一型，仍按 F16 记录（原因未查明）。
   - 同一次本地加载里还看到一次：片尾到 12 s 时测试已 seek 回 0.2 s，之后 20 s 一直无声（第 9–29 秒）。只在人为满载下出现过一次，CI 没见过，记在这里，未查。2026-11-02 负责人：放过的欠载在每次 CI 通知里逐条列出对应的 sink 汇总（media / ahead / under / dq）及「同窗 / 相邻窗」；实际没观测到 dq ≥ 17 的，这条放宽撤回。
 - 直播流在 fetch 里（2026-10-30，ADR-013 §7）：Firefox 对同一个可缓存 URL 的第二个请求要等第一个完成（缓存条目锁），无尽的直播流永远不完成，于是同一 URL 的第二路一直卡在 loading；`fetch(url, { cache: 'no-store' })` 绕开。另外浏览器对同一主机最多 6 个 HTTP/1.1 连接，直播流一直占着：一面墙上同一主机的 HTTP-FLV / TS 超过 6 路时，第 7 路起不来（本地 8 路实测 6 路在播）；要用 WS-FLV（WebSocket 不占这 6 个）或 HTTP/2。mediabunny 1.61 的 `ReadableStreamSource` 能读不断增长、长度未知的 MPEG-TS：头 64 KB 到达约 110 ms 就有了轨道，之后数据到一点出一点包（顺序读；缓存上限默认 32 MiB）。
 - 监控墙的直播 TS 在 CI WebKit 上不稳（2026-10-30，负责人定为 flaky）：`2a8ac9a` 的 CI 里 desktop-safari 和 emulated-iphone 的四路直播 TS 第一次都失败，重试通过。失败值：safari 一路丢帧 5.3 %（口径 ≤ 5 %），iphone 5 s 只播 4.49 s（口径 > 4.5 s）；同一次运行里 FLV 两条都一次通过，`c93d22f` 上也一次通过。原因未查（嫌疑是 WebKit 上 mediabunny 读流时主线程更忙）。**升级条件：之后 5 次 CI 里再红 2 次（含重试后才过的）就升为缺陷去查。** 用例带 flaky 标注，通知里写第几次尝试。**已触发（2026-10-30）**：`5c0b925` 与 `b2d787b` 两次都红，desktop-safari 两次尝试都没过：
@@ -198,6 +202,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - 同一尝试的停顿记录：AudioContext 停顿 ≥ 300 ms 的没有；四路播放时长一起偏短（4.40–4.70 s），4.40 s 那一路 0 丢帧，客户机 load 12.6。四路同步变慢、没有停顿记录、最慢那路不丢帧，更像整机（虚拟机）停顿，不像解码器；产品不改。
   - `46ee373`（2026-11-04）：desktop-safari solo 三组墙一起不稳：HTTP-FLV 两次都红（丢帧 6.3 % / 8.0 %），直播 TS 两次都红（一次 5 s 只播 4.45 s，一次丢帧 9.6 %），WS-FLV 重试才过。每路 configure ≤ 30 ms（最长 1919..1948），**不算 F15 再现**；慢在 configure 之后到第一帧解码（约 0.9–1.2 s），客户机 load 3.2–8.4。被测代码与前一次全绿的 `101ac9d` 相同（`packages/*/src`、`e2e`、构建配置无改动）。按标准 flaky 规则计数：HTTP-FLV 自 `78fc4d9` 标记后的 3 次 CI 里红 1 次（`f3e56a6` 绿、`101ac9d` 绿、`46ee373` 红），再红 1 次即触发升级；直播 TS、WS-FLV 各计第 1 次。触发升级时按负责人 2026-11-04 的预先决定处理：desktop-safari 的 solo 性能判定降为只记录（同 ADR-013 §7a 的手机仿真），判定留在 desktop-chrome 与真 Edge，真 Safari 列入 M7。
   - 同一次 main 里新 flaky：`webcodecs.spec`「h264.mp4: after 6 s paused the AudioContext is suspended」在 desktop-safari 第 1 次 15 s 内 `currentTime` 一直是 NaN（页面没开始播），重试通过；计第 1 次。
+  - **窗口结束（2026-11-04 负责人）**：「surveillance HTTP-FLV solo（desktop-safari）」自 `78fc4d9` 标记后的 5 次有效 CI（`f3e56a6`、`101ac9d`、`46ee373`、`c2b3dfe`、`fff69cd`；`487a400` 被取消不计）只红 1 次，未达升级条件，flaky 标记摘掉。直播 TS、WS-FLV（desktop-safari solo）与 `webcodecs.spec` AudioContext 挂起用例各已计 1 次（`46ee373`），继续计数；`c2b3dfe`、`fff69cd` 三者都绿。
 - **F17：WHEP 录音多出接缝（2026-11-03 负责人：升为缺陷，半天时间盒）**：
   - flaky 标记去掉。
   - 用例把每个异常接缝对齐三样东西，写进通知：

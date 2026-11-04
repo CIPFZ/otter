@@ -24,6 +24,8 @@ const player = createVodPlayer({ container: document.getElementById('player')!, 
 await player.load('https://example.com/master.m3u8');
 ```
 
+Without a build step: `@otter-player/cdn` from jsDelivr (`packages/cdn/README.md`).
+
 Each preset is a sub-path (`@otter-player/presets/live`, `/surveillance`, `/shorts`, ...): see `packages/presets/README.md` for the ten presets, the UI language and adding a language.
 
 ## Docs
@@ -34,7 +36,7 @@ The docs site is generated from the sources (TSDoc, package READMEs, the example
 
 | Group | Packages |
 |---|---|
-| Assembly | `core`, `presets` |
+| Assembly | `core`, `presets`, `cdn` (ES modules for a CDN) |
 | Playback session | `media`, `qoe`, `preferences` |
 | Backends | `backend-mse`, `backend-native`, `backend-webcodecs` |
 | Formats | `format-hls`, `format-dash`, `format-flv`, `format-ts`, `format-mp4-range`, `format-file`, `format-whep` |

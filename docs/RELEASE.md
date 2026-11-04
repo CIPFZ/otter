@@ -7,7 +7,7 @@
 1. 改动要发版时加一条 changeset：`pnpm changeset`（英文，写宿主能看到的变化）。
 2. 生成版本号与 CHANGELOG：`pnpm changeset version`。仓库处在 pre 模式（`.changeset/pre.json`，tag `beta`），版本是 `0.1.0-beta.N`。
 3. 许可文件：`pnpm release:files` 生成各发布包的 `LICENSE` 与 `NOTICE`（第三方代码来自 `src/vendor/*/UPSTREAM.json` 与 `otter.bundle`，许可原文在 `tooling/licenses/`）。`pnpm check` 里的 `check:release-files` 检查它们是最新的。
-4. dry-run：`pnpm release:dry-run`。构建后逐包 `pnpm pack`，检查每个 tarball（统一版本、没有 `workspace:`、不依赖占位包与 `@otter-vendor/*`、`exports` 的目标都在、LICENSE / README / NOTICE 都在、没有 `.tsbuildinfo`），对每个 tarball 跑 `npm publish --dry-run --tag beta`，再把全部 tarball 装进一个新项目，用 tsc 检查、用 esbuild 打包 `e2e/site/examples/` 里的示例，最后出 CDN 构建并在 Chromium 里播放。不发布任何东西。
+4. dry-run：`pnpm release:dry-run`。构建后逐包 `pnpm pack`，检查每个 tarball（统一版本、没有 `workspace:`、不依赖占位包与 `@otter-vendor/*`、`exports` 的目标都在、LICENSE / README / NOTICE 都在、没有 `.tsbuildinfo`），对每个 tarball 跑 `npm publish --dry-run --tag beta`，再把全部 tarball 装进一个新项目，用 tsc 检查、用 esbuild 打包 `e2e/site/examples/` 里的示例，最后从装好的 `@otter-player/cdn` 在 Chromium 里播放两个入口。不发布任何东西。
 5. 发布说明：`docs/release-notes/<版本>.md`（英文），changeset 的摘要指向它。
 
 ## 首发（负责人的机器，ADR-014 §3）
@@ -24,12 +24,12 @@
 ## 之后的版本：发布工作流
 
 1. 合入 changeset，本地 `pnpm changeset version` 出新版本号与 CHANGELOG，写 `docs/release-notes/<版本>.md`，提交推送，等 CI 绿。
-2. GitHub Actions 手动运行 **Release**（`.github/workflows/release.yml`，**文件名永不改**：可信发布绑定它）。不勾 `stage` 只跑 dry run；勾上则对 npm 上还没有的版本逐包 `npm stage publish`（OIDC，无 token），并建 GitHub pre-release，附 CDN 构建的 zip。
+2. GitHub Actions 手动运行 **Release**（`.github/workflows/release.yml`，**文件名永不改**：可信发布绑定它）。不勾 `stage` 只跑 dry run；勾上则对 npm 上还没有的版本逐包 `npm stage publish`（OIDC，无 token；`@otter-player/cdn` 也在内），并建 GitHub pre-release（发布说明）。
 3. 负责人逐包批准：`npm stage list <包>`，`npm stage approve <stage-id>`（2FA）。批准前不公开。
 
 ## CDN（ADR-014 §6）
 
-`pnpm build:cdn`（`scripts/build-cdn.ts`）出 `dist-cdn/otter-basic/`、`dist-cdn/otter-vod/`：入口 `otter-*.esm.js`（basic 18.7 kB gzip，vod 34.8 kB gzip）、按需块 `chunks/`（引擎、字幕、预览图、WebCodecs 路径，用到才按相对地址加载）、皮肤 CSS。release dry-run 会在 Chromium 里从 URL 导入这两个入口并播放夹具。
+`@otter-player/cdn` 是普通的公开包，随其他包一起发布；它的 `build`（`scripts/build-cdn.ts`）在 presets 与皮肤之后出 `dist/otter-basic/`、`dist/otter-vod/`：入口 `otter-*.esm.js`（gzip：basic 13.9 kB，vod 30.1 kB）、按需块 `chunks/`、皮肤 CSS。jsDelivr 地址：`https://cdn.jsdelivr.net/npm/@otter-player/cdn@<版本>/dist/otter-vod/otter-vod.esm.js`（固定版本：块的文件名随版本变）。release dry-run 把它从 tarball 装好，在 Chromium 里按 URL 导入两个入口并播放夹具。
 
 ## 文档站（ADR-014 §7）
 

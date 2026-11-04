@@ -1,0 +1,47 @@
+{
+  "name": "@otter-player/cdn",
+  "version": "0.1.0-beta.0",
+  "description": "Otter for a <script type=\"module\"> from a CDN: presets/basic and presets/vod as ESM entries with on-demand chunks, and their skins.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/cdn"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/cdn#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./basic": "./dist/otter-basic/otter-basic.esm.js",
+    "./basic.css": "./dist/otter-basic/otter-basic.css",
+    "./vod": "./dist/otter-vod/otter-vod.esm.js",
+    "./vod.css": "./dist/otter-vod/otter-vod.css"
+  },
+  "files": [
+    "dist",
+    "!dist/inputs.json",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build-cdn.ts dist"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@otter-player/presets": "workspace:*",
+    "@otter-player/ui-skin-default": "workspace:*",
+    "@otter-player/ui-skin-minimal": "workspace:*"
+  },
+  "otter": {
+    "bundle": [
+      "@otter-player/presets",
+      "@otter-player/ui-skin-default",
+      "@otter-player/ui-skin-minimal"
+    ],
+    "cdn": true
+  }
+}

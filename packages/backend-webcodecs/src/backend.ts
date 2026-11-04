@@ -14,7 +14,6 @@
 // transferable objects, so decoding in a Worker pool changes where the Decoder runs, not this file.
 
 import { createError, createEventBus, isOtterError, type OtterError, type Unsubscribe } from '@otter-player/core';
-import { nextOrDrain } from './audio-feed.js';
 import {
   closeFrame,
   EMPTY_TIME_RANGES,
@@ -538,18 +537,14 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     const decoder = audio;
     if (decoder === undefined) return;
     const it = stream[Symbol.asyncIterator]();
-    // Fed since the last flush: a late packet then flushes what the decoder holds back (F16).
-    let fed = false;
     try {
       for (;;) {
-        const { next, drained } = await nextOrDrain(it, decoder, fed);
-        if (drained) fed = false;
+        const next: IteratorResult<EncodedChunk> = await it.next();
         if (g !== gen || destroyed) return;
         if (next.done === true) break;
         while (audioAhead() && g === gen && !destroyed) await signal.wait();
         if (g !== gen || destroyed) return;
         decoder.decode(next.value);
-        fed = true;
         audioTrace.push({ ts: next.value.timestamp, dur: next.value.duration ?? 0, fed: performance.now() });
         if (audioTrace.length > 400) audioTrace.splice(0, audioTrace.length - 400);
       }

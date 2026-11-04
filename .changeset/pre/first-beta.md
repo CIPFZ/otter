@@ -3,6 +3,7 @@
 "@otter-player/backend-native": minor
 "@otter-player/backend-webcodecs": minor
 "@otter-player/core": minor
+"@otter-player/cdn": minor
 "@otter-player/danmaku": minor
 "@otter-player/decoder-pool": minor
 "@otter-player/decoder-webcodecs": minor

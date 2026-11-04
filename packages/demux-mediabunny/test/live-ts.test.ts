@@ -53,6 +53,47 @@ describe('live MPEG-TS for WebCodecs', () => {
     d.destroy();
   });
 
+  // M6 F16: mediabunny reads a PES only once the next PES of its PID starts, and hands a packet out
+  // only once it has the next one (for its duration). Live, the last AAC frame of each PES then
+  // waits for the PES after next (~0.34 s on the e2e stream): CI underruns, each at a PES's last
+  // frame. The adapter reads AAC itself; a PES's frames are out as soon as its bytes are in.
+  it('AAC: every frame of an audio PES is out once that PES has arrived, before the next audio PES starts', async () => {
+    // clip.ts (ffprobe): audio PES at 1.400, 1.763, 2.104, 2.445, 2.787 s; the fifth one (2.787 s)
+    // starts at byte 97760; the first video keyframe (media time 0) is at 1.421333 s.
+    const cut = clip.slice(0, 97760);
+    vi.stubGlobal('fetch', () => Promise.resolve(endless(cut, 8 * 1024)));
+    const d = await openLiveTs('http://x/live.ts', { signal: new AbortController().signal, createError });
+    const got: EncodedChunk[] = [];
+    const it = d.packets('audio')[Symbol.asyncIterator]();
+    for (;;) {
+      const next = await Promise.race([it.next(), new Promise<'idle'>((r) => setTimeout(() => r('idle'), 1500))]);
+      if (next === 'idle' || next.done === true) break;
+      got.push(next.value);
+    }
+    const end = Math.max(...got.map((c) => c.timestamp + (c.duration ?? 0)));
+    // The fourth PES (2.445..2.787 s) is complete in the bytes delivered: audio to 2.787 - 1.421 s.
+    expect(end).toBeGreaterThanOrEqual(Math.round((2.786667 - 1.421333) * 1e6) - 2);
+    d.destroy();
+  });
+
+  it('AAC frames as mediabunny reads them from the whole file: same bytes (ADTS frames), same times', async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve(endless(clip, 32 * 1024)));
+    const d = await openLiveTs('http://x/live.ts', { signal: new AbortController().signal, createError });
+    const live = await take(d.packets('audio'), 40);
+    d.destroy();
+    const { Input, BufferSource, MPEG_TS, EncodedPacketSink } = await import('mediabunny');
+    const input = new Input({ source: new BufferSource(clip), formats: [MPEG_TS] });
+    const base = (await new EncodedPacketSink((await input.getPrimaryVideoTrack())!).getFirstPacket())!.timestamp;
+    const sink = new EncodedPacketSink((await input.getPrimaryAudioTrack())!);
+    const whole: { timestamp: number; data: Uint8Array }[] = [];
+    for (let p = await sink.getFirstPacket(); p !== null && whole.length < 60; p = await sink.getNextPacket(p)) {
+      const timestamp = Math.round((p.timestamp - base) * 1e6);
+      if (timestamp >= 0) whole.push({ timestamp, data: p.data });
+    }
+    expect(live.map((c) => c.timestamp)).toEqual(whole.slice(0, 40).map((c) => c.timestamp));
+    expect(live.map((c) => Buffer.from(new Uint8Array(c.data)).toString('hex'))).toEqual(whole.slice(0, 40).map((c) => Buffer.from(c.data).toString('hex')));
+  });
+
   it('a failed request is a network error', async () => {
     vi.stubGlobal('fetch', () => Promise.resolve(new Response(null, { status: 404 })));
     await expect(openLiveTs('http://x/missing.ts', { signal: new AbortController().signal, createError })).rejects.toMatchObject({ type: 'network', details: 'tsRequestFailed' });

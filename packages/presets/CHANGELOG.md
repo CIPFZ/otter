@@ -15,6 +15,7 @@
 - Updated dependencies
 - Updated dependencies
 - Updated dependencies
+- Updated dependencies
   - @otter-player/backend-mse@0.1.0-beta.0
   - @otter-player/backend-native@0.1.0-beta.0
   - @otter-player/backend-webcodecs@0.1.0-beta.0

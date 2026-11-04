@@ -71,9 +71,10 @@ export function listEntries(root: string): { specifier: string; pkg: string; fil
         out.push({ specifier, pkg: manifest.name, file: join(packages, dir, source), css: false });
         continue;
       }
-      // CSS skins (dist) and source-shipped components (.svelte): the CSS ones are documented.
+      // CSS skins (dist) and source-shipped components (.svelte): the skins' CSS is documented
+      // (@otter-player/cdn's built files are not API).
       const target = conditions['style'] ?? conditions['default'];
-      if (target?.endsWith('.css') === true) out.push({ specifier, pkg: manifest.name, file: join(packages, dir, target.replace(/^\.\/dist\//, './src/')), css: true });
+      if (target?.endsWith('.css') === true && dir.startsWith('ui-skin-')) out.push({ specifier, pkg: manifest.name, file: join(packages, dir, target.replace(/^\.\/dist\//, './src/')), css: true });
     }
   }
   return out;

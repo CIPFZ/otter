@@ -50,13 +50,14 @@
 - 执行：`scripts/lib/licenses.ts`，由 `scripts/release-files.ts` 在写文件与 `--check`（`pnpm check`）之前对每个公开包核对，任一不合规即失败；`--audit` 输出下表。单测 `scripts/test/licenses.test.ts`。
 - 处理：`decoder-wasm-hevc`（Jessibuca jv4-decoder 产物，GPL-3.0，内含 FFmpeg）改为 private。`presets/surveillance` 不再依赖它，改为 `decoders` 选项由宿主注入，默认只有 WebCodecs；HEVC 流在没有 HEVC 解码器、也没有注入 WASM 解码器时，WebCodecs 后端报非致命 `hevcDecoderUnavailable`，该路随后照常失败。发布说明的已知限制加了一条。M7 候选：自建 LGPL 的 HEVC WASM（独立加载，不进 tarball）。
 
-审计结果（2026-11-04，37 个公开包，`node scripts/release-files.ts --audit`；私有的 10 个不在表里）：
+审计结果（2026-11-04，38 个公开包，含 `@otter-player/cdn`：它的一行按构建实际吃进去的文件列出；`node scripts/release-files.ts --audit`；私有的 10 个不在表里）：
 
 | 包 | 拷入代码（src/vendor） | 打包进 dist | 生产依赖树（第三方） | 结论 |
 |---|---|---|---|---|
 | `backend-mse` | Apache-2.0: hls.js | — | — | OK |
 | `backend-native` | — | — | — | OK |
 | `backend-webcodecs` | — | — | — | OK |
+| `cdn` | — | Apache-2.0: hls.js, video.js, mpegts.js, @svta/cml-cmcd@2.8.2, @svta/cml-structured-field-values@1.1.6, @svta/cml-utils@1.6.1, hls.js@1.7.3, shaka-player@5.2.13; BSD-3-Clause: dash.js, mp4box@2.4.1; BSD-2-Clause: imsc@1.1.5; ISC: sax@1.2.1, lucide@1.59.0; MIT: media-captions@1.0.4; MPL-2.0: mediabunny@1.61.6 | — | OK (MPL-2.0 in NOTICE) |
 | `core` | — | — | — | OK |
 | `danmaku` | MIT: CommentCoreLibrary, danmaku | — | — | OK |
 | `decoder-pool` | — | — | — | OK |
@@ -98,10 +99,21 @@
 - 低于基线的浏览器：不加 polyfill，走原生后端，能播多少算多少。
 - 写进 SPEC 和 README。
 
-### 6. CDN
+### 6. CDN（2026-11-04 负责人改定）
 
-- 只给 `presets/basic` 和 `presets/vod` 出 ESM 单文件。
-- 经 GitHub Release，由 jsDelivr 分发。
+- 原定：`presets/basic` 与 `presets/vod` 各出一个 ESM 单文件，经 GitHub Release 由 jsDelivr 分发。
+- 改为：
+  - **入口加按需块**：把按需块全部内联后，「单文件」basic 2.8 MB、vod 3.0 MB（hls.js、Shaka、mediabunny 都进来了），大部分页面用不到。现在每个入口一个文件，引擎、字幕、预览图、WebCodecs 路径等按需块放在旁边，用到才按相对地址加载。
+  - **独立的公开包 `@otter-player/cdn`**：只含两个入口、它们的块和皮肤 CSS（`dist/otter-basic/`、`dist/otter-vod/`）。jsDelivr 只分发 npm 包与仓库文件、不分发 Release 附件，所以走 jsDelivr 的 npm 路径并固定版本：`https://cdn.jsdelivr.net/npm/@otter-player/cdn@<版本>/dist/otter-vod/otter-vod.esm.js`。不放进 `presets`。
+  - 构建：`scripts/build-cdn.ts`，作为 `@otter-player/cdn` 的 `build`（在 presets 与皮肤之后）；同时写 `dist/inputs.json`（构建吃进去的全部源文件，不进 tarball），许可审计与 NOTICE 据此覆盖它带的全部第三方代码。
+- 入口体积（gzip）与前五个贡献者（2026-11-04，入口文件加它静态加载的共享块，未压缩 kB）：
+
+  | 产物 | 改前 | 前五 | 处理 |
+  |---|---|---|---|
+  | basic 入口 | 18.7 kB | ui-core 24.4、media 23.8、engine-adapter-hlsjs 7.9、engine-adapter-shaka 6.5、core 3.8 | hls.js 适配器只在自研引擎移交时用，Shaka 适配器只在有 DRM 时用：`format-hls` 改为首次用到才加载（`src/lazy-adapter.ts`）。改后 13.9 kB |
+  | vod 入口 | 34.8 kB | ui-core 58.2、media 23.8、input 8.3、engine-adapter-hlsjs 7.9、presentation 6.7 | 同上去掉 hls.js 适配器；Shaka 适配器仍由 `format-dash` 静态引入（DASH 源必需）。改后 30.1 kB |
+
+  ui-core、media、input、presentation、core 是起播与控件本身，留在入口。这一改动同样作用于 npm 用户：§19 短视频行 30.26 → 25.45 KB，长视频、直播、低延迟各约 −2.5 KB。
 - 其余包只走 npm。
 
 ### 7. 文档站
@@ -135,7 +147,7 @@
   - 已做：各发布包的 `LICENSE` 与 `NOTICE`（`scripts/release-files.ts`，`pnpm check` 校验）；浏览器基线写进 SPEC §1.1 与 README。
   - 已做：`pnpm release:dry-run`（`scripts/release-dry-run.ts`），步骤见 `docs/RELEASE.md`。dry-run 查出并已修：打包进 dist 的依赖（`@otter-vendor/*`、imsc、lucide）原来在 `dependencies` 里，发布后 npm 会去装 `@otter-vendor/*`（不存在）——改到 `devDependencies`，`check-boundaries` 拦截；`dist/.tsbuildinfo` 进了 tarball——`files` 排除；29 个包没有 README——补了最小的英文 README。
   - 已做（2026-11-04 第二轮）：首发与登记脚本 `scripts/first-publish.ts`（检查、`changeset publish`、`otterplayer`、逐包 `npm trust github … --allow-stage-publish`）；发布工作流 `.github/workflows/release.yml`（手动；dry run，或 `npm stage publish` + GitHub pre-release）与 `scripts/stage-release.ts`；`otterplayer` 占位包（`placeholder/otterplayer`）；CDN 构建 `scripts/build-cdn.ts`；Pages 工作流 `.github/workflows/pages.yml`（设变量 `PAGES_ENABLED` 后才部署）。步骤见 `docs/RELEASE.md`。均未运行（首发由负责人做）。
-  - CDN 的偏离：「单文件」把按需块全内联后 basic 2.8 MB、vod 3.0 MB（hls.js、Shaka、mediabunny 都进去了），改为「一个入口文件 + 旁边的按需块」：入口 basic 18.7 kB / vod 34.8 kB gzip，块用到才按相对地址加载。另：jsDelivr 只分发 npm 包与 GitHub 仓库里的文件，不分发 GitHub Release 的附件；要 jsDelivr 直接可用，块得在 npm 包（例如 `@otter-player/presets` 带一个 `cdn/` 目录）或仓库的 tag 里。待负责人定。
+  - CDN：已按 §6 改定实施（`@otter-player/cdn`）。发布工作流的 GitHub pre-release 只带发布说明，不再附 zip。
   - 未做：文档站「在 Electron 里用」一页（§8 Q6）。
   - 已定（2026-11-04）：许可规则见 §4a；`decoder-wasm-hevc` 改为 private。
 - SPEC §23 的 Q2 / Q4 / Q5 / Q6 已随本 ADR 标为结案（2026-10-28）。

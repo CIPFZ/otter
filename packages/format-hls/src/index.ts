@@ -10,12 +10,13 @@ import { createError } from '@otter-player/core';
 import type { BackendKind, Capabilities, Engine, FormatPlugin, Source } from '@otter-player/media';
 // Sub-path: the engine chunk's sink must not be reachable from this entry statically.
 import { withAdapterFallback } from '@otter-player/engine-pipeline/fallback';
-import { createHlsJsEngine, type HlsJsEngineOptions } from '@otter-player/engine-adapter-hlsjs';
+import type { HlsJsEngineOptions } from '@otter-player/engine-adapter-hlsjs';
 import type { CmafHlsEngineOptions } from './own/engine.js';
 import { lazyCmafHlsEngine } from './own/lazy.js';
 
 export type { CmafHlsEngineOptions } from './own/engine.js';
-import { createShakaEngine, type ShakaEngineOptions } from '@otter-player/engine-adapter-shaka';
+import type { ShakaEngineOptions } from '@otter-player/engine-adapter-shaka';
+import { lazyEngine } from './lazy-adapter.js';
 
 /** Options of the HLS format. */
 export interface HlsFormatOptions {
@@ -77,10 +78,10 @@ export function createHlsFormat(options: HlsFormatOptions = {}): FormatPlugin {
     createEngine(ctx): Engine {
       const abr = options.abr === undefined ? {} : { abr: options.abr };
       if (ctx.source.drm !== undefined || options.engine === 'shaka') {
-        return createShakaEngine(ctx, { ...options.shaka, ...abr, formatId: 'hls' });
+        return lazyEngine('hls', async () => (await import('@otter-player/engine-adapter-shaka')).createShakaEngine(ctx, { ...options.shaka, ...abr, formatId: 'hls' }));
       }
       const hlsjs = (startTime?: number): Engine =>
-        createHlsJsEngine(startTime === undefined ? ctx : { ...ctx, options: { ...ctx.options, startTime } }, { ...options.hlsjs, ...abr });
+        lazyEngine('hls', async () => (await import('@otter-player/engine-adapter-hlsjs')).createHlsJsEngine(startTime === undefined ? ctx : { ...ctx, options: { ...ctx.options, startTime } }, { ...options.hlsjs, ...abr }));
       if (options.engine === 'hlsjs') return hlsjs();
       return withAdapterFallback(lazyCmafHlsEngine(ctx, options.own ?? {}), hlsjs, { media: ctx.media });
     },

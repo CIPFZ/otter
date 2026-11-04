@@ -9,6 +9,7 @@
 import type { createError as CreateError } from '@otter-player/core';
 import type { DecodeSetup, Demuxer, DemuxDownload, DemuxInfo, DemuxVideoTrack, EncodedChunk, PacketStream } from '@otter-player/media';
 import type { EncodedPacket, EncodedPacketSink, Input, InputAudioTrack, InputVideoTrack } from 'mediabunny';
+import { createAacReader, type AacFrame } from './ts-aac.js';
 
 /** mediabunny itself loads with the first source (engine libraries only behind import(), ADR-004 §2). */
 const lib = (): Promise<typeof import('mediabunny')> => import('mediabunny');
@@ -280,14 +281,40 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
   }
   // When the response answered and its first bytes came (the startup breakdown).
   const timing: { connectedAt: number; firstBytesAt?: number } = { connectedAt: performance.now() };
-  const body = res.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, out) {
-        timing.firstBytesAt ??= performance.now();
-        out.enqueue(chunk);
-      },
-    }),
-  );
+  const [body, own] = res.body
+    .pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, out) {
+          timing.firstBytesAt ??= performance.now();
+          out.enqueue(chunk);
+        },
+      }),
+    )
+    .tee();
+  // AAC is read here, not by mediabunny (F16, ts-aac.ts): frames queue until the pump takes them.
+  const aac: AacFrame[] = [];
+  let aacEnded = false;
+  let aacWake: (() => void) | undefined;
+  const wake = (): void => {
+    aacWake?.();
+    aacWake = undefined;
+  };
+  const reader = createAacReader((frames) => {
+    aac.push(...frames);
+    wake();
+  });
+  const ownReader = own.getReader();
+  void (async () => {
+    try {
+      for (let r = await ownReader.read(); !r.done && !options.signal.aborted; r = await ownReader.read()) reader.push(r.value);
+      reader.end();
+    } catch {
+      // The request ended or was aborted: mediabunny's side reports it.
+    } finally {
+      aacEnded = true;
+      wake();
+    }
+  })();
   const input = new mb.Input({ source: new mb.ReadableStreamSource(body, { handleUnhandledError: () => undefined }), formats: [mb.MPEG_TS] });
   const fanout = createLiveFanout(LIVE_HISTORY_S);
   let info: DemuxInfo;
@@ -318,13 +345,40 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
         if (kind === 'audio' && video !== null) continue;
         if (kind === 'video' && p.type !== 'key') continue;
         base = p.timestamp;
+        wake();
       }
       const timestamp = Math.round((p.timestamp - base) * 1e6);
       if (timestamp < 0) continue;
       fanout.push(kind, { key: p.type === 'key', timestamp, duration: Math.round(p.duration * 1e6), data: p.data });
     }
   };
-  const done = Promise.all([video === null ? undefined : pump('video', video), audio === null ? undefined : pump('audio', audio)]);
+  // AAC from the adapter's own reader (F16): the frames wait in `aac` until media time 0 is known.
+  const pumpAac = async (): Promise<void> => {
+    for (let i = 0; ; ) {
+      while (i < aac.length && base !== undefined && !options.signal.aborted) {
+        const f = aac[i++] as AacFrame;
+        const timestamp = Math.round((f.time - base) * 1e6);
+        if (timestamp >= 0) fanout.push('audio', { key: true, timestamp, duration: Math.round(f.duration * 1e6), data: f.data });
+      }
+      if (i > 4096) {
+        aac.splice(0, i);
+        i = 0;
+      }
+      if (options.signal.aborted || (aacEnded && i >= aac.length)) return;
+      // Without video, the first audio frame is media time 0.
+      if (base === undefined && video === null && aac.length > 0) {
+        base = (aac[0] as AacFrame).time;
+        continue;
+      }
+      await new Promise<void>((r) => {
+        aacWake = r;
+        if (base !== undefined && i < aac.length) r();
+      });
+    }
+  };
+  const ownAac = audio !== null && info.audio?.setup.codec.startsWith('mp4a.') === true;
+  if (!ownAac) void ownReader.cancel().catch(() => undefined);
+  const done = Promise.all([video === null ? undefined : pump('video', video), audio === null ? undefined : ownAac ? pumpAac() : pump('audio', audio)]);
   void done.then(
     () => fanout.end(),
     () => fanout.end(),
@@ -336,6 +390,8 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
     seek: (track, time) => Promise.resolve(fanout.packets(track, time)),
     destroy() {
       fanout.end();
+      void ownReader.cancel().catch(() => undefined);
+      wake();
       input.dispose();
     },
   };

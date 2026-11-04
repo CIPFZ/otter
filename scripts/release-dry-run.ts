@@ -2,7 +2,8 @@
 // will (pnpm pack: `workspace:*` becomes the version), checks each tarball, asks npm for its
 // dry-run report under the prerelease dist-tag, and installs all tarballs into a fresh project
 // that type-checks and bundles the docs' examples (e2e/site/examples/) against them, as a host
-// would; then builds the CDN files (scripts/build-cdn.ts) and plays them in Chromium. Nothing is
+// would; then serves @otter-player/cdn from that install and plays its two entries in Chromium,
+// imported by URL as from jsDelivr. Nothing is
 // published.
 //
 // Checked per tarball: the fixed version; no `workspace:` range and no dependency on a private
@@ -69,7 +70,7 @@ for (const dir of published) {
   }
   for (const t of targets(packed.exports)) if (!files.includes(t.replace(/^\.\//, ''))) problems.push(`${where}: exports target ${t} is not in the tarball`);
   for (const f of ['LICENSE', 'README.md', ...(existsSync(join(pkgDir, 'NOTICE')) ? ['NOTICE'] : [])]) if (!files.includes(f)) problems.push(`${where}: ${f} is not in the tarball`);
-  const leftovers = files.filter((f) => /\.tsbuildinfo$|\.test\.[jt]s$|(^|\/)test\//.test(f));
+  const leftovers = files.filter((f) => /\.tsbuildinfo$|\.test\.[jt]s$|(^|\/)test\/|(^|\/)inputs\.json$/.test(f));
   if (leftovers.length > 0) problems.push(`${where}: build leftovers in the tarball: ${leftovers.slice(0, 5).join(', ')}`);
   // npm's own view: the dist-tag, access and size it would publish with.
   const report = run('npm', ['publish', tgz, '--dry-run', '--tag', tag, '--json'], work);
@@ -106,16 +107,16 @@ try {
   problems.push(`host bundle of the examples failed:\n${String((e as { stderr?: string }).stderr ?? e).slice(0, 4000)}`);
 }
 
-// The CDN builds (ADR-014 §6), played from their URLs.
-const cdn = join(work, 'cdn');
-const cdnBuild = run('node', [join(root, 'scripts/build-cdn.ts'), cdn], root).trim();
+// @otter-player/cdn (ADR-014 §6) as installed from its tarball, played from its URLs.
+const cdn = join(host, 'node_modules/@otter-player/cdn/dist');
+const cdnFiles = readdirSync(cdn, { recursive: true }).length;
 const smoke = await cdnSmoke(cdn, join(root, 'e2e/media'), ['otter-basic', 'otter-vod']);
 for (const s of smoke) if (s.time <= 1 || s.errors.length > 0) problems.push(`CDN ${s.name}: playhead ${s.time.toFixed(2)} s, errors ${s.errors.join('; ') || 'none'}`);
 
 console.log(`release dry-run: ${published.length} packages at ${version}, npm dist-tag "${tag}"`);
 console.log(rows.join('\n'));
 console.log(`host install of all ${tgzs.length} tarballs: passed; examples typecheck: ${typecheck}; examples bundle (vod, surveillance, basic): ${bundle}`);
-console.log(cdnBuild);
+console.log(`@otter-player/cdn tarball: ${cdnFiles} files in dist/`);
 console.log(smoke.map((s) => `CDN ${s.name} in Chromium: playhead ${s.time.toFixed(2)} s, ${s.chunks} chunks fetched, ${s.errors.length} errors`).join('\n'));
 if (keep) console.log(`kept: ${work}`);
 else rmSync(work, { recursive: true, force: true });

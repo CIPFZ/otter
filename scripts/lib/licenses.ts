@@ -111,9 +111,50 @@ function dependencyTree(pkgDir: string, names: readonly string[]): Item[] {
   return [...out.values()];
 }
 
+/** A package built from other packages (`otter.cdn`, @otter-player/cdn): what its build took in. */
+export interface CdnInputs {
+  /** Workspace packages (directories under packages/) with files in the build. */
+  readonly workspace: readonly string[];
+  /** npm packages with files in the build. */
+  readonly npm: readonly { readonly name: string; readonly version: string; readonly license: string; readonly dir: string }[];
+}
+
+/** The inputs of a CDN build, from its dist/inputs.json (scripts/build-cdn.ts). */
+export function cdnInputs(root: string, pkgDir: string): CdnInputs {
+  const file = join(pkgDir, 'dist/inputs.json');
+  if (!existsSync(file)) throw new Error(`${relative(root, file)} is missing: build the package first (pnpm build)`);
+  const workspace = new Set<string>();
+  const npm = new Map<string, CdnInputs['npm'][number]>();
+  for (const f of readJson<string[]>(file)) {
+    if (!existsSync(join(root, f))) continue;
+    const ws = /^packages\/([^/]+)\//.exec(f)?.[1];
+    if (ws !== undefined) {
+      workspace.add(ws);
+      continue;
+    }
+    // The innermost node_modules/<name>/ of the path.
+    const m = /^(.*node_modules\/((?:@[^/]+\/)?[^/]+))\/(?!.*node_modules\/)/.exec(f);
+    if (m === null) continue;
+    const dir = join(root, m[1] as string);
+    const pkg = readJson<{ name: string; version: string; license?: string | { type?: string } }>(join(dir, 'package.json'));
+    const license = typeof pkg.license === 'string' ? pkg.license : (pkg.license?.type ?? '');
+    npm.set(`${pkg.name}@${pkg.version}`, { name: pkg.name, version: pkg.version, license, dir });
+  }
+  return { workspace: [...workspace].sort(), npm: [...npm.values()].sort((a, b) => a.name.localeCompare(b.name)) };
+}
+
 /** Everything third-party a package's tarball carries or pulls in, with its license. */
 export function audit(root: string, pkgDir: string): Item[] {
-  const manifest = readJson<{ dependencies?: Record<string, string>; peerDependencies?: Record<string, string>; devDependencies?: Record<string, string>; otter?: { bundle?: string[] } }>(join(pkgDir, 'package.json'));
+  const manifest = readJson<{ dependencies?: Record<string, string>; peerDependencies?: Record<string, string>; devDependencies?: Record<string, string>; otter?: { bundle?: string[]; cdn?: boolean } }>(join(pkgDir, 'package.json'));
+  if (manifest.otter?.cdn === true) {
+    // Everything in it is built in: the copied and bundled code of each workspace package it took
+    // files from, and every npm package it took files from.
+    const inputs = cdnInputs(root, pkgDir);
+    return [
+      ...inputs.workspace.flatMap((ws) => audit(root, join(root, 'packages', ws)).filter((i) => i.kind !== 'dependency')).map((i) => ({ ...i, kind: 'bundled' as const })),
+      ...inputs.npm.map((n) => ({ kind: 'bundled' as const, name: `${n.name}@${n.version}`, license: n.license, verdict: classify(n.license) })),
+    ];
+  }
   const items = copiedFiles(join(pkgDir, 'src/vendor'), root);
   for (const b of manifest.otter?.bundle ?? []) {
     if (b.startsWith('@otter-vendor/')) {

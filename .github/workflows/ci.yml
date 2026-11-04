@@ -69,12 +69,13 @@ jobs:
         run: pnpm check:docs-text
       - name: Package boundaries
         run: pnpm check:boundaries
-      - name: Release files and license rules (ADR-014 §4a)
-        run: pnpm check:release-files
       - name: Strict TypeScript
         run: pnpm typecheck
       - name: Build
         run: pnpm build
+      # After the build: @otter-player/cdn's NOTICE comes from what its build took in.
+      - name: Release files and license rules (ADR-014 §4a)
+        run: pnpm check:release-files
       - name: Unit tests
         run: pnpm test
       - name: Top-level side effects

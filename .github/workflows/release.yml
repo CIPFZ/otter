@@ -1,8 +1,8 @@
 # Release (ADR-014 §3). Trusted publishing is registered against this file name: never rename it.
 # Manual: the dry run always; with `stage`, every public package whose version is not on npm yet is
-# staged (`npm stage publish`, OIDC, no token) and the CDN builds (entry, on-demand chunks, skin
-# CSS: one zip) go to a GitHub pre-release. The owner then approves each staged package with
-# `npm stage approve` (2FA).
+# staged (`npm stage publish`, OIDC, no token; @otter-player/cdn too, which jsDelivr serves from
+# npm) and a GitHub pre-release with the release notes is created. The owner then approves each
+# staged package with `npm stage approve` (2FA).
 name: Release
 
 on:
@@ -44,18 +44,16 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - name: License rules and release files (ADR-014 §4a)
         run: pnpm check:release-files
-      - name: Release dry run (tarballs, npm --dry-run, host install, CDN builds in Chromium)
+      - name: Release dry run (tarballs, npm --dry-run, host install, the CDN package in Chromium)
         run: pnpm release:dry-run
       - name: Stage on npm
         if: inputs.stage
         run: node scripts/stage-release.ts
-      - name: GitHub pre-release with the CDN builds
+      - name: GitHub pre-release
         if: inputs.stage
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p "require('./packages/presets/package.json').version")
-          node scripts/build-cdn.ts dist-cdn
-          (cd dist-cdn && zip -qr ../otter-cdn-$version.zip .)
           gh release create "v$version" --target "$GITHUB_SHA" --prerelease --title "Otter $version" \
-            --notes-file "docs/release-notes/$version.md" "otter-cdn-$version.zip"
+            --notes-file "docs/release-notes/$version.md"

@@ -260,6 +260,18 @@ importers:
         specifier: workspace:*
         version: link:../pipeline
 
+  packages/cdn:
+    devDependencies:
+      '@otter-player/presets':
+        specifier: workspace:*
+        version: link:../presets
+      '@otter-player/ui-skin-default':
+        specifier: workspace:*
+        version: link:../ui-skin-default
+      '@otter-player/ui-skin-minimal':
+        specifier: workspace:*
+        version: link:../ui-skin-minimal
+
   packages/core: {}
 
   packages/danmaku:

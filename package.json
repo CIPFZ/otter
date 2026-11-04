@@ -19,7 +19,7 @@
     "size": "size-limit",
     "check:boundaries": "node scripts/check-boundaries.ts",
     "check:side-effects": "node scripts/check-side-effects.ts",
-    "check": "pnpm check:vendor && pnpm check:docs-text && pnpm check:boundaries && pnpm check:release-files && pnpm typecheck && pnpm build && pnpm test && pnpm check:side-effects && pnpm check:docs-site && pnpm check:engine-chunks && pnpm size",
+    "check": "pnpm check:vendor && pnpm check:docs-text && pnpm check:boundaries && pnpm typecheck && pnpm build && pnpm check:release-files && pnpm test && pnpm check:side-effects && pnpm check:docs-site && pnpm check:engine-chunks && pnpm size",
     "check:vendor": "node scripts/check-vendor.ts",
     "vendor:sync": "node scripts/vendor-sync.ts",
     "check:engine-chunks": "node scripts/check-engine-chunks.ts",
@@ -30,8 +30,7 @@
     "check:release-files": "node scripts/release-files.ts --check",
     "release:files": "node scripts/release-files.ts",
     "release:dry-run": "pnpm build && node scripts/release-dry-run.ts",
-    "changeset": "changeset",
-    "build:cdn": "node scripts/build-cdn.ts"
+    "changeset": "changeset"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
