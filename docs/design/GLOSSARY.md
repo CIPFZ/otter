@@ -24,7 +24,7 @@
 | 管线 | pipeline | 自有引擎的 加载 → 解复用 → 转封装 → 送入 sink 链 |
 | 解复用 / 转封装 | demux / transmux | demux 拆出样本，transmux 重新封成 fMP4；不用 remux 指代后者 |
 | 画面层 | surface | 承载画面的元素：`<video>` 或画布（GPU surface） |
-| 播放器界面 | player UI | 叠在画面上的全部界面（控制栏、顶栏、菜单、提示）。API 标识符里叫 chrome（`ChromeState`、`createChromePlugin`），正文写 player UI，提到标识符时照写 |
+| 播放器界面 | player UI | 叠在画面上的全部界面（控制栏、顶栏、菜单、提示）。API：`PlayerUiState`、`createPlayerUiPlugin`……；preset 选项 `ui` 开关整个默认界面 |
 | 控制栏 | controls | **只指控制栏**（底部那一排按钮与进度条）；不指整个界面 |
 | 皮肤 | skin | 纯 CSS 包 `ui-skin-*`；不用 theme |
 | 清晰度 | quality | 面向用户的档位；内部的一档码流叫 rendition，不用 variant / level（引擎原词只在适配器里出现） |
@@ -42,10 +42,12 @@
 | 画中画 | picture-in-picture (PiP) | 文档画中画写 Document Picture-in-Picture |
 | 体验质量 | QoE (quality of experience) | `qoe` 钩子与事件 |
 
-## 改名候选（负责人定，定之前 API 与正文都照现名）
+## 改名（2026-11-04 负责人定，beta.0 之前完成）
 
-| 现在的标识符 | 冲突 | 候选 |
-|---|---|---|
-| `ChromeState`、`ChromeActionMap`、`ChromeOptions`、`ChromeUiActions`、`CHROME_SLICE`、`INITIAL_CHROME_STATE`、`createChromePlugin`（ui-core） | 正文叫 player UI | `PlayerUiState`、`createPlayerUiPlugin`……（1.0 前改，或保留并在 TSDoc 里注明） |
-| 各 preset 选项 `controls: boolean`（`PlayerOptions` 等） | 它开关的是整个默认界面，不只控制栏 | `ui: boolean` |
-| `SinkSegment.level`（engine-pipeline/sink） | 内部码流叫 rendition，不叫 level | `rendition` |
+| 原标识符 | 现标识符 |
+|---|---|
+| `ChromeState`、`ChromeActionMap`、`ChromeOptions`、`CHROME_SLICE`、`INITIAL_CHROME_STATE`、`createChromePlugin`（ui-core） | `PlayerUiState`、`PlayerUiActionMap`、`PlayerUiOptions`、`PLAYER_UI_SLICE`、`INITIAL_PLAYER_UI_STATE`、`createPlayerUiPlugin`；`ChromeUiActions` → `PlayerUiInputActions`（它是 player UI 处理的输入动作）；slice 与插件 id `chrome` → `player-ui` |
+| preset 选项 `controls: boolean` | `ui: boolean` |
+| `SinkSegment.level`（engine-pipeline/sink） | `rendition` |
+
+以后再有改名候选，列在这里由负责人定。

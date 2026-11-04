@@ -24,13 +24,13 @@ import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMa
 import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
 import { createOverlayLayer, createVideoSurface, trackFrameTime, type OverlayLayer, type Surface } from '@otter-player/surface';
 import type { TextActionMap, TextState } from '@otter-player/text';
-import { bindActivity, CHROME_SLICE, createChromePlugin, defineOtterElements, provideStore, type ChromeActionMap, type ChromeState } from '@otter-player/ui-core';
+import { bindActivity, PLAYER_UI_SLICE, createPlayerUiPlugin, defineOtterElements, provideStore, type PlayerUiActionMap, type PlayerUiState } from '@otter-player/ui-core';
 import { buildShell } from './shell.js';
 
 /** State of a player made by createPlayer (the slices every preset has). */
-export type PlayerState = MediaState & QoeState & TextState & ChromeState & PresentationState;
+export type PlayerState = MediaState & QoeState & TextState & PlayerUiState & PresentationState;
 /** Actions of a player made by createPlayer. */
-export type PlayerActions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap;
+export type PlayerActions = MediaActionMap & TextActionMap & PlayerUiActionMap & PresentationActionMap;
 
 /**
  * What createPlayer assembles: the container, the formats and backends to route between, and the
@@ -49,7 +49,7 @@ export interface PlayerOptions<S extends PlayerState = PlayerState, A extends Pl
    */
   readonly backends: readonly BackendFactory[];
   /**
-   * Decoders for the WebCodecs backend (a WASM HEVC decoder where hardware has none).
+   * Decoders for the WebCodecs backend besides its own (e.g. a host's WASM HEVC decoder where hardware has none).
    * @defaultValue `[]` (WebCodecs' own decoders only)
    */
   readonly decoders?: readonly Decoder[];
@@ -78,7 +78,7 @@ export interface PlayerOptions<S extends PlayerState = PlayerState, A extends Pl
    * The default player UI (true) or a bare `<video>` (false: the host builds its UI on the store).
    * @defaultValue `true`
    */
-  readonly controls?: boolean;
+  readonly ui?: boolean;
   /**
    * Captions (sidecar and in-band tracks, Otter's renderer, CVAA style): an on-demand chunk, loaded
    * while the player starts when on.
@@ -212,7 +212,7 @@ export interface Player<S extends PlayerState = PlayerState, A extends PlayerAct
 export function createPlayer<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions>(options: PlayerOptions<S, A>): Player<S, A> {
   const root = options.container;
   if (options.lang !== undefined) root.lang = options.lang;
-  const video = buildShell(root, options.controls !== false, options.title);
+  const video = buildShell(root, options.ui !== false, options.title);
   defineOtterElements();
   const surface = createVideoSurface(video);
   const media = createMediaPlugin<S, A>({
@@ -249,12 +249,12 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
           };
         })();
   const core: OtterCore<S, A> = createCore<S, A>({
-    slices: [MEDIA_SLICE, QOE_SLICE, CHROME_SLICE, PRESENTATION_SLICE, ...(options.slices ?? [])],
+    slices: [MEDIA_SLICE, QOE_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE, ...(options.slices ?? [])],
     plugins: [
       media,
       createQoePlugin(),
       ...(text === undefined ? [] : [text]),
-      createChromePlugin({ idleMs: options.idleMs ?? 3000 }),
+      createPlayerUiPlugin({ idleMs: options.idleMs ?? 3000 }),
       createPresentationPlugin({
         ...(options.title === undefined ? {} : { mediaSession: { metadata: { title: options.title } } }),
         ...options.presentation,

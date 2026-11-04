@@ -1,7 +1,7 @@
 @otter-player/pipeline
 Copyright 2026 the Otter authors. Licensed under the Apache License 2.0 (LICENSE).
 
-This package includes third-party code:
+This package includes or depends on third-party code:
 
 - dash.js (https://github.com/Dash-Industry-Forum/dash.js, v5.2.1 / a9a8542cd7e6257116be4046ebf16ac49e1cec91): BSD-3-Clause; copied (L3) into src/vendor/dash.js/ and built into dist/
 - hls.js (https://github.com/video-dev/hls.js, v1.7.3 / e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de): Apache-2.0; copied (L3) into src/vendor/hls.js/ and built into dist/

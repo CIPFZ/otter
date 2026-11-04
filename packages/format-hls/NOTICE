@@ -1,7 +1,7 @@
 @otter-player/format-hls
 Copyright 2026 the Otter authors. Licensed under the Apache License 2.0 (LICENSE).
 
-This package includes third-party code:
+This package includes or depends on third-party code:
 
 - hls.js (https://github.com/video-dev/hls.js, v1.7.3 / e5ff3583965e3af16c4a4b4d2b5f7bd1ffb5b7de): Apache-2.0; copied (L3) into src/vendor/hls.js/ and built into dist/
 - video.js (https://github.com/videojs/video.js, @videojs/spf@10.1.0 / 92be7bdd72c8782348ebafc765a23cf8d8cba004): Apache-2.0; copied (L3) into src/vendor/video.js/ and built into dist/

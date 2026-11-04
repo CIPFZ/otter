@@ -12,6 +12,8 @@ M4 的 WebCodecs 路径需要一个通用 demuxer。原计划用 mediabunny（RE
 
 ### 1. 取消许可证策略
 
+> 2026-11-04：本节「不分发、无义务」的前提已不成立（ADR-014 发布到 npm）。发布包的许可规则见 ADR-014 §4a；仓库内不发布的部分（e2e、私有包）仍按本节。
+
 - 删除 `scripts/license-gate.ts`、`scripts/license-policy.ts`、`scripts/lib/license.ts` 及其测试，以及 `pnpm check` 和 CI 里的许可证门禁。
 - `scripts/check-vendor.ts` 只检查来源记录：每个拷贝文件带 `// Derived from <project>@<commit> <path>` 头（后面可以带许可证名，仅作记录），目录下的 `UPSTREAM.json` 列出全部文件和本地改动，拷贝的项目已列在 REUSE.md。许可证白名单、THIRD_PARTY_NOTICES 条目、L1 依赖表三项检查删除。`UPSTREAM.json` 的 `license` 字段改为可选。
 - `THIRD_PARTY_NOTICES.md` 保留为来源索引，不再是门禁。

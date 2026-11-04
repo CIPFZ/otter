@@ -91,13 +91,13 @@ export {
 export { formatBitrate, formatMs, formatSeconds, formatTime, speakTime, type TimeWords } from './format.js';
 export {
   bindActivity,
-  CHROME_SLICE,
-  createChromePlugin,
-  INITIAL_CHROME_STATE,
-  type ChromeActionMap,
-  type ChromeOptions,
-  type ChromeState,
-  type ChromeUiActions,
-} from './chrome.js';
+  PLAYER_UI_SLICE,
+  createPlayerUiPlugin,
+  INITIAL_PLAYER_UI_STATE,
+  type PlayerUiActionMap,
+  type PlayerUiOptions,
+  type PlayerUiState,
+  type PlayerUiInputActions,
+} from './player-ui.js';
 export { icon, type IconNode } from './icons.js';
 export { fill, findStrings, provideStrings, STRINGS_EN, STRINGS_ZH, uiLanguage, type DanmakuStrings, type PictureStrings, type StatsStrings, type UiStrings } from './strings.js';

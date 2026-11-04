@@ -29,9 +29,6 @@
       "path": "../danmaku"
     },
     {
-      "path": "../decoder-wasm-hevc"
-    },
-    {
       "path": "../decoder-webcodecs"
     },
     {

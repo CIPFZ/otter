@@ -15,8 +15,8 @@ import type { PresentationSnapshot, PresentationState } from '@otter-player/pres
 import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
 import {
   bindActivity,
-  CHROME_SLICE,
-  createChromePlugin,
+  PLAYER_UI_SLICE,
+  createPlayerUiPlugin,
   defineElements,
   findStrings,
   otterFullscreenButton,
@@ -25,18 +25,18 @@ import {
   otterTimeDisplay,
   otterTimeSlider,
   provideStore,
-  type ChromeActionMap,
-  type ChromeState,
+  type PlayerUiActionMap,
+  type PlayerUiState,
 } from '@otter-player/ui-core';
 
 /** Fullscreen only: the part of the presentation state the fullscreen button reads. */
 export type BasicFullscreenState = Pick<PresentationState, 'presentation'>;
 /**
- * State of a `basic` player: media, QoE, player UI (chrome) and the fullscreen part of the presentation state.
+ * State of a `basic` player: media, QoE, player UI and the fullscreen part of the presentation state.
  */
-export type BasicState = MediaState & QoeState & ChromeState & BasicFullscreenState;
-/** Actions of a `basic` player: media and player UI (chrome) actions, and fullscreen. */
-export interface BasicActions extends MediaActionMap, ChromeActionMap {
+export type BasicState = MediaState & QoeState & PlayerUiState & BasicFullscreenState;
+/** Actions of a `basic` player: media and player UI actions, and fullscreen. */
+export interface BasicActions extends MediaActionMap, PlayerUiActionMap {
   /** Enter fullscreen, or leave it. */
   'toggle-fullscreen': Record<string, never>;
   /** Leave fullscreen. */
@@ -59,7 +59,7 @@ export interface BasicOptions<S extends BasicState = BasicState, A extends Basic
    * The default player UI (true) or a bare `<video>` (false: the host builds its UI on the store).
    * @defaultValue `true`
    */
-  readonly controls?: boolean;
+  readonly ui?: boolean;
   /**
    * Start muted (before the first load; autoplay needs it).
    * @defaultValue `false`
@@ -194,7 +194,7 @@ export function createBasicPlayer<S extends BasicState = BasicState, A extends B
   if (!root.hasAttribute('tabindex')) root.tabIndex = -1;
   let video = root.querySelector('video');
   if (video === null) {
-    root.innerHTML = options.controls === false ? '<video playsinline crossorigin="anonymous" tabindex="-1"></video>' : SHELL;
+    root.innerHTML = options.ui === false ? '<video playsinline crossorigin="anonymous" tabindex="-1"></video>' : SHELL;
     video = root.querySelector('video') as HTMLVideoElement;
   }
   defineElements({
@@ -211,8 +211,8 @@ export function createBasicPlayer<S extends BasicState = BasicState, A extends B
   });
   const fullscreen = createFullscreenPlugin<S, A>(root, video);
   const core: OtterCore<S, A> = createCore<S, A>({
-    slices: [MEDIA_SLICE, QOE_SLICE, CHROME_SLICE, fullscreen.slice, ...(options.slices ?? [])],
-    plugins: [media, createQoePlugin(), createChromePlugin({ idleMs: options.idleMs ?? 3000 }), fullscreen.plugin, ...(options.plugins ?? [])],
+    slices: [MEDIA_SLICE, QOE_SLICE, PLAYER_UI_SLICE, fullscreen.slice, ...(options.slices ?? [])],
+    plugins: [media, createQoePlugin(), createPlayerUiPlugin({ idleMs: options.idleMs ?? 3000 }), fullscreen.plugin, ...(options.plugins ?? [])],
   });
   const store = core.store.view();
   const offs: Unsubscribe[] = [];

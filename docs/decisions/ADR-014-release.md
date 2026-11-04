@@ -40,6 +40,58 @@
 - Apache-2.0。
 - 凡是包含 L2 / L3 拷入代码的包，各自带一份 `NOTICE`，列出来源与原许可。来源本来就记在各处的拷入注释里，实施时从那里汇总。
 
+### 4a. 发布包的许可规则（2026-11-04 负责人；替代 ADR-008 §1「不分发、无义务」的前提）
+
+- 公开包只能含：
+  - MIT、BSD-2-Clause、BSD-3-Clause、Apache-2.0、ISC、0BSD；
+  - MPL-2.0：文件保持原许可，在该包的 NOTICE 里列出。
+- LGPL 只限独立加载的产物，不进 tarball（公开包的文件里不能有）；GPL / AGPL 不得进公开包。
+- 门禁输入：拷入文件的来源头（`// Derived from <project>@<commit> <path> <许可>`）与目录的 `UPSTREAM.json` 的 `license`（来源头优先，两者都没有即不通过；`license` 对公开包里的拷入代码不再可选），打包进 dist 的 npm 包，以及生产依赖树（`dependencies` + `peerDependencies`，递归到底，跳过工作区包——它们各自单独审）里每个第三方包的 `license`。
+- 执行：`scripts/lib/licenses.ts`，由 `scripts/release-files.ts` 在写文件与 `--check`（`pnpm check`）之前对每个公开包核对，任一不合规即失败；`--audit` 输出下表。单测 `scripts/test/licenses.test.ts`。
+- 处理：`decoder-wasm-hevc`（Jessibuca jv4-decoder 产物，GPL-3.0，内含 FFmpeg）改为 private。`presets/surveillance` 不再依赖它，改为 `decoders` 选项由宿主注入，默认只有 WebCodecs；HEVC 流在没有 HEVC 解码器、也没有注入 WASM 解码器时，WebCodecs 后端报非致命 `hevcDecoderUnavailable`，该路随后照常失败。发布说明的已知限制加了一条。M7 候选：自建 LGPL 的 HEVC WASM（独立加载，不进 tarball）。
+
+审计结果（2026-11-04，37 个公开包，`node scripts/release-files.ts --audit`；私有的 10 个不在表里）：
+
+| 包 | 拷入代码（src/vendor） | 打包进 dist | 生产依赖树（第三方） | 结论 |
+|---|---|---|---|---|
+| `backend-mse` | Apache-2.0: hls.js | — | — | OK |
+| `backend-native` | — | — | — | OK |
+| `backend-webcodecs` | — | — | — | OK |
+| `core` | — | — | — | OK |
+| `danmaku` | MIT: CommentCoreLibrary, danmaku | — | — | OK |
+| `decoder-pool` | — | — | — | OK |
+| `decoder-webcodecs` | — | — | — | OK |
+| `demux-mediabunny` | — | — | MPL-2.0: mediabunny@1.61.6; MIT: @types/dom-mediacapture-transform@0.1.12, @types/dom-webcodecs@0.1.13 | OK (MPL-2.0 in NOTICE) |
+| `engine-adapter-hlsjs` | — | — | Apache-2.0: hls.js@1.7.3 | OK |
+| `engine-adapter-mpegts` | — | — | Apache-2.0: mpegts.js@1.8.2; MIT: es6-promise@4.2.8, events@3.3.0 | OK |
+| `engine-adapter-shaka` | — | — | Apache-2.0: shaka-player@5.2.13 | OK |
+| `engine-pipeline` | — | — | — | OK |
+| `format-dash` | — | — | — | OK |
+| `format-file` | — | — | — | OK |
+| `format-flv` | — | — | — | OK |
+| `format-hls` | Apache-2.0: hls.js, video.js | — | — | OK |
+| `format-mp4-range` | — | — | BSD-3-Clause: mp4box@2.4.1 | OK |
+| `format-ts` | — | — | — | OK |
+| `format-whep` | — | — | — | OK |
+| `input` | — | — | — | OK |
+| `media` | — | — | Apache-2.0: @svta/cml-cmcd@2.8.2, @svta/cml-structured-field-values@1.1.6, @svta/cml-utils@1.6.1 | OK |
+| `overlay-thumbnails` | — | — | MIT: media-captions@1.0.4 | OK |
+| `overlay-watermark` | — | — | — | OK |
+| `pipeline` | BSD-3-Clause: dash.js; Apache-2.0: hls.js, mpegts.js | Apache-2.0: hls.js, mpegts.js | — | OK |
+| `preferences` | — | — | — | OK |
+| `presentation` | — | — | — | OK |
+| `presets` | — | — | — | OK |
+| `qoe` | — | — | — | OK |
+| `react` | — | — | MIT: react@19.3.1 | OK |
+| `surface` | — | — | — | OK |
+| `svelte` | — | — | MIT: svelte@5.57.3, @jridgewell/remapping@2.3.5, @jridgewell/gen-mapping@0.3.13, @jridgewell/sourcemap-codec@1.6.0, @jridgewell/trace-mapping@0.3.31, @jridgewell/resolve-uri@3.1.2, @sveltejs/acorn-typescript@1.0.13, @types/estree@1.0.9, acorn@8.19.0, clsx@2.1.1, devalue@5.9.4, esm-env@1.2.2, esrap@2.4.0, is-reference@3.0.3, locate-character@3.0.0, magic-string@0.30.21, zimmerframe@1.1.5; Apache-2.0: aria-query@5.3.1, axobject-query@4.1.0 | OK |
+| `text` | — | BSD-2-Clause: imsc@1.1.5; ISC: sax@1.2.1 | MIT: media-captions@1.0.4 | OK |
+| `ui-core` | — | ISC: lucide@1.59.0 | — | OK |
+| `ui-skin-default` | — | — | — | OK |
+| `ui-skin-minimal` | — | — | — | OK |
+| `ui-skin-tv` | — | — | — | OK |
+| `vue` | — | — | MIT: vue@3.5.44, @vue/shared@3.5.44, @vue/compiler-dom@3.5.44, @vue/compiler-core@3.5.44, @babel/parser@7.29.12, @babel/types@7.29.11, @babel/helper-string-parser@7.29.11, @babel/helper-validator-identifier@7.29.7, estree-walker@2.0.2, @vue/runtime-dom@3.5.44, @vue/runtime-core@3.5.44, @vue/reactivity@3.5.44, csstype@3.2.3, @vue/compiler-sfc@3.5.44, @vue/compiler-ssr@3.5.44, magic-string@0.30.21, @jridgewell/sourcemap-codec@1.6.0, postcss@8.5.30, nanoid@3.3.20, @vue/server-renderer@3.5.44; BSD-2-Clause: entities@7.0.1; BSD-3-Clause: source-map-js@1.2.2; ISC: picocolors@1.1.1 | OK |
+
 ### 5. 浏览器基线
 
 - 基线：Chrome / Edge 110+，Firefox 115+，Safari 16.4+，iOS 16.4+。
@@ -83,7 +135,7 @@
   - 已做：各发布包的 `LICENSE` 与 `NOTICE`（`scripts/release-files.ts`，`pnpm check` 校验）；浏览器基线写进 SPEC §1.1 与 README。
   - 已做：`pnpm release:dry-run`（`scripts/release-dry-run.ts`），步骤见 `docs/RELEASE.md`。dry-run 查出并已修：打包进 dist 的依赖（`@otter-vendor/*`、imsc、lucide）原来在 `dependencies` 里，发布后 npm 会去装 `@otter-vendor/*`（不存在）——改到 `devDependencies`，`check-boundaries` 拦截；`dist/.tsbuildinfo` 进了 tarball——`files` 排除；29 个包没有 README——补了最小的英文 README。
   - 未做：首发与登记脚本、发布工作流、`otterplayer` 占位包、两个 ESM 单文件、文档站 Pages 部署。
-  - 待负责人定：`decoder-wasm-hevc` 带的 Jessibuca jv4-decoder 产物来自 GPL-3.0 仓库（`UPSTREAM.json` 记的许可），而包声明 Apache-2.0，`presets` 依赖它。之前「仓库不分发、不看许可」的前提（ADR-008 §1）到发布时不再成立。
+  - 已定（2026-11-04）：许可规则见 §4a；`decoder-wasm-hevc` 改为 private。
 - SPEC §23 的 Q2 / Q4 / Q5 / Q6 已随本 ADR 标为结案（2026-10-28）。
 - 发布工作流需要 `id-token: write` 权限，而且只能跑在 GitHub 托管的 runner 上。
 - 1.0 的发布说明里要把「未在真机验证」的 iPhone 项列为已知限制（测试收口轮的决定第四节）。

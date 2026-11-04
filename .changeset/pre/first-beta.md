@@ -5,7 +5,6 @@
 "@otter-player/core": minor
 "@otter-player/danmaku": minor
 "@otter-player/decoder-pool": minor
-"@otter-player/decoder-wasm-hevc": minor
 "@otter-player/decoder-webcodecs": minor
 "@otter-player/demux-mediabunny": minor
 "@otter-player/engine-adapter-hlsjs": minor

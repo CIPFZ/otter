@@ -1,6 +1,7 @@
 {
   "name": "@otter-player/decoder-wasm-hevc",
-  "version": "0.1.0-beta.0",
+  "version": "0.0.0",
+  "private": true,
   "description": "WASM HEVC / H.264 software decoder: Jessibuca 4 jv4-decoder (L2, prebuilt), in the shared decode pool, loaded on demand.",
   "license": "Apache-2.0",
   "repository": {
@@ -24,7 +25,6 @@
   "files": [
     "dist",
     "src",
-    "NOTICE",
     "!dist/.tsbuildinfo"
   ],
   "scripts": {
@@ -39,8 +39,5 @@
     "assets": [
       "src/vendor/jessibuca"
     ]
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

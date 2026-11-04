@@ -167,6 +167,23 @@ describe('backend-webcodecs', () => {
     backend.destroy();
   });
 
+  it('HEVC without an HEVC decoder and no WASM decoder: a non-fatal hevcDecoderUnavailable, then codecUnsupported; with a WASM decoder, no notice (the route falls back to it)', async () => {
+    const hevc = (fed: number[]): Demuxer => {
+      const d = fakeDemuxer(fed);
+      return { ...d, info: { ...d.info, video: { id: 1, codec: 'hvc1.1.6.L93.B0', setup: { codec: 'hvc1.1.6.L93.B0', codedWidth: 2, codedHeight: 2 }, width: 2, height: 2, frameRate: FPS } } };
+    };
+    const alone = setup([fakeDecoder], hevc);
+    vi.spyOn(fakeDecoder, 'supports').mockResolvedValueOnce(false);
+    await expect(alone.backend.load({ src: new Blob() }, {})).rejects.toMatchObject({ details: 'codecUnsupported', fatal: true });
+    expect(alone.errors).toEqual(['hevcDecoderUnavailable']);
+    alone.backend.destroy();
+    const withWasm = setup([fakeDecoder, makeDecoder('wasm-hevc')], hevc);
+    vi.spyOn(fakeDecoder, 'supports').mockResolvedValueOnce(false);
+    await expect(withWasm.backend.load({ src: new Blob() }, {})).rejects.toMatchObject({ details: 'codecUnsupported' });
+    expect(withWasm.errors).toEqual([]);
+    withWasm.backend.destroy();
+  });
+
   it('fails the load (and so falls back) when the decoder cannot take the codec', async () => {
     const { backend } = setup();
     vi.spyOn(fakeDecoder, 'supports').mockResolvedValueOnce(false);

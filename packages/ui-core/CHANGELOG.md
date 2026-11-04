@@ -5,6 +5,7 @@
 ### Minor Changes
 
 - First beta of Otter (0.1.0-beta.0): scenario presets, the own HLS and FLV / TS engines with adapter fallbacks, WebCodecs playback, the player UI and skins, React / Vue / Svelte bindings. Release notes and known limitations: `docs/release-notes/0.1.0-beta.0.md`.
+- ui-core: the player UI API is `PlayerUiState`, `PlayerUiActionMap`, `PlayerUiOptions`, `PlayerUiInputActions`, `PLAYER_UI_SLICE`, `INITIAL_PLAYER_UI_STATE` and `createPlayerUiPlugin` (were `Chrome*`, `CHROME_SLICE`, `INITIAL_CHROME_STATE`, `createChromePlugin`); the slice and plugin id is `player-ui`.
 
 ### Patch Changes
 

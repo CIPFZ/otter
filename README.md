@@ -39,7 +39,7 @@ The docs site is generated from the sources (TSDoc, package READMEs, the example
 | Backends | `backend-mse`, `backend-native`, `backend-webcodecs` |
 | Formats | `format-hls`, `format-dash`, `format-flv`, `format-ts`, `format-mp4-range`, `format-file`, `format-whep` |
 | Engine adapters and pipeline | `engine-adapter-hlsjs`, `engine-adapter-shaka`, `engine-adapter-mpegts`, `engine-pipeline`, `pipeline` |
-| Decoding | `decoder-webcodecs`, `decoder-wasm-hevc`, `decoder-pool`, `demux-mediabunny`, `decoder-wasm-ffmpeg` |
+| Decoding | `decoder-webcodecs`, `decoder-pool`, `demux-mediabunny`; not published: `decoder-wasm-hevc` (GPL content), `decoder-wasm-ffmpeg` |
 | Picture and presentation | `surface`, `presentation` |
 | Input | `input` |
 | UI and skins | `ui-core`, `ui-skin-default`, `ui-skin-minimal`, `ui-skin-tv`, `ui-skin-audio` |

@@ -1,7 +1,7 @@
 @otter-player/ui-core
 Copyright 2026 the Otter authors. Licensed under the Apache License 2.0 (LICENSE).
 
-This package includes third-party code:
+This package includes or depends on third-party code:
 
 - lucide (https://www.npmjs.com/package/lucide, 1.59.0): ISC; bundled from npm into dist/
 

@@ -120,13 +120,13 @@ describe('MSE sink segment ledger and abort (ADR-010 §4)', () => {
   it('records appended segments, replaces overlapping ones, drops evicted ones', async () => {
     const sink = createMseSink(FakeMs as unknown as typeof MediaSource, { backBufferS: 10 });
     await sink.init([{ type: 'video', mimeType: 'video/mp4', data: new Uint8Array(0) }]);
-    await sink.append('video', media(0, 4), { id: 's0', start: 0, end: 4, level: 'hi' });
-    await sink.append('video', media(4, 8), { id: 's1', start: 4, end: 8, level: 'hi' });
-    await sink.append('video', media(8, 12), { id: 's2', start: 8, end: 12, level: 'hi' });
+    await sink.append('video', media(0, 4), { id: 's0', start: 0, end: 4, rendition: 'hi' });
+    await sink.append('video', media(4, 8), { id: 's1', start: 4, end: 8, rendition: 'hi' });
+    await sink.append('video', media(8, 12), { id: 's2', start: 8, end: 12, rendition: 'hi' });
     expect(sink.segments('video').map((s) => s.id)).toEqual(['s0', 's1', 's2']);
     // A lower rendition's segment over s1 replaces it in the ledger.
-    await sink.append('video', media(4, 8), { id: 'l1', start: 4, end: 8, level: 'lo' });
-    expect(sink.segments('video').map((s) => `${s.id}:${s.level}`)).toEqual(['s0:hi', 'l1:lo', 's2:hi']);
+    await sink.append('video', media(4, 8), { id: 'l1', start: 4, end: 8, rendition: 'lo' });
+    expect(sink.segments('video').map((s) => `${s.id}:${s.rendition}`)).toEqual(['s0:hi', 'l1:lo', 's2:hi']);
     // Evicted (back buffer): gone from the ledger too.
     await sink.evict(16);
     expect(sink.segments('video').map((s) => s.id)).toEqual(['l1', 's2']);

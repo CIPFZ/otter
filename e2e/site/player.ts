@@ -42,17 +42,17 @@ import { createPipComposite, createWatermark, type PipComposite, type Watermark 
 import { createDanmaku, DANMAKU_SLICE, type DanmakuActionMap, type DanmakuInspection, type DanmakuState } from '@otter-player/danmaku';
 import {
   bindActivity,
-  CHROME_SLICE,
-  createChromePlugin,
+  PLAYER_UI_SLICE,
+  createPlayerUiPlugin,
   defineOtterElements,
   provideStore,
   provideThumbnails,
-  type ChromeActionMap,
-  type ChromeState,
+  type PlayerUiActionMap,
+  type PlayerUiState,
 } from '@otter-player/ui-core';
 
-type State = MediaState & QoeState & TextState & ChromeState & PresentationState & PictureSliceState & DanmakuState;
-type Actions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap & PictureActionMap & DanmakuActionMap;
+type State = MediaState & QoeState & TextState & PlayerUiState & PresentationState & PictureSliceState & DanmakuState;
+type Actions = MediaActionMap & TextActionMap & PlayerUiActionMap & PresentationActionMap & PictureActionMap & DanmakuActionMap;
 
 export interface OtterFixture {
   load(source: Source, options?: LoadOptions): void;
@@ -242,13 +242,13 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
       ? createDanmaku(danmakuRenderer === 'canvas2d' || danmakuRenderer === 'webgl' || danmakuRenderer === 'worker' ? { renderer: danmakuRenderer } : {})
       : undefined;
   const core = createCore<State, Actions>({
-    slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE, PICTURE_SLICE, ...(danmaku === undefined ? [] : [DANMAKU_SLICE])],
+    slices: [MEDIA_SLICE, QOE_SLICE, TEXT_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE, PICTURE_SLICE, ...(danmaku === undefined ? [] : [DANMAKU_SLICE])],
     plugins: [
       picture,
       media,
       createQoePlugin(),
       text.plugin,
-      createChromePlugin({ idleMs }),
+      createPlayerUiPlugin({ idleMs }),
       // ?mini=auto: corner window when scrolled out while playing; ?pip=document: Document PiP.
       createPresentationPlugin({
         container: root,

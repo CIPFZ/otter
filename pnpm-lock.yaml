@@ -613,9 +613,6 @@ importers:
       '@otter-player/danmaku':
         specifier: workspace:*
         version: link:../danmaku
-      '@otter-player/decoder-wasm-hevc':
-        specifier: workspace:*
-        version: link:../decoder-wasm-hevc
       '@otter-player/decoder-webcodecs':
         specifier: workspace:*
         version: link:../decoder-webcodecs

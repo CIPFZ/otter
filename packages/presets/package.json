@@ -85,7 +85,6 @@
     "@otter-player/backend-webcodecs": "workspace:*",
     "@otter-player/core": "workspace:*",
     "@otter-player/danmaku": "workspace:*",
-    "@otter-player/decoder-wasm-hevc": "workspace:*",
     "@otter-player/decoder-webcodecs": "workspace:*",
     "@otter-player/format-dash": "workspace:*",
     "@otter-player/format-file": "workspace:*",

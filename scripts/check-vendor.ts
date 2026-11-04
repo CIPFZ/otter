@@ -1,6 +1,7 @@
 // Vendoring source records (REUSE §5, ADR-008 §1): every copied file carries its source header and
 // is listed in UPSTREAM.json, and every copied project is in REUSE.md, so vendor-sync can follow
-// upstream fixes. No license checks (ADR-008).
+// upstream fixes. No license checks here: the license rules of published packages run in
+// scripts/release-files.ts (ADR-014 §4a).
 //
 //   node scripts/check-vendor.ts
 

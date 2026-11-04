@@ -22,7 +22,7 @@ export interface SinkSegment {
   /** End media time, seconds. */
   readonly end: number;
   /** Rendition (quality id) it came from. */
-  readonly level?: string | number;
+  readonly rendition?: string | number;
 }
 
 /** What createMseSink takes. */

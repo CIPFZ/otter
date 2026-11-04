@@ -1,7 +1,7 @@
 @otter-player/text
 Copyright 2026 the Otter authors. Licensed under the Apache License 2.0 (LICENSE).
 
-This package includes third-party code:
+This package includes or depends on third-party code:
 
 - imsc (https://www.npmjs.com/package/imsc, 1.1.5): BSD-2-Clause; bundled from npm into dist/
 - sax (https://www.npmjs.com/package/sax, 1.2.1): ISC; bundled from npm into dist/

@@ -86,6 +86,8 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
     - 在 solo 里对调运行顺序（iPhone 先跑）：两种顺序都达标，首帧 529–725 ms，丢帧 0 %。
     - 当时只播 4.01–4.25 s 的那次没有任何错误事件，但没有停顿记录可核；`87499d6` 起装了独立停顿记录，这一跑没有停顿。
 
+- 预先决定（2026-11-04 负责人）：desktop-safari 的 solo 性能判定（丢帧、5 s 播放时长、首帧）若触发 flaky 升级条件，降为只记录（与手机仿真相同），判定留在 desktop-chrome 与真 Edge；真 Safari 的数字列入 M7。
+
 ### 8. 第三批第一停：React 绑定与 SSR（2026-10-30 负责人）
 
 - 只做 React 与 SSR 安全；Vue / Svelte 等 React 验收后再开。
@@ -179,7 +181,7 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - preset 一页一示例：代码取自 e2e 示例页 `e2e/site/presets.ts` 里该 preset 的那段，带一个用 e2e 夹具运行的链接，链接与 `e2e/presets.spec.ts` 里打开的地址相同；
   - 绑定三页：包 README、示例应用源码，以及服务端渲染示例页的链接。
 - 构建：
-  - `pnpm check:docs-site` 进 `pnpm check`，即 CI 的 verify 步骤；
+  - `pnpm check:docs-site` 进 `pnpm check`；~~即 CI 的 verify 步骤~~（更正 2026-11-04：CI 的 verify 是逐条列出的步骤，原来没有这一步，TSDoc 门禁、`check:docs-text` 与 `check:release-files` 在 CI 里都没跑；已补进 verify）；
   - e2e 示例站构建时把文档生成到 `/docs/`，所以 `pnpm docs:serve` 一条命令就能看文档、跑示例；
   - `e2e/docs-site.spec.ts`（desktop-chrome）遍历全部页面与链接，并从 basic、vod、React 三页的链接打开示例、确认在播。
 - 当前文档注释覆盖 242 / 654 个导出，只记录。TSDoc 约定与中英文取舍（交接 §7 留的两个问题）没有在这一项里定。

@@ -5,15 +5,19 @@
 //   license);
 // - code bundled into its dist (`otter.bundle` in package.json): `@otter-vendor/*` from
 //   `vendor/*/UPSTREAM.json`, npm packages by name.
+// - MPL-2.0 dependencies of the production tree (installed from npm, files under MPL-2.0).
 // The upstream texts live in tooling/licenses/<project>.txt (fetched once from the pinned commit,
 // or copied from node_modules for npm packages). Placeholders (`private: true`) get neither.
+// Before anything is written or checked, every published package must pass the license rules
+// (scripts/lib/licenses.ts, ADR-014 §4a); `--audit` prints the per-package table of ADR-014.
 //
 //   node scripts/release-files.ts           write the files
 //   node scripts/release-files.ts --check   fail when one is missing or stale (pnpm check)
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { audit, classify, licenseProblems, type Item } from './lib/licenses.ts';
 
 const root = join(import.meta.dirname, '..');
 
@@ -71,7 +75,40 @@ export function thirdParty(pkgDir: string): { upstream: Upstream; where: string;
       out.push({ upstream: { project: b, repo: `https://www.npmjs.com/package/${b}`, commit: version, license }, where: 'bundled from npm into dist/', text: text(b) });
     }
   }
+  // MPL-2.0 dependencies (ADR-014 §4a): installed from npm, not copied; listed, their files keep MPL-2.0.
+  for (const dep of audit(root, pkgDir).filter((i) => i.kind === 'dependency' && i.verdict === 'mpl')) {
+    const [project, version] = [dep.name.slice(0, dep.name.lastIndexOf('@')), dep.name.slice(dep.name.lastIndexOf('@') + 1)];
+    out.push({ upstream: { project, repo: `https://www.npmjs.com/package/${project}`, commit: version, license: dep.license }, where: `a dependency installed from npm (${dep.via ?? project}), unmodified; its files stay under ${dep.license}`, text: text(project) });
+  }
   return out;
+}
+
+/** The license audit of every published package (ADR-014 §4a): items and problems. */
+export function licenseAudit(): { pkg: string; items: Item[]; problems: string[] }[] {
+  const packages = join(root, 'packages');
+  return readdirSync(packages)
+    .sort()
+    .filter((dir) => existsSync(join(packages, dir, 'package.json')))
+    .map((dir) => ({ dir, m: readJson<{ name: string; private?: boolean }>(join(packages, dir, 'package.json')) }))
+    .filter(({ m }) => m.private !== true)
+    .map(({ dir, m }) => {
+      const items = audit(root, join(packages, dir));
+      return { pkg: m.name, items, problems: licenseProblems(m.name, items) };
+    });
+}
+
+/** The audit as a Markdown table: per package, what it carries and pulls in, by license. */
+export function auditTable(): string {
+  const cell = (items: Item[], kind: Item['kind']): string => {
+    const by = new Map<string, Set<string>>();
+    for (const i of items.filter((x) => x.kind === kind)) {
+      const who = kind === 'copied' ? (i.name.split('/vendor/')[1]?.split('/')[0] ?? i.name) : kind === 'bundled' ? (i.name.startsWith('vendor/') ? (i.name.split('/')[1] ?? i.name) : i.name) : i.name;
+      by.set(i.license, (by.get(i.license) ?? new Set()).add(who));
+    }
+    return by.size === 0 ? '—' : [...by].map(([l, w]) => `${l}: ${[...w].join(', ')}`).join('; ');
+  };
+  const rows = licenseAudit().map(({ pkg, items, problems }) => `| \`${pkg.replace('@otter-player/', '')}\` | ${cell(items, 'copied')} | ${cell(items, 'bundled')} | ${cell(items, 'dependency')} | ${problems.length === 0 ? (items.some((i) => classify(i.license) === 'mpl') ? 'OK (MPL-2.0 in NOTICE)' : 'OK') : `✗ ${problems.length}`} |`);
+  return ['| 包 | 拷入代码（src/vendor） | 打包进 dist | 生产依赖树（第三方） | 结论 |', '|---|---|---|---|---|', ...rows].join('\n');
 }
 
 /** The NOTICE of a package, or undefined when it carries no third-party code. */
@@ -80,7 +117,7 @@ export function notice(name: string, pkgDir: string): string | undefined {
   if (parts.length === 0) return undefined;
   const list = parts.map(({ upstream: u, where }) => `- ${u.project} (${u.repo}, ${u.tag ?? u.commit}${u.tag === undefined ? '' : ` / ${u.commit}`}): ${u.license}; ${where}`);
   const texts = parts.map(({ upstream: u, text }) => `---------------------------------------------------------------------------\n${u.project}: ${u.license}\n---------------------------------------------------------------------------\n\n${text}`);
-  return `${name}\nCopyright 2026 the Otter authors. Licensed under the Apache License 2.0 (LICENSE).\n\nThis package includes third-party code:\n\n${list.join('\n')}\n\nTheir licenses follow.\n\n${texts.join('\n\n')}\n`;
+  return `${name}\nCopyright 2026 the Otter authors. Licensed under the Apache License 2.0 (LICENSE).\n\nThis package includes or depends on third-party code:\n\n${list.join('\n')}\n\nTheir licenses follow.\n\n${texts.join('\n\n')}\n`;
 }
 
 /** The files each published package must carry: path → content. */
@@ -101,7 +138,17 @@ export function releaseFiles(): Map<string, string> {
 }
 
 if (import.meta.filename === process.argv[1]) {
+  if (process.argv.includes('--audit')) {
+    console.log(auditTable());
+    process.exit(0);
+  }
   const check = process.argv.includes('--check');
+  const refused = licenseAudit().flatMap((a) => a.problems);
+  if (refused.length > 0) {
+    for (const p of refused) console.error(`✗ ${p}`);
+    console.error(`✗ ${refused.length} license problem(s) in published packages (ADR-014 §4a): make the package private, or drop the code`);
+    process.exit(1);
+  }
   const stale: string[] = [];
   for (const [rel, content] of releaseFiles()) {
     const file = join(root, rel);
@@ -118,6 +165,17 @@ if (import.meta.filename === process.argv[1]) {
     if ((manifest.files ?? []).includes('NOTICE')) continue;
     if (check) stale.push(`${rel.replace(/NOTICE$/, 'package.json')} ("files" lacks NOTICE)`);
     else writeFileSync(manifestFile, `${JSON.stringify({ ...manifest, files: [...(manifest.files ?? []), 'NOTICE'] }, null, 2)}\n`);
+  }
+  // A placeholder carries neither (it is not published; a leftover would suggest it is).
+  for (const dir of readdirSync(join(root, 'packages'))) {
+    const manifestFile = join(root, 'packages', dir, 'package.json');
+    if (!existsSync(manifestFile) || readJson<{ private?: boolean }>(manifestFile).private !== true) continue;
+    for (const f of ['LICENSE', 'NOTICE']) {
+      const file = join(root, 'packages', dir, f);
+      if (!existsSync(file)) continue;
+      if (check) stale.push(`packages/${dir}/${f} (a private package)`);
+      else rmSync(file);
+    }
   }
   if (stale.length > 0) {
     console.error(`✗ release files missing or stale (run \`node scripts/release-files.ts\`): ${stale.join(', ')}`);

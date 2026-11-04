@@ -1,7 +1,7 @@
 @otter-player/danmaku
 Copyright 2026 the Otter authors. Licensed under the Apache License 2.0 (LICENSE).
 
-This package includes third-party code:
+This package includes or depends on third-party code:
 
 - CommentCoreLibrary (https://github.com/jabbany/CommentCoreLibrary, bc1109997a980f1f8ff2681759925a7ce6729478): MIT; copied (L3) into src/vendor/CommentCoreLibrary/ and built into dist/
 - danmaku (https://github.com/weizhenye/Danmaku, v2.0.10 / e91bd7ad2ef6c1f8d6bc40d71698594696996e1e): MIT; copied (L3) into src/vendor/danmaku/ and built into dist/

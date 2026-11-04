@@ -8,8 +8,8 @@ import type { InputActionMap } from '@otter-player/input';
 import type { MediaActionMap, MediaState } from '@otter-player/media';
 import type { PresentationActionMap } from '@otter-player/presentation';
 
-/** Player UI state (`chrome` slice): control bar visibility, the dimming layer, the seek preview and the open menu. */
-export interface ChromeState {
+/** Player UI state: control bar visibility, the dimming layer, the seek preview and the open menu. */
+export interface PlayerUiState {
   /** Whether the controls are shown (auto-hide while playing). */
   readonly controlsVisible: boolean;
   /** Player dimming layer, 0..1 (gesture-controlled brightness; never the screen's). */
@@ -21,12 +21,12 @@ export interface ChromeState {
 }
 
 /** The player UI state before any interaction: controls shown, full brightness, nothing open. */
-export const INITIAL_CHROME_STATE: ChromeState = { controlsVisible: true, brightness: 1, seekPreview: null, menu: null };
-/** The player UI's store slice, `chrome` (createPlayer adds it). */
-export const CHROME_SLICE: StoreSlice<ChromeState> = { id: 'chrome', initialState: INITIAL_CHROME_STATE };
+export const INITIAL_PLAYER_UI_STATE: PlayerUiState = { controlsVisible: true, brightness: 1, seekPreview: null, menu: null };
+/** The player UI's store slice (createPlayer adds it). */
+export const PLAYER_UI_SLICE: StoreSlice<PlayerUiState> = { id: 'player-ui', initialState: INITIAL_PLAYER_UI_STATE };
 
 /** Actions handled by the player UI plugin; `toggle-fullscreen` etc. belong to presentation. */
-export interface ChromeActionMap {
+export interface PlayerUiActionMap {
   /** Show the controls if hidden, hide them if shown (a tap on mobile). */
   'toggle-controls': Record<string, never>;
   /** Show the controls and restart the auto-hide delay. */
@@ -42,7 +42,7 @@ export interface ChromeActionMap {
 }
 
 /** Options of the player UI plugin. */
-export interface ChromeOptions {
+export interface PlayerUiOptions {
   /**
    * The controls hide this long after the last interaction while playing, ms; 0 keeps them shown.
    * @defaultValue `3000`
@@ -54,13 +54,13 @@ export interface ChromeOptions {
  * The player UI plugin: control bar visibility and auto-hide, brightness, seek preview, menus
  * (createPlayer installs it).
  */
-export function createChromePlugin<S extends ChromeState & Pick<MediaState, 'paused' | 'status'>>(options: ChromeOptions = {}): Plugin<S, ChromeActionMap & MediaActionMap> {
+export function createPlayerUiPlugin<S extends PlayerUiState & Pick<MediaState, 'paused' | 'status'>>(options: PlayerUiOptions = {}): Plugin<S, PlayerUiActionMap & MediaActionMap> {
   const idleMs = options.idleMs ?? 3000;
-  let store: Store<S, ChromeActionMap & MediaActionMap> | undefined;
+  let store: Store<S, PlayerUiActionMap & MediaActionMap> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let offs: Unsubscribe[] = [];
 
-  const patch = (p: Partial<ChromeState>): void => store?.setState(p as Partial<S>);
+  const patch = (p: Partial<PlayerUiState>): void => store?.setState(p as Partial<S>);
   const set = (controlsVisible: boolean): void => patch({ controlsVisible });
 
   const schedule = (): void => {
@@ -77,11 +77,11 @@ export function createChromePlugin<S extends ChromeState & Pick<MediaState, 'pau
   };
 
   return {
-    id: 'chrome',
-    install(ctx: PluginContext<S, ChromeActionMap & MediaActionMap>) {
+    id: 'player-ui',
+    install(ctx: PluginContext<S, PlayerUiActionMap & MediaActionMap>) {
       store = ctx.store;
       // exit-fullscreen belongs to presentation; dispatching it without that plugin is a no-op.
-      const s = ctx.store as unknown as Store<ChromeState, ChromeActionMap & MediaActionMap & Pick<PresentationActionMap, 'exit-fullscreen'>>;
+      const s = ctx.store as unknown as Store<PlayerUiState, PlayerUiActionMap & MediaActionMap & Pick<PresentationActionMap, 'exit-fullscreen'>>;
       offs = [
         s.handle('toggle-controls', () => {
           const visible = !(store?.getState().controlsVisible ?? true);
@@ -152,4 +152,4 @@ export function bindActivity(root: HTMLElement, store: { dispatch(type: 'show-co
 
 // InputActionMap has the same names; exported so hosts can compose UiActions without importing both.
 /** The input actions the player UI handles. */
-export type ChromeUiActions = Pick<InputActionMap, 'toggle-controls' | 'brightness-by' | 'seek-preview' | 'escape'>;
+export type PlayerUiInputActions = Pick<InputActionMap, 'toggle-controls' | 'brightness-by' | 'seek-preview' | 'escape'>;

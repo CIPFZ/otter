@@ -394,7 +394,7 @@ export function createCmafHlsEngine(ctx: EngineContext, options: CmafHlsEngineOp
     const first = offset === undefined;
     establish(lane, next, data);
     const o = offset ?? 0;
-    await s.append(lane._type, new Uint8Array(data), { id: next.id, start: next.startTime + o, end: segEnd(next) + o, level: lane._index });
+    await s.append(lane._type, new Uint8Array(data), { id: next.id, start: next.startTime + o, end: segEnd(next) + o, rendition: lane._index });
     // The start position, once the first segment is in (so the seek finds it buffered).
     if (first && offset !== undefined && Math.abs(media.currentTime - (startAt + offset)) > 0.01) media.currentTime = startAt + offset;
     if (lane._type === 'video') driver?.segmentAppended();

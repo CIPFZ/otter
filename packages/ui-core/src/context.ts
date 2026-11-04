@@ -8,16 +8,16 @@ import type { PresentationActionMap, PresentationState } from '@otter-player/pre
 import type { PictureActionMap, PictureState } from '@otter-player/presentation/picture';
 import type { QoeState } from '@otter-player/qoe';
 import type { TextActionMap, TextState } from '@otter-player/text';
-import type { ChromeActionMap, ChromeState } from './chrome.js';
+import type { PlayerUiActionMap, PlayerUiState } from './player-ui.js';
 
 /**
  * State the primitives read: the media session plus whatever the shell added. `qoe` is optional
- * (the stats panel shows what is available); text / player UI (chrome) / presentation slices may be absent.
+ * (the stats panel shows what is available); text / player UI / presentation slices may be absent.
  */
 export type UiState = MediaState &
   Partial<QoeState> &
   Partial<TextState> &
-  Partial<ChromeState> &
+  Partial<PlayerUiState> &
   Partial<PresentationState> &
   /** The picture plugin's state, when the host installs it (picture controls). */
   Partial<{ readonly picture: PictureState }> &
@@ -36,11 +36,11 @@ export interface DanmakuView {
   readonly hideBottom: boolean;
 }
 /**
- * The actions the UI dispatches: media, player UI (chrome) and, when present, presentation, text, picture and
+ * The actions the UI dispatches: media, player UI and, when present, presentation, text, picture and
  * danmaku.
  */
 export type UiActions = MediaActionMap &
-  ChromeActionMap &
+  PlayerUiActionMap &
   TextActionMap &
   PresentationActionMap &
   Partial<PictureActionMap> &

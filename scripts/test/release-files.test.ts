@@ -18,7 +18,8 @@ describe('release files (ADR-014 §4)', () => {
   it('gives every published package a LICENSE and none to a placeholder', () => {
     const files = [...releaseFiles().keys()];
     expect(files).toContain(join('packages', 'core', 'LICENSE'));
-    expect(files).toContain(join('packages', 'decoder-wasm-hevc', 'NOTICE'));
+    expect(files).toContain(join('packages', 'demux-mediabunny', 'NOTICE'));
+    expect(files.some((f) => f.startsWith(join('packages', 'decoder-wasm-hevc')))).toBe(false);
     expect(files.some((f) => f.startsWith(join('packages', 'plugin-cast')))).toBe(false);
   });
 });

@@ -1,7 +1,8 @@
 // Preset `surveillance` (SPEC §19 row "surveillance walls + HEVC"): a wall of streams on one GPU canvas (ADR-008 §7),
-// each tile its own session on the WebCodecs backend (WebCodecs decoders, the WASM HEVC decoder
-// where WebCodecs has no HEVC; one shared decode pool, 16 at a time, more wait), HTTP-FLV / WS-FLV
-// and MPEG-TS live streams, HLS playlists and File / Blob sources. The player's controls act on
+// each tile its own session on the WebCodecs backend (WebCodecs decoders, plus any the host passes
+// in `decoders`, e.g. a WASM HEVC decoder where WebCodecs has no HEVC: none ships with Otter, the
+// builds available are GPL, ADR-014; one shared decode pool, 16 at a time, more wait), HTTP-FLV /
+// WS-FLV and MPEG-TS live streams, HLS playlists and File / Blob sources. The player's controls act on
 // the focused tile (click / Enter), which is the only one with sound; double-click / Shift+Enter
 // fills the wall with it. More than 6 HTTP-FLV / TS streams from one host need WS-FLV or HTTP/2
 // (browsers open 6 HTTP/1.1 connections per host; live streams keep theirs). Audio follows the
@@ -15,19 +16,18 @@
 
 import { createWebCodecsBackendFactory } from '@otter-player/backend-webcodecs';
 import { createCore, createError, type OtterCore, type QoeHook, type RouteExplanation, type StoreView, type Unsubscribe } from '@otter-player/core';
-import { createWasmHevcDecoder } from '@otter-player/decoder-wasm-hevc';
 import { createWebCodecsDecoder } from '@otter-player/decoder-webcodecs';
 import { createFileFormat } from '@otter-player/format-file';
 import { createFlvFormat, probeFlv } from '@otter-player/format-flv';
 import { createHlsFormat } from '@otter-player/format-hls';
 import { createTsFormat, probeTs } from '@otter-player/format-ts';
 import { createInputController } from '@otter-player/input';
-import { createMediaPlugin, MEDIA_SLICE, type LoadOptions, type MediaActionMap, type MediaState, type Source } from '@otter-player/media';
+import { createMediaPlugin, MEDIA_SLICE, type Decoder, type LoadOptions, type MediaActionMap, type MediaState, type Source } from '@otter-player/media';
 import { createPresentationPlugin, PRESENTATION_SLICE } from '@otter-player/presentation';
 import { createFocusStore, createMultiview, type Multiview, type MultiviewTile } from '@otter-player/presentation/multiview';
 import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
 import { createVideoSurface } from '@otter-player/surface';
-import { bindActivity, CHROME_SLICE, createChromePlugin, defineOtterElements, provideStore } from '@otter-player/ui-core';
+import { bindActivity, PLAYER_UI_SLICE, createPlayerUiPlugin, defineOtterElements, provideStore } from '@otter-player/ui-core';
 import type { PlayerActions, PlayerState } from './player.js';
 import { buildShell } from './shell.js';
 
@@ -64,6 +64,12 @@ export interface SurveillanceOptions {
    * @defaultValue `3000`
    */
   readonly idleMs?: number;
+  /**
+   * Decoders the tiles may use besides WebCodecs' own: a WASM HEVC decoder for devices without HEVC
+   * hardware decoding, which the host brings (Otter publishes none: the available builds are GPL).
+   * @defaultValue `[]` (WebCodecs only: an HEVC stream on a device without an HEVC decoder reports the non-fatal `hevcDecoderUnavailable` and does not play)
+   */
+  readonly decoders?: readonly Decoder[];
 }
 
 /** One tile of the wall: its own playback session. */
@@ -129,10 +135,10 @@ function httpStreamRanks(sources: readonly Source[], base: string | undefined): 
 }
 
 /**
- * A wall of live streams on one GPU canvas: each tile on the WebCodecs backend (the WASM HEVC
- * decoder where WebCodecs has none), HTTP-FLV / WS-FLV / live MPEG-TS / HLS / File sources; the
- * controls act on the focused tile, the only one with sound. More than 6 HTTP/1.1 streams from one
- * host need WS-FLV or HTTP/2.
+ * A wall of live streams on one GPU canvas: each tile on the WebCodecs backend (with the host's
+ * `decoders`, e.g. a WASM HEVC decoder where WebCodecs has none), HTTP-FLV / WS-FLV / live MPEG-TS
+ * / HLS / File sources; the controls act on the focused tile, the only one with sound. More than 6
+ * HTTP/1.1 streams from one host need WS-FLV or HTTP/2.
  * @example
  * ```ts
  * import { createSurveillancePlayer } from '@otter-player/presets/surveillance';
@@ -151,11 +157,11 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
   // The shell: player UI and presentation (fullscreen of the whole wall); media actions go to the
   // focused tile through the focus store.
   const shell: OtterCore<PlayerState, PlayerActions> = createCore<PlayerState, PlayerActions>({
-    slices: [MEDIA_SLICE, QOE_SLICE, CHROME_SLICE, PRESENTATION_SLICE],
-    plugins: [createChromePlugin({ idleMs: options.idleMs ?? 3000 }), createPresentationPlugin({ container: root, surface: createVideoSurface(video) })],
+    slices: [MEDIA_SLICE, QOE_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE],
+    plugins: [createPlayerUiPlugin({ idleMs: options.idleMs ?? 3000 }), createPresentationPlugin({ container: root, surface: createVideoSurface(video) })],
   });
   const tiles: { tile: MultiviewTile; core: OtterCore<TileState, MediaActionMap> }[] = [];
-  const decoders = [createWebCodecsDecoder(), createWasmHevcDecoder()];
+  const decoders = [createWebCodecsDecoder(), ...(options.decoders ?? [])];
   const formats = [createFlvFormat(), createTsFormat(), createHlsFormat(), createFileFormat()];
   // Prewarm: the decode pool's Workers start with the decoder code loaded while the page sets up,
   // not at the first packet. (The AudioWorklet needs the AudioContext, which waits for a gesture: F1.)

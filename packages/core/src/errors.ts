@@ -48,6 +48,7 @@ export type OtterErrorType = 'network' | 'media' | 'drm' | 'mux' | 'other';
  * | `fragLoadError` | network | yes | format-hls | A segment failed to load after the retries |
  * | `gpuContextLimit` | other | no | surface | Too many WebGL contexts: share one GPU grid between views |
  * | `gpuUnavailable` | other | no | presentation | No WebGL2: a wall takes at most a few streams on 2D canvases |
+ * | `hevcDecoderUnavailable` | media | no | backend-webcodecs | An HEVC stream, no HEVC decoder in WebCodecs here and no WASM decoder given (`decoders`); the route then fails |
  * | `iceFailed` | network | yes | format-whep | The WebRTC connection failed |
  * | `liveOnly` | other | yes | format-flv, format-ts | FLV / TS on WebCodecs needs `live: true` (VOD goes through MSE) |
  * | `loadAborted` | other | no | backend-native, format-whep | A newer load or a teardown interrupted this one |

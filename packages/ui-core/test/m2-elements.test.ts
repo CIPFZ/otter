@@ -5,16 +5,16 @@ import { MEDIA_SLICE, type MediaActionMap, type MediaState } from '@otter-player
 import { INITIAL_PRESENTATION_STATE, PRESENTATION_SLICE } from '@otter-player/presentation';
 import { TEXT_SLICE } from '@otter-player/text';
 import {
-  CHROME_SLICE,
-  createChromePlugin,
+  PLAYER_UI_SLICE,
+  createPlayerUiPlugin,
   defineOtterElements,
   provideStore,
   provideStrings,
   settingsGroups,
   STRINGS_EN,
   STRINGS_ZH,
-  type ChromeActionMap,
-  type ChromeState,
+  type PlayerUiActionMap,
+  type PlayerUiState,
   type UiActions,
   type UiState,
 } from '@otter-player/ui-core';
@@ -22,7 +22,7 @@ import {
 defineOtterElements();
 
 function mount(html: string, lang?: string) {
-  const store = createStore<UiState, UiActions>({ slices: [MEDIA_SLICE, TEXT_SLICE, CHROME_SLICE, PRESENTATION_SLICE] });
+  const store = createStore<UiState, UiActions>({ slices: [MEDIA_SLICE, TEXT_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE] });
   const calls: [string, unknown][] = [];
   for (const type of [
     'toggle-captions',
@@ -442,7 +442,7 @@ describe('chrome plugin', () => {
 
   it('auto-hides the controls while playing and idle, never while paused or a menu is open', async () => {
     vi.useFakeTimers();
-    const core = createCore<MediaState & ChromeState, ChromeActionMap & MediaActionMap>({ slices: [MEDIA_SLICE, CHROME_SLICE], plugins: [createChromePlugin({ idleMs: 1000 })] });
+    const core = createCore<MediaState & PlayerUiState, PlayerUiActionMap & MediaActionMap>({ slices: [MEDIA_SLICE, PLAYER_UI_SLICE], plugins: [createPlayerUiPlugin({ idleMs: 1000 })] });
     await core.start();
     const s = core.store;
     s.setState({ status: 'ready', paused: false });
@@ -464,7 +464,7 @@ describe('chrome plugin', () => {
 
   it('brightness stays in range; a committed seek preview becomes seek-by', async () => {
     const seeks: number[] = [];
-    const core = createCore<MediaState & ChromeState, ChromeActionMap & MediaActionMap>({ slices: [MEDIA_SLICE, CHROME_SLICE], plugins: [createChromePlugin()] });
+    const core = createCore<MediaState & PlayerUiState, PlayerUiActionMap & MediaActionMap>({ slices: [MEDIA_SLICE, PLAYER_UI_SLICE], plugins: [createPlayerUiPlugin()] });
     await core.start();
     core.store.handle('seek-by', ({ seconds }) => void seeks.push(seconds));
     core.store.dispatch('brightness-by', { delta: -2 });
