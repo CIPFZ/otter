@@ -30,7 +30,7 @@ export * from './settings.js';
 export type { Comment, DanmakuRenderer } from './renderer.js';
 export { POLICY as RENDERER_POLICY, type FrameSample, type RendererKind } from './policy.js';
 
-/** Seconds a scrolling comment takes across the stage at speed 1 (B站: about 8 s). */
+/** Seconds a scrolling comment takes across the stage at speed 1 (Bilibili: about 8 s). */
 export const SCROLL_S = 8;
 /** Seconds a top / bottom comment stays. */
 export const FIXED_S = 4;
@@ -348,7 +348,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
 
   const overlay: Overlay = {
     id: 'danmaku',
-    // Above captions (200) would hide them: below, as B站 (captions stay readable).
+    // Above captions (200) would hide them: below, as Bilibili (captions stay readable).
     zIndex: 100,
     mount(h) {
       host = h;
@@ -369,7 +369,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
     tick(now, mediaTime, frameTime) {
       if (store === undefined || renderer === undefined || !settings.enabled) return;
       const doc = host?.root.ownerDocument;
-      // A hidden page draws nothing (SPEC §15 后台).
+      // A hidden page draws nothing (SPEC §15, background).
       if (doc?.visibilityState === 'hidden') return;
       const interval = Number.isNaN(lastTick) ? 16.7 : now - lastTick;
       lastTick = now;

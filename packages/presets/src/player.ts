@@ -32,46 +32,101 @@ export type PlayerState = MediaState & QoeState & TextState & ChromeState & Pres
 /** Actions of a player made by createPlayer. */
 export type PlayerActions = MediaActionMap & TextActionMap & ChromeActionMap & PresentationActionMap;
 
+/**
+ * What createPlayer assembles: the container, the formats and backends to route between, and the
+ * parts around them. The presets take these minus `formats` and `backends` ({@link PresetOptions}).
+ */
 export interface PlayerOptions<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions> {
-  /** The player's root. Empty: the default shell is built inside; with a <video>: its markup is kept. */
+  /**
+   * The player's root. Empty: the default shell is built inside; with a `<video>` in it: its markup
+   * is kept.
+   */
   readonly container: HTMLElement;
+  /** The formats a source is routed between, in order of preference (`createHlsFormat()`, ...). */
   readonly formats: readonly FormatPlugin[];
+  /**
+   * The backends a format may play on, in order of preference (`createMseBackendFactory()`, ...).
+   */
   readonly backends: readonly BackendFactory[];
+  /**
+   * Decoders for the WebCodecs backend (a WASM HEVC decoder where hardware has none).
+   * @defaultValue `[]` (WebCodecs' own decoders only)
+   */
   readonly decoders?: readonly Decoder[];
+  /**
+   * Route preferences: a preferred or forbidden backend, manual quality switching on iPhone.
+   * @defaultValue none (the router's own order)
+   */
   readonly policy?: RoutePolicy;
-  /** CMCD request data (CTA-5004), off by default. */
+  /**
+   * CMCD request data (CTA-5004).
+   * @defaultValue none (off)
+   */
   readonly cmcd?: CmcdConfig;
-  /** Top bar and Media Session title. */
+  /**
+   * Title in the top bar and in the Media Session.
+   * @defaultValue none (no title shown)
+   */
   readonly title?: string;
   /**
-   * Language of the controls (BCP 47: `zh-CN`, `en`), set as the player's `lang`. Without it: the
-   * page's nearest `lang`, else the browser's language. More languages: provideStrings(root, table).
+   * Language of the controls (BCP 47: `zh-CN`, `en`), set as the player's `lang`. More languages:
+   * provideStrings(root, table).
+   * @defaultValue the page's nearest `lang`, else the browser's language
    */
   readonly lang?: string;
-  /** The default controls (true) or a bare <video> (false: the host builds its UI on the store). Default true. */
+  /**
+   * The default controls (true) or a bare `<video>` (false: the host builds its UI on the store).
+   * @defaultValue `true`
+   */
   readonly controls?: boolean;
   /**
    * Captions (sidecar and in-band tracks, Otter's renderer, CVAA style): an on-demand chunk, loaded
-   * while the player starts when on. Default true.
+   * while the player starts when on.
+   * @defaultValue `true`
    */
   readonly captions?: boolean;
   /**
    * Start muted (before the first load): browsers allow autoplay only without sound, and the mute
-   * must be in place before play(). Default false.
+   * must be in place before play().
+   * @defaultValue `false`
    */
   readonly muted?: boolean;
-  /** Control bar auto-hide delay, ms; default 3000; 0 keeps the controls shown. */
+  /**
+   * Control bar auto-hide delay, ms; 0 keeps the controls shown.
+   * @defaultValue `3000`
+   */
   readonly idleMs?: number;
-  /** Keyboard mapping instead of SPEC §14.3's defaults (a remote's keys, ...). */
+  /**
+   * Keyboard mapping instead of the defaults (a remote's keys, ...).
+   * @defaultValue `DEFAULT_HOTKEYS` (SPEC §14.3)
+   */
   readonly hotkeys?: HotkeyMap;
-  /** Presentation modes: mini window, Document PiP, Media Session... (container and surface are the player's). */
+  /**
+   * Presentation modes: mini window, Document PiP, Media Session (container and surface are the
+   * player's).
+   * @defaultValue `{}` (every mode the environment supports)
+   */
   readonly presentation?: Omit<PresentationPluginOptions, 'container' | 'surface'>;
-  /** More state slices and plugins (danmaku, preferences, ...): S and A are the player's state and actions with theirs. */
+  /**
+   * More state slices (danmaku, preferences, ...): S is the player's state with theirs.
+   * @defaultValue `[]`
+   */
   readonly slices?: readonly StoreSlice[];
+  /**
+   * More plugins, installed after the player's own: A is the player's actions with theirs.
+   * @defaultValue `[]`
+   */
   readonly plugins?: readonly Plugin<S, A>[];
-  /** More decision logs for explain(), by name (e.g. the danmaku renderer's steps). */
+  /**
+   * More decision logs for explain(), by name (e.g. the danmaku renderer's steps).
+   * @defaultValue `{}`
+   */
   readonly explain?: Readonly<Record<string, (state: Readonly<S>) => readonly RouteStep[]>>;
-  /** Runs once the player is assembled (overlays, thumbnails, more bindings); may return a cleanup. */
+  /**
+   * Runs once the player is assembled (overlays, thumbnails, more bindings); may return a cleanup,
+   * run on destroy().
+   * @defaultValue none
+   */
   readonly setup?: (parts: PlayerParts<S, A>) => void | (() => void);
 }
 
@@ -99,20 +154,55 @@ export interface PlayerExplanation {
   readonly more: Readonly<Record<string, readonly RouteStep[]>>;
 }
 
+/**
+ * A player: load sources, read state and dispatch actions through the store, explain its decisions,
+ * destroy it.
+ */
 export interface Player<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions> {
+  /** The player's root (the container). */
   readonly element: HTMLElement;
+  /** The `<video>` the player plays into. */
   readonly video: HTMLVideoElement;
   /** Read state and dispatch actions (what the UI and framework bindings use). */
   readonly store: StoreView<S, A>;
+  /** Errors and plugin lifecycle events. */
   readonly events: EventBus<CoreEventMap>;
+  /** QoE events: startup, rebuffers, quality switches, errors, the route. */
   readonly qoe: QoeHook;
   /** Resolves once every plugin is installed; `load` before that waits for it. */
   readonly ready: Promise<void>;
+  /**
+   * Loads a source (a URL, or a `Source` with renditions, tracks, DRM); resolves once it can play,
+   * rejects with an {@link OtterError} when no route works.
+   */
   load(source: string | Source, options?: LoadOptions): Promise<void>;
+  /** Everything the player decided and why (diagnostics, support tickets). */
   explain(): PlayerExplanation;
+  /** Stops playback, uninstalls the plugins and removes what the player built in the container. */
   destroy(): Promise<void>;
 }
 
+/**
+ * Assembles a player around a `<video>` with the formats and backends given: the low-level call
+ * behind the presets, for a host with its own composition.
+ * @example
+ * ```ts
+ * import { createMseBackendFactory } from '@otter-player/backend-mse';
+ * import { createNativeBackendFactory } from '@otter-player/backend-native';
+ * import { createHlsFormat } from '@otter-player/format-hls';
+ * import { createPlayer } from '@otter-player/presets';
+ * import '@otter-player/ui-skin-default';
+ *
+ * // Your own composition: only HLS, on MSE with native playback as the fallback.
+ * const player = createPlayer({
+ *   container,
+ *   formats: [createHlsFormat()],
+ *   backends: [createMseBackendFactory(), createNativeBackendFactory()],
+ *   title: 'Example',
+ * });
+ * void player.load(src);
+ * ```
+ */
 export function createPlayer<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions>(options: PlayerOptions<S, A>): Player<S, A> {
   const root = options.container;
   if (options.lang !== undefined) root.lang = options.lang;

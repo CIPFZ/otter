@@ -10,26 +10,36 @@ export interface Trigger {
   readonly parent?: Trigger;
 }
 
+/** What a handler gets besides the payload: the event type and, when known, the trigger chain. */
 export interface EventMeta<K extends PropertyKey = PropertyKey> {
+  /** The event type. */
   readonly type: K;
+  /** What caused it (a key press, an action), when known. */
   readonly trigger?: Trigger;
 }
 
 export type EventHandler<P, K extends PropertyKey = PropertyKey> = (payload: P, meta: EventMeta<K>) => void;
 
+/** A typed event bus: event names are the keys of M, payloads its values. */
 export interface EventBus<M extends object> {
+  /** Calls the handler on every `type` event; returns its unsubscribe. */
   on<K extends keyof M>(type: K, handler: EventHandler<M[K], K>): Unsubscribe;
+  /** Calls the handler on the next `type` event only; returns its unsubscribe. */
   once<K extends keyof M>(type: K, handler: EventHandler<M[K], K>): Unsubscribe;
   /**
    * Delivers synchronously to every handler. Handler exceptions never stop delivery to the
    * others; they are rethrown after delivery (AggregateError when more than one).
    */
   emit<K extends keyof M>(type: K, payload: M[K], trigger?: Trigger): void;
+  /** Removes every handler. */
   clear(): void;
 }
 
 type AnyHandler = (payload: unknown, meta: EventMeta) => void;
 
+/**
+ * Creates a typed event bus (a plugin's own events; the core's and the QoE hook are made with it).
+ */
 export function createEventBus<M extends object>(): EventBus<M> {
   const handlers = new Map<keyof M, Set<AnyHandler>>();
 

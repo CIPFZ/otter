@@ -44,7 +44,7 @@ export interface WebCodecsBackendOptions {
   /** Upper bound on concurrently decoding instances sharing the Worker pool (SPEC §6.3). */
   readonly maxConcurrentDecoders?: number;
   /**
-   * Where pictures go: a FrameSurface from @otter-player/surface/gpu (GPUSurface, else
+   * Where pictures go: a FrameSurface from `@otter-player/surface/gpu` (GPUSurface, else
    * CanvasSurface), or anything with draw / clear. Owned by the host: cleared, not destroyed,
    * with the backend.
    */

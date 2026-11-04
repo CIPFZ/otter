@@ -1,4 +1,4 @@
-// Single audible tab (SPEC §15 外部窗口 / 多标签, ADR-008 §8): players of one origin share a
+// Single audible tab (SPEC §15, external windows / several tabs, ADR-008 §8): players of one origin share a
 // BroadcastChannel; when one starts playing with sound, the others that are playing with sound
 // mute themselves. The most recent start wins; nothing is restored when it pauses or its tab
 // closes (the user unmutes where they want sound). Each yield is a QoE `audio-yield` event.

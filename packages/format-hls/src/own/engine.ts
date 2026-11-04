@@ -30,10 +30,17 @@ import {
 import { buildMimeCodec } from '../vendor/video.js/media/utils/tracks.js';
 import type { Live } from './live.js';
 
+/** Options of the own CMAF-HLS engine. */
 export interface CmafHlsEngineOptions {
-  /** Seconds buffered ahead before loading pauses (hls.js maxBufferLength). Default 30. */
+  /**
+   * Seconds buffered ahead before loading pauses.
+   * @defaultValue `30`
+   */
   readonly forwardBufferS?: number;
-  /** Live: latency to hold, seconds; default the playlist's HOLD-BACK (3 x TARGETDURATION). */
+  /**
+   * Live: latency to hold, seconds.
+   * @defaultValue the playlist's HOLD-BACK (3 × TARGETDURATION)
+   */
   readonly targetLatency?: number;
 }
 
@@ -63,7 +70,7 @@ const BACK_BUFFER_S = 30;
 const RETRIES = 3;
 
 /**
- * @otter-player/core's helpers, handed in by the lazy wrapper: a value import shared with the
+ * `@otter-player/core`'s helpers, handed in by the lazy wrapper: a value import shared with the
  * entry chunk would make core lazily initialised in single-file bundles (side-effects gate).
  */
 export interface CoreHelpers {

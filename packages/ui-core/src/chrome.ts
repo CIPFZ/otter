@@ -8,6 +8,7 @@ import type { InputActionMap } from '@otter-player/input';
 import type { MediaActionMap, MediaState } from '@otter-player/media';
 import type { PresentationActionMap } from '@otter-player/presentation';
 
+/** Chrome state: control visibility, the dimming layer, the seek preview and the open menu. */
 export interface ChromeState {
   readonly controlsVisible: boolean;
   /** Player dimming layer, 0..1 (gesture-controlled brightness; never the screen's). */
@@ -17,7 +18,9 @@ export interface ChromeState {
   readonly menu: string | null;
 }
 
+/** The chrome state before any interaction: controls shown, full brightness, nothing open. */
 export const INITIAL_CHROME_STATE: ChromeState = { controlsVisible: true, brightness: 1, seekPreview: null, menu: null };
+/** The chrome's store slice (createPlayer adds it). */
 export const CHROME_SLICE: StoreSlice<ChromeState> = { id: 'chrome', initialState: INITIAL_CHROME_STATE };
 
 /** Actions handled by the chrome plugin; `toggle-fullscreen` etc. belong to presentation. */
@@ -30,11 +33,19 @@ export interface ChromeActionMap {
   escape: Record<string, never>;
 }
 
+/** Options of the chrome plugin. */
 export interface ChromeOptions {
-  /** Hidden this long after the last interaction while playing and idle, ms; 0 keeps them shown. */
+  /**
+   * The controls hide this long after the last interaction while playing, ms; 0 keeps them shown.
+   * @defaultValue `3000`
+   */
   readonly idleMs?: number;
 }
 
+/**
+ * The chrome plugin: control visibility and auto-hide, brightness, seek preview, menus
+ * (createPlayer installs it).
+ */
 export function createChromePlugin<S extends ChromeState & Pick<MediaState, 'paused' | 'status'>>(options: ChromeOptions = {}): Plugin<S, ChromeActionMap & MediaActionMap> {
   const idleMs = options.idleMs ?? 3000;
   let store: Store<S, ChromeActionMap & MediaActionMap> | undefined;
@@ -132,4 +143,5 @@ export function bindActivity(root: HTMLElement, store: { dispatch(type: 'show-co
 }
 
 // InputActionMap has the same names; exported so hosts can compose UiActions without importing both.
+/** The input actions the chrome handles. */
 export type ChromeUiActions = Pick<InputActionMap, 'toggle-controls' | 'brightness-by' | 'seek-preview' | 'escape'>;

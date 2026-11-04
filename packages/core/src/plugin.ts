@@ -7,28 +7,46 @@ import type { EventBus } from './events.js';
 import type { QoeHook } from './qoe.js';
 import type { Store } from './store.js';
 
+/** The core's events: errors and the plugin lifecycle. */
 export interface CoreEventMap {
+  /** An error from any part of the player (fatal or not). */
   error: OtterError;
+  /** A plugin finished installing. */
   'plugin-installed': { readonly id: string };
+  /** A plugin finished uninstalling. */
   'plugin-uninstalled': { readonly id: string };
 }
 
+/** What a plugin gets at install: the store, the event bus and the QoE hook. */
 export interface PluginContext<S extends object = object, A extends object = object> {
+  /** State and actions (a plugin registers its action handlers here). */
   readonly store: Store<S, A>;
+  /** Errors and plugin lifecycle events. */
   readonly events: EventBus<CoreEventMap>;
+  /** QoE events. */
   readonly qoe: QoeHook;
 }
 
+/**
+ * A plugin: everything a player is made of (formats, backends, UI features, overlays) attaches
+ * through this.
+ */
 export interface Plugin<S extends object = object, A extends object = object> {
+  /** Unique id in the registry. */
   readonly id: string;
   /** Ids of plugins that must be installed first. */
   readonly deps?: readonly string[];
+  /** Sets the plugin up (action handlers, subscriptions); may be async. */
   install(ctx: PluginContext<S, A>): void | Promise<void>;
+  /** Undoes install(). */
   uninstall(): void | Promise<void>;
 }
 
+/** The plugins of a core, installed in dependency order. */
 export interface PluginRegistry<S extends object = object, A extends object = object> {
+  /** Adds a plugin; a duplicate id throws `pluginDuplicate`. */
   register(plugin: Plugin<S, A>): void;
+  /** Whether a plugin with this id is registered. */
   has(id: string): boolean;
   /** Deterministic topological order; ties keep registration order. */
   order(): readonly Plugin<S, A>[];
@@ -48,6 +66,7 @@ const pluginError = (details: string, message: string, cause?: unknown): OtterEr
     ...(cause === undefined ? {} : { cause }),
   });
 
+/** Creates a plugin registry (createCore makes one; a host rarely needs its own). */
 export function createPluginRegistry<S extends object = object, A extends object = object>(): PluginRegistry<S, A> {
   const plugins = new Map<string, Plugin<S, A>>();
   let installed: Plugin<S, A>[] = [];

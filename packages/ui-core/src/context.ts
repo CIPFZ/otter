@@ -21,9 +21,9 @@ export type UiState = MediaState &
   Partial<PresentationState> &
   /** The picture plugin's state, when the host installs it (picture controls). */
   Partial<{ readonly picture: PictureState }> &
-  /** Danmaku settings, when the host installs @otter-player/danmaku (structural: no dependency). */
+  /** Danmaku settings, when the host installs `@otter-player/danmaku` (structural: no dependency). */
   Partial<{ readonly danmaku: DanmakuView }>;
-/** The part of @otter-player/danmaku's DanmakuSettings the settings page shows. */
+/** The part of `@otter-player/danmaku`'s DanmakuSettings the settings page shows. */
 export interface DanmakuView {
   readonly enabled: boolean;
   readonly opacity: number;
@@ -35,12 +35,17 @@ export interface DanmakuView {
   readonly hideTop: boolean;
   readonly hideBottom: boolean;
 }
+/**
+ * The actions the UI dispatches: media, chrome and, when present, presentation, text, picture and
+ * danmaku.
+ */
 export type UiActions = MediaActionMap &
   ChromeActionMap &
   TextActionMap &
   PresentationActionMap &
   Partial<PictureActionMap> &
   Partial<{ 'set-danmaku': Partial<DanmakuView> }>;
+/** The store the `otter-*` elements read: provided on the player root. */
 export type UiStore = StoreView<UiState, UiActions>;
 
 const stores = new WeakMap<Node, UiStore>();
@@ -53,6 +58,10 @@ export interface StoreConsumer {
 const isConsumer = (n: unknown): n is StoreConsumer =>
   typeof n === 'object' && n !== null && typeof (n as Partial<StoreConsumer>).connectStore === 'function';
 
+/**
+ * Makes a store the one the `otter-*` elements inside `root` read (createPlayer does it); elements
+ * already connected pick it up now.
+ */
 export function provideStore(root: HTMLElement, store: StoreView<UiState, UiActions>): void {
   stores.set(root, store);
   // Elements connected before the store was provided pick it up now.
@@ -72,6 +81,7 @@ function lookup<T>(map: WeakMap<Node, T>, from: Node): T | undefined {
   return undefined;
 }
 
+/** The store provided on `from` or its nearest ancestor (across shadow roots). */
 export function findStore(from: Node): UiStore | undefined {
   return lookup(stores, from);
 }
@@ -84,6 +94,7 @@ export function provideThumbnails(root: HTMLElement, provider: ThumbnailProvider
   else thumbnails.set(root, provider);
 }
 
+/** The preview-picture provider on `from` or its nearest ancestor. */
 export function findThumbnails(from: Node): ThumbnailProvider | undefined {
   return lookup(thumbnails, from);
 }

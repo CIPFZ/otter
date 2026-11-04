@@ -1,4 +1,4 @@
-// Preset `vod` (SPEC §19「长视频点播 + 多清晰度 + 字幕」, and「短视频 / 简单点播」with captions and
+// Preset `vod` (SPEC §19 row "long VOD + several qualities + captions", and "short videos / simple VOD" with captions and
 // thumbnails off): HLS (the own CMAF-HLS engine, hls.js for what it leaves), DASH (Shaka) and
 // progressive MP4 (mp4-range), on MSE with native playback as the fallback; quality ABR, captions,
 // and preview-card pictures (WebVTT sprites or I-frame playlists). Captions and preview pictures are
@@ -16,11 +16,29 @@ import { createPlayer, type Player } from './player.js';
 
 export type { PresetOptions } from './options.js';
 
+/** Options of the `vod` preset: {@link PresetOptions} and the preview pictures. */
 export interface VodOptions extends PresetOptions {
-  /** Preview-card pictures on the time slider: an on-demand chunk, loaded once the player is assembled. Default true. */
+  /**
+   * Preview-card pictures on the time slider (WebVTT sprites or I-frame playlists): an on-demand
+   * chunk, loaded once the player is assembled.
+   * @defaultValue `true`
+   */
   readonly thumbnails?: boolean;
 }
 
+/**
+ * A long-form VOD player: HLS (own engine, hls.js for what it hands over), DASH (Shaka) and
+ * progressive MP4, on MSE with native playback as the fallback; quality ABR, captions, preview
+ * pictures.
+ * @example
+ * ```ts
+ * import { createVodPlayer } from '@otter-player/presets/vod';
+ * import '@otter-player/ui-skin-default';
+ *
+ * const player = createVodPlayer({ container, title: 'Example' });
+ * void player.load(src);
+ * ```
+ */
 export function createVodPlayer(options: VodOptions): Player {
   return createPlayer({
     ...options,

@@ -50,18 +50,42 @@ export function otterState<S, T>(store: OtterStoreLike<S> | null | undefined, se
   };
 }
 
+/** What the otterPlayer action takes. */
 export interface OtterPlayerActionOptions<P extends OtterPlayerLike> {
   /** Makes the player in the container it gets (a preset: `(container) => createVodPlayer({ container, ... })`). */
   readonly create: (container: HTMLElement) => P;
-  /** Remake the player when one of these changes (compared item by item). */
+  /**
+   * Remake the player when one of these changes (compared item by item).
+   * @defaultValue `[]` (once)
+   */
   readonly deps?: readonly unknown[];
-  /** Called with the player once made, and with null when it goes. */
+  /**
+   * Called with the player once made, and with null when it goes.
+   * @defaultValue none
+   */
   readonly onPlayer?: (player: P | null) => void;
 }
 
 /**
  * `use:otterPlayer={{ create, deps, onPlayer }}`: makes the player inside a fresh child of the
  * element, destroys it (and the child) when the element goes or when `deps` changes.
+ * @example
+ * ```svelte
+ * <script>
+ *   import { otterPlayer } from '@otter-player/svelte';
+ *   import { createVodPlayer } from '@otter-player/presets/vod';
+ *   import '@otter-player/ui-skin-default';
+ *
+ *   let { src } = $props();
+ *   const create = (container) => {
+ *     const player = createVodPlayer({ container, title: 'Example' });
+ *     void player.load(src);
+ *     return player;
+ *   };
+ * </script>
+ *
+ * <div style="aspect-ratio: 16 / 9" use:otterPlayer={{ create, deps: [src] }}></div>
+ * ```
  */
 export function otterPlayer<P extends OtterPlayerLike>(node: HTMLElement, options: OtterPlayerActionOptions<P>): { update(next: OtterPlayerActionOptions<P>): void; destroy(): void } {
   let current = options;

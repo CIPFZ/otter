@@ -18,7 +18,7 @@ export interface DrmConfig {
   readonly serverCertificateUrl?: string;
 }
 
-/** Subtitle file next to the media; rendered by @otter-player/text, not by the engines. */
+/** Subtitle file next to the media; rendered by `@otter-player/text`, not by the engines. */
 export interface SidecarTextTrack {
   readonly src: string;
   /** Defaults from the file extension, then `vtt`. */
@@ -68,11 +68,26 @@ export interface Source {
   readonly fallback?: Source;
 }
 
+/** Options of one `load()`. */
 export interface LoadOptions {
-  /** Seconds. */
+  /**
+   * Where to start, seconds.
+   * @defaultValue the start (VOD) or the live edge (live)
+   */
   readonly startTime?: number;
+  /**
+   * Play once loaded (browsers allow it only muted, or after a gesture).
+   * @defaultValue `false`
+   */
   readonly autoplay?: boolean;
-  /** Quality id, or `auto` (default). */
+  /**
+   * A quality id to start on, or `auto` for ABR.
+   * @defaultValue `'auto'`
+   */
   readonly quality?: string;
+  /**
+   * Aborts this load (a later load aborts it too).
+   * @defaultValue none
+   */
   readonly signal?: AbortSignal;
 }

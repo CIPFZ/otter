@@ -7,7 +7,7 @@
 import Cea608Parser, { type CaptionScreen } from '../vendor/hls.js/cea-608-parser.js';
 import OutputFilter, { type CaptionsSink } from '../vendor/hls.js/output-filter.js';
 
-/** Structurally @otter-player/media's InbandCue (pipeline stays free of media types). */
+/** Structurally `@otter-player/media`'s InbandCue (pipeline stays free of media types). */
 export interface Cea608Cue {
   readonly id: string;
   readonly startTime: number;

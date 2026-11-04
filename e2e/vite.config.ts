@@ -65,6 +65,8 @@ export default defineConfig({
       { find: /^@otter-player\/presentation\/single-audio$/, replacement: `${packagesDir}presentation/src/single-audio.ts` },
       { find: /^@otter-player\/input\/remote$/, replacement: `${packagesDir}input/src/remote.ts` },
       { find: /^@otter-player\/svelte\/OtterPlayer\.svelte$/, replacement: `${packagesDir}svelte/src/OtterPlayer.svelte` },
+      // The skins are CSS-only packages: their source stylesheet.
+      { find: /^@otter-player\/(ui-skin-[a-z]+)$/, replacement: `${packagesDir}$1/src/index.css` },
       { find: /^@otter-player\/presets\/([a-z0-9-]+)$/, replacement: `${packagesDir}presets/src/$1.ts` },
       // OTTER_E2E_DIST=format-hls,...: those packages from their built dist/ (what ships: format-hls
       // renames its internal `_` properties at build time, ADR-013); everything else from source.
@@ -90,6 +92,7 @@ export default defineConfig({
         surfaces: fileURLToPath(new URL('./site/surfaces.html', import.meta.url)),
         webcodecs: fileURLToPath(new URL('./site/webcodecs.html', import.meta.url)),
         presets: fileURLToPath(new URL('./site/presets.html', import.meta.url)),
+        examples: fileURLToPath(new URL('./site/examples.html', import.meta.url)),
         tv: fileURLToPath(new URL('./site/tv.html', import.meta.url)),
         'react-basic': fileURLToPath(new URL('./site/react-basic.html', import.meta.url)),
         'react-vod': fileURLToPath(new URL('./site/react-vod.html', import.meta.url)),

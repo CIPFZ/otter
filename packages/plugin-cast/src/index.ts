@@ -1,4 +1,4 @@
-// Casting (SPEC §15 投屏): Remote Playback API, AirPlay webkitShowPlaybackTargetPicker, Cast SDK. M0 empty implementation.
+// Casting (SPEC §15, casting): Remote Playback API, AirPlay webkitShowPlaybackTargetPicker, Cast SDK. M0 empty implementation.
 
 import { notImplemented, type Plugin } from '@otter-player/core';
 

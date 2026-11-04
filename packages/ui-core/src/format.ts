@@ -35,10 +35,12 @@ export function formatBitrate(bps: number | null | undefined): string {
   return bps >= 1e6 ? `${(bps / 1e6).toFixed(1)} Mbps` : `${Math.round(bps / 1e3)} kbps`;
 }
 
+/** ms -> "120 ms" (the stats panel); "—" when unknown. */
 export function formatMs(ms: number | null | undefined): string {
   return ms === null || ms === undefined || !Number.isFinite(ms) ? '—' : `${Math.round(ms)} ms`;
 }
 
+/** seconds -> "4.2 s" (the stats panel); "—" when unknown. */
 export function formatSeconds(s: number | null | undefined): string {
   return s === null || s === undefined || !Number.isFinite(s) ? '—' : `${s.toFixed(1)} s`;
 }

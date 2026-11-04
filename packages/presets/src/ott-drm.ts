@@ -1,4 +1,4 @@
-// Preset `ott-drm` (SPEC §19「OTT 付费 + DRM + 离线」): HLS and DASH with DRM, both through Shaka (the
+// Preset `ott-drm` (SPEC §19 row "OTT pay TV + DRM + offline"): HLS and DASH with DRM, both through Shaka (the
 // only EME path; format-hls hands DRM streams to it, clear HLS keeps the own engine), on MSE with
 // native playback as the fallback for clear streams; quality ABR, captions and preview pictures
 // as in `vod` (on-demand chunks). `drm` is the default for every load (a source's own `drm` wins).
@@ -14,13 +14,38 @@ import { provideThumbnails } from '@otter-player/ui-core';
 import type { PresetOptions } from './options.js';
 import { createPlayer, type Player } from './player.js';
 
+/**
+ * Options of the `ott-drm` preset: {@link PresetOptions}, the DRM defaults and the preview
+ * pictures.
+ */
 export interface OttDrmOptions extends PresetOptions {
-  /** License servers, headers, FairPlay certificate: applied to every load whose source has none. */
+  /**
+   * License servers, headers, FairPlay certificate: applied to every load whose source has no `drm`
+   * of its own.
+   * @defaultValue none (clear streams only, unless a source brings its `drm`)
+   */
   readonly drm?: DrmConfig;
-  /** Preview-card pictures on the time slider (an on-demand chunk). Default true. */
+  /**
+   * Preview-card pictures on the time slider (an on-demand chunk).
+   * @defaultValue `true`
+   */
   readonly thumbnails?: boolean;
 }
 
+/**
+ * A subscription player with DRM: HLS and DASH with DRM through Shaka (the only EME path), clear
+ * HLS on the own engine, on MSE with native playback as the fallback for clear streams; ABR,
+ * captions, preview pictures.
+ * @example
+ * ```ts
+ * import { createOttDrmPlayer } from '@otter-player/presets/ott-drm';
+ * import '@otter-player/ui-skin-default';
+ *
+ * // drm: { servers: { 'com.widevine.alpha': 'https://license.example.com/widevine' } }
+ * const player = createOttDrmPlayer({ container, title: 'Example', drm });
+ * void player.load(src);
+ * ```
+ */
 export function createOttDrmPlayer(options: OttDrmOptions): Player {
   const player = createPlayer({
     ...options,

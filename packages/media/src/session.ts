@@ -45,12 +45,12 @@ export interface MediaState extends PlaybackSnapshot {
   /** ManagedMediaSource in use (iPhone / preferManagedMediaSource). */
   readonly mms: boolean;
   readonly remotePlayback: 'enabled' | 'disabled' | null;
-  /** The user's video codec order (persisted by @otter-player/preferences), null for the host's. */
+  /** The user's video codec order (persisted by `@otter-player/preferences`), null for the host's. */
   readonly codecPreference: readonly CodecFamily[] | null;
   /**
    * Families left out of the ranking, with why: one that gave no picture on this page although
    * decodingInfo vouched for it, or one remembered from an earlier visit (`exclude-codecs`,
-   * @otter-player/preferences). Kept across loads.
+   * `@otter-player/preferences`). Kept across loads.
    */
   readonly codecExcluded: Readonly<Partial<Record<CodecFamily, string>>>;
   /** Video codec family the engine plays, null before it chose (or for a stream naming none). */
@@ -60,7 +60,7 @@ export interface MediaState extends PlaybackSnapshot {
 
 /**
  * Actions handled by the session. The input-style entries share names and payloads with
- * `InputActionMap` in @otter-player/input (checked by a type test), without a dependency on it.
+ * `InputActionMap` in `@otter-player/input` (checked by a type test), without a dependency on it.
  */
 export interface MediaActionMap {
   load: { readonly source: Source; readonly options?: LoadOptions };
@@ -79,7 +79,7 @@ export interface MediaActionMap {
   'volume-by': { readonly delta: number };
   /** rate > 0 starts a hold (e.g. long press 2x); rate <= 0 releases and restores the previous rate. */
   'hold-rate': { readonly rate: number };
-  /** In-band text track whose cues the engine delivers (used by @otter-player/text), null for none. */
+  /** In-band text track whose cues the engine delivers (used by `@otter-player/text`), null for none. */
   'set-text-track': { readonly id: string | null };
   'select-audio-track': { readonly id: string };
   /** Live: back to the live edge (the "Back to live" capsule). */
@@ -470,7 +470,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   /**
    * No picture yet on a codec family the platform vouched for, with another one on offer (WebKit
    * says AV1 decodes on Macs that cannot): the family is what fails, not the backend. Marks it
-   * excluded (state.codecExcluded: for this page, and for @otter-player/preferences to remember)
+   * excluded (state.codecExcluded: for this page, and for `@otter-player/preferences` to remember)
    * and explains; the caller runs the same step again without it.
    */
   const dropFamily = (decision: RouteDecision, error: OtterError): boolean => {

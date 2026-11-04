@@ -64,6 +64,7 @@ export function useOtterState<S, T>(store: StoreSource<S>, selector: (state: S) 
   return value;
 }
 
+/** What useOtterPlayer returns: the template ref for the box and the player. */
 export interface UseOtterPlayer<P> {
   /** The box's template ref: the player is made inside it once mounted. */
   readonly box: Ref<HTMLElement | null>;
@@ -109,14 +110,24 @@ export function useOtterPlayer<P extends OtterPlayerLike>(create: () => (contain
   return { box, player };
 }
 
+/** Props of the Vue OtterPlayer component. */
 export interface OtterPlayerProps {
   /** Makes the player in the container it gets (a preset: `(container) => createVodPlayer({ container, ... })`). */
   readonly create: (container: HTMLElement) => OtterPlayerLike;
-  /** Remake the player when one of these changes (default: once per mount). */
+  /**
+   * Remake the player when one of these changes.
+   * @defaultValue `[]` (once per mount)
+   */
   readonly deps?: readonly unknown[];
-  /** Reserved box before the player exists (no layout shift): CSS aspect-ratio, default `16 / 9`. */
+  /**
+   * Reserved box before the player exists (no layout shift): CSS aspect-ratio.
+   * @defaultValue `'16 / 9'`
+   */
   readonly aspectRatio?: string;
-  /** Picture shown in the box until the player's own poster / first frame covers it. */
+  /**
+   * Picture shown in the box until the player's own poster or first frame covers it.
+   * @defaultValue none
+   */
   readonly poster?: string;
 }
 
@@ -126,6 +137,25 @@ type OtterPlayerEmits = { player: (p: OtterPlayerLike | null) => true };
  * A player made by a preset, as a component. Server-rendered as the empty box (same markup on the
  * client's first render); the player is made after mount. Emits `player` with it, and with null
  * when it goes.
+ * @example
+ * ```ts
+ * import { defineComponent, h } from 'vue';
+ * import { OtterPlayer } from '@otter-player/vue';
+ * import { createVodPlayer } from '@otter-player/presets/vod';
+ * import '@otter-player/ui-skin-default';
+ *
+ * export const Video = defineComponent({
+ *   props: { src: { type: String, required: true } },
+ *   setup(props) {
+ *     const create = (container: HTMLElement) => {
+ *       const player = createVodPlayer({ container, title: 'Example' });
+ *       void player.load(props.src);
+ *       return player;
+ *     };
+ *     return () => h(OtterPlayer, { create, deps: [props.src] });
+ *   },
+ * });
+ * ```
  */
 // A component options object, not a defineComponent() call: nothing runs at import (the
 // side-effect gate counts top-level calls; defineComponent only types an object like this one).

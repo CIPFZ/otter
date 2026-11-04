@@ -67,7 +67,7 @@ export interface DanmakuInput {
   /** Media seconds. */
   readonly time: number;
   readonly text: string;
-  /** Default `rtl` (scrolling). B站 mode numbers are mapped by the parsers. */
+  /** Default `rtl` (scrolling). Bilibili mode numbers are mapped by the parsers. */
   readonly mode?: Mode;
   /** 0xRRGGBB, default white. */
   readonly color?: number;

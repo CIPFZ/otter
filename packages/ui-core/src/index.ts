@@ -6,6 +6,7 @@ import type { StoreSlice } from '@otter-player/core';
 import type { GestureMap, HotkeyMap } from '@otter-player/input';
 import type { Overlay } from '@otter-player/surface';
 
+/** A UI feature bundle (defineUIFeature): its slices, elements, hotkeys, gestures and overlays. */
 export interface UIFeature {
   readonly id: string;
   readonly slices?: StoreSlice[];
@@ -37,6 +38,7 @@ export const OTTER_ELEMENTS = {
   Announcer: 'otter-announcer',
 } as const;
 
+/** A tag name of an `otter-*` element. */
 export type OtterElementName = (typeof OTTER_ELEMENTS)[keyof typeof OTTER_ELEMENTS];
 
 export { findStore, findThumbnails, provideStore, provideThumbnails, type StoreConsumer, type UiActions, type UiState, type UiStore } from './context.js';

@@ -5,10 +5,13 @@
 import { createEventBus, type EventBus } from './events.js';
 import type { OtterError } from './errors.js';
 
+/** One step of a routing decision: a candidate (format, backend, engine) and what became of it. */
 export interface RouteStep {
-  /** Backend (or decoder fallback step such as `wasm`) that was considered. */
+  /** What was considered (`hls`, `mse`, `hlsjs`, ...). */
   readonly candidate: string;
+  /** Selected, rejected before trying, or failed when tried. */
   readonly outcome: 'selected' | 'rejected' | 'failed';
+  /** Why, in words (codecs, capabilities, an error). */
   readonly reason: string;
 }
 
@@ -19,7 +22,9 @@ export interface RouteExplanation {
   readonly steps: readonly RouteStep[];
 }
 
+/** The QoE events (CTA-2066-style metrics) a player emits on its `qoe` hook. */
 export interface QoeEventMap {
+  /** The first frame showed. */
   startup: {
     /** Time to first frame from the load action, ms. */
     readonly ttff: number;
@@ -29,6 +34,7 @@ export interface QoeEventMap {
     readonly format: string;
     readonly codec?: string;
   };
+  /** Playback waited for data (one event when it starts, one when it ends). */
   rebuffer: {
     /** Media position, seconds. */
     readonly position: number;
@@ -38,17 +44,20 @@ export interface QoeEventMap {
     /** ms */
     readonly duration?: number;
   };
+  /** The quality changed (ABR or the viewer). */
   'quality-switch': {
     readonly from: string | null;
     readonly to: string;
     readonly reason: string;
     readonly mode: 'auto' | 'manual';
   };
+  /** An error, with the fallback path left at that time. */
   error: {
     readonly error: OtterError;
     /** Remaining fallback path at the time of the error (empty when none is left). */
     readonly fallback: readonly string[];
   };
+  /** A new bandwidth estimate. */
   bandwidth: {
     /** bits per second */
     readonly estimate: number;
@@ -57,20 +66,24 @@ export interface QoeEventMap {
     /** The engine's configured default, not a measurement yet (shown as "(est.)"). */
     readonly estimated?: boolean;
   };
+  /** Live latency, seconds behind the live edge. */
   latency: {
     /** seconds behind live edge */
     readonly latency: number;
     readonly target?: number;
   };
+  /** Dropped frames so far. */
   'dropped-frames': {
     readonly dropped: number;
     readonly total: number;
   };
+  /** The session ended (unload, destroy): watch time. */
   exit: {
     readonly position: number;
     /** Accumulated watch time, seconds. */
     readonly watched: number;
   };
+  /** The routing decision of a load (also explain()'s `route`). */
   route: RouteExplanation;
   /** Window mode changed (SPEC §15); modes are PresentationMode names. */
   'presentation-change': {
@@ -95,8 +108,10 @@ export interface QoeEventMap {
 
 export type QoeEventType = keyof QoeEventMap;
 
+/** The QoE event bus of a player (`player.qoe`). */
 export type QoeHook = EventBus<QoeEventMap>;
 
+/** Creates a QoE hook (createCore makes one). */
 export function createQoeHook(): QoeHook {
   return createEventBus<QoeEventMap>();
 }

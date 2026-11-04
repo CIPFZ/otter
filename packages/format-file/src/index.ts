@@ -8,6 +8,10 @@ import type { FormatPlugin, Source } from '@otter-player/media';
 
 const isBlob = (src: Source['src']): src is Blob => typeof Blob === 'function' && src instanceof Blob;
 
+/**
+ * The local File / Blob format: mediabunny demuxing (MP4, MOV, WebM, MKV, MPEG-TS, Ogg) into the
+ * WebCodecs backend, for frame-accurate seeking and codecs MSE lacks.
+ */
 export function createFileFormat(): FormatPlugin {
   return {
     id: 'file',

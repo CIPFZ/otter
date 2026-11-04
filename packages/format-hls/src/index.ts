@@ -17,29 +17,51 @@ import { lazyCmafHlsEngine } from './own/lazy.js';
 export type { CmafHlsEngineOptions } from './own/engine.js';
 import { createShakaEngine, type ShakaEngineOptions } from '@otter-player/engine-adapter-shaka';
 
+/** Options of the HLS format. */
 export interface HlsFormatOptions {
   /**
-   * Engine for clear content; DRM content always uses Shaka. Default `otter` (own CMAF-HLS
-   * engine, falling back to hls.js); `hlsjs` for the adapter only.
+   * Engine for clear content (DRM content always goes to Shaka): `otter`, the own CMAF-HLS engine
+   * falling back to hls.js; `hlsjs`, the adapter only; `shaka`.
+   * @defaultValue `'otter'`
    */
   readonly engine?: 'otter' | 'hlsjs' | 'shaka';
-  /** Own engine: seconds buffered ahead (default 30); live target latency (default HOLD-BACK). */
+  /**
+   * Own engine options: buffer ahead, live latency.
+   * @defaultValue `{}`
+   */
   readonly own?: CmafHlsEngineOptions;
+  /**
+   * hls.js adapter options (configuration, the light build).
+   * @defaultValue `{}`
+   */
   readonly hlsjs?: HlsJsEngineOptions;
+  /**
+   * Shaka adapter options (DRM streams).
+   * @defaultValue `{}`
+   */
   readonly shaka?: ShakaEngineOptions;
-  /** `otter` (default): pipeline ABR rule stack; `engine`: the engine's own ABR (ADR-005 §1). */
+  /**
+   * Who decides the quality: `otter`, the pipeline ABR rule stack; `engine`, the engine's own ABR
+   * (ADR-005 §1).
+   * @defaultValue `'otter'`
+   */
   readonly abr?: 'otter' | 'engine';
 }
 
 const HLS_TYPE = /mpegurl/i;
 const HLS_EXT = /\.m3u8(\?|#|$)/i;
 
+/** How likely a source is HLS, 0..1 (an `mpegurl` type, `.m3u8`): the router's probe. */
 export function probeHls(source: Source): number {
   if (typeof source.src !== 'string') return 0;
   if (source.type !== undefined) return HLS_TYPE.test(source.type) ? 1 : 0;
   return HLS_EXT.test(source.src) ? 0.9 : 0;
 }
 
+/**
+ * The HLS format: the own CMAF-HLS engine (an on-demand chunk), hls.js for what it leaves out,
+ * Shaka for DRM, native playback where the browser plays HLS itself (Safari).
+ */
 export function createHlsFormat(options: HlsFormatOptions = {}): FormatPlugin {
   return {
     id: 'hls',

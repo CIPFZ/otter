@@ -10,8 +10,13 @@
 import { createError } from './errors.js';
 import type { Trigger, Unsubscribe } from './events.js';
 
+/**
+ * A part of the store's state, declared by a feature: its keys must not clash with another slice's.
+ */
 export interface StoreSlice<S extends object = object> {
+  /** Slice id (named in a key-clash error). */
   readonly id: string;
+  /** The slice's keys and their initial values. */
   readonly initialState: Readonly<S>;
 }
 
@@ -25,9 +30,13 @@ export type SlicesState<T extends readonly StoreSlice[]> = UnionToIntersection<S
 
 export type StateListener<S extends object> = (state: Readonly<S>, prev: Readonly<S>) => void;
 
+/** What an action handler gets besides the payload: the state, a way to change it, the trigger. */
 export interface ActionContext<S extends object> {
+  /** The state now. */
   getState(): Readonly<S>;
+  /** Merges a patch into the state and notifies the listeners. */
   setState(patch: Partial<S>): void;
+  /** What caused the action, when known. */
   readonly trigger?: Trigger;
 }
 
@@ -54,25 +63,37 @@ export interface StoreView<S extends object, A extends object> {
 
 /** Full store, owned by core and engine-side plugins. */
 export interface Store<S extends object, A extends object> extends StoreView<S, A> {
+  /**
+   * Merges a patch into the state and notifies the listeners (engine-side: the UI only dispatches).
+   */
   setState(patch: Partial<S>): void;
+  /** Registers the handler of an action; returns its removal. */
   handle<K extends keyof A>(type: K, handler: ActionHandler<S, A[K]>): Unsubscribe;
+  /** The read-and-dispatch view handed to the UI and the bindings. */
   view(): StoreView<S, A>;
   /** Drops every listener and handler (the player is gone; a framework binding's subscription too). */
   destroy(): void;
 }
 
+/** What createStore takes: the slices and where a throwing listener's error goes. */
 export interface StoreOptions {
+  /** The slices; their initial states make the initial state. */
   readonly slices: readonly StoreSlice[];
   /**
    * A listener threw. The state change stands and every other listener still runs; the error goes
-   * here (createCore: an `error` event), by default rethrown in a microtask (never swallowed, but
-   * not into the engine code that called setState).
+   * here (createCore: an `error` event).
+   * @defaultValue rethrown in a microtask (never swallowed, but not into the engine code that
+   * called setState)
    */
   readonly onListenerError?: (error: unknown) => void;
 }
 
 type AnyActionHandler<S extends object> = ActionHandler<S, unknown>;
 
+/**
+ * Creates a store: state from the slices, actions dispatched by name to the handlers registered
+ * with `handle` (createCore makes one).
+ */
 export function createStore<S extends object, A extends object = Record<never, never>>(
   options: StoreOptions,
 ): Store<S, A> {

@@ -3,6 +3,7 @@
 // aggressively). The operation-queue idea follows hls.js' buffer-operation-queue (REUSE §3, L3
 // reference, not copied).
 
+/** An initialization segment for one SourceBuffer. */
 export interface SinkInit {
   readonly type: 'audio' | 'video';
   readonly mimeType: string;
@@ -19,11 +20,13 @@ export interface SinkSegment {
   readonly level?: string | number;
 }
 
+/** What createMseSink takes. */
 export interface MseSinkOptions {
   /** Seconds kept behind the playhead before removal. */
   readonly backBufferS: number;
 }
 
+/** A MediaSource with one SourceBuffer per track type and a queue of operations on each. */
 export interface MseSink {
   readonly mediaSource: MediaSource;
   /** Resolves once the MediaSource is open (attach it with `media.src = url` first). */
@@ -84,6 +87,10 @@ const abortError = (): Error => Object.assign(new Error('SourceBuffer operation 
 /** Ledger entries count as buffered when their middle is (segments overlap by frames at edges). */
 const inRanges = (t: number, r: readonly [number, number][]): boolean => r.some(([a, b]) => t >= a - 0.05 && t < b + 0.05);
 
+/**
+ * Creates the MSE sink of an own engine: queued appends and removals per SourceBuffer, a segment
+ * ledger, back-buffer eviction.
+ */
 export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseSinkOptions): MseSink {
   const ms = new MediaSourceCtor();
   const url = URL.createObjectURL(ms);

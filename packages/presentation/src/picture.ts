@@ -1,4 +1,4 @@
-// Picture (SPEC §12 电子放大, ADR-008 §6): zoom, pan, rotation, mirroring and filters of the
+// Picture (SPEC §12, electronic zoom, ADR-008 §6): zoom, pan, rotation, mirroring and filters of the
 // playing picture, as store state a plugin applies to the Surface. Wheel, pinch and drag come from
 // the input controller (`zoom-at`, `pan-by`); the settings menu sets the filters. Hosts that do not
 // install it keep the gestures inert (no handler registered for those actions).

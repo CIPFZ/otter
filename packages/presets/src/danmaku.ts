@@ -1,4 +1,4 @@
-// Preset `danmaku` (SPEC §19「B 站式弹幕站」): DASH with separate audio and video (Shaka), HLS (own
+// Preset `danmaku` (SPEC §19 row "Bilibili-style danmaku site"): DASH with separate audio and video (Shaka), HLS (own
 // engine) and MP4 range, codec probing (the session's), the viewer's choices kept across visits
 // (preferences: volume, speed, quality, captions, danmaku settings, codec failures), the danmaku
 // engine (Canvas 2D, WebGL / Worker chosen by load, masks; its settings page in the menu) and an
@@ -20,33 +20,68 @@ import { bindCanvasPip, canvasPipSupported, type CanvasPip } from '@otter-player
 import type { PresetOptions } from './options.js';
 import { createPlayer, type Player, type PlayerActions, type PlayerState } from './player.js';
 
+/** State of a `danmaku` player: {@link PlayerState} and the danmaku state. */
 export type DanmakuPlayerState = PlayerState & DanmakuState;
+/** Actions of a `danmaku` player: {@link PlayerActions} and the danmaku actions. */
 export type DanmakuPlayerActions = PlayerActions & DanmakuActionMap;
 
+/**
+ * Options of the `danmaku` preset: {@link PresetOptions}, the comments, the renderer, the watermark
+ * and the kept choices.
+ */
 export interface DanmakuPresetOptions extends PresetOptions<DanmakuPlayerState, DanmakuPlayerActions> {
-  /** Danmaku renderer: `auto` (default: Canvas 2D, WebGL / Worker under load) or a fixed one. */
+  /**
+   * Danmaku renderer: `auto` (Canvas 2D, WebGL / Worker under load) or a fixed one.
+   * @defaultValue `'auto'`
+   */
   readonly renderer?: 'auto' | 'canvas2d' | 'webgl' | 'worker';
-  /** A watermark over the picture (static corner mark or moving viewer id). */
+  /**
+   * A watermark over the picture (static corner mark or moving viewer id).
+   * @defaultValue none
+   */
   readonly watermark?: WatermarkOptions;
-  /** Keep the viewer's choices across visits (localStorage). Default true. */
+  /**
+   * Keep the viewer's choices across visits (localStorage).
+   * @defaultValue `true`
+   */
   readonly preferences?: boolean;
   /**
-   * The comments of each video (Bilibili XML, JSON or ASS; `load-danmaku`): a URL, or a function of
-   * the source URL (undefined: none for that video). Loaded after every `load()`; a new video
-   * without comments clears the last one's. Not given: the host loads comments itself.
+   * The comments of each video (Bilibili XML, JSON or ASS): a URL, or a function of the source URL
+   * (undefined: none for that video). Loaded after every `load()`; a new video without comments
+   * clears the last one's.
+   * @defaultValue none (the host loads comments itself: `dispatch('load-danmaku', ...)`)
    */
   readonly comments?: string | ((src: string) => string | undefined);
 }
 
 /** `load()` options of the danmaku preset: `comments` overrides the preset's for this load (null: none). */
 export interface DanmakuLoadOptions extends LoadOptions {
+  /**
+   * This load's comments instead of the preset's `comments` (null: none for this video).
+   * @defaultValue the preset's `comments`
+   */
   readonly comments?: string | null;
 }
 
+/** A `danmaku` player: a {@link Player} whose `load` takes the comments too. */
 export interface DanmakuPlayer extends Omit<Player<DanmakuPlayerState, DanmakuPlayerActions>, 'load'> {
   load(source: string | Source, options?: DanmakuLoadOptions): Promise<void>;
 }
 
+/**
+ * A danmaku-site player: DASH with separate audio and video (Shaka), HLS and MP4; the viewer's
+ * choices kept; danmaku drawn over the picture with its settings page in the menu; an optional
+ * watermark.
+ * @example
+ * ```ts
+ * import { createDanmakuPlayer } from '@otter-player/presets/danmaku';
+ * import '@otter-player/ui-skin-default';
+ *
+ * // comments: a URL, or a function from each video's URL to its comments' URL.
+ * const player = createDanmakuPlayer({ container, title: 'Example', comments: '/danmaku/ladder.xml' });
+ * void player.load(src);
+ * ```
+ */
 export function createDanmakuPlayer(options: DanmakuPresetOptions): DanmakuPlayer {
   const danmaku = createDanmaku(options.renderer === undefined ? {} : { renderer: options.renderer });
   const watermark = options.watermark === undefined ? undefined : createWatermark(options.watermark);

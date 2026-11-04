@@ -13,13 +13,24 @@ import { createMseSink, type MseSink } from './mse-sink.js';
 
 export { createMseSink, type MseSink, type MseSinkOptions, type SinkInit } from './mse-sink.js';
 
+/** Options of Otter's own FLV / TS pipeline engine. */
 export interface PipelineEngineOptions {
+  /** The container of the stream. */
   readonly type: 'flv' | 'ts';
-  /** Live: latency to hold (buffer end minus playhead), seconds. */
+  /**
+   * Live: latency to hold (buffer end minus playhead), seconds.
+   * @defaultValue `1`
+   */
   readonly targetLatency?: number;
-  /** Seconds kept behind the playhead. */
+  /**
+   * Seconds kept behind the playhead.
+   * @defaultValue `30`
+   */
   readonly backBufferS?: number;
-  /** VOD: stop reading the stream while this much is buffered ahead, seconds. */
+  /**
+   * VOD: stop reading the stream while this much is buffered ahead, seconds.
+   * @defaultValue `60`
+   */
   readonly maxBufferAheadS?: number;
 }
 
@@ -38,6 +49,10 @@ function mediaSourceCtor(preferManaged: boolean): { Ctor: typeof MediaSource; ma
   return g.MediaSource === undefined ? undefined : { Ctor: g.MediaSource, managed: false };
 }
 
+/**
+ * Otter's own FLV / TS engine: the stream read, demuxed, transmuxed to fMP4 and appended to MSE
+ * (format-flv and format-ts wrap it in withAdapterFallback).
+ */
 export function createPipelineEngine(ctx: EngineContext, options: PipelineEngineOptions): Engine & { seekToLive(): void } {
   const bus = createEventBus<EngineEvents>();
   const media = ctx.media;

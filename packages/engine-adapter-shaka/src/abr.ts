@@ -3,13 +3,14 @@
 // call switchCallback when the stack picks a different variant. Typed structurally, like the rest
 // of the adapter (shaka-types.ts).
 //
-// Audio is not part of ABR (separate audio and video, SPEC §19 B 站式): the rules choose among
+// Audio is not part of ABR (separate audio and video, SPEC §19, the Bilibili-style row): the rules choose among
 // the video Representations of the audio stream already playing, so bandwidth never changes the
 // audio and a video switch never makes Shaka fetch audio again. A language change (Shaka hands new
 // variants without that audio stream) picks the audio of the first new variant.
 
 import type { AbrDriver, AbrLevel } from '@otter-player/pipeline';
 
+/** The part of a Shaka variant the ABR reads. */
 export interface ShakaVariant {
   readonly id: number;
   readonly bandwidth: number;
@@ -17,6 +18,7 @@ export interface ShakaVariant {
   readonly audio?: { readonly id: number } | null;
 }
 
+/** Shaka's ABR restrictions (size, pixels, bandwidth bounds). */
 export interface ShakaRestrictions {
   readonly minWidth?: number;
   readonly maxWidth?: number;
@@ -37,6 +39,7 @@ const MIN_SAMPLE_BYTES = 16_000;
 
 export type ShakaSwitch = (variant: ShakaVariant, clearBuffer?: boolean, safeMargin?: number) => void;
 
+/** Otter's ABR as a Shaka AbrManager: the pipeline rule stack chooses among the video variants. */
 export interface OtterShakaAbr {
   init(switchCallback: ShakaSwitch): void;
   stop(): void;

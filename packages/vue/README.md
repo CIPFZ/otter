@@ -1,6 +1,6 @@
 # @otter-player/vue
 
-Vue 绑定（SPEC §16，ADR-013 第三批）：一个承载 preset 播放器的组件，加读 store 的 composable。范围与 `@otter-player/react` 一致：只经 store 的 `getState` / `subscribe`（宿主经 `dispatch` 下命令），不带 Otter 运行时，用哪个 preset 由宿主传入。Vue ≥ 3.3（peer）。
+Vue bindings (SPEC §16, ADR-013 batch 3): a component that hosts a player made by a preset, and composables that read its store. Same scope as `@otter-player/react`: only through the store's `getState` / `subscribe` (the host gives commands through `dispatch`), no Otter runtime inside, the host passes the preset. Vue ≥ 3.3 (peer).
 
 ```vue
 <script setup lang="ts">
@@ -14,7 +14,7 @@ const props = defineProps<{ src: string }>();
 const player = shallowRef<Player | null>(null);
 const paused = useOtterState(() => player.value?.store, (s) => s.paused);
 const create = (container: HTMLElement) => {
-  const p = createVodPlayer({ container, title: '示例' });
+  const p = createVodPlayer({ container, title: 'Example' });
   void p.load(props.src);
   return p;
 };
@@ -22,16 +22,16 @@ const create = (container: HTMLElement) => {
 
 <template>
   <OtterPlayer :create="create" :deps="[props.src]" poster="/poster.jpg" @player="(p) => (player = p as Player | null)" />
-  <button @click="player?.store.dispatch(paused ? 'play' : 'pause', undefined)">{{ paused ? '播放' : '暂停' }}</button>
+  <button @click="player?.store.dispatch(paused ? 'play' : 'pause', undefined)">{{ paused ? 'Play' : 'Pause' }}</button>
 </template>
 ```
 
-- `<OtterPlayer create deps aspectRatio poster @player>`：播放器在 `onMounted` 里创建，放在组件盒子里一个新建的子容器中；卸载或 `deps` 变化时销毁，子容器一并移除。
-- `useOtterState(store, selector, equals?)`：`store` 可以是 store、ref 或 getter；返回 shallowRef，只在所选的那一片变化时更新。没有播放器时为 undefined。
-- `useOtterPlayer(create, deps)`：组件背后的 composable。
+- `<OtterPlayer create deps aspectRatio poster @player>`: the player is made in `onMounted`, in a fresh child container of the component's box; it is destroyed on unmount or when `deps` changes, and the child container goes with it.
+- `useOtterState(store, selector, equals?)`: `store` may be a store, a ref or a getter; returns a shallowRef updated only when the selected slice changes. Undefined while there is no player.
+- `useOtterPlayer(create, deps)`: the composable behind the component.
 
-## 服务端渲染
+## Server rendering
 
-- setup 与 render 不碰 `window`、`document`、`AudioContext`。服务端与客户端首次渲染相同：带 `aspect-ratio`（默认 16 / 9）与可选 poster 的空盒子；`onMounted` 之后才建播放器。
-- `useOtterState` 在服务端读 store 的初始状态（`getInitialState`），挂载后才订阅。
-- 示例：`e2e/site/vue-{basic,vod,surveillance}.html`，构建时在 Node 里渲染，浏览器里 `createSSRApp(...).mount()` 水合；`e2e/bindings.spec.ts`。
+- setup and render touch no `window`, `document` or `AudioContext`. The server and the client's first render are the same: an empty box with `aspect-ratio` (default 16 / 9) and an optional poster; the player is made only after `onMounted`.
+- On the server `useOtterState` reads the store's initial state (`getInitialState`); it subscribes only once mounted.
+- Examples: `e2e/site/vue-{basic,vod,surveillance}.html`, rendered in Node at build time and hydrated in the browser with `createSSRApp(...).mount()`; `e2e/bindings.spec.ts`.

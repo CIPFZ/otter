@@ -9,12 +9,22 @@ import { createError as coreCreateError } from '@otter-player/core';
 import { createLiveFanout, type DemuxAudioTrack, type DemuxInfo, type DemuxVideoTrack, type Demuxer } from '@otter-player/media';
 import { createFlvSampleReader, type FlvAudioConfig, type FlvSamples, type FlvVideoConfig } from '@otter-player/pipeline/transmux';
 
+/** What openFlvDemuxer takes. */
 export interface FlvDemuxOptions {
+  /** Aborts the request (a `flvAborted` error while opening). */
   readonly signal: AbortSignal;
+  /** Core's createError, handed in (a value import shared with the caller). */
   readonly createError: typeof coreCreateError;
-  /** Request headers (HTTP-FLV). */
+  /**
+   * Request headers (HTTP-FLV).
+   * @defaultValue none
+   */
   readonly headers?: Readonly<Record<string, string>>;
-  /** Give up when the stream's configuration and first keyframe have not arrived by then. Default 10 s. */
+  /**
+   * Give up (`flvOpenTimeout`) when the stream's configuration and first keyframe have not arrived
+   * by then, ms.
+   * @defaultValue `10000`
+   */
   readonly openTimeoutMs?: number;
 }
 
@@ -60,6 +70,10 @@ function openBytes(url: string, options: FlvDemuxOptions, onChunk: (b: Uint8Arra
   return stop;
 }
 
+/**
+ * Opens an FLV stream (HTTP or WebSocket) as a demuxer for the WebCodecs backend: resolves once the
+ * configuration and first keyframe arrived.
+ */
 export function openFlvDemuxer(url: string, options: FlvDemuxOptions): Promise<Demuxer> {
   const { createError } = options;
   const reader = createFlvSampleReader();

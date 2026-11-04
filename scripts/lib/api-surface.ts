@@ -7,10 +7,19 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import ts from 'ts5';
 
+/** A TSDoc block tag: `@defaultValue`, `@example`, `@see`, `@param`, ... */
+export interface ApiTag {
+  readonly name: string;
+  readonly text: string;
+}
+
 export interface ApiMember {
   readonly name: string;
   readonly type: string;
   readonly doc: string;
+  readonly tags: readonly ApiTag[];
+  /** `{@link X}` targets in the comment. */
+  readonly links: readonly string[];
   readonly optional: boolean;
 }
 
@@ -20,6 +29,9 @@ export interface ApiExport {
   /** Call signatures (functions), the type (consts, aliases), or empty (interfaces: see members). */
   readonly signature: string;
   readonly doc: string;
+  readonly tags: readonly ApiTag[];
+  /** `{@link X}` targets in the comment. */
+  readonly links: readonly string[];
   readonly members: readonly ApiMember[];
 }
 
@@ -77,6 +89,15 @@ const kindOf = (decl: ts.Declaration): ApiExport['kind'] | undefined => {
   return undefined;
 };
 
+const tagsOf = (symbol: ts.Symbol, checker: ts.TypeChecker): ApiTag[] =>
+  symbol.getJsDocTags(checker).map((t) => ({ name: t.name, text: ts.displayPartsToString(t.text).trim() }));
+
+/** The `{@link X}` / `{@link X.y}` targets of a symbol's comment and tags (the name before any `.`, `#` or `|`). */
+const linksOf = (symbol: ts.Symbol, checker: ts.TypeChecker): string[] => {
+  const parts = [...symbol.getDocumentationComment(checker), ...symbol.getJsDocTags(checker).flatMap((t) => t.text ?? [])];
+  return parts.filter((p) => p.kind === 'linkName').map((p) => p.text.trim());
+};
+
 /** The API surface of the repository at `root`. */
 export function readApiSurface(root: string): ApiSurface {
   const entries = listEntries(root);
@@ -124,12 +145,14 @@ export function readApiSurface(root: string): ApiSurface {
             name: p.name,
             type: clip(pd === undefined ? '' : checker.typeToString(checker.getTypeOfSymbolAtLocation(p, pd), undefined, fmt)),
             doc: ts.displayPartsToString(p.getDocumentationComment(checker)).trim(),
+            tags: tagsOf(p, checker),
+            links: linksOf(p, checker),
             optional: (p.flags & ts.SymbolFlags.Optional) !== 0,
           };
         });
       }
       if (doc === '') undocumented.push(`${e.specifier}#${raw.name}`);
-      exports.push({ name: raw.name, kind, signature, doc, members });
+      exports.push({ name: raw.name, kind, signature, doc, tags: tagsOf(symbol, checker), links: linksOf(symbol, checker), members });
     }
     exports.sort((a, b) => a.name.localeCompare(b.name));
     out.push({ ...e, file: relative(root, e.file), exports, variables: [] });

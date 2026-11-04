@@ -51,7 +51,7 @@ export const INITIAL_TEXT_STATE: TextState = { textTracks: [], textTrack: null, 
 export const TEXT_SLICE: StoreSlice<TextState> = { id: 'text', initialState: INITIAL_TEXT_STATE };
 
 /**
- * `toggle-captions` shares name and payload with InputActionMap in @otter-player/input;
+ * `toggle-captions` shares name and payload with InputActionMap in `@otter-player/input`;
  * `set-text-track` is handled by the media plugin (which in-band track the engine delivers).
  */
 export interface TextActionMap {

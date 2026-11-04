@@ -1,4 +1,4 @@
-// State and actions of the picture controls (SPEC §12 电子放大, ADR-008 §6): what the shell shows
+// State and actions of the picture controls (SPEC §12, electronic zoom, ADR-008 §6): what the shell shows
 // and the settings menu edits. Apart from the plugin so the menu's on-demand chunk can read it
 // without loading the plugin.
 

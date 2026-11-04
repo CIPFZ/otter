@@ -1,4 +1,4 @@
-// Preset `basic` (SPEC §19「短视频 / 简单点播」, ADR-013 §4): the smallest player. Progressive MP4
+// Preset `basic` (SPEC §19 row "short videos / simple VOD", ADR-013 §4): the smallest player. Progressive MP4
 // (mp4-range) and HLS (the own CMAF-HLS engine; hls.js only for the streams it hands over), on MSE
 // with native playback as the fallback; a shell with play / pause, mute, time, the progress bar and
 // fullscreen. No DASH, captions, thumbnails, presentation modes or settings menu: a host that needs
@@ -31,41 +31,86 @@ import {
 
 /** Fullscreen only: the part of the presentation state the fullscreen button reads. */
 export type BasicFullscreenState = Pick<PresentationState, 'presentation'>;
+/**
+ * State of a `basic` player: media, QoE, chrome and the fullscreen part of the presentation state.
+ */
 export type BasicState = MediaState & QoeState & ChromeState & BasicFullscreenState;
+/** Actions of a `basic` player: media and chrome actions, and fullscreen. */
 export interface BasicActions extends MediaActionMap, ChromeActionMap {
   'toggle-fullscreen': Record<string, never>;
   'exit-fullscreen': Record<string, never>;
 }
 
+/** Options of the `basic` preset (it is assembled without createPlayer, to stay small). */
 export interface BasicOptions<S extends BasicState = BasicState, A extends BasicActions = BasicActions> {
-  /** The player's root. Empty: the basic shell is built inside; with a <video>: its markup is kept. */
+  /**
+   * The player's root. Empty: the basic shell is built inside; with a `<video>` in it: its markup
+   * is kept.
+   */
   readonly container: HTMLElement;
-  /** More formats after mp4-range and HLS (e.g. `createDashFormat()`). */
+  /**
+   * More formats after mp4-range and HLS (e.g. `createDashFormat()`).
+   * @defaultValue `[]`
+   */
   readonly formats?: readonly FormatPlugin[];
-  /** The controls (true) or a bare <video> (false: the host builds its UI on the store). Default true. */
+  /**
+   * The controls (true) or a bare `<video>` (false: the host builds its UI on the store).
+   * @defaultValue `true`
+   */
   readonly controls?: boolean;
-  /** Start muted (before the first load; autoplay needs it). Default false. */
+  /**
+   * Start muted (before the first load; autoplay needs it).
+   * @defaultValue `false`
+   */
   readonly muted?: boolean;
-  /** Control bar auto-hide delay, ms; default 3000; 0 keeps the controls shown. */
+  /**
+   * Control bar auto-hide delay, ms; 0 keeps the controls shown.
+   * @defaultValue `3000`
+   */
   readonly idleMs?: number;
-  /** Language of the controls (BCP 47), set as the player's `lang` (see createPlayer). */
+  /**
+   * Language of the controls (BCP 47), set as the player's `lang`.
+   * @defaultValue the page's nearest `lang`, else the browser's language
+   */
   readonly lang?: string;
+  /**
+   * More state slices: S is the player's state with theirs.
+   * @defaultValue `[]`
+   */
   readonly slices?: readonly StoreSlice[];
+  /**
+   * More plugins, installed after the player's own: A is the player's actions with theirs.
+   * @defaultValue `[]`
+   */
   readonly plugins?: readonly Plugin<S, A>[];
-  /** Runs once the player is assembled; may return a cleanup. */
+  /**
+   * Runs once the player is assembled; may return a cleanup, run on destroy().
+   * @defaultValue none
+   */
   readonly setup?: (parts: { readonly root: HTMLElement; readonly video: HTMLVideoElement; readonly media: MediaPlugin<S, A>; readonly store: StoreView<S, A> }) => void | (() => void);
 }
 
+/**
+ * A `basic` player: load sources, read state and dispatch actions through the store, destroy it.
+ */
 export interface BasicPlayer<S extends BasicState = BasicState, A extends BasicActions = BasicActions> {
+  /** The player's root (the container). */
   readonly element: HTMLElement;
+  /** The `<video>` the player plays into. */
   readonly video: HTMLVideoElement;
+  /** Read state and dispatch actions. */
   readonly store: StoreView<S, A>;
+  /** Errors and plugin lifecycle events. */
   readonly events: EventBus<CoreEventMap>;
+  /** QoE events. */
   readonly qoe: QoeHook;
+  /** Resolves once every plugin is installed; `load` before that waits for it. */
   readonly ready: Promise<void>;
+  /** Loads a source; resolves once it can play. */
   load(source: string | Source, options?: LoadOptions): Promise<void>;
   /** router.explain() and the last error. */
   explain(): { readonly route: RouteExplanation | null; readonly error: MediaState['error'] };
+  /** Stops playback and removes what the player built. */
   destroy(): Promise<void>;
 }
 
@@ -125,6 +170,19 @@ function createFullscreenPlugin<S extends BasicState, A extends BasicActions>(ro
   };
 }
 
+/**
+ * The smallest player (short videos, simple VOD): progressive MP4 and HLS on MSE with native
+ * playback as the fallback; play / pause, mute, time, progress bar, fullscreen. Skin:
+ * `@otter-player/ui-skin-minimal`.
+ * @example
+ * ```ts
+ * import { createBasicPlayer } from '@otter-player/presets/basic';
+ * import '@otter-player/ui-skin-minimal';
+ *
+ * const player = createBasicPlayer({ container });
+ * void player.load(src);
+ * ```
+ */
 export function createBasicPlayer<S extends BasicState = BasicState, A extends BasicActions = BasicActions>(options: BasicOptions<S, A>): BasicPlayer<S, A> {
   const root = options.container;
   root.setAttribute('data-otter-player', '');

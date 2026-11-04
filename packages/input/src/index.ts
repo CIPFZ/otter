@@ -7,6 +7,7 @@ import { attachInput, DEFAULT_TIMINGS, type InputTimings } from './controller.js
 
 export { DEFAULT_TIMINGS, type InputTimings } from './controller.js';
 
+/** An action an input maps to: a media, chrome or picture action with its payload. */
 export type InputAction =
   | { readonly type: 'toggle-paused' }
   /** Mobile single tap only toggles control visibility. */
@@ -32,6 +33,7 @@ export type InputAction =
   /** Close the open menu, otherwise leave fullscreen. */
   | { readonly type: 'escape' };
 
+/** The action names an input can map to. */
 export type InputActionType = InputAction['type'];
 
 /** Store action map for input actions: `StoreView<S, InputActionMap>`. */
@@ -42,6 +44,7 @@ export type InputActionMap = {
 /** Keys are `KeyboardEvent.key`; single letters are matched case-insensitively. */
 export type HotkeyMap = Readonly<Record<string, InputAction>>;
 
+/** The pointer and touch gestures the controller recognizes. */
 export type GestureKind =
   | 'click'
   | 'double-click'
@@ -109,28 +112,52 @@ export const DEFAULT_GESTURES: GestureMap = {
 };
 
 
+/** Maps the keyboard, pointer and touch input on a player root to store actions. */
 export interface InputController {
+  /** The keyboard mapping in use. */
   readonly hotkeys: HotkeyMap;
+  /** The gesture mapping in use. */
   readonly gestures: GestureMap;
   /** Starts listening on the player root. Focus stays trapped inside the player (Tab cycles). */
   attach(target: HTMLElement): void;
+  /** Stops listening. */
   detach(): void;
+  /** Replaces the keyboard mapping. */
   setHotkeys(map: HotkeyMap): void;
+  /** Replaces the gesture mapping. */
   setGestures(map: GestureMap): void;
+  /** Detaches and drops the mappings. */
   destroy(): void;
 }
 
+/** What createInputController takes: the store to dispatch to and the mappings. */
 export interface InputControllerOptions<S extends object = object> {
+  /** The store the actions go to. */
   readonly store: StoreView<S, InputActionMap>;
+  /**
+   * Keyboard mapping.
+   * @defaultValue `DEFAULT_HOTKEYS`
+   */
   readonly hotkeys?: HotkeyMap;
+  /**
+   * Gesture mapping.
+   * @defaultValue `DEFAULT_GESTURES`
+   */
   readonly gestures?: GestureMap;
   /**
-   * Whether Tab should cycle inside the player. Default: the player (or an ancestor) is the
-   * fullscreen element. Hosts with modal menus can widen it.
+   * Whether Tab should cycle inside the player. Hosts with modal menus can widen it.
+   * @defaultValue while the player (or an ancestor) is the fullscreen element
    */
   readonly modal?: (target: HTMLElement) => boolean;
+  /**
+   * Tap, double, long-press and swipe thresholds, merged over the defaults.
+   * @defaultValue `DEFAULT_TIMINGS`
+   */
   readonly timings?: Partial<InputTimings>;
-  /** Whether the picture is zoomed (drags pan it then); the shell's picture plugin answers. */
+  /**
+   * Whether the picture is zoomed (drags pan it then); the shell's picture plugin answers.
+   * @defaultValue never zoomed
+   */
   readonly zoomed?: () => boolean;
 }
 
@@ -140,6 +167,11 @@ const isFullscreen = (target: HTMLElement): boolean => {
   return (fs != null && (fs === target || fs.contains(target) || target.contains(fs))) || target.closest('[data-otter-presentation="fullscreen"]') !== null;
 };
 
+/**
+ * Creates the input controller of a player (createPlayer makes one): actions are dispatched
+ * synchronously from the originating event, so fullscreen, PiP and unmuted play keep their user
+ * activation.
+ */
 export function createInputController<S extends object>(options: InputControllerOptions<S>): InputController {
   let hotkeys = options.hotkeys ?? DEFAULT_HOTKEYS;
   let gestures = options.gestures ?? DEFAULT_GESTURES;

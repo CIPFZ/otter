@@ -33,15 +33,29 @@ export const DEFAULT_REMOTE_KEYS: RemoteKeyMap = {
 
 /** Seeking while Left / Right are held on the picture: the step grows with the time held. */
 export interface RemoteSeek {
-  /** Seconds per step, by how long the key has been held (ms, ascending). Default 10 s, 30 s after 1.5 s, 60 s after 4 s. */
+  /**
+   * Seconds per step, by how long the key has been held (ms, ascending).
+   * @defaultValue `[[0, 10], [1500, 30], [4000, 60]]`
+   */
   readonly steps?: readonly (readonly [heldMs: number, seconds: number])[];
-  /** At most one step per this many ms while held (key repeat is faster). Default 250. */
+  /**
+   * At most one step per this many ms while held (key repeat is faster).
+   * @defaultValue `250`
+   */
   readonly intervalMs?: number;
 }
 
+/** Options of bindRemote (and of the tv preset's `remote`). */
 export interface RemoteOptions {
-  /** Keys per logical key, merged over DEFAULT_REMOTE_KEYS (a key given replaces its list). */
+  /**
+   * Keys per logical key, merged over DEFAULT_REMOTE_KEYS (a key given replaces its list).
+   * @defaultValue `{}`
+   */
   readonly keys?: Partial<RemoteKeyMap>;
+  /**
+   * Seeking while Left / Right (or fast-forward / rewind) are held.
+   * @defaultValue `{}` (the steps and interval above)
+   */
   readonly seek?: RemoteSeek;
 }
 

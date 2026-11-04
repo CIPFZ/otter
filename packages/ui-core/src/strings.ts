@@ -5,7 +5,7 @@
 // times (0:09, 720P, 1.0x) are not translated.
 
 /** Texts of the settings menu's Picture page (defaults in settings-level.ts, by language). */
-/** Danmaku settings page texts (level-two chunk), when the host installs @otter-player/danmaku. */
+/** Danmaku settings page texts (level-two chunk), when the host installs `@otter-player/danmaku`. */
 export interface DanmakuStrings {
   readonly danmaku: string;
   readonly on: string;
@@ -26,6 +26,7 @@ export interface DanmakuStrings {
   readonly bottom: string;
 }
 
+/** Texts of the picture page of the settings menu (brightness, contrast, ...). */
 export interface PictureStrings {
   readonly picture: string;
   readonly brightness: string;
@@ -62,6 +63,10 @@ export interface StatsStrings {
   readonly noDecision: string;
 }
 
+/**
+ * Every text of the controls (labels, aria-labels, tooltips, screen-reader announcements), in one
+ * language. Write one per language and give it with provideStrings.
+ */
 export interface UiStrings {
   /** BCP 47 language of this table (`en`, `zh-CN`): on-demand pages pick their texts by it. */
   readonly locale: string;
@@ -172,6 +177,7 @@ export interface UiStrings {
   readonly announceExitFullscreen: string;
 }
 
+/** The English texts (the fallback). */
 export const STRINGS_EN: UiStrings = {
   locale: 'en',
   hour: '{n} hour',
@@ -262,6 +268,7 @@ export const STRINGS_EN: UiStrings = {
   announceExitFullscreen: 'Exited fullscreen',
 };
 
+/** The Chinese texts (`zh*`). */
 export const STRINGS_ZH: UiStrings = {
   locale: 'zh-CN',
   hour: '{n} 小时',
@@ -372,6 +379,10 @@ export function uiLanguage(from: Node): string {
 
 const isZh = (lang: string): boolean => /^zh\b/i.test(lang);
 
+/**
+ * The texts for `from`: a table provided on it or an ancestor, else the built-in one for its UI
+ * language.
+ */
 export function findStrings(from: Node): UiStrings {
   let node: Node | null = from;
   while (node !== null) {

@@ -22,12 +22,23 @@ import type { createOtterAbrController } from './abr.js';
 import { createIFrameThumbnails, type IFrameThumbnails } from './iframes.js';
 
 
+/** Options of the hls.js adapter. */
 export interface HlsJsEngineOptions {
-  /** Extra hls.js configuration, applied over the adapter defaults. */
+  /**
+   * Extra hls.js configuration, applied over the adapter defaults.
+   * @defaultValue `{}`
+   */
   readonly config?: Partial<HlsConfig>;
-  /** Use the `hls.js/light` build (no subtitles, alt audio or EME). */
+  /**
+   * Use the `hls.js/light` build (no subtitles, alternate audio or EME).
+   * @defaultValue `false`
+   */
   readonly light?: boolean;
-  /** `otter` (default): the pipeline ABR rule stack decides; `engine`: hls.js' own ABR (ADR-005 §1). */
+  /**
+   * Who decides the quality: `otter`, the pipeline ABR rule stack; `engine`, the engine's own ABR
+   * (ADR-005 §1).
+   * @defaultValue `'otter'`
+   */
   readonly abr?: 'otter' | 'engine';
 }
 
@@ -48,6 +59,7 @@ const MEDIA_RECOVERY_WINDOW_MS = 3000;
  */
 const UNRECOVERABLE_MEDIA_ERRORS: ReadonlySet<string> = new Set(['manifestIncompatibleCodecsError']);
 
+/** An hls.js error as an {@link OtterError} (its type and `details` kept). */
 export function mapHlsError(data: Pick<ErrorData, 'type' | 'details' | 'fatal' | 'error'>, fatal: boolean = data.fatal): OtterError {
   const type = ERROR_TYPES[data.type] ?? 'other';
   return createError({
@@ -62,6 +74,7 @@ export function mapHlsError(data: Pick<ErrorData, 'type' | 'details' | 'fatal' |
 
 const levelId = (index: number): string => `level-${index}`;
 
+/** hls.js levels, audio and subtitle tracks as Otter's track list. */
 export function mapHlsTracks(hls: Pick<Hls, 'levels' | 'currentLevel' | 'audioTracks' | 'audioTrack' | 'subtitleTracks' | 'subtitleTrack' | 'autoLevelEnabled'>): TrackList {
   const video: VideoTrack[] = hls.levels.map((l: Level, i: number) => ({
     kind: 'video',
@@ -106,6 +119,10 @@ const usesMms = (prefer: boolean): boolean => {
   return g.ManagedMediaSource !== undefined && (prefer || g.MediaSource === undefined);
 };
 
+/**
+ * The hls.js engine adapter (hls.js loaded on demand): what format-hls hands over from its own
+ * engine.
+ */
 export function createHlsJsEngine(ctx: EngineContext, options: HlsJsEngineOptions = {}): Engine {
   const bus = createEventBus<EngineEvents>();
   let hls: Hls | undefined;

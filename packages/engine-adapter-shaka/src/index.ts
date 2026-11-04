@@ -27,12 +27,23 @@ import type { OtterShakaAbr } from './abr.js';
 export type { ShakaError, ShakaTrack } from './shaka-types.js';
 export type { OtterShakaAbr, ShakaRestrictions, ShakaVariant } from './abr.js';
 
+/** Options of the Shaka adapter. */
 export interface ShakaEngineOptions {
-  /** Format id reported by the engine (`dash` by default, `hls` when format-hls routes DRM here). */
+  /**
+   * Format id the engine reports.
+   * @defaultValue `'dash'` (format-hls passes `hls` when it routes DRM here)
+   */
   readonly formatId?: string;
-  /** Extra Shaka configuration passed to `player.configure()` after the adapter defaults. */
+  /**
+   * Extra Shaka configuration passed to `player.configure()` after the adapter defaults.
+   * @defaultValue `{}`
+   */
   readonly config?: Record<string, unknown>;
-  /** `otter` (default): the pipeline ABR rule stack decides via abrFactory; `engine`: Shaka's SimpleAbrManager (ADR-005 §1). */
+  /**
+   * Who decides the quality: `otter`, the pipeline ABR rule stack (through abrFactory); `engine`,
+   * Shaka's SimpleAbrManager (ADR-005 §1).
+   * @defaultValue `'otter'`
+   */
   readonly abr?: 'otter' | 'engine';
 }
 
@@ -54,6 +65,9 @@ const CRITICAL = 2; // shaka.util.Error.Severity.CRITICAL
 const SHAKA_DEFAULT_ESTIMATE = 1e6;
 const LICENSE_REQUEST = 2; // shaka.net.NetworkingEngine.RequestType.LICENSE
 
+/**
+ * A Shaka error as an {@link OtterError}: `shaka<code>`, typed by category, fatal when critical.
+ */
 export function mapShakaError(error: ShakaError): OtterError {
   const type = CATEGORIES[error.category] ?? 'other';
   return createError({
@@ -67,6 +81,7 @@ export function mapShakaError(error: ShakaError): OtterError {
 
 const DYNAMIC_RANGE: Readonly<Record<string, NonNullable<VideoTrack['dynamicRange']>>> = { PQ: 'hdr10', HLG: 'hlg', SDR: 'sdr' };
 
+/** Shaka variants and text tracks as Otter's track list. */
 export function mapShakaTracks(variants: readonly ShakaTrack[], textTracks: readonly ShakaTextTrack[], abr: boolean): TrackList {
   const active = variants.find((v) => v.active);
   // Qualities are the variants that share the active audio; one entry per video stream.
@@ -133,6 +148,7 @@ export function mapShakaTracks(variants: readonly ShakaTrack[], textTracks: read
  */
 const detaching = new WeakMap<HTMLMediaElement, Promise<unknown>>();
 
+/** The Shaka Player engine adapter (Shaka loaded on demand): DASH, and HLS with DRM. */
 export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOptions = {}): Engine {
   const bus = createEventBus<EngineEvents>();
   let player: ShakaPlayer | undefined;

@@ -26,8 +26,12 @@ const EVENTS = {
 
 type SeekToLive = { seekToLive?(): void };
 
+/** What withAdapterFallback takes besides the two engines. */
 export interface AdapterFallbackOptions {
-  /** The element both engines play on: position and playing state carry over a runtime switch. */
+  /**
+   * The element both engines play on: position and playing state carry over a runtime switch.
+   * @defaultValue none (a switch starts from the beginning)
+   */
   readonly media?: HTMLMediaElement;
 }
 
@@ -43,6 +47,10 @@ function sameTrack<T extends BaseTrack & { readonly role?: string }>(t: T, list:
   return list.find((x) => x.id === t.id) ?? list.find((x) => x.language === t.language && (x.role === undefined || x.role === t.role) && (x.label === undefined || t.label === undefined || x.label === t.label)) ?? list.find((x) => x.language === t.language && (x.role === undefined || x.role === t.role));
 }
 
+/**
+ * An own engine with an adapter behind it: what the own engine does not support, and a fatal media
+ * error during playback, go to the adapter, keeping the viewer's selections.
+ */
 export function withAdapterFallback(
   primary: Engine & SeekToLive,
   createFallback: (startTime?: number) => Engine & SeekToLive,

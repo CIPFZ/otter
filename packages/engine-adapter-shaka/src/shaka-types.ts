@@ -2,6 +2,7 @@
 // namespace declaration for a CommonJS bundle, which does not resolve cleanly under NodeNext
 // interop; describing the surface we rely on keeps the adapter types independent of it.
 
+/** The part of a Shaka track the adapter reads. */
 export interface ShakaTrack {
   readonly id: number;
   readonly active: boolean;
@@ -47,6 +48,7 @@ export interface ShakaStats {
   readonly streamBandwidth: number;
 }
 
+/** The part of a Shaka error the adapter reads. */
 export interface ShakaError {
   readonly severity: number;
   readonly category: number;

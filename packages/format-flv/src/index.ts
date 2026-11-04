@@ -9,27 +9,40 @@ import type { BackendKind, Capabilities, FormatPlugin, Source } from '@otter-pla
 import { createMpegtsEngine } from '@otter-player/engine-adapter-mpegts';
 import { createPipelineEngine, withAdapterFallback } from '@otter-player/engine-pipeline';
 
+/** Options of the FLV format. */
 export interface FlvFormatOptions {
-  /** Extra mpegts.js config (adapter engine). */
+  /**
+   * Extra mpegts.js configuration (the adapter engine).
+   * @defaultValue `{}`
+   */
   readonly config?: Record<string, unknown>;
   /**
-   * `otter` (default since M3, cn-live acceptance met): Otter's own pipeline (mpegts.js FLV demuxer, L2), falling back to the mpegts.js
-   * adapter on media errors; `mpegts`: the adapter only (ADR-007 §2).
+   * `otter`: Otter's own pipeline (mpegts.js FLV demuxer), falling back to the mpegts.js adapter on
+   * media errors; `mpegts`: the adapter only (ADR-007 §2).
+   * @defaultValue `'otter'`
    */
   readonly engine?: 'otter' | 'mpegts';
-  /** Live latency to hold with the own pipeline, seconds. */
+  /**
+   * Live latency to hold with the own pipeline, seconds.
+   * @defaultValue `1`
+   */
   readonly targetLatency?: number;
 }
 
 const FLV_TYPE = /x-flv/i;
 const FLV_EXT = /\.flv(\?|#|$)/i;
 
+/** How likely a source is FLV, 0..1 (its type or extension): the router's probe. */
 export function probeFlv(source: Source): number {
   if (typeof source.src !== 'string') return 0;
   if (source.type !== undefined) return FLV_TYPE.test(source.type) ? 1 : 0;
   return FLV_EXT.test(source.src) ? 0.9 : 0;
 }
 
+/**
+ * The FLV format (HTTP-FLV, WS-FLV): Otter's own pipeline on MSE, the mpegts.js adapter as the
+ * fallback; live sources (`live: true`) also feed the WebCodecs backend (surveillance walls).
+ */
 export function createFlvFormat(options: FlvFormatOptions = {}): FormatPlugin {
   return {
     id: 'flv',

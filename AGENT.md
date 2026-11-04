@@ -41,6 +41,15 @@
 - 提交前跑 `pnpm check`：来源记录、边界、strict TS、Vitest、无顶层副作用、体积预算，任何一项失败都阻断。
 - **没进入就 skip，不许 pass**（2026-10-27）：e2e 里测某个模式（全屏、PiP、Document PiP、某个渲染器、某种编码……）时，环境不支持或没有真正进入该模式，必须 `test.skip(true, 原因)`，并留一条 CI 通知写明原因；不得留一条通知就让用例通过。
 - **验证「无手势」行为的用例，断言前不许 `page.evaluate`**（2026-10-28）：Playwright 的 `page.evaluate` 带用户手势执行，trace 的 DOM 快照也会让页面从第一份文档起就有手势（RESEARCH §1）。这类用例关掉 trace（文件顶层 `test.use({ trace: 'off' })`），用 init script 驱动页面，状态经 `exposeBinding` 或 console 消息取回，断言完才允许 evaluate。例：`e2e/no-gesture.spec.ts`。
+- **文档语言分界**（2026-11-04 负责人）：TSDoc、文档站（`scripts/docs-site.ts` 生成）、包 README、源码注释用英文；`SPEC.md` / ADR / `RESEARCH.md` / 报告 / 本文件用中文。中文文档站排在 1.0 之后，不进发版范围。UI 文案表（`strings.ts` 等）不受此限。术语的中英对照见 `docs/design/GLOSSARY.md`，英文写法以它为准。
+- **TSDoc 六条约定**（2026-11-04 负责人；`pnpm check:docs-site` 强制其中能机检的部分）：
+  1. 摘要一行，说它做什么、什么时候用，不复述类型（不写「A string」「Options for X」）。
+  2. 选项接口（`*Options`、`*Props`）的可选成员必写 `@defaultValue`（没有默认值时写 `@defaultValue none` 并说明缺省行为）；`@param` / `@returns` 只在名字和类型说不清时写。
+  3. `createPlayer`、十个 preset 的 `create*Player`、三个绑定（React / Vue 的 `OtterPlayer`、Svelte 的 `otterPlayer`）带 `@example`，代码取自 e2e 示例站（`e2e/site/` 里 `// #region example:<名字>` 标出的片段，逐字一致，由门禁比对），不另写。
+  4. 错误码用表格：`OtterError` 的 TSDoc 里一张「代码 | 类型 | 致命 | 何时出现」表，源码里出现的每个 `details` 码都要在表里，表里每一行都要在源码里出现（门禁双向比对）。
+  5. `@see` 与 `{@link}` 只指向公开导出（某个入口导出的名字），不指内部函数或文件。
+  6. 术语表放 `docs/design/GLOSSARY.md`，约 20 条中英对照。
+  - 覆盖门禁只管用户面向入口：core、presets 全部 sub-path、react / vue / svelte、ui-core、input（含 `/remote`）、各 `format-*`、各 `engine-adapter-*` 与 `engine-pipeline` 的入口。这些入口的导出必须 100 % 有文档注释，选项接口的成员也必须有；纯结构类型（如 `Unsubscribe` 这种只是函数签名别名的）按 `入口#名字` 列进 `scripts/docs-site.ts` 的白名单才可免。内部包只在文档站首页记录覆盖率，不门禁。
 - **`pnpm check` 返回 0 才提交**（2026-10-26）：以退出码为准，不看输出里有没有报错字样；命令链里要显式判断（`pnpm -s check; [ $? -eq 0 ] && git commit …`），检查失败时不得提交或推送。
 
 ## 5. 工作流程

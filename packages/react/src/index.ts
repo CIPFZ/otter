@@ -47,6 +47,7 @@ export function useOtterState<S, T>(store: OtterStoreLike<S> | null | undefined,
   );
 }
 
+/** What useOtterPlayer returns: the ref for the box and the player. */
 export interface UseOtterPlayer<P> {
   /** The box's ref: the player is made inside it once it is in the document. */
   readonly ref: (box: HTMLElement | null) => void;
@@ -83,25 +84,69 @@ export function useOtterPlayer<P extends OtterPlayerLike>(create: (container: HT
   return { ref: setBox, player };
 }
 
+/** Props of the React OtterPlayer component. */
 export interface OtterPlayerProps<P extends OtterPlayerLike> {
   /** Makes the player in the container it gets (a preset: `(container) => createVodPlayer({ container, ... })`). */
   readonly create: (container: HTMLElement) => P;
-  /** Remake the player when one of these changes (default: once per mount). */
+  /**
+   * Remake the player when one of these changes.
+   * @defaultValue `[]` (once per mount)
+   */
   readonly deps?: readonly unknown[];
-  /** Called with the player once made, and with null when it goes. */
+  /**
+   * Called with the player once made, and with null when it goes.
+   * @defaultValue none
+   */
   readonly onPlayer?: (player: P | null) => void;
-  /** Reserved box before the player exists (no layout shift): CSS aspect-ratio, default `16 / 9`. */
+  /**
+   * Reserved box before the player exists (no layout shift): CSS aspect-ratio.
+   * @defaultValue `'16 / 9'`
+   */
   readonly aspectRatio?: string;
-  /** Picture shown in the box until the player's own poster / first frame covers it. */
+  /**
+   * Picture shown in the box until the player's own poster or first frame covers it.
+   * @defaultValue none
+   */
   readonly poster?: string;
+  /**
+   * Class of the box.
+   * @defaultValue none
+   */
   readonly className?: string;
+  /**
+   * Style of the box, over the component's own (position, aspect ratio, poster).
+   * @defaultValue none
+   */
   readonly style?: CSSProperties;
+  /**
+   * Id of the box.
+   * @defaultValue none
+   */
   readonly id?: string;
 }
 
 /**
  * A player made by a preset, as a component. Server-rendered as the empty box (same markup on the
  * client's first render); the player is made after hydration.
+ * @example
+ * ```tsx
+ * import { OtterPlayer } from '@otter-player/react';
+ * import { createVodPlayer } from '@otter-player/presets/vod';
+ * import '@otter-player/ui-skin-default';
+ *
+ * export function Video({ src }: { src: string }) {
+ *   return (
+ *     <OtterPlayer
+ *       create={(container) => {
+ *         const player = createVodPlayer({ container, title: 'Example' });
+ *         void player.load(src);
+ *         return player;
+ *       }}
+ *       deps={[src]}
+ *     />
+ *   );
+ * }
+ * ```
  */
 export function OtterPlayer<P extends OtterPlayerLike>(props: OtterPlayerProps<P>): ReactElement {
   const { ref, player } = useOtterPlayer(props.create, props.deps);

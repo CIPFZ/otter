@@ -1,4 +1,4 @@
-// Multi-view wall (SPEC §15 多宫格, ADR-008 §7): many player instances on one canvas, one WebGL2
+// Multi-view wall (SPEC §15, multi-view, ADR-008 §7): many player instances on one canvas, one WebGL2
 // context with a viewport per stream (CanvasSurface per tile where WebGL2 is missing). Click or
 // Enter focuses a tile (the host lets only the focused stream play sound and points its controls
 // at it, see createStoreSwitch); double-click or Shift+Enter expands a tile to the whole wall

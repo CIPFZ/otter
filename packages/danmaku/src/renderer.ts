@@ -48,7 +48,7 @@ export interface DanmakuRenderer {
 
 export const FONT_FAMILY = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif';
 export const font = (px: number): string => `bold ${px}px ${FONT_FAMILY}`;
-/** Outline around the glyphs (B站's black stroke), px. */
+/** Outline around the glyphs (Bilibili's black stroke), px. */
 export const STROKE = 1.5;
 export const lineHeight = (px: number): number => Math.ceil(px * 1.2 + STROKE * 2);
 

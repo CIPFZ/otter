@@ -1,4 +1,4 @@
-// Preset `surveillance` (SPEC §19「监控多路 + HEVC」): a wall of streams on one GPU canvas (ADR-008 §7),
+// Preset `surveillance` (SPEC §19 row "surveillance walls + HEVC"): a wall of streams on one GPU canvas (ADR-008 §7),
 // each tile its own session on the WebCodecs backend (WebCodecs decoders, the WASM HEVC decoder
 // where WebCodecs has no HEVC; one shared decode pool, 16 at a time, more wait), HTTP-FLV / WS-FLV
 // and MPEG-TS live streams, HLS playlists and File / Blob sources. The player's controls act on
@@ -33,43 +33,70 @@ import { buildShell } from './shell.js';
 
 type TileState = MediaState & QoeState;
 
+/** Options of the `surveillance` preset. */
 export interface SurveillanceOptions {
   /** The wall's box: the default controls are built inside (an empty container). */
   readonly container: HTMLElement;
   /** One tile per stream: http(s)-flv / ws(s)-flv / live MPEG-TS URLs, HLS playlists, or File / Blob sources. */
   readonly streams: readonly (string | Source)[];
-  /** Tile labels (default "Camera n"). */
+  /**
+   * Tile labels.
+   * @defaultValue "Camera 1", "Camera 2", ...
+   */
   readonly labels?: readonly string[];
-  /** Columns; default the smallest square that fits. */
+  /**
+   * Columns of the grid.
+   * @defaultValue the smallest square that fits
+   */
   readonly columns?: number;
+  /**
+   * Title in the top bar.
+   * @defaultValue none
+   */
   readonly title?: string;
-  /** Language of the controls (BCP 47), as createPlayer's `lang`. */
+  /**
+   * Language of the controls (BCP 47), as createPlayer's `lang`.
+   * @defaultValue the page's nearest `lang`, else the browser's language
+   */
   readonly lang?: string;
-  /** Control bar auto-hide delay, ms; default 3000. */
+  /**
+   * Control bar auto-hide delay, ms.
+   * @defaultValue `3000`
+   */
   readonly idleMs?: number;
 }
 
+/** One tile of the wall: its own playback session. */
 export interface SurveillanceTile {
+  /** The tile's label. */
   readonly label: string;
+  /** The tile's media and QoE state and its media actions. */
   readonly store: StoreView<TileState, MediaActionMap>;
+  /** The tile's QoE events. */
   readonly qoe: QoeHook;
   /** router.explain() for this tile. */
   explain(): RouteExplanation | null;
 }
 
+/** A surveillance wall: its tiles, focus and expand, a source per tile. */
 export interface SurveillancePlayer {
+  /** The wall's root (the container). */
   readonly element: HTMLElement;
+  /** The GPU wall the tiles draw on. */
   readonly wall: Multiview;
+  /** The tiles, one per stream, in order. */
   readonly tiles: readonly SurveillanceTile[];
   /** Resolves once every tile is set up and loading. */
   readonly ready: Promise<void>;
   /** The focused tile (controls, sound), or -1. */
   readonly focused: number;
+  /** Focuses tile i: the controls act on it, and only it has sound. */
   focus(i: number): void;
   /** Fills the wall with tile i; undefined: back to the grid. */
   expand(i: number | undefined): void;
   /** Another source on tile i. */
   load(i: number, source: string | Source, options?: LoadOptions): Promise<void>;
+  /** Stops every tile and removes the wall. */
   destroy(): Promise<void>;
 }
 
@@ -101,6 +128,20 @@ function httpStreamRanks(sources: readonly Source[], base: string | undefined): 
   });
 }
 
+/**
+ * A wall of live streams on one GPU canvas: each tile on the WebCodecs backend (the WASM HEVC
+ * decoder where WebCodecs has none), HTTP-FLV / WS-FLV / live MPEG-TS / HLS / File sources; the
+ * controls act on the focused tile, the only one with sound. More than 6 HTTP/1.1 streams from one
+ * host need WS-FLV or HTTP/2.
+ * @example
+ * ```ts
+ * import { createSurveillancePlayer } from '@otter-player/presets/surveillance';
+ * import '@otter-player/ui-skin-default';
+ *
+ * // One tile per stream: HTTP-FLV, WS-FLV, live MPEG-TS, HLS.
+ * const player = createSurveillancePlayer({ container, title: 'Lobby', streams: sources });
+ * ```
+ */
 export function createSurveillancePlayer(options: SurveillanceOptions): SurveillancePlayer {
   const root = options.container;
   if (options.lang !== undefined) root.lang = options.lang;

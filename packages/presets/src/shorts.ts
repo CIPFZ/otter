@@ -1,4 +1,4 @@
-// Preset `shorts` (SPEC §19「沉浸竖屏信息流」): a portrait player over a feed of short videos, built on
+// Preset `shorts` (SPEC §19 row "immersive portrait feed"): a portrait player over a feed of short videos, built on
 // `basic` (mp4-range + HLS on MSE / native, five controls). Each video loops; next / previous by
 // API, by the ↑ / ↓ (Page Up / Down) keys and by vertical swipes on the picture (ADR-013 batch 4):
 // up for the next, down for the previous, past a distance or fast enough (a short quick flick
@@ -10,43 +10,95 @@
 import type { LoadOptions, Source } from '@otter-player/media';
 import { createBasicPlayer, type BasicOptions, type BasicPlayer } from './basic.js';
 
+/** Tuning of the `shorts` gestures on the picture. */
 export interface ShortsGestureOptions {
-  /** Swipe distance that switches, as a fraction of the player's height. Default 0.2. */
+  /**
+   * Swipe distance that switches, as a fraction of the player's height.
+   * @defaultValue `0.2`
+   */
   readonly distance?: number;
-  /** Release speed (px / ms over the last 100 ms) that switches below that distance, from `flickMinPx` moved. Default 0.5. */
+  /**
+   * Release speed (px / ms over the last 100 ms) that switches below that distance, from
+   * `flickMinPx` moved.
+   * @defaultValue `0.5`
+   */
   readonly flickSpeed?: number;
-  /** Least distance of a flick, px. Default 30. */
+  /**
+   * Least distance of a flick, px.
+   * @defaultValue `30`
+   */
   readonly flickMinPx?: number;
-  /** Playback rate while long-pressed. Default 2. */
+  /**
+   * Playback rate while long-pressed.
+   * @defaultValue `2`
+   */
   readonly holdRate?: number;
-  /** Long press, ms. Default 500. */
+  /**
+   * Long press, ms.
+   * @defaultValue `500`
+   */
   readonly longPressMs?: number;
-  /** Second tap within this many ms is a double tap. Default 250. */
+  /**
+   * A second tap within this many ms is a double tap.
+   * @defaultValue `250`
+   */
   readonly doubleTapMs?: number;
 }
 
+/** Options of the `shorts` preset: the `basic` options, the feed and the gestures. */
 export interface ShortsOptions extends BasicOptions {
+  /** The videos, in order; the preset loads `feed[start]` itself. */
   readonly feed: readonly (string | Source)[];
-  /** First video (index in `feed`). Default 0. */
+  /**
+   * First video (index in `feed`).
+   * @defaultValue `0`
+   */
   readonly start?: number;
-  /** Double tap on the picture: the host's like (index in the feed, where in the player, 0..1). */
+  /**
+   * Double tap on the picture: the host's like (index in the feed, where in the player, 0..1).
+   * @defaultValue none (a double tap does nothing)
+   */
   readonly onLike?: (index: number, at: { readonly x: number; readonly y: number }) => void;
-  /** Swipe / tap / long-press tuning; `false`: no gestures (keys and API only). */
+  /**
+   * Swipe / tap / long-press tuning; `false`: no gestures (keys and API only).
+   * @defaultValue `{}` (the defaults above)
+   */
   readonly gestures?: ShortsGestureOptions | false;
+  /**
+   * Start muted: a feed autoplays, and browsers allow that only without sound.
+   * @defaultValue `true`
+   */
+  readonly muted?: boolean;
 }
 
+/** A `shorts` player: a `basic` player that moves through its feed. */
 export interface ShortsPlayer extends BasicPlayer {
   /** Index of the video in the feed now. */
   readonly index: number;
   /** Plays feed[i] from its start (clamped to the feed). */
   go(i: number, options?: LoadOptions): Promise<void>;
+  /** Plays the next video (nothing past the end). */
   next(): Promise<void>;
+  /** Plays the previous video (nothing before the first). */
   prev(): Promise<void>;
 }
 
 const NEXT = new Set(['ArrowDown', 'PageDown']);
 const PREV = new Set(['ArrowUp', 'PageUp']);
 
+/**
+ * A portrait feed of short videos: each loops; next / previous by swipe, ↑ / ↓ keys or API; tap
+ * pauses, double tap calls `onLike`, long press speeds up. One `<video>`, one engine, nothing
+ * preloaded. Muted by default (a feed autoplays).
+ * @example
+ * ```ts
+ * import { createShortsPlayer } from '@otter-player/presets/shorts';
+ * import '@otter-player/ui-skin-minimal';
+ *
+ * // Loads feed[0] itself; swipe up / down for the next / previous one.
+ * const player = createShortsPlayer({ container, feed: sources, onLike: (index) => console.log('liked', index) });
+ * ```
+ */
 export function createShortsPlayer(options: ShortsOptions): ShortsPlayer {
   const { feed } = options;
   let index = Math.min(Math.max(options.start ?? 0, 0), Math.max(0, feed.length - 1));

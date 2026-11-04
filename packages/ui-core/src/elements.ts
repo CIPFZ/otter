@@ -40,6 +40,7 @@ import { icon, LiveDot, SpinnerRing, Theater, type IconNode } from './icons.js';
 import { buttonCss, createBase, glass, glassFallback, rangeCss, REDUCED_MOTION, setFill, speakTime, speakVolume, T, unsupported, type OtterBase } from './primitives.js';
 import { fill, type UiStrings } from './strings.js';
 
+/** Tag names of the first controls (M1): play, mute, time, seek bar, stats. */
 export const M1_ELEMENTS = {
   PlayButton: 'otter-play-button',
   MuteButton: 'otter-mute-button',
@@ -48,6 +49,10 @@ export const M1_ELEMENTS = {
   Stats: 'otter-stats',
 } as const;
 
+/**
+ * Tag names of the M2 controls: volume, live badge, menus, tooltip, gestures, poster, spinner,
+ * announcer, captions, fullscreen, PiP, settings.
+ */
 export const M2_ELEMENTS = {
   VolumeSlider: 'otter-volume-slider',
   LiveIndicator: 'otter-live-indicator',
@@ -82,7 +87,12 @@ export const M3_ELEMENTS = {
   MiniClose: 'otter-mini-close',
 } as const;
 
+/** Options of defineElements. */
 export interface DefineOptions {
+  /**
+   * The registry to define them in (a scoped registry, an iframe's).
+   * @defaultValue the page's `customElements`
+   */
   readonly registry?: CustomElementRegistry;
 }
 
@@ -95,6 +105,7 @@ export interface MenuOption {
   readonly checked: boolean;
 }
 
+/** One group of a menu (quality, speed, captions): its radio options. */
 export interface MenuGroup {
   readonly id: string;
   readonly label: string;
@@ -1613,61 +1624,100 @@ const statsClass = () =>
     };
   });
 
-/** `M1_ELEMENTS.PlayButton` element class. */
+/**
+ * `<otter-play-button>`: play / pause. Attribute `data-tip-align="start" | "end"`: its tooltip's
+ * alignment (the bar's first and last buttons).
+ */
 export const otterPlayButton = (): Ctor => playButtonClass();
-/** `M1_ELEMENTS.MuteButton` element class. */
+/**
+ * `<otter-mute-button>`: mute / unmute. Attribute `data-tip-align="start" | "end"`: its tooltip's
+ * alignment (the bar's first and last buttons).
+ */
 export const otterMuteButton = (): Ctor => muteButtonClass();
-/** `M2_ELEMENTS.CaptionsButton` element class. */
+/**
+ * `<otter-captions-button>`: captions on / off. Attribute
+ * `data-tip-align="start" | "end"`: its tooltip's alignment (the bar's first and last buttons).
+ */
 export const otterCaptionsButton = (): Ctor => captionsButtonClass();
-/** `M2_ELEMENTS.FullscreenButton` element class. */
+/**
+ * `<otter-fullscreen-button>`: enter / leave fullscreen. Attribute `data-tip-align="start" |
+ * "end"`: its tooltip's alignment (the bar's first and last buttons).
+ */
 export const otterFullscreenButton = (): Ctor => fullscreenButtonClass();
-/** `M2_ELEMENTS.PipButton` element class. */
+/**
+ * `<otter-pip-button>`: enter / leave picture-in-picture. Attribute
+ * `data-tip-align="start" | "end"`: its tooltip's alignment (the bar's first and last buttons).
+ */
 export const otterPipButton = (): Ctor => pipButtonClass();
-/** `M1_ELEMENTS.TimeDisplay` element class. */
+/** `<otter-time-display>`: current time / duration. */
 export const otterTimeDisplay = (): Ctor => timeDisplayClass();
-/** `M1_ELEMENTS.TimeSlider` element class. */
+/** `<otter-time-slider>`: the seek bar, with buffered ranges and the preview card. */
 export const otterTimeSlider = (): Ctor => timeSliderClass();
-/** `M2_ELEMENTS.VolumeSlider` element class. */
+/** `<otter-volume-slider>`: volume. */
 export const otterVolumeSlider = (): Ctor => volumeSliderClass();
-/** `M2_ELEMENTS.LiveIndicator` element class. */
+/** `<otter-live-indicator>`: the live badge; behind the edge it seeks back to live. */
 export const otterLiveIndicator = (): Ctor => liveIndicatorClass();
-/** `M2_ELEMENTS.Tooltip` element class. */
+/** `<otter-tooltip>`: a tooltip. Attribute `for`: the id of the control it describes. */
 export const otterTooltip = (): Ctor => tooltipClass();
-/** `M2_ELEMENTS.Gesture` element class. */
+/** `<otter-gesture>`: the picture area that takes taps, double taps, swipes and long presses. */
 export const otterGesture = (): Ctor => gestureClass();
-/** `M2_ELEMENTS.Poster` element class. */
+/** `<otter-poster>`: the poster until the first frame. Attribute `src`: the picture. */
 export const otterPoster = (): Ctor => posterClass();
-/** `M2_ELEMENTS.Spinner` element class. */
+/**
+ * `<otter-spinner>`: the loading indicator. Attribute `delay`: ms of waiting before it shows
+ * (default 800).
+ */
 export const otterSpinner = (): Ctor => spinnerClass();
-/** `M2_ELEMENTS.Announcer` element class. */
+/** `<otter-announcer>`: a live region that announces state changes to screen readers. */
 export const otterAnnouncer = (): Ctor => announcerClass();
-/** `M2_ELEMENTS.MenuItem` element class. */
+/**
+ * `<otter-menu-item>`: a radio item of an `otter-menu`. Attributes `value` and `checked`; its text
+ * is the label.
+ */
 export const otterMenuItem = (): Ctor => menuItemClass();
-/** `M2_ELEMENTS.Menu` element class. */
+/**
+ * `<otter-menu>`: a menu button with its popup. Attribute `label`: the button's accessible name.
+ */
 export const otterMenu = (): Ctor => menuClass();
-/** `M2_ELEMENTS.SettingsMenu` element class. */
+/**
+ * `<otter-settings-menu>`: the settings menu (quality, speed, captions and their style, audio, more
+ * pages).
+ */
 export const otterSettingsMenu = (): Ctor => settingsMenuClass();
-/** `M1_ELEMENTS.Stats` element class. */
+/** `<otter-stats>`: the stats panel ("Stats for nerds"), built on first show. */
 export const otterStats = (): Ctor => statsClass();
-/** `M25_ELEMENTS.QualityMenu` element class. */
+/** `<otter-quality-menu>`: the quality menu on its text button (`1080P`). */
 export const otterQualityMenu = (): Ctor => qualityMenuClass();
-/** `M25_ELEMENTS.SpeedMenu` element class. */
+/** `<otter-speed-menu>`: the playback-rate menu on its text button (`1.0x`). */
 export const otterSpeedMenu = (): Ctor => speedMenuClass();
-/** `M25_ELEMENTS.SeekButton` element class. */
+/**
+ * `<otter-seek-button>`: seeks by a step. Attribute `seconds`: the step, negative backwards
+ * (default 10). Attribute `data-tip-align="start" | "end"`: its tooltip's alignment (the bar's
+ * first and last buttons).
+ */
 export const otterSeekButton = (): Ctor => seekButtonClass();
-/** `M25_ELEMENTS.BigPlay` element class. */
+/** `<otter-big-play>`: the large play button over the picture before the first play. */
 export const otterBigPlay = (): Ctor => bigPlayClass();
-/** `M25_ELEMENTS.Feedback` element class. */
+/** `<otter-feedback>`: the brief badge after a gesture or key (seek offset, volume, rate). */
 export const otterFeedback = (): Ctor => feedbackClass();
-/** `M25_ELEMENTS.ErrorCard` element class. */
+/** `<otter-error>`: the error card with a retry button. */
 export const otterErrorCard = (): Ctor => errorCardClass();
-/** `M3_ELEMENTS.TheaterButton` element class. */
+/**
+ * `<otter-theater-button>`: enter / leave theater mode. Attribute `data-tip-align="start" | "end"`:
+ * its tooltip's alignment (the bar's first and last buttons).
+ */
 export const otterTheaterButton = (): Ctor => theaterButtonClass();
-/** `M3_ELEMENTS.CastButton` element class. */
+/**
+ * `<otter-cast-button>`: Chromecast. Attribute `data-tip-align="start"
+ * | "end"`: its tooltip's alignment (the bar's first and last buttons).
+ */
 export const otterCastButton = (): Ctor => remoteButtonClass('cast');
-/** `M3_ELEMENTS.AirPlayButton` element class. */
+/**
+ * `<otter-airplay-button>`: AirPlay (Safari). Attribute
+ * `data-tip-align="start" | "end"`: its tooltip's alignment (the bar's first and last buttons).
+ */
 export const otterAirPlayButton = (): Ctor => remoteButtonClass('airplay');
-/** `M3_ELEMENTS.MiniClose` element class. */
+/** `<otter-mini-close>`: closes the mini window. */
 export const otterMiniClose = (): Ctor => miniCloseClass();
 
 /**

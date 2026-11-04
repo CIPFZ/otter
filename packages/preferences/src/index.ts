@@ -1,4 +1,4 @@
-// Viewer preferences (ADR-011 batch 3, SPEC §19 B 站式弹幕站): what the viewer chose is
+// Viewer preferences (ADR-011 batch 3, SPEC §19, the Bilibili-style danmaku site row): what the viewer chose is
 // remembered across visits through a storage adapter the host can replace (default:
 // localStorage under a prefix). Only these are kept: the video codec order, the quality (as a
 // picture height, so it carries over between streams), the audio and subtitle languages, the
@@ -65,7 +65,7 @@ export interface Preferences {
   /** 0..1 */
   readonly volume?: number;
   readonly playbackRate?: number;
-  /** @otter-player/danmaku settings (the danmaku plugin clamps them again when applied). */
+  /** `@otter-player/danmaku` settings (the danmaku plugin clamps them again when applied). */
   readonly danmaku?: Readonly<Record<string, number | boolean | readonly string[]>>;
 }
 
@@ -145,7 +145,7 @@ export interface PreferencesState {
   readonly playbackRate?: number;
   readonly textTracks?: readonly Track[];
   readonly textTrack?: string | null;
-  /** @otter-player/danmaku settings (DanmakuState.danmaku). */
+  /** `@otter-player/danmaku` settings (DanmakuState.danmaku). */
   readonly danmaku?: object;
 }
 
@@ -159,7 +159,7 @@ export interface PreferencesActionMap {
   'set-volume': { readonly volume: number };
   'volume-by': { readonly delta: number };
   'set-playback-rate': { readonly rate: number };
-  /** @otter-player/danmaku's, when installed. */
+  /** `@otter-player/danmaku`'s, when installed. */
   'set-danmaku'?: object;
 }
 

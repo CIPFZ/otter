@@ -8,12 +8,22 @@
 
 import type { FormatPlugin, Source, StreamContext, StreamSession } from '@otter-player/media';
 
+/** Options of the WHEP format. */
 export interface WhepFormatOptions {
-  /** ICE servers for the peer connection (STUN / TURN); default none (host candidates). */
+  /**
+   * ICE servers for the peer connection (STUN / TURN).
+   * @defaultValue `[]` (host candidates only)
+   */
   readonly iceServers?: readonly RTCIceServer[];
-  /** ICE must connect within this after the answer, ms. Default 8000. */
+  /**
+   * ICE must connect within this after the answer, ms.
+   * @defaultValue `8000`
+   */
   readonly connectTimeoutMs?: number;
-  /** Longest wait for ICE gathering before the offer goes out with what it has, ms. Default 1500. */
+  /**
+   * Longest wait for ICE gathering before the offer goes out with what it has, ms.
+   * @defaultValue `1500`
+   */
   readonly gatherTimeoutMs?: number;
 }
 
@@ -23,6 +33,11 @@ const WHEP_TYPE = 'application/whep';
 export const isWhep = (source: Source): boolean =>
   source.type === WHEP_TYPE || (typeof source.src === 'string' && /\/whep(?:\/|$|\?)/i.test(source.src));
 
+/**
+ * The WebRTC WHEP format: a recvonly offer to the endpoint, the received stream on the native
+ * backend. ICE that does not connect is a fatal `iceFailed`: down the fallback chain, then to
+ * `Source.fallback`.
+ */
 export function createWhepFormat(options: WhepFormatOptions = {}): FormatPlugin {
   return {
     id: 'whep',

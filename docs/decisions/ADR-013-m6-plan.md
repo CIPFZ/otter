@@ -184,6 +184,18 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - `e2e/docs-site.spec.ts`（desktop-chrome）遍历全部页面与链接，并从 basic、vod、React 三页的链接打开示例、确认在播。
 - 当前文档注释覆盖 242 / 654 个导出，只记录。TSDoc 约定与中英文取舍（交接 §7 留的两个问题）没有在这一项里定。
 
+### 12a. 文档一停：语言分界、TSDoc 约定与覆盖门禁（2026-11-04 负责人）
+
+- 语言：TSDoc、文档站、包 README、源码注释英文；SPEC / ADR / RESEARCH / 报告 / AGENT 中文。中文文档站排在 1.0 之后。六条约定与门禁范围写在 AGENT §4，术语表 `docs/design/GLOSSARY.md`。
+- 门禁 `scripts/lib/docs-gate.ts`，由 `pnpm check:docs-site` 执行，任一问题即失败：
+  - 用户面向入口（core、presets 全部 sub-path、react / vue / svelte、ui-core、input 与 `/remote`、各 format、各 engine-adapter 与 engine-pipeline 入口）的导出 100 % 有文档注释；纯结构类型按 `入口#名字` 白名单豁免（现有 5 个，都在 core）；
+  - 选项接口（`*Options`、`*Props`、`RemoteSeek`、`InputTimings`）的成员都有注释，可选成员带 `@defaultValue`；继承来的成员按继承来源检查（例如各 preset 的选项从 `PlayerOptions` 继承）；
+  - `@see` / `{@link}` 只指公开导出；未知标签报错（注释里没加反引号的 `@otter-player/x` 会被 TS 当成标签、截断正文，原有 16 处已改）；
+  - `createPlayer`、十个 preset、三个绑定的 `@example` 与 `e2e/site/examples/` 里同名 `#region example:<名字>` 逐字一致。这些片段由 `e2e/site/examples.html?example=<名字>` 运行，`e2e/examples.spec.ts`（desktop-chrome）逐个确认画面在走、无错误。文档站的 preset 与绑定页改为展示这段代码，「运行」链接指向这个页面（原来取 `e2e/site/presets.ts` 的分支，那段带测试参数，不再用）；
+  - 错误码：`OtterError` 的 TSDoc 是一张「代码 | 类型 | 致命 | 来源 | 何时」表；`scripts/lib/error-codes.ts` 从源码读出全部 `details` 码（字面量、模板前缀、把参数转交为 `details` 的本地辅助函数的实参），与表双向比对。现有 83 个码（含 `flv*`、`shaka*` 两个前缀）。
+- 内部包只在文档站首页记录覆盖率，不门禁。
+- 发现：TypeScript 6 默认 `noUncheckedSideEffectImports`，`import '@otter-player/ui-skin-default'` 这种纯 CSS 包的副作用导入在宿主的 tsc 下会报 TS2882（e2e 示例页用 `e2e/site/skins.d.ts` 声明）。皮肤包要不要带类型声明，放进 ADR-014 发版准备一并定。
+
 ## 代价
 
 - 体积收口要动 SPF 的 L3 拷贝（候选 1）。本地改动变多，UPSTREAM.json 要记清楚，以后同步上游时要合并。

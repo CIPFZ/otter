@@ -5,12 +5,17 @@
 import { createError, createEventBus, type OtterError, type OtterErrorType } from '@otter-player/core';
 import { EMPTY_TRACKS, type Engine, type EngineContext, type EngineEvents, type TrackList } from '@otter-player/media';
 
+/** The container mpegts.js reads. */
 export type MpegtsType = 'flv' | 'mpegts';
 
+/** Options of the mpegts.js adapter. */
 export interface MpegtsEngineOptions {
   /** Container type; format-flv passes `flv`, format-ts passes `mpegts`. */
   readonly type: MpegtsType;
-  /** Extra mpegts.js player config applied over the adapter defaults. */
+  /**
+   * Extra mpegts.js player configuration, applied over the adapter defaults.
+   * @defaultValue `{}`
+   */
   readonly config?: Record<string, unknown>;
 }
 
@@ -62,6 +67,7 @@ const ERROR_TYPES: Readonly<Record<string, OtterErrorType>> = {
   OtherError: 'other',
 };
 
+/** An mpegts.js error as an {@link OtterError} (its `details` kept, else `mpegtsError`). */
 export function mapMpegtsError(type: unknown, details: unknown, info: unknown): OtterError {
   const message = typeof info === 'object' && info !== null && 'msg' in info ? String((info as { msg: unknown }).msg) : String(details);
   return createError({
@@ -73,6 +79,7 @@ export function mapMpegtsError(type: unknown, details: unknown, info: unknown): 
   });
 }
 
+/** mpegts.js media info as Otter's track list. */
 export function mapMpegtsTracks(info: MpegtsMediaInfo): TrackList {
   const bitrate = ((info.videoDataRate ?? 0) + (info.audioDataRate ?? 0)) * 1000;
   return {
@@ -95,6 +102,10 @@ export function mapMpegtsTracks(info: MpegtsMediaInfo): TrackList {
   };
 }
 
+/**
+ * The mpegts.js engine adapter (mpegts.js loaded on demand): the fallback of the own FLV / TS
+ * pipeline.
+ */
 export function createMpegtsEngine(ctx: EngineContext, options: MpegtsEngineOptions): Engine {
   const bus = createEventBus<EngineEvents>();
   let player: MpegtsPlayer | undefined;

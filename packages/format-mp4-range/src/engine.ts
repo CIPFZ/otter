@@ -22,8 +22,12 @@ const CHUNK_MAX = 1024 * 1024;
 /** Default: stop reading while this much is buffered ahead, seconds (hls.js maxBufferLength). */
 const MAX_AHEAD_S = 30;
 
+/** Options of the MP4 range engine. */
 export interface Mp4RangeEngineOptions {
-  /** Seconds buffered ahead before reading pauses. A switch applies to what is not buffered yet. */
+  /**
+   * Seconds buffered ahead before reading pauses. A switch applies to what is not buffered yet.
+   * @defaultValue `30`
+   */
   readonly maxBufferAheadS?: number;
 }
 /** File head read first: ftyp + moov of a faststart file fit in it. */

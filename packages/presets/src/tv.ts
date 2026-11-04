@@ -1,4 +1,4 @@
-// Preset `tv` (SPEC §19「电视遥控器」): HLS (own engine) and DASH on MSE, driven by a remote
+// Preset `tv` (SPEC §19 row "TV remote"): HLS (own engine) and DASH on MSE, driven by a remote
 // (@otter-player/input/remote): arrow keys move the focus between the controls (spatial
 // navigation), OK activates, Back closes a menu or leaves the controls, media keys play / pause /
 // seek. On the picture (nothing focused), Left / Right seek, faster while held, and Up / Down
@@ -30,11 +30,38 @@ export const TV_HOTKEYS: HotkeyMap = (() => {
   };
 })();
 
+/** Options of the `tv` preset: {@link PresetOptions} and the remote. */
 export interface TvOptions extends PresetOptions {
-  /** Remote keys (names or platform key codes per logical key) and the hold-to-seek steps. */
+  /**
+   * Remote keys (names or platform key codes per logical key) and the hold-to-seek steps.
+   * @defaultValue `{}` (`DEFAULT_REMOTE_KEYS`, steps of 10 s / 30 s / 60 s)
+   */
   readonly remote?: RemoteOptions;
+  /**
+   * Control bar auto-hide delay, ms; 0 keeps the controls shown.
+   * @defaultValue `5000`
+   */
+  readonly idleMs?: number;
+  /**
+   * Keyboard mapping (a TV keyboard's; the remote's keys are `remote`'s).
+   * @defaultValue `TV_HOTKEYS`
+   */
+  readonly hotkeys?: HotkeyMap;
 }
 
+/**
+ * A TV player driven by a remote: HLS (own engine) and DASH on MSE; arrow keys move the focus
+ * between the controls, OK activates, Back closes a menu or leaves the controls, media keys play /
+ * pause / seek. Skin: `@otter-player/ui-skin-tv`.
+ * @example
+ * ```ts
+ * import { createTvPlayer } from '@otter-player/presets/tv';
+ * import '@otter-player/ui-skin-tv';
+ *
+ * const player = createTvPlayer({ container, title: 'Example', remote: { keys: { back: ['Escape', 'GoBack', 10009, 461] } } });
+ * void player.load(src);
+ * ```
+ */
 export function createTvPlayer(options: TvOptions): Player {
   return createPlayer({
     idleMs: 5000,

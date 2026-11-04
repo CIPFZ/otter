@@ -1,6 +1,6 @@
 # @otter-player/svelte
 
-Svelte 绑定（SPEC §16，ADR-013 第三批）：一个 action 与一个组件承载 preset 播放器，加一个 store 读状态。范围与 `@otter-player/react` 一致：只经 store 的 `getState` / `subscribe`，不带 Otter 运行时，用哪个 preset 由宿主传入。Svelte 5（peer）。
+Svelte bindings (SPEC §16, ADR-013 batch 3): an action and a component that host a player made by a preset, and a store that reads its state. Same scope as `@otter-player/react`: only through the store's `getState` / `subscribe`, no Otter runtime inside, the host passes the preset. Svelte 5 (peer).
 
 ```svelte
 <script>
@@ -13,23 +13,23 @@ Svelte 绑定（SPEC §16，ADR-013 第三批）：一个 action 与一个组件
   let player = $state.raw(null);
   const paused = $derived(otterState(player?.store, (s) => s.paused));
   const create = (container) => {
-    const p = createVodPlayer({ container, title: '示例' });
+    const p = createVodPlayer({ container, title: 'Example' });
     void p.load(src);
     return p;
   };
 </script>
 
 <OtterPlayer {create} deps={[src]} poster="/poster.jpg" onplayer={(p) => (player = p)} />
-<button onclick={() => player?.store.dispatch($paused ? 'play' : 'pause', undefined)}>{$paused ? '播放' : '暂停'}</button>
+<button onclick={() => player?.store.dispatch($paused ? 'play' : 'pause', undefined)}>{$paused ? 'Play' : 'Pause'}</button>
 ```
 
-- `OtterPlayer.svelte`（props：`create deps onplayer aspectRatio poster class`）：以源码发布（`svelte` 导出条件），由宿主的 Svelte 工具链编译；内部就是下面的 action。
-- `use:otterPlayer={{ create, deps, onPlayer }}`：在元素里新建子容器并建播放器；元素移除或 `deps` 变化时销毁。自己出盒子时用。
-- `otterState(store, selector, equals?)`：Svelte store（`$paused`），只在所选的那一片变化时通知。`store` 为空时值为 undefined。
-- 主入口是纯 TypeScript，不导入 Svelte。
+- `OtterPlayer.svelte` (props: `create deps onplayer aspectRatio poster class`): shipped as source (the `svelte` export condition) and compiled by the host's Svelte toolchain; inside it is the action below.
+- `use:otterPlayer={{ create, deps, onPlayer }}`: makes a fresh child container in the element and the player in it; destroyed when the element goes or `deps` changes. For hosts that render their own box.
+- `otterState(store, selector, equals?)`: a Svelte store (`$paused`) that notifies only when the selected slice changes. Undefined while `store` is empty.
+- The main entry is plain TypeScript and does not import Svelte.
 
-## 服务端渲染
+## Server rendering
 
-- action 只在浏览器里、水合之后运行；它所在的元素就是服务端渲染出的空盒子（带 `aspect-ratio` 与可选 poster）。
-- 服务端渲染时 Svelte 对 store 是「订阅、读值、退订」，不留监听。
-- 示例：`e2e/site/svelte-{basic,vod,surveillance}.html`，构建时在 Node 里渲染，浏览器里 `hydrate`；Svelte 的生产构建不报告水合不匹配，`e2e/bindings.spec.ts` 改查服务端那个盒子元素在水合后仍是同一个。
+- The action runs only in the browser, after hydration; its element is the empty box rendered on the server (with `aspect-ratio` and an optional poster).
+- During server rendering Svelte subscribes to a store, reads the value and unsubscribes, leaving no listener.
+- Examples: `e2e/site/svelte-{basic,vod,surveillance}.html`, rendered in Node at build time and hydrated in the browser with `hydrate`; Svelte's production build does not report hydration mismatches, so `e2e/bindings.spec.ts` checks instead that the server-rendered box element is still the same element after hydration.

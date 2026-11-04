@@ -1,32 +1,32 @@
 # @otter-player/presets
 
-一行接入的场景 preset（SPEC §19，ADR-013）。每个 preset 是一个 sub-path，页面只带自己场景的格式与后端。
+One-line scenario presets (SPEC §19, ADR-013). Each preset is a sub-path, so a page carries only the formats and backends of its own scenario.
 
 ```ts
 import { createVodPlayer } from '@otter-player/presets/vod';
 import '@otter-player/ui-skin-default';
 
-const player = createVodPlayer({ container: document.getElementById('player')!, title: '示例', lang: 'zh-CN' });
+const player = createVodPlayer({ container: document.getElementById('player')!, title: 'Example', lang: 'zh-CN' });
 await player.load('https://example.com/master.m3u8');
 ```
 
-| sub-path | 场景 |
+| sub-path | Scenario |
 |---|---|
-| `/basic` | 短视频 / 简单点播：五个控件，mp4-range + HLS，皮肤用 `@otter-player/ui-skin-minimal` |
-| `/vod` | 长视频点播：HLS、DASH、MP4，清晰度、字幕、预览图（字幕与预览图是按需块，`captions: false` / `thumbnails: false` 时不加载） |
-| `/live`、`/lowlatency` | 直播、低延迟直播 |
-| `/danmaku` | 弹幕站：`comments` 选项随每次 `load()` 加载弹幕 |
-| `/surveillance` | 监控多路：一面 GPU 墙，每路走 WebCodecs（HEVC 无硬解时用 WASM），HTTP-FLV / WS-FLV / 直播 MPEG-TS / HLS / 本地文件；同一主机超过 6 路请用 WS-FLV 或 HTTP/2（浏览器每主机 6 个 HTTP/1.1 连接；第 7 路起每路一条非致命错误 `tooManyConnectionsPerHost`）；FLV / TS 按直播处理，`live: false` 的源走 MSE。已知限制：真 Windows Firefox 上偶发首帧约 10 s（各传输都会，原因未查明，RESEARCH §1） |
-| `/ott-drm` | OTT 付费 + DRM |
-| `/shorts` | 竖屏信息流。手势：在画面上上滑看下一条、下滑看上一条（超过高度的 20 %，或短距离快滑：最后 100 ms 内速度 ≥ 0.5 px/ms 且移动 ≥ 30 px）；单击暂停 / 播放；双击调用宿主的 `onLike(index, at)`；长按期间 2 倍速。参数都在 `gestures` 选项里，`gestures: false` 只留按键和 API。只有一个 `<video>` 和一个引擎：切换时先拆掉前一条再加载下一条，不预加载，同时存活的解码实例上限为 1 |
-| `/tv` | 电视遥控器 |
-| `/background` | 背景视频（Hero），没有控件 |
+| `/basic` | Short videos / simple VOD: five controls, mp4-range + HLS, skin `@otter-player/ui-skin-minimal` |
+| `/vod` | Long-form VOD: HLS, DASH, MP4, quality, captions, preview thumbnails (captions and thumbnails are on-demand chunks, not loaded with `captions: false` / `thumbnails: false`) |
+| `/live`, `/lowlatency` | Live, low-latency live |
+| `/danmaku` | Danmaku sites: the `comments` option loads the comments with every `load()` |
+| `/surveillance` | Surveillance walls: one GPU wall, each tile on WebCodecs (WASM for HEVC without a hardware decoder), HTTP-FLV / WS-FLV / live MPEG-TS / HLS / local files; above 6 tiles from one host use WS-FLV or HTTP/2 (browsers allow 6 HTTP/1.1 connections per host; from the 7th tile on, each gets a non-fatal `tooManyConnectionsPerHost` error); FLV / TS are treated as live, sources with `live: false` go through MSE. Known limitation: on real Windows Firefox the first frame occasionally takes about 10 s (all transports, cause not found, RESEARCH §1) |
+| `/ott-drm` | OTT subscription + DRM |
+| `/shorts` | Vertical feed. Gestures on the picture: swipe up for the next item, down for the previous one (more than 20 % of the height, or a short fast swipe: ≥ 0.5 px/ms over the last 100 ms and ≥ 30 px moved); tap pauses / plays; double tap calls the host's `onLike(index, at)`; 2× speed while long-pressed. All parameters are in the `gestures` option; `gestures: false` leaves only keys and the API. One `<video>` and one engine: a switch tears down the previous item before loading the next, nothing is preloaded, at most 1 live decoder at a time |
+| `/tv` | TV remote control |
+| `/background` | Background video (hero), no controls |
 
-## 界面语言
+## UI language
 
-- `lang`（BCP 47，如 `zh-CN`、`en`）设在播放器根上，优先于页面的 `lang`。
-- 不给时：页面上最近的 `lang`，再看 `navigator.language`，最后英文。
-- 自带英文与中文。其他语言用 `provideStrings`：
+- `lang` (BCP 47, e.g. `zh-CN`, `en`) is set on the player root and takes precedence over the page's `lang`.
+- When not given: the nearest `lang` on the page, then `navigator.language`, then English.
+- English and Chinese are built in. Other languages through `provideStrings`:
 
 ```ts
 import { provideStrings, STRINGS_EN, type UiStrings } from '@otter-player/ui-core';
@@ -35,16 +35,16 @@ const ja: UiStrings = { ...STRINGS_EN, locale: 'ja', play: '再生', pause: '一
 provideStrings(player.element, ja);
 ```
 
-## 弹幕（`/danmaku`）
+## Danmaku (`/danmaku`)
 
 ```ts
 const player = createDanmakuPlayer({ container, comments: (src) => src.replace(/\.mpd$/, '.xml') });
-await player.load('/video.mpd'); // 弹幕随之加载
-await player.load('/other.mpd', { comments: null }); // 这一次不要弹幕
+await player.load('/video.mpd'); // its comments load with it
+await player.load('/other.mpd', { comments: null }); // no comments this time
 ```
 
-`comments` 可以是一个 URL，或者由视频地址求出弹幕地址的函数（返回 `undefined` 表示这个视频没有弹幕）。换视频时，没有弹幕的视频会清掉上一个的弹幕；不给 `comments` 时 preset 不碰弹幕，由宿主 `dispatch('load-danmaku', …)`。
+`comments` is a URL, or a function from the video URL to the comments URL (returning `undefined` means this video has no comments). On a switch, a video without comments clears the previous one's; without `comments` the preset leaves danmaku alone and the host uses `dispatch('load-danmaku', …)`.
 
-## 逐帧精确（剪辑 / 标注）与 Safari
+## Frame-accurate work (editing / annotation) and Safari
 
-Safari（WebKit）上 `<video>` 暂停后 seek 可能停在更早的一帧不重绘，这是平台限制（RESEARCH §1、ADR-008 §6.1）。需要逐帧精确时用 WebCodecs 路径：本地文件或 Blob 交给 `@otter-player/format-file`，后端 `@otter-player/backend-webcodecs`，帧由播放器画在画布上（§19 剪辑行的组合）。这条路径在 Safari 上逐帧准确（e2e `picture.spec` 的 webcodecs 一条）。
+On Safari (WebKit), a seek on a paused `<video>` may stop on an earlier frame without repainting: a platform limitation (RESEARCH §1, ADR-008 §6.1). For frame accuracy use the WebCodecs path: hand local files or Blobs to `@otter-player/format-file` with the backend `@otter-player/backend-webcodecs`, and the player draws the frames on a canvas (the §19 editing row's combination). This path is frame-accurate on Safari (the webcodecs case of e2e `picture.spec`).

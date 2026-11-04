@@ -14,6 +14,7 @@
 import type { StoreView } from '@otter-player/core';
 import type { GestureKind, GestureMap, HotkeyMap, InputAction, InputActionMap } from './index.js';
 
+/** Timing thresholds that tell taps, doubles, long presses and swipes apart. */
 export interface InputTimings {
   /** Two taps / clicks within this many ms form a double. */
   readonly doubleMs: number;
@@ -23,6 +24,7 @@ export interface InputTimings {
   readonly slopPx: number;
 }
 
+/** Default timings: doubles within 300 ms, long press after 500 ms, swipes from 10 px. */
 export const DEFAULT_TIMINGS: InputTimings = { doubleMs: 300, longPressMs: 500, slopPx: 10 };
 
 const INTERACTIVE = 'button, input, select, textarea, a[href], [contenteditable=""], [contenteditable="true"], [role="button"], [role="slider"], [role="menu"], [role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"], [role="listbox"], [role="option"], [role="radiogroup"], [role="tab"], [data-otter-controls]';

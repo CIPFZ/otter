@@ -6,6 +6,7 @@
 export { createPlayer, type Player, type PlayerActions, type PlayerExplanation, type PlayerOptions, type PlayerParts, type PlayerState } from './player.js';
 export type { PresetOptions } from './options.js';
 
+/** The id of a scenario preset: its sub-path, `@otter-player/presets/<id>`. */
 export type PresetId =
   | 'basic'
   | 'vod'
@@ -18,6 +19,7 @@ export type PresetId =
   | 'tv'
   | 'background';
 
+/** Every preset id, in the order of SPEC §19's scenario table. */
 export const PRESET_IDS: readonly PresetId[] = [
   'basic',
   'vod',

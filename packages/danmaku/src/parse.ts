@@ -1,6 +1,6 @@
-// Comment lists for the danmaku engine, an on-demand chunk loaded by `load-danmaku`: B站 XML
+// Comment lists for the danmaku engine, an on-demand chunk loaded by `load-danmaku`: Bilibili XML
 // (CommentCoreLibrary's parser, vendor/), and JSON in three shapes: CCL's common list
-// ({stime ms, mode, size, color, text}), B站's DanmakuElem as JSON ({progress ms, mode, fontsize,
+// ({stime ms, mode, size, color, text}), Bilibili's DanmakuElem as JSON ({progress ms, mode, fontsize,
 // color, content}) with or without a {data: [...]} / {elems: [...]} wrapper, and DPlayer's
 // [[time s, type 0/1/2, color, author, text]].
 
@@ -13,7 +13,7 @@ export interface LoadedComments {
   readonly skipped: number;
 }
 
-/** B站 mode numbers: 1-3 scrolling, 4 bottom, 5 top, 6 reverse. */
+/** Bilibili mode numbers: 1-3 scrolling, 4 bottom, 5 top, 6 reverse. */
 const MODES: Readonly<Record<number, Mode>> = { 1: 'rtl', 2: 'rtl', 3: 'rtl', 4: 'bottom', 5: 'top', 6: 'ltr' };
 
 const fromParsed = (c: ParsedComment): DanmakuInput => ({ time: c.time, text: c.text, mode: MODES[c.mode] ?? 'rtl', color: c.color, size: c.size });
@@ -30,7 +30,7 @@ function fromJson(e: unknown): DanmakuInput | null {
   if (typeof e !== 'object' || e === null) return null;
   const o = e as Record<string, unknown>;
   if (typeof o['progress'] === 'number' || typeof o['content'] === 'string') {
-    // B站 DanmakuElem (protobuf decoded to JSON).
+    // Bilibili DanmakuElem (protobuf decoded to JSON).
     const mode = MODES[typeof o['mode'] === 'number' ? o['mode'] : 1];
     if (mode === undefined || typeof o['content'] !== 'string') return null;
     return {

@@ -9,27 +9,40 @@ import type { BackendKind, Capabilities, FormatPlugin, Source } from '@otter-pla
 import { createMpegtsEngine } from '@otter-player/engine-adapter-mpegts';
 import { createPipelineEngine, withAdapterFallback } from '@otter-player/engine-pipeline';
 
+/** Options of the MPEG-TS format. */
 export interface TsFormatOptions {
-  /** Extra mpegts.js config (adapter engine). */
+  /**
+   * Extra mpegts.js configuration (the adapter engine).
+   * @defaultValue `{}`
+   */
   readonly config?: Record<string, unknown>;
   /**
-   * `otter` (default since M3, cn-live acceptance met): Otter's own pipeline (hls.js TS demuxer, L2), falling back to the mpegts.js
-   * adapter on media errors; `mpegts`: the adapter only (ADR-007 §2).
+   * `otter`: Otter's own pipeline (hls.js TS demuxer), falling back to the mpegts.js adapter on
+   * media errors; `mpegts`: the adapter only (ADR-007 §2).
+   * @defaultValue `'otter'`
    */
   readonly engine?: 'otter' | 'mpegts';
-  /** Live latency to hold with the own pipeline, seconds. */
+  /**
+   * Live latency to hold with the own pipeline, seconds.
+   * @defaultValue `1`
+   */
   readonly targetLatency?: number;
 }
 
 const TS_TYPE = /mp2t/i;
 const TS_EXT = /\.(ts|m2ts|mts)(\?|#|$)/i;
 
+/** How likely a source is MPEG-TS, 0..1 (its type or extension): the router's probe. */
 export function probeTs(source: Source): number {
   if (typeof source.src !== 'string') return 0;
   if (source.type !== undefined) return TS_TYPE.test(source.type) ? 1 : 0;
   return TS_EXT.test(source.src) ? 0.8 : 0;
 }
 
+/**
+ * The MPEG-TS format: Otter's own pipeline on MSE, the mpegts.js adapter as the fallback; live
+ * sources (`live: true`) also feed the WebCodecs backend (surveillance walls).
+ */
 export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
   return {
     id: 'ts',
