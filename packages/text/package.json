@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/text",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Text tracks overlay: WebVTT, SRT, IMSC1/TTML, CEA-608/708, native and custom cue rendering.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/text"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/text#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -19,7 +28,9 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "NOTICE",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -28,7 +39,6 @@
     "@otter-player/core": "workspace:*",
     "@otter-player/media": "workspace:*",
     "@otter-player/surface": "workspace:*",
-    "imsc": "1.1.5",
     "media-captions": "1.0.4"
   },
   "otter": {
@@ -39,5 +49,11 @@
     "entries": {
       "render": "src/render.ts"
     }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "imsc": "1.1.5"
   }
 }

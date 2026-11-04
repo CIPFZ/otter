@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/decoder-wasm-hevc",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "WASM HEVC / H.264 software decoder: Jessibuca 4 jv4-decoder (L2, prebuilt), in the shared decode pool, loaded on demand.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/decoder-wasm-hevc"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/decoder-wasm-hevc#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,9 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "NOTICE",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -28,5 +39,8 @@
     "assets": [
       "src/vendor/jessibuca"
     ]
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

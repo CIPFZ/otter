@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/danmaku",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Danmaku (scrolling comments) engine: CSS, Canvas 2D, WebGL batch and OffscreenCanvas renderers.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/danmaku"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/danmaku#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,9 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "NOTICE",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -22,5 +33,8 @@
   "dependencies": {
     "@otter-player/core": "workspace:*",
     "@otter-player/surface": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

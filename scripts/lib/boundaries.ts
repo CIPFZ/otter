@@ -10,9 +10,14 @@ export interface PackageInfo {
     readonly sideEffects?: unknown;
     readonly exports?: unknown;
     readonly main?: string;
+    readonly private?: boolean;
+    readonly publishConfig?: { readonly access?: string };
+    readonly repository?: { readonly url?: string; readonly directory?: string };
     readonly dependencies?: Readonly<Record<string, string>>;
     readonly peerDependencies?: Readonly<Record<string, string>>;
     readonly devDependencies?: Readonly<Record<string, string>>;
+    /** `bundle`: dependencies built into dist (tooling/vite.lib.config.ts). */
+    readonly otter?: { readonly bundle?: readonly string[] };
   };
   /** compilerOptions.lib of the package tsconfig; undefined for CSS-only packages. */
   readonly lib: readonly string[] | undefined;
@@ -71,13 +76,35 @@ export function checkBoundaries(packages: readonly PackageInfo[]): string[] {
       report(dir, '"sideEffects" must be false');
     }
     if (manifest.license !== 'Apache-2.0') report(dir, 'license must be Apache-2.0');
+    // Release (ADR-014): published packages are public in the scope; placeholders are private.
+    if (manifest.private === true) {
+      if (manifest.publishConfig !== undefined) report(dir, 'a private (placeholder) package must not have publishConfig');
+    } else if (manifest.publishConfig?.access !== 'public') {
+      report(dir, 'published packages need "publishConfig": { "access": "public" } (or "private": true for a placeholder)');
+    }
+    if (manifest.repository?.url !== 'git+https://github.com/CIPFZ/otter.git' || manifest.repository.directory !== `packages/${dir}`) {
+      report(dir, `"repository" must be the otter repository with "directory": "packages/${dir}" (npm provenance checks it)`);
+    }
     if (manifest.exports === undefined) report(dir, '"exports" is required');
     if (manifest.main !== undefined) report(dir, '"main" is not allowed; use "exports"');
 
-    const runtimeDeps = { ...manifest.dependencies, ...manifest.peerDependencies };
+    // Bundled dependencies ship inside dist: they are devDependencies (a published manifest must not
+    // ask npm for them; @otter-vendor/* is not on npm at all), and count as declared for imports.
+    const bundled = manifest.otter?.bundle ?? [];
+    for (const b of bundled) {
+      // (A bundled dependency of a bundled one, sax under imsc, may be absent from the manifest.)
+      if (manifest.dependencies?.[b] !== undefined || manifest.peerDependencies?.[b] !== undefined) report(dir, `${b} is bundled into dist (otter.bundle): declare it in devDependencies, not dependencies`);
+    }
+    const runtimeDeps = { ...manifest.dependencies, ...manifest.peerDependencies, ...Object.fromEntries(bundled.filter((b) => manifest.devDependencies?.[b] !== undefined).map((b) => [b, manifest.devDependencies?.[b] as string])) };
     const workspaceDeps = Object.keys(runtimeDeps)
       .filter((d) => d.startsWith(SCOPE))
       .map((d) => d.slice(SCOPE.length));
+
+    if (manifest.private !== true) {
+      for (const d of workspaceDeps) {
+        if (packages.find((p) => p.dir === d)?.manifest.private === true) report(dir, `a published package must not depend on the private placeholder ${SCOPE}${d}`);
+      }
+    }
 
     // Core never depends on anything, and in particular never on an implementation (AGENT §2.2).
     if (dir === 'core' && Object.keys(runtimeDeps).length > 0) report(dir, 'core must have no runtime dependencies');

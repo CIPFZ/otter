@@ -1,8 +1,18 @@
 {
   "name": "@otter-player/overlay-ads",
   "version": "0.0.0",
+  "private": true,
   "description": "Ad overlay driven by timeline interstitial events: countdown and skip button.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/overlay-ads"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/overlay-ads#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +24,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"

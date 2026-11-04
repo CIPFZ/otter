@@ -1,8 +1,18 @@
 {
   "name": "@otter-player/decoder-wasm-ffmpeg",
   "version": "0.0.0",
+  "private": true,
   "description": "Optional software decoder (third-party ffmpeg.wasm build, LGPL, loaded as a separate module).",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/decoder-wasm-ffmpeg"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/decoder-wasm-ffmpeg#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +24,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"

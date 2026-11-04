@@ -1,8 +1,18 @@
 {
   "name": "@otter-player/text-ass",
   "version": "0.0.0",
+  "private": true,
   "description": "ASS/SSA subtitle overlay; optional libass WASM (LGPL, separate module) for effects.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/text-ass"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/text-ass#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +24,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"

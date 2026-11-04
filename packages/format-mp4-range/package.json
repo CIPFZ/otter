@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/format-mp4-range",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Progressive MP4 via Range requests and moov parsing, segment-wise quality switching.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/format-mp4-range"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/format-mp4-range#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -25,5 +35,8 @@
     "mp4box": "2.4.1",
     "@otter-player/engine-pipeline": "workspace:*",
     "@otter-player/pipeline": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

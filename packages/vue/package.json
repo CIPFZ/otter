@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/vue",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Vue bindings: a component hosting a preset-made player, and composables over its store (SSR-safe).",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/vue"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/vue#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -24,5 +34,8 @@
   },
   "peerDependencies": {
     "vue": ">=3.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

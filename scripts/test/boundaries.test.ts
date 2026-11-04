@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { checkBoundaries, scanImports, type PackageInfo } from '../lib/boundaries.ts';
 
-const pkg = (dir: string, overrides: Partial<PackageInfo> = {}, manifest: Partial<PackageInfo['manifest']> = {}): PackageInfo => ({
+/** `manifest` values set to undefined remove a default field (publishConfig of a placeholder). */
+const pkg = (dir: string, overrides: Partial<PackageInfo> = {}, manifest: { readonly [K in keyof PackageInfo['manifest']]?: PackageInfo['manifest'][K] | undefined } = {}): PackageInfo => ({
   dir,
   manifest: {
     name: `@otter-player/${dir}`,
@@ -9,7 +10,9 @@ const pkg = (dir: string, overrides: Partial<PackageInfo> = {}, manifest: Partia
     license: 'Apache-2.0',
     sideEffects: false,
     exports: { '.': './dist/index.js' },
-    ...manifest,
+    publishConfig: { access: 'public' },
+    repository: { url: 'git+https://github.com/CIPFZ/otter.git', directory: `packages/${dir}` },
+    ...(manifest as PackageInfo['manifest']),
   },
   lib: ['ES2022', 'DOM'],
   references: [],
@@ -65,6 +68,22 @@ describe('checkBoundaries', () => {
     // The exception is for skins only.
     expect(checkBoundaries([pkg('text', {}, { sideEffects: ['*.css'] })])).toEqual([
       'packages/text: "sideEffects" must be false',
+    ]);
+  });
+
+  it('release fields (ADR-014): public or private, the repository with its directory, no published package on a placeholder', () => {
+    expect(checkBoundaries([pkg('qoe'), pkg('plugin-cast', {}, { private: true, publishConfig: undefined })])).toEqual([]);
+    expect(
+      checkBoundaries([
+        pkg('qoe', {}, { publishConfig: undefined, repository: { url: 'git+https://github.com/CIPFZ/otter.git', directory: 'packages/x' } }),
+        pkg('plugin-cast', {}, { private: true }),
+        pkg('presets', { references: ['plugin-cast'] }, { dependencies: { '@otter-player/plugin-cast': 'workspace:*' } }),
+      ]),
+    ).toEqual([
+      'packages/qoe: published packages need "publishConfig": { "access": "public" } (or "private": true for a placeholder)',
+      'packages/qoe: "repository" must be the otter repository with "directory": "packages/qoe" (npm provenance checks it)',
+      'packages/plugin-cast: a private (placeholder) package must not have publishConfig',
+      'packages/presets: a published package must not depend on the private placeholder @otter-player/plugin-cast',
     ]);
   });
 

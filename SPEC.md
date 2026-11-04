@@ -21,6 +21,7 @@
 - 首屏核心 ≤ 15KB gzip；默认皮肤 + ui-core + presentation + text ≤ 30KB；弹幕另加：基本（主块 + 解析块）≤ 10KB，全部块（加 WebGL、Worker、蒙版三个按需块）≤ 15KB，三个按需块单列（2026-10-27，ADR-012）。
 - 无障碍 WCAG 2.2 AA，Vidstack 的 CVAA 清单作为验收标准。
 - QoE 遥测从第一天内建：首帧、卡顿率、切档、错误、退出点、带宽估计、backend 类型。
+- 浏览器基线（ADR-014 §5）：Chrome / Edge 110+、Firefox 115+、Safari 16.4+、iOS 16.4+。低于基线不加 polyfill，走原生后端，能播多少算多少。
 
 ### 1.2 非目标
 

@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/format-ts",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "MPEG-TS format plugin.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/format-ts"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/format-ts#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -25,5 +35,8 @@
     "@otter-player/engine-adapter-mpegts": "workspace:*",
     "@otter-player/engine-pipeline": "workspace:*",
     "@otter-player/media": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

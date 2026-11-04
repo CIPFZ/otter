@@ -10,7 +10,9 @@ A pluggable web video player in TypeScript. One call gives a scenario-ready play
 npm install @otter-player/presets @otter-player/ui-skin-default
 ```
 
-React, Vue or Svelte: add `@otter-player/react`, `@otter-player/vue` or `@otter-player/svelte`.
+React, Vue or Svelte: add `@otter-player/react`, `@otter-player/vue` or `@otter-player/svelte`. Until 1.0 the packages are betas: `npm install @otter-player/presets@beta`.
+
+Browser baseline: Chrome / Edge 110+, Firefox 115+, Safari 16.4+, iOS Safari 16.4+ (below it, no polyfills: the native backend plays what the browser can).
 
 ## Quick start
 

@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/presentation",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "PresentationController: window-mode state machine (inline, theater, fullscreen, PiP, document PiP, mini, background).",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/presentation"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/presentation#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -34,7 +43,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -50,5 +60,8 @@
       "picture": "src/picture.ts",
       "single-audio": "src/single-audio.ts"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

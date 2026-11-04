@@ -1,8 +1,18 @@
 {
   "name": "@otter-player/plugin-p2p",
   "version": "0.0.0",
+  "private": true,
   "description": "Reserved: P2P-CDN segment sharing plugin (scope pending, SPEC §23 Q4).",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/plugin-p2p"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/plugin-p2p#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +24,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"

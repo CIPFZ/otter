@@ -1,8 +1,18 @@
 {
   "name": "@otter-player/ui-skin-audio",
   "version": "0.0.0",
+  "private": true,
   "description": "Audio-only skin (CSS only).",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/ui-skin-audio"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/ui-skin-audio#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": [
     "*.css"

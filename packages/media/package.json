@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/media",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "MediaBackend / FormatPlugin / Decoder interfaces, capability detection, deterministic routing and fallback chain.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/media"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/media#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -24,5 +34,8 @@
     "@svta/cml-cmcd": "2.8.2",
     "@svta/cml-structured-field-values": "1.1.6",
     "@svta/cml-utils": "1.6.1"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

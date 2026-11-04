@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/pipeline",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Self-built media pipeline: Loader, Demuxer, Remuxer, Buffer, ABR, LiveController. Worker-capable, DOM-free.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/pipeline"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/pipeline#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -24,15 +33,15 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "NOTICE",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
   },
   "dependencies": {
-    "@otter-player/core": "workspace:*",
-    "@otter-vendor/hls.js": "workspace:*",
-    "@otter-vendor/mpegts.js": "workspace:*"
+    "@otter-player/core": "workspace:*"
   },
   "otter": {
     "bundle": [
@@ -43,5 +52,12 @@
       "transmux": "src/transmux/index.ts",
       "captions": "src/captions/cea608.ts"
     }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@otter-vendor/hls.js": "workspace:*",
+    "@otter-vendor/mpegts.js": "workspace:*"
   }
 }

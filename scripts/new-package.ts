@@ -48,20 +48,26 @@ const pkg: Record<string, unknown> = {
   version: '0.0.0',
   description: values.description,
   license: 'Apache-2.0',
+  // Release fields (ADR-014): new packages are published; a placeholder sets `private: true` instead.
+  repository: { type: 'git', url: 'git+https://github.com/CIPFZ/otter.git', directory: `packages/${name}` },
+  homepage: `https://github.com/CIPFZ/otter/tree/main/packages/${name}#readme`,
+  bugs: { url: 'https://github.com/CIPFZ/otter/issues' },
   type: 'module',
   sideEffects: false,
+  publishConfig: { access: 'public' },
 };
 
 if (values.css) {
   Object.assign(pkg, {
     // Importing a skin from JS must keep its CSS; skins have no JS that could be tree-shaken.
     sideEffects: ['*.css'],
-    exports: { '.': { style: './dist/index.css', default: './dist/index.css' } },
-    files: ['dist'],
+    exports: { '.': { types: './index.d.ts', style: './dist/index.css', default: './dist/index.css' } },
+    files: ['dist', 'index.d.ts'],
     scripts: { build: 'node ../../tooling/copy-css.ts' },
   });
   write('package.json', json(pkg));
   write('src/index.css', `/* @otter-player/${name}: CSS only (SPEC §14.4). */\n`);
+  write('index.d.ts', `// A CSS-only package: \`import '@otter-player/${name}'\` loads its stylesheet. This module\n// declaration lets TypeScript accept that side-effect import (noUncheckedSideEffectImports).\nexport {};\n`);
 } else {
   Object.assign(pkg, {
     exports: {
@@ -71,7 +77,7 @@ if (values.css) {
         default: './dist/index.js',
       },
     },
-    files: ['dist', 'src'],
+    files: ['dist', 'src', '!dist/.tsbuildinfo'],
     scripts: { build: 'vite build --config ../../tooling/vite.lib.config.ts' },
   });
   if (deps.length > 0) {

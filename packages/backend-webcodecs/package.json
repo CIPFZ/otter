@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/backend-webcodecs",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "WebCodecs backend: decoder pool, GPUSurface output, AudioWorklet master clock.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/backend-webcodecs"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/backend-webcodecs#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -23,5 +33,8 @@
     "@otter-player/core": "workspace:*",
     "@otter-player/media": "workspace:*",
     "@otter-player/pipeline": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

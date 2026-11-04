@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/ui-skin-tv",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "TV skin (CSS only): the default skin with a 10-foot layer (type, title-safe area, large focus rings).",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/ui-skin-tv"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/ui-skin-tv#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -20,5 +29,8 @@
   ],
   "scripts": {
     "build": "node ../../tooling/copy-css.ts"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

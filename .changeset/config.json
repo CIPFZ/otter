@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "baseBranch": "main",
+  "access": "public",
+  "fixed": [["@otter-player/*"]],
+  "linked": [],
+  "updateInternalDependencies": "patch",
+  "privatePackages": { "version": false, "tag": false },
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "format": false,
+  "ignore": []
+}

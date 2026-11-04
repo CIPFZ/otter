@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/engine-adapter-shaka",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Shaka Player engine adapter (L1): DASH, HLS, DRM, offline.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/engine-adapter-shaka"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/engine-adapter-shaka#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -24,5 +34,8 @@
     "@otter-player/media": "workspace:*",
     "@otter-player/pipeline": "workspace:*",
     "shaka-player": "5.2.13"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

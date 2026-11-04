@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/preferences",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Remembers the viewer's codec order, quality, audio and subtitle languages, volume and speed through a replaceable storage adapter.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/preferences"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/preferences#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,12 +23,16 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
   },
   "dependencies": {
     "@otter-player/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,8 +1,17 @@
 {
   "name": "@otter-player/ui-core",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "description": "Headless Web Component primitives and the UIFeature interface.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "packages/ui-core"
+  },
+  "homepage": "https://github.com/CIPFZ/otter/tree/main/packages/ui-core#readme",
+  "bugs": {
+    "url": "https://github.com/CIPFZ/otter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -14,7 +23,9 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "NOTICE",
+    "!dist/.tsbuildinfo"
   ],
   "scripts": {
     "build": "vite build --config ../../tooling/vite.lib.config.ts"
@@ -26,12 +37,17 @@
     "@otter-player/presentation": "workspace:*",
     "@otter-player/qoe": "workspace:*",
     "@otter-player/surface": "workspace:*",
-    "@otter-player/text": "workspace:*",
-    "lucide": "1.59.0"
+    "@otter-player/text": "workspace:*"
   },
   "otter": {
     "bundle": [
       "lucide"
     ]
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "lucide": "1.59.0"
   }
 }

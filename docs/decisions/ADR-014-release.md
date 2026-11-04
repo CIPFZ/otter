@@ -77,6 +77,13 @@
   - 把浏览器基线写进 SPEC / README；
   - 产出两个 ESM 单文件；
   - 加文档站的 Pages 部署。
+- 实施进度（2026-11-04，负责人：发版准备先做 changeset、发布说明、beta 标签与 npm dry-run）：
+  - 已做：各包 `publishConfig` / `private`（占位包 9 个，含实施时清点出的 `decoder-wasm-ffmpeg`）、`repository`（npm provenance 要求与仓库一致）；`check-boundaries` 加三条（发布包要么 public 要么 private、`repository.directory` 正确、发布包不依赖占位包）。
+  - 已做：changesets fixed 模式，pre 模式 tag `beta`，第一条 changeset，`changeset version` 出 `0.1.0-beta.0` 与各包 CHANGELOG；发布说明 `docs/release-notes/0.1.0-beta.0.md`（英文）。
+  - 已做：各发布包的 `LICENSE` 与 `NOTICE`（`scripts/release-files.ts`，`pnpm check` 校验）；浏览器基线写进 SPEC §1.1 与 README。
+  - 已做：`pnpm release:dry-run`（`scripts/release-dry-run.ts`），步骤见 `docs/RELEASE.md`。dry-run 查出并已修：打包进 dist 的依赖（`@otter-vendor/*`、imsc、lucide）原来在 `dependencies` 里，发布后 npm 会去装 `@otter-vendor/*`（不存在）——改到 `devDependencies`，`check-boundaries` 拦截；`dist/.tsbuildinfo` 进了 tarball——`files` 排除；29 个包没有 README——补了最小的英文 README。
+  - 未做：首发与登记脚本、发布工作流、`otterplayer` 占位包、两个 ESM 单文件、文档站 Pages 部署。
+  - 待负责人定：`decoder-wasm-hevc` 带的 Jessibuca jv4-decoder 产物来自 GPL-3.0 仓库（`UPSTREAM.json` 记的许可），而包声明 Apache-2.0，`presets` 依赖它。之前「仓库不分发、不看许可」的前提（ADR-008 §1）到发布时不再成立。
 - SPEC §23 的 Q2 / Q4 / Q5 / Q6 已随本 ADR 标为结案（2026-10-28）。
 - 发布工作流需要 `id-token: write` 权限，而且只能跑在 GitHub 托管的 runner 上。
 - 1.0 的发布说明里要把「未在真机验证」的 iPhone 项列为已知限制（测试收口轮的决定第四节）。
