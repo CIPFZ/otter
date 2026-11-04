@@ -68,6 +68,20 @@ describe('TSDoc gate (AGENT §4)', () => {
     expect(docsGate({ ...input, api: { ...input.api, entries } })).toEqual(['@otter-player/format-hls#HlsFormatOptions.engine: optional option without @defaultValue', '@otter-player/format-hls#HlsFormatOptions.abr: option without a doc comment']);
   });
 
+  it('fails an undocumented member of any user-facing interface; a third-party mirror passes only when its comment names the upstream', () => {
+    const input = passing();
+    const member = (name: string, doc: string) => ({ name, type: 'string', doc, tags: [], links: [], optional: false });
+    const entries = [
+      ...input.api.entries,
+      entry('@otter-player/ui-core', [x('UiStrings', { kind: 'interface', members: [member('play', 'Play button; en "Play".'), member('pause', '')] })]),
+      entry('@otter-player/engine-adapter-shaka', [x('ShakaTrack', { kind: 'interface', doc: 'A Shaka track.', members: [member('id', '')] }), x('ShakaError', { kind: 'interface', doc: 'Upstream: `shaka.util.Error`.', members: [member('code', '')] })]),
+    ];
+    expect(docsGate({ ...input, api: { ...input.api, entries } })).toEqual([
+      '@otter-player/ui-core#UiStrings.pause: member without a doc comment',
+      '@otter-player/engine-adapter-shaka#ShakaTrack: mirrors a third-party structure: its comment must name the upstream ("upstream: ...")',
+    ]);
+  });
+
   it('fails @see and {@link} to names no entry exports, and stray tags (an unquoted @scope/name)', () => {
     const input = passing();
     const bad = x('createHlsFormat', { tags: [{ name: 'see', text: 'internalHelper' }, { name: 'otter-player', text: '/text, not by the engines.' }], links: ['OtterError', 'secretThing.x'] });

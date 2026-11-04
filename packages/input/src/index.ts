@@ -7,7 +7,7 @@ import { attachInput, DEFAULT_TIMINGS, type InputTimings } from './controller.js
 
 export { DEFAULT_TIMINGS, type InputTimings } from './controller.js';
 
-/** An action an input maps to: a media, chrome or picture action with its payload. */
+/** An action an input maps to: a media, player UI or picture action with its payload. */
 export type InputAction =
   | { readonly type: 'toggle-paused' }
   /** Mobile single tap only toggles control visibility. */

@@ -35,7 +35,7 @@ type TileState = MediaState & QoeState;
 
 /** Options of the `surveillance` preset. */
 export interface SurveillanceOptions {
-  /** The wall's box: the default controls are built inside (an empty container). */
+  /** The wall's box: the default player UI is built inside (an empty container). */
   readonly container: HTMLElement;
   /** One tile per stream: http(s)-flv / ws(s)-flv / live MPEG-TS URLs, HLS playlists, or File / Blob sources. */
   readonly streams: readonly (string | Source)[];
@@ -148,7 +148,7 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
   const video = buildShell(root, true, options.title);
   defineOtterElements();
   const wall = createMultiview({ container: root, label: options.title ?? `${options.streams.length} streams`, ...(options.columns === undefined ? {} : { columns: options.columns }), before: root.querySelector('[data-otter-top]') });
-  // The shell: chrome and presentation (fullscreen of the whole wall); media actions go to the
+  // The shell: player UI and presentation (fullscreen of the whole wall); media actions go to the
   // focused tile through the focus store.
   const shell: OtterCore<PlayerState, PlayerActions> = createCore<PlayerState, PlayerActions>({
     slices: [MEDIA_SLICE, QOE_SLICE, CHROME_SLICE, PRESENTATION_SLICE],

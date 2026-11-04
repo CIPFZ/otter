@@ -103,6 +103,7 @@ export type OtterErrorType = 'network' | 'media' | 'drm' | 'mux' | 'other';
  * from engine-adapter-hlsjs, as do mpegts.js's from engine-adapter-mpegts.
  */
 export interface OtterError {
+  /** Where it comes from: network, media, drm, mux or other. */
   readonly type: OtterErrorType;
   /** The stable machine-readable code (the table above). */
   readonly details: string;

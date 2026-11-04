@@ -44,6 +44,7 @@ export type ActionHandler<S extends object, P> = (payload: P, ctx: ActionContext
 
 /** Read-only view for UI, Overlay and Presentation layers. */
 export interface StoreView<S extends object, A extends object> {
+  /** The state now. */
   getState(): Readonly<S>;
   /**
    * The state the slices start with, the same object every call: the server snapshot for SSR and
@@ -51,7 +52,12 @@ export interface StoreView<S extends object, A extends object> {
    * first change.
    */
   getInitialState(): Readonly<S>;
+  /** Calls the listener after every change with the new and previous state; returns its removal. */
   subscribe(listener: StateListener<S>): Unsubscribe;
+  /**
+   * Calls the listener when a selected slice changes (`equals`, default Object.is); returns its
+   * removal.
+   */
   select<T>(
     selector: (state: Readonly<S>) => T,
     listener: (value: T, prev: T) => void,

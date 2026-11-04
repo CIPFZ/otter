@@ -8,32 +8,40 @@ import type { InputActionMap } from '@otter-player/input';
 import type { MediaActionMap, MediaState } from '@otter-player/media';
 import type { PresentationActionMap } from '@otter-player/presentation';
 
-/** Chrome state: control visibility, the dimming layer, the seek preview and the open menu. */
+/** Player UI state (`chrome` slice): control bar visibility, the dimming layer, the seek preview and the open menu. */
 export interface ChromeState {
+  /** Whether the controls are shown (auto-hide while playing). */
   readonly controlsVisible: boolean;
   /** Player dimming layer, 0..1 (gesture-controlled brightness; never the screen's). */
   readonly brightness: number;
   /** Pending seek offset from a horizontal swipe, seconds; the UI shows the target preview. */
   readonly seekPreview: number | null;
+  /** The open menu's id, null when none is open. */
   readonly menu: string | null;
 }
 
-/** The chrome state before any interaction: controls shown, full brightness, nothing open. */
+/** The player UI state before any interaction: controls shown, full brightness, nothing open. */
 export const INITIAL_CHROME_STATE: ChromeState = { controlsVisible: true, brightness: 1, seekPreview: null, menu: null };
-/** The chrome's store slice (createPlayer adds it). */
+/** The player UI's store slice, `chrome` (createPlayer adds it). */
 export const CHROME_SLICE: StoreSlice<ChromeState> = { id: 'chrome', initialState: INITIAL_CHROME_STATE };
 
-/** Actions handled by the chrome plugin; `toggle-fullscreen` etc. belong to presentation. */
+/** Actions handled by the player UI plugin; `toggle-fullscreen` etc. belong to presentation. */
 export interface ChromeActionMap {
+  /** Show the controls if hidden, hide them if shown (a tap on mobile). */
   'toggle-controls': Record<string, never>;
+  /** Show the controls and restart the auto-hide delay. */
   'show-controls': Record<string, never>;
+  /** Change the player's dimming layer by a delta (clamped to 0..1). */
   'brightness-by': { readonly delta: number };
+  /** Preview a seek offset during a swipe; `commit` seeks. */
   'seek-preview': { readonly seconds: number; readonly commit?: boolean };
+  /** Open a menu by id; null closes it. */
   'open-menu': { readonly id: string | null };
+  /** Close the open menu, else leave fullscreen. */
   escape: Record<string, never>;
 }
 
-/** Options of the chrome plugin. */
+/** Options of the player UI plugin. */
 export interface ChromeOptions {
   /**
    * The controls hide this long after the last interaction while playing, ms; 0 keeps them shown.
@@ -43,7 +51,7 @@ export interface ChromeOptions {
 }
 
 /**
- * The chrome plugin: control visibility and auto-hide, brightness, seek preview, menus
+ * The player UI plugin: control bar visibility and auto-hide, brightness, seek preview, menus
  * (createPlayer installs it).
  */
 export function createChromePlugin<S extends ChromeState & Pick<MediaState, 'paused' | 'status'>>(options: ChromeOptions = {}): Plugin<S, ChromeActionMap & MediaActionMap> {
@@ -143,5 +151,5 @@ export function bindActivity(root: HTMLElement, store: { dispatch(type: 'show-co
 }
 
 // InputActionMap has the same names; exported so hosts can compose UiActions without importing both.
-/** The input actions the chrome handles. */
+/** The input actions the player UI handles. */
 export type ChromeUiActions = Pick<InputActionMap, 'toggle-controls' | 'brightness-by' | 'seek-preview' | 'escape'>;

@@ -9,12 +9,14 @@
   ],
   "exports": {
     ".": {
+      "types": "./index.d.ts",
       "style": "./dist/index.css",
       "default": "./dist/index.css"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "index.d.ts"
   ],
   "scripts": {
     "build": "node ../../tooling/copy-css.ts"

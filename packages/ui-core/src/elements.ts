@@ -98,17 +98,23 @@ export interface DefineOptions {
 
 /** One selectable entry of a menu group. */
 export interface MenuOption {
+  /** The value dispatched when chosen. */
   readonly value: string;
+  /** The text shown. */
   readonly label: string;
   /** Second line (quality: "2.5 Mbps"). */
   readonly detail?: string;
+  /** Whether it is the current choice. */
   readonly checked: boolean;
 }
 
 /** One group of a menu (quality, speed, captions): its radio options. */
 export interface MenuGroup {
+  /** Group id (`quality`, `speed`, `captions`, ...). */
   readonly id: string;
+  /** Group heading. */
   readonly label: string;
+  /** Its options, in display order. */
   readonly options: readonly MenuOption[];
 }
 

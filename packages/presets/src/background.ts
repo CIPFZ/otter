@@ -38,6 +38,7 @@ export interface BackgroundPlayer {
   readonly store: StoreView<MediaState, Record<never, never>>;
   /** Plays (muted). */
   play(): Promise<void>;
+  /** Pauses. */
   pause(): void;
   /** Stops and removes a `<video>` the preset made (a given one stays). */
   destroy(): void;

@@ -29,6 +29,8 @@
       "@otter-player/presets/*": ["./packages/presets/src/*.ts"],
       "@otter-player/input/remote": ["./packages/input/src/remote.ts"],
       "@otter-player/presentation/single-audio": ["./packages/presentation/src/single-audio.ts"],
+      // The CSS-only skins: their types condition (an empty module), as a host's tsc resolves it.
+      "@otter-player/ui-skin-*": ["./packages/ui-skin-*/index.d.ts"],
       "@otter-player/*": ["./packages/*/src/index.ts"]
     }
   },

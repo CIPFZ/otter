@@ -12,7 +12,7 @@ import type { ChromeActionMap, ChromeState } from './chrome.js';
 
 /**
  * State the primitives read: the media session plus whatever the shell added. `qoe` is optional
- * (the stats panel shows what is available); text / chrome / presentation slices may be absent.
+ * (the stats panel shows what is available); text / player UI (chrome) / presentation slices may be absent.
  */
 export type UiState = MediaState &
   Partial<QoeState> &
@@ -36,7 +36,7 @@ export interface DanmakuView {
   readonly hideBottom: boolean;
 }
 /**
- * The actions the UI dispatches: media, chrome and, when present, presentation, text, picture and
+ * The actions the UI dispatches: media, player UI (chrome) and, when present, presentation, text, picture and
  * danmaku.
  */
 export type UiActions = MediaActionMap &
@@ -52,6 +52,7 @@ const stores = new WeakMap<Node, UiStore>();
 
 /** Elements that want to be told when a store becomes available on an ancestor. */
 export interface StoreConsumer {
+  /** Called when a store is provided on an ancestor after the element connected. */
   connectStore(): void;
 }
 

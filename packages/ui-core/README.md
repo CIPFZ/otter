@@ -1,6 +1,6 @@
 # @otter-player/ui-core
 
-Headless UI primitives (SPEC §14.1): `otter-*` Web Components, chrome state and the i18n string tables. Styles come from the skins (`@otter-player/ui-skin-*`, pure CSS); a primitive's shadow root holds only structure and defaults, and reads the public CSS variables below.
+Headless UI primitives (SPEC §14.1): `otter-*` Web Components, the player UI state (`ChromeState`) and the i18n string tables. Styles come from the skins (`@otter-player/ui-skin-*`, pure CSS); a primitive's shadow root holds only structure and defaults, and reads the public CSS variables below.
 
 ## Public CSS variables
 

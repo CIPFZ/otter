@@ -42,9 +42,9 @@ describe('checkBoundaries', () => {
     ]);
   });
 
-  it('skins are CSS only with sideEffects ["*.css"] (Q7)', () => {
+  it('skins are CSS only with sideEffects ["*.css"] (Q7), plus their empty types declaration', () => {
     const skin = (overrides: Partial<PackageInfo> = {}, manifest: Partial<PackageInfo['manifest']> = {}): PackageInfo =>
-      pkg('ui-skin-tv', { lib: undefined, ...overrides }, { sideEffects: ['*.css'], exports: { '.': { style: './dist/index.css' } }, ...manifest });
+      pkg('ui-skin-tv', { lib: undefined, ...overrides }, { sideEffects: ['*.css'], exports: { '.': { types: './index.d.ts', style: './dist/index.css' } }, ...manifest });
     expect(checkBoundaries([skin()])).toEqual([]);
     expect(
       checkBoundaries([
@@ -57,8 +57,11 @@ describe('checkBoundaries', () => {
       'packages/ui-skin-tv: skin packages must declare "sideEffects": ["*.css"]',
       'packages/ui-skin-tv: skin packages are CSS only and must not have a tsconfig',
       'packages/ui-skin-tv: skin packages must not contain JS/TS (src/index.ts)',
-      'packages/ui-skin-tv: skin packages may only export .css files, not ./dist/index.js',
+      'packages/ui-skin-tv: skin packages may only export .css files (and ./index.d.ts as types), not ./dist/index.js',
+      'packages/ui-skin-tv: skin packages must export "types": "./index.d.ts" (an empty module declaration)',
     ]);
+    // Without the types condition `import '@otter-player/ui-skin-tv'` fails under TS 6 (TS2882).
+    expect(checkBoundaries([skin({}, { exports: { '.': { style: './dist/index.css' } } })])).toEqual(['packages/ui-skin-tv: skin packages must export "types": "./index.d.ts" (an empty module declaration)']);
     // The exception is for skins only.
     expect(checkBoundaries([pkg('text', {}, { sideEffects: ['*.css'] })])).toEqual([
       'packages/text: "sideEffects" must be false',

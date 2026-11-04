@@ -13,14 +13,17 @@ import { h, onBeforeUnmount, onMounted, ref, shallowRef, watch, type CSSProperti
 
 /** What the bindings need of a store: Otter's StoreView fits. */
 export interface OtterStoreLike<S> {
+  /** The state now. */
   getState(): S;
   /** The server snapshot (core's StoreView has it); getState() when missing. */
   getInitialState?(): S;
+  /** Calls the listener after every change; returns its removal. */
   subscribe(listener: (state: S, prev: S) => void): () => void;
 }
 
 /** What the component needs of a player: every preset's handle fits. */
 export interface OtterPlayerLike {
+  /** Tears the player down (called on unmount or when `deps` change). */
   destroy(): unknown;
 }
 

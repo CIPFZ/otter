@@ -1,7 +1,7 @@
 {
   "name": "@otter-player/danmaku",
   "version": "0.0.0",
-  "description": "Danmaku (bullet comments) engine: CSS, Canvas 2D, WebGL batch and OffscreenCanvas renderers.",
+  "description": "Danmaku (scrolling comments) engine: CSS, Canvas 2D, WebGL batch and OffscreenCanvas renderers.",
   "license": "Apache-2.0",
   "type": "module",
   "sideEffects": false,

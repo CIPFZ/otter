@@ -61,7 +61,9 @@ export interface RemoteOptions {
 
 /** What the remote needs of the player's store. */
 export interface RemoteStore {
+  /** The state; only `menu` is read (Back closes it first). */
   getState(): { readonly menu?: unknown };
+  /** Dispatches one of the four actions the remote uses. */
   dispatch(type: 'show-controls' | 'escape' | 'toggle-paused' | 'seek-by', payload: Record<string, unknown>): boolean;
 }
 

@@ -194,7 +194,9 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - `createPlayer`、十个 preset、三个绑定的 `@example` 与 `e2e/site/examples/` 里同名 `#region example:<名字>` 逐字一致。这些片段由 `e2e/site/examples.html?example=<名字>` 运行，`e2e/examples.spec.ts`（desktop-chrome）逐个确认画面在走、无错误。文档站的 preset 与绑定页改为展示这段代码，「运行」链接指向这个页面（原来取 `e2e/site/presets.ts` 的分支，那段带测试参数，不再用）；
   - 错误码：`OtterError` 的 TSDoc 是一张「代码 | 类型 | 致命 | 来源 | 何时」表；`scripts/lib/error-codes.ts` 从源码读出全部 `details` 码（字面量、模板前缀、把参数转交为 `details` 的本地辅助函数的实参），与表双向比对。现有 83 个码（含 `flv*`、`shaka*` 两个前缀）。
 - 内部包只在文档站首页记录覆盖率，不门禁。
-- 发现：TypeScript 6 默认 `noUncheckedSideEffectImports`，`import '@otter-player/ui-skin-default'` 这种纯 CSS 包的副作用导入在宿主的 tsc 下会报 TS2882（e2e 示例页用 `e2e/site/skins.d.ts` 声明）。皮肤包要不要带类型声明，放进 ADR-014 发版准备一并定。
+- 发现：TypeScript 6 起默认 `noUncheckedSideEffectImports`，`import '@otter-player/ui-skin-default'` 这种纯 CSS 包的副作用导入在宿主的 tsc 下会报 TS2882。
+- 2026-11-04 负责人定：四个皮肤包各带 `index.d.ts`（`export {};`），`exports` 加 `types` 条件；`check-boundaries` 把它作为皮肤包唯一允许的非 CSS 导出目标，并要求必须有（ADR-002 第 10 条的补充）。e2e 的 `skins.d.ts` 删掉，仓库 tsconfig 的 paths 把皮肤指向这个声明，与宿主解析一致。宿主侧用 tsc 7 的 bundler / nodenext 两种解析实测通过。
+- 2026-11-04 负责人：成员门禁扩到用户面向入口的全部导出接口（`UiStrings` 每个键一行）；镜像第三方结构的类型（Shaka 的 5 个）按 `入口#名字` 列白名单，类型注释写明上游。约定 1 进 AGENT 的评审清单。术语表定稿，改名候选（`Chrome*`、`controls` 选项、`SinkSegment.level`）待负责人定。
 
 ## 代价
 

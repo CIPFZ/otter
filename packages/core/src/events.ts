@@ -5,8 +5,11 @@ export type Unsubscribe = () => void;
 
 /** Origin chain of an event or action, e.g. `keydown` -> `toggle-paused` -> `play`. */
 export interface Trigger {
+  /** The event or action name (`keydown`, `toggle-paused`). */
   readonly type: string;
+  /** What raised it (`otter-play-button`, a plugin id). */
   readonly source?: string;
+  /** What caused this one, up the chain. */
   readonly parent?: Trigger;
 }
 

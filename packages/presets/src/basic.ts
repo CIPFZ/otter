@@ -32,12 +32,14 @@ import {
 /** Fullscreen only: the part of the presentation state the fullscreen button reads. */
 export type BasicFullscreenState = Pick<PresentationState, 'presentation'>;
 /**
- * State of a `basic` player: media, QoE, chrome and the fullscreen part of the presentation state.
+ * State of a `basic` player: media, QoE, player UI (chrome) and the fullscreen part of the presentation state.
  */
 export type BasicState = MediaState & QoeState & ChromeState & BasicFullscreenState;
-/** Actions of a `basic` player: media and chrome actions, and fullscreen. */
+/** Actions of a `basic` player: media and player UI (chrome) actions, and fullscreen. */
 export interface BasicActions extends MediaActionMap, ChromeActionMap {
+  /** Enter fullscreen, or leave it. */
   'toggle-fullscreen': Record<string, never>;
+  /** Leave fullscreen. */
   'exit-fullscreen': Record<string, never>;
 }
 
@@ -54,7 +56,7 @@ export interface BasicOptions<S extends BasicState = BasicState, A extends Basic
    */
   readonly formats?: readonly FormatPlugin[];
   /**
-   * The controls (true) or a bare `<video>` (false: the host builds its UI on the store).
+   * The default player UI (true) or a bare `<video>` (false: the host builds its UI on the store).
    * @defaultValue `true`
    */
   readonly controls?: boolean;
@@ -218,7 +220,7 @@ export function createBasicPlayer<S extends BasicState = BasicState, A extends B
     if (options.muted === true) store.dispatch('set-muted', { muted: true });
     provideStore(root, store);
     const controls = root.querySelector<HTMLElement>('[data-otter-controls]');
-    // The bar fades out when the chrome says so (it stays in the tab order).
+    // The bar fades out when the player UI state says so (it stays in the tab order).
     if (controls !== null) offs.push(store.subscribe((s) => controls.toggleAttribute('data-idle', !s.controlsVisible)));
     offs.push(bindActivity(root, store));
     const cleanup = options.setup?.({ root, video, media, store });

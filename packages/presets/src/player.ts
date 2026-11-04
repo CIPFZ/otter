@@ -1,6 +1,6 @@
 // createPlayer (SPEC §16 host contract, ADR-013): the low-level assembly behind the scenario presets.
 // One call puts together what a host otherwise wires by hand: the shell around a <video>, the
-// playback session, QoE, captions, the chrome, presentation modes, the overlay layer and input, and
+// playback session, QoE, captions, the player UI, presentation modes, the overlay layer and input, and
 // a typed handle to load, observe, explain and destroy. The presets (vod, live, ...) pass their
 // formats and backends; a host with its own composition calls it directly.
 
@@ -75,7 +75,7 @@ export interface PlayerOptions<S extends PlayerState = PlayerState, A extends Pl
    */
   readonly lang?: string;
   /**
-   * The default controls (true) or a bare `<video>` (false: the host builds its UI on the store).
+   * The default player UI (true) or a bare `<video>` (false: the host builds its UI on the store).
    * @defaultValue `true`
    */
   readonly controls?: boolean;
@@ -132,11 +132,17 @@ export interface PlayerOptions<S extends PlayerState = PlayerState, A extends Pl
 
 /** What `setup` gets: the assembled pieces. */
 export interface PlayerParts<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions> {
+  /** The player's root (the container). */
   readonly root: HTMLElement;
+  /** The `<video>`. */
   readonly video: HTMLVideoElement;
+  /** The picture surface over the `<video>` (snapshots, frame times). */
   readonly surface: Surface;
+  /** The overlay layer above the picture (watermarks, danmaku). */
   readonly layer: OverlayLayer;
+  /** The playback session (router, engines, tracks). */
   readonly media: MediaPlugin<S, A>;
+  /** Read state and dispatch actions. */
   readonly store: StoreView<S, A>;
 }
 
@@ -305,7 +311,7 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
 }
 
 /**
- * Controls fade out when the chrome says so (they stay in the tab order; focusing one shows them
+ * Controls fade out when the player UI state says so (they stay in the tab order; focusing one shows them
  * again), and the visible bar is the overlays' safe area (captions move above it).
  */
 function trackControls(root: HTMLElement, store: StoreView<PlayerState, PlayerActions>, layer: OverlayLayer): Unsubscribe {

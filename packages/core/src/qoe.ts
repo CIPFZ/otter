@@ -17,8 +17,11 @@ export interface RouteStep {
 
 /** Output of `router.explain()` (SPEC §5.2), also carried by the `route` QoE event. */
 export interface RouteExplanation {
+  /** The format chosen (`hls`, `dash`, ...), null when none could play the source. */
   readonly format: string | null;
+  /** The backend chosen (`mse`, `native`, `webcodecs`), null when none could. */
   readonly backend: string | null;
+  /** Every candidate considered, in order, with its outcome and reason. */
   readonly steps: readonly RouteStep[];
 }
 

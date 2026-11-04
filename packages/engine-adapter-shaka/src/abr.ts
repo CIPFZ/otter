@@ -10,7 +10,7 @@
 
 import type { AbrDriver, AbrLevel } from '@otter-player/pipeline';
 
-/** The part of a Shaka variant the ABR reads. */
+/** The part of a Shaka variant the ABR reads. Upstream: `shaka.extern.Variant`. */
 export interface ShakaVariant {
   readonly id: number;
   readonly bandwidth: number;
@@ -18,7 +18,9 @@ export interface ShakaVariant {
   readonly audio?: { readonly id: number } | null;
 }
 
-/** Shaka's ABR restrictions (size, pixels, bandwidth bounds). */
+/**
+ * Shaka's ABR restrictions (size, pixels, bandwidth bounds). Upstream: `shaka.extern.Restrictions`.
+ */
 export interface ShakaRestrictions {
   readonly minWidth?: number;
   readonly maxWidth?: number;
@@ -39,7 +41,10 @@ const MIN_SAMPLE_BYTES = 16_000;
 
 export type ShakaSwitch = (variant: ShakaVariant, clearBuffer?: boolean, safeMargin?: number) => void;
 
-/** Otter's ABR as a Shaka AbrManager: the pipeline rule stack chooses among the video variants. */
+/**
+ * Otter's ABR as a Shaka AbrManager: the pipeline rule stack chooses among the video variants.
+ * Upstream: `shaka.extern.AbrManager`, method for method.
+ */
 export interface OtterShakaAbr {
   init(switchCallback: ShakaSwitch): void;
   stop(): void;

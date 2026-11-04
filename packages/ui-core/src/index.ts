@@ -8,11 +8,17 @@ import type { Overlay } from '@otter-player/surface';
 
 /** A UI feature bundle (defineUIFeature): its slices, elements, hotkeys, gestures and overlays. */
 export interface UIFeature {
+  /** Feature id. */
   readonly id: string;
+  /** State slices it adds to the store. */
   readonly slices?: StoreSlice[];
+  /** Custom elements it defines. */
   readonly components?: CustomElementConstructor[];
+  /** Keys it maps, merged over the player's. */
   readonly hotkeys?: HotkeyMap;
+  /** Gestures it maps, merged over the player's. */
   readonly gestures?: GestureMap;
+  /** Overlays it adds to the picture. */
   readonly overlays?: Overlay[];
 }
 

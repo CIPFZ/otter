@@ -11,19 +11,26 @@
 
 /** What the bindings need of a store: Otter's StoreView fits. */
 export interface OtterStoreLike<S> {
+  /** The state now. */
   getState(): S;
   /** The server snapshot (core's StoreView has it); getState() when missing. */
   getInitialState?(): S;
+  /** Calls the listener after every change; returns its removal. */
   subscribe(listener: (state: S, prev: S) => void): () => void;
 }
 
 /** What the action needs of a player: every preset's handle fits. */
 export interface OtterPlayerLike {
+  /** Tears the player down (called on unmount or when `deps` change). */
   destroy(): unknown;
 }
 
 /** Svelte's readable store contract (svelte/store `Readable`), without importing Svelte. */
 export interface OtterReadable<T> {
+  /**
+   * Svelte's store contract: calls `run` with the value now and on every change; returns its
+   * removal.
+   */
   subscribe(run: (value: T) => void): () => void;
 }
 

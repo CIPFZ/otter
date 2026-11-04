@@ -15,7 +15,7 @@ await player.load('https://example.com/master.m3u8');
 | `/basic` | Short videos / simple VOD: five controls, mp4-range + HLS, skin `@otter-player/ui-skin-minimal` |
 | `/vod` | Long-form VOD: HLS, DASH, MP4, quality, captions, preview thumbnails (captions and thumbnails are on-demand chunks, not loaded with `captions: false` / `thumbnails: false`) |
 | `/live`, `/lowlatency` | Live, low-latency live |
-| `/danmaku` | Danmaku sites: the `comments` option loads the comments with every `load()` |
+| `/danmaku` | Danmaku (scrolling comments) sites: the `comments` option loads the comments with every `load()` |
 | `/surveillance` | Surveillance walls: one GPU wall, each tile on WebCodecs (WASM for HEVC without a hardware decoder), HTTP-FLV / WS-FLV / live MPEG-TS / HLS / local files; above 6 tiles from one host use WS-FLV or HTTP/2 (browsers allow 6 HTTP/1.1 connections per host; from the 7th tile on, each gets a non-fatal `tooManyConnectionsPerHost` error); FLV / TS are treated as live, sources with `live: false` go through MSE. Known limitation: on real Windows Firefox the first frame occasionally takes about 10 s (all transports, cause not found, RESEARCH §1) |
 | `/ott-drm` | OTT subscription + DRM |
 | `/shorts` | Vertical feed. Gestures on the picture: swipe up for the next item, down for the previous one (more than 20 % of the height, or a short fast swipe: ≥ 0.5 px/ms over the last 100 ms and ≥ 30 px moved); tap pauses / plays; double tap calls the host's `onLike(index, at)`; 2× speed while long-pressed. All parameters are in the `gestures` option; `gestures: false` leaves only keys and the API. One `<video>` and one engine: a switch tears down the previous item before loading the next, nothing is preloaded, at most 1 live decoder at a time |

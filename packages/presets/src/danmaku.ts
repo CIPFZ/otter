@@ -1,8 +1,9 @@
-// Preset `danmaku` (SPEC §19 row "Bilibili-style danmaku site"): DASH with separate audio and video (Shaka), HLS (own
-// engine) and MP4 range, codec probing (the session's), the viewer's choices kept across visits
-// (preferences: volume, speed, quality, captions, danmaku settings, codec failures), the danmaku
-// engine (Canvas 2D, WebGL / Worker chosen by load, masks; its settings page in the menu) and an
-// optional watermark that follows fullscreen, Document PiP and video PiP.
+// Preset `danmaku` (SPEC §19 row "Bilibili-style danmaku site"; danmaku: scrolling comments): DASH
+// with separate audio and video (Shaka), HLS (own engine) and MP4 range, codec probing (the
+// session's), the viewer's choices kept across visits (preferences: volume, speed, quality,
+// captions, danmaku settings, codec failures), the danmaku engine (Canvas 2D, WebGL / Worker
+// chosen by load, masks; its settings page in the menu) and an optional watermark that follows
+// fullscreen, Document PiP and video PiP.
 // Comments: `comments` (a URL, or a function of the source URL) loads them after every load; a
 // load's own `comments` overrides it once (null: none for this video).
 // The default skin is the host's stylesheet: `import '@otter-player/ui-skin-default'`.
@@ -26,8 +27,8 @@ export type DanmakuPlayerState = PlayerState & DanmakuState;
 export type DanmakuPlayerActions = PlayerActions & DanmakuActionMap;
 
 /**
- * Options of the `danmaku` preset: {@link PresetOptions}, the comments, the renderer, the watermark
- * and the kept choices.
+ * Options of the `danmaku` preset: {@link PresetOptions}, the danmaku (scrolling comments), the
+ * renderer, the watermark and the kept choices.
  */
 export interface DanmakuPresetOptions extends PresetOptions<DanmakuPlayerState, DanmakuPlayerActions> {
   /**
@@ -65,11 +66,14 @@ export interface DanmakuLoadOptions extends LoadOptions {
 
 /** A `danmaku` player: a {@link Player} whose `load` takes the comments too. */
 export interface DanmakuPlayer extends Omit<Player<DanmakuPlayerState, DanmakuPlayerActions>, 'load'> {
+  /**
+   * Loads a source and, after it, its comments (`comments` overrides the preset's for this load).
+   */
   load(source: string | Source, options?: DanmakuLoadOptions): Promise<void>;
 }
 
 /**
- * A danmaku-site player: DASH with separate audio and video (Shaka), HLS and MP4; the viewer's
+ * A danmaku (scrolling comments) site player: DASH with separate audio and video (Shaka), HLS and MP4; the viewer's
  * choices kept; danmaku drawn over the picture with its settings page in the menu; an optional
  * watermark.
  * @example

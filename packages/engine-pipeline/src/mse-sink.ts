@@ -5,16 +5,21 @@
 
 /** An initialization segment for one SourceBuffer. */
 export interface SinkInit {
+  /** The SourceBuffer it initialises. */
   readonly type: 'audio' | 'video';
+  /** The SourceBuffer's type with codecs (`video/mp4; codecs="avc1.64001f"`). */
   readonly mimeType: string;
+  /** The init segment bytes. */
   readonly data: Uint8Array;
 }
 
 /** A media segment appended to a SourceBuffer, for the segment ledger (ADR-010 §4). */
 export interface SinkSegment {
+  /** The engine's id of the segment. */
   readonly id: string | number;
   /** Media time, seconds. */
   readonly start: number;
+  /** End media time, seconds. */
   readonly end: number;
   /** Rendition (quality id) it came from. */
   readonly level?: string | number;
@@ -28,9 +33,11 @@ export interface MseSinkOptions {
 
 /** A MediaSource with one SourceBuffer per track type and a queue of operations on each. */
 export interface MseSink {
+  /** The MediaSource (or ManagedMediaSource). */
   readonly mediaSource: MediaSource;
   /** Resolves once the MediaSource is open (attach it with `media.src = url` first). */
   readonly ready: Promise<void>;
+  /** Its object URL, for `media.src`. */
   readonly url: string;
   /**
    * Creates every missing SourceBuffer of the batch first, then appends the init segments: Chrome
@@ -57,7 +64,9 @@ export interface MseSink {
   clear(type?: 'audio' | 'video'): Promise<void>;
   /** Removes [start, end) from `type` (a manual quality switch drops what is buffered ahead). */
   remove(type: 'audio' | 'video', start: number, end: number): Promise<void>;
+  /** Signals the end of the stream once every queued operation is done. */
   endOfStream(): void;
+  /** The SourceBuffer types created so far. */
   readonly types: readonly string[];
   /**
    * Whether the browser wants more media: always with MediaSource; with ManagedMediaSource,
@@ -69,6 +78,7 @@ export interface MseSink {
   whenStreaming(): Promise<void>;
   /** Buffered ranges of one SourceBuffer (the element's are the intersection of all). */
   buffered(type: 'audio' | 'video'): [number, number][];
+  /** Aborts every queue, revokes the URL and drops the MediaSource. */
   destroy(): void;
 }
 

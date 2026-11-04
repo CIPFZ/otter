@@ -63,24 +63,39 @@ export interface MediaState extends PlaybackSnapshot {
  * `InputActionMap` in `@otter-player/input` (checked by a type test), without a dependency on it.
  */
 export interface MediaActionMap {
+  /** Load a source (what `player.load()` dispatches). */
   load: { readonly source: Source; readonly options?: LoadOptions };
+  /** Stop and release the current source. */
   unload: undefined;
+  /** Play. */
   play: undefined;
+  /** Pause. */
   pause: undefined;
+  /** Seek to a time, seconds. */
   seek: { readonly time: number };
+  /** Set the volume, 0..1. */
   'set-volume': { readonly volume: number };
+  /** Mute or unmute. */
   'set-muted': { readonly muted: boolean };
+  /** Set the playback rate. */
   'set-playback-rate': { readonly rate: number };
+  /** Pick a quality by id, or `auto` for ABR. */
   'select-quality': { readonly id: string };
+  /** Play when paused, pause when playing. */
   'toggle-paused': Record<string, never>;
+  /** Seek by an offset, seconds (negative: back). */
   'seek-by': { readonly seconds: number };
+  /** Seek to a fraction of the duration, 0..100. */
   'seek-to-percent': { readonly percent: number };
+  /** Mute when unmuted, unmute when muted. */
   'toggle-muted': Record<string, never>;
+  /** Change the volume by a delta (clamped to 0..1). */
   'volume-by': { readonly delta: number };
   /** rate > 0 starts a hold (e.g. long press 2x); rate <= 0 releases and restores the previous rate. */
   'hold-rate': { readonly rate: number };
   /** In-band text track whose cues the engine delivers (used by `@otter-player/text`), null for none. */
   'set-text-track': { readonly id: string | null };
+  /** Pick an audio track by id. */
   'select-audio-track': { readonly id: string };
   /** Live: back to the live edge (the "Back to live" capsule). */
   'seek-to-live': Record<string, never>;

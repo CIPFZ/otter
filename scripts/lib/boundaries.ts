@@ -60,9 +60,13 @@ export function checkBoundaries(packages: readonly PackageInfo[]): string[] {
       if (JSON.stringify(manifest.sideEffects) !== '["*.css"]') report(dir, 'skin packages must declare "sideEffects": ["*.css"]');
       if (pkg.lib !== undefined) report(dir, 'skin packages are CSS only and must not have a tsconfig');
       for (const file of Object.keys(pkg.imports)) report(dir, `skin packages must not contain JS/TS (${file})`);
+      // The one non-CSS target: the `types` condition's empty module declaration (`export {};`), so
+      // TypeScript accepts `import '@otter-player/ui-skin-*'` under noUncheckedSideEffectImports.
       for (const target of exportTargets(manifest.exports)) {
-        if (!target.endsWith('.css')) report(dir, `skin packages may only export .css files, not ${target}`);
+        if (!target.endsWith('.css') && target !== './index.d.ts') report(dir, `skin packages may only export .css files (and ./index.d.ts as types), not ${target}`);
       }
+      const types = typeof manifest.exports === 'object' && manifest.exports !== null ? (manifest.exports as Record<string, unknown>)['.'] : undefined;
+      if (typeof types !== 'object' || types === null || (types as Record<string, unknown>)['types'] !== './index.d.ts') report(dir, 'skin packages must export "types": "./index.d.ts" (an empty module declaration)');
     } else if (manifest.sideEffects !== false) {
       report(dir, '"sideEffects" must be false');
     }

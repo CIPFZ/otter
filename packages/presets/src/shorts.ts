@@ -1,11 +1,11 @@
-// Preset `shorts` (SPEC §19 row "immersive portrait feed"): a portrait player over a feed of short videos, built on
+// Preset `shorts` (SPEC §19 row "immersive portrait feed"): a vertical feed of short videos, built on
 // `basic` (mp4-range + HLS on MSE / native, five controls). Each video loops; next / previous by
 // API, by the ↑ / ↓ (Page Up / Down) keys and by vertical swipes on the picture (ADR-013 batch 4):
 // up for the next, down for the previous, past a distance or fast enough (a short quick flick
 // counts); a tap pauses / plays, a double tap calls the host's `onLike`, a long press plays at a
 // higher rate while held. One video element, one engine: switching tears the previous one down
 // before the next loads (at most one decoding instance alive). Muted by default (a feed autoplays).
-// Skin: ui-skin-minimal (portrait 9:16 for [data-otter-shorts]).
+// Skin: ui-skin-minimal (vertical 9:16 for [data-otter-shorts]).
 
 import type { LoadOptions, Source } from '@otter-player/media';
 import { createBasicPlayer, type BasicOptions, type BasicPlayer } from './basic.js';
@@ -87,7 +87,7 @@ const NEXT = new Set(['ArrowDown', 'PageDown']);
 const PREV = new Set(['ArrowUp', 'PageUp']);
 
 /**
- * A portrait feed of short videos: each loops; next / previous by swipe, ↑ / ↓ keys or API; tap
+ * A vertical feed of short videos: each loops; next / previous by swipe, ↑ / ↓ keys or API; tap
  * pauses, double tap calls `onLike`, long press speeds up. One `<video>`, one engine, nothing
  * preloaded. Muted by default (a feed autoplays).
  * @example

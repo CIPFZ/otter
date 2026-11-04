@@ -48,8 +48,9 @@
   3. `createPlayer`、十个 preset 的 `create*Player`、三个绑定（React / Vue 的 `OtterPlayer`、Svelte 的 `otterPlayer`）带 `@example`，代码取自 e2e 示例站（`e2e/site/` 里 `// #region example:<名字>` 标出的片段，逐字一致，由门禁比对），不另写。
   4. 错误码用表格：`OtterError` 的 TSDoc 里一张「代码 | 类型 | 致命 | 何时出现」表，源码里出现的每个 `details` 码都要在表里，表里每一行都要在源码里出现（门禁双向比对）。
   5. `@see` 与 `{@link}` 只指向公开导出（某个入口导出的名字），不指内部函数或文件。
-  6. 术语表放 `docs/design/GLOSSARY.md`，约 20 条中英对照。
-  - 覆盖门禁只管用户面向入口：core、presets 全部 sub-path、react / vue / svelte、ui-core、input（含 `/remote`）、各 `format-*`、各 `engine-adapter-*` 与 `engine-pipeline` 的入口。这些入口的导出必须 100 % 有文档注释，选项接口的成员也必须有；纯结构类型（如 `Unsubscribe` 这种只是函数签名别名的）按 `入口#名字` 列进 `scripts/docs-site.ts` 的白名单才可免。内部包只在文档站首页记录覆盖率，不门禁。
+  6. 术语表放 `docs/design/GLOSSARY.md`（2026-11-04 定稿）。公开 API 已有标识符的概念，表跟 API 走；想改名的列在术语表末尾的「改名候选」由负责人定，不在 TSDoc 里改。
+  - 覆盖门禁只管用户面向入口：core、presets 全部 sub-path、react / vue / svelte、ui-core、input（含 `/remote`）、各 `format-*`、各 `engine-adapter-*` 与 `engine-pipeline` 的入口。这些入口的导出必须 100 % 有文档注释，导出接口的每个成员也必须有（`UiStrings` 每个键一行）；纯结构类型（如 `Unsubscribe` 这种只是函数签名别名的）按 `入口#名字` 列进 `scripts/lib/docs-gate.ts` 的 `STRUCTURAL` 才可免；镜像第三方结构的类型（Shaka 的 track / error / variant 等）列进 `MIRRORS`，成员免逐个注释，但类型注释必须写明上游（`Upstream: shaka.extern.Track`）。内部包只在文档站首页记录覆盖率，不门禁。
+  - **评审清单（提交前人工过一遍，门禁查不了）**：diff 里新增或改动的 TSDoc，摘要是否说了做什么 / 何时用而不是复述类型（约定 1）；用词是否与术语表一致；`@defaultValue` 写的是否真是代码里的默认值。
 - **`pnpm check` 返回 0 才提交**（2026-10-26）：以退出码为准，不看输出里有没有报错字样；命令链里要显式判断（`pnpm -s check; [ $? -eq 0 ] && git commit …`），检查失败时不得提交或推送。
 
 ## 5. 工作流程

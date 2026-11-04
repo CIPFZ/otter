@@ -23,6 +23,18 @@ export const STRUCTURAL: ReadonlySet<string> = new Set([
   '@otter-player/core#QoeEventType',
 ]);
 
+/**
+ * Types that mirror a third-party structure (`entry#Name`): their members are the upstream's and
+ * are not documented one by one; the type's own comment must name the upstream.
+ */
+export const MIRRORS: ReadonlySet<string> = new Set([
+  '@otter-player/engine-adapter-shaka#ShakaTrack',
+  '@otter-player/engine-adapter-shaka#ShakaError',
+  '@otter-player/engine-adapter-shaka#ShakaVariant',
+  '@otter-player/engine-adapter-shaka#ShakaRestrictions',
+  '@otter-player/engine-adapter-shaka#OtterShakaAbr',
+]);
+
 /** Interfaces whose members a host writes (option bags), beyond the `*Options` / `*Props` names. */
 const OPTION_BAGS: ReadonlySet<string> = new Set(['RemoteSeek', 'InputTimings']);
 export const isOptionBag = (name: string): boolean => /(Options|Props)$/.test(name) || OPTION_BAGS.has(name);
@@ -106,10 +118,13 @@ export function docsGate({ api, examples, errorCodes }: GateInput): string[] {
       const id = `${e.specifier}#${x.name}`;
       if (x.doc === '' && !STRUCTURAL.has(id)) problems.push(`${id}: no doc comment`);
       checkRefs(id, x.tags, x.links);
-      if (x.kind === 'interface' && isOptionBag(x.name)) {
+      if (x.kind === 'interface' && MIRRORS.has(id)) {
+        if (!/\bupstream\b/i.test(x.doc)) problems.push(`${id}: mirrors a third-party structure: its comment must name the upstream ("upstream: ...")`);
+      } else if (x.kind === 'interface') {
+        const bag = isOptionBag(x.name);
         for (const m of x.members) {
-          if (m.doc === '') problems.push(`${id}.${m.name}: option without a doc comment`);
-          if (m.optional && !m.tags.some((t) => t.name === 'defaultValue')) problems.push(`${id}.${m.name}: optional option without @defaultValue`);
+          if (m.doc === '') problems.push(`${id}.${m.name}: ${bag ? 'option' : 'member'} without a doc comment`);
+          if (bag && m.optional && !m.tags.some((t) => t.name === 'defaultValue')) problems.push(`${id}.${m.name}: optional option without @defaultValue`);
         }
       }
       for (const m of x.members) checkRefs(`${id}.${m.name}`, m.tags, m.links);
