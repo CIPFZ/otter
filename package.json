@@ -30,7 +30,8 @@
     "check:release-files": "node scripts/release-files.ts --check",
     "release:files": "node scripts/release-files.ts",
     "release:dry-run": "pnpm build && node scripts/release-dry-run.ts",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "build:cdn": "node scripts/build-cdn.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

@@ -1,0 +1,61 @@
+# Release (ADR-014 §3). Trusted publishing is registered against this file name: never rename it.
+# Manual: the dry run always; with `stage`, every public package whose version is not on npm yet is
+# staged (`npm stage publish`, OIDC, no token) and the CDN builds (entry, on-demand chunks, skin
+# CSS: one zip) go to a GitHub pre-release. The owner then approves each staged package with
+# `npm stage approve` (2FA).
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Stage the packages on npm and create the GitHub release (otherwise only the dry run)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  PNPM_VERSION: 12.11.2
+  NODE_VERSION: 22
+
+jobs:
+  release:
+    name: release (${{ inputs.stage && 'stage' || 'dry run' }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      # Trusted publishing and `npm stage` need a current npm (≥ 11.15).
+      - run: npm install -g npm@^12 pnpm@${{ env.PNPM_VERSION }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: License rules and release files (ADR-014 §4a)
+        run: pnpm check:release-files
+      - name: Release dry run (tarballs, npm --dry-run, host install, CDN builds in Chromium)
+        run: pnpm release:dry-run
+      - name: Stage on npm
+        if: inputs.stage
+        run: node scripts/stage-release.ts
+      - name: GitHub pre-release with the CDN builds
+        if: inputs.stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./packages/presets/package.json').version")
+          node scripts/build-cdn.ts dist-cdn
+          (cd dist-cdn && zip -qr ../otter-cdn-$version.zip .)
+          gh release create "v$version" --target "$GITHUB_SHA" --prerelease --title "Otter $version" \
+            --notes-file "docs/release-notes/$version.md" "otter-cdn-$version.zip"

@@ -2,7 +2,8 @@
 // will (pnpm pack: `workspace:*` becomes the version), checks each tarball, asks npm for its
 // dry-run report under the prerelease dist-tag, and installs all tarballs into a fresh project
 // that type-checks and bundles the docs' examples (e2e/site/examples/) against them, as a host
-// would. Nothing is published.
+// would; then builds the CDN files (scripts/build-cdn.ts) and plays them in Chromium. Nothing is
+// published.
 //
 // Checked per tarball: the fixed version; no `workspace:` range and no dependency on a private
 // placeholder or an `@otter-vendor/*` package; every `exports` target, LICENSE, README.md and the
@@ -13,6 +14,7 @@
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { cdnSmoke } from './lib/cdn-smoke.ts';
 import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
@@ -104,9 +106,17 @@ try {
   problems.push(`host bundle of the examples failed:\n${String((e as { stderr?: string }).stderr ?? e).slice(0, 4000)}`);
 }
 
+// The CDN builds (ADR-014 §6), played from their URLs.
+const cdn = join(work, 'cdn');
+const cdnBuild = run('node', [join(root, 'scripts/build-cdn.ts'), cdn], root).trim();
+const smoke = await cdnSmoke(cdn, join(root, 'e2e/media'), ['otter-basic', 'otter-vod']);
+for (const s of smoke) if (s.time <= 1 || s.errors.length > 0) problems.push(`CDN ${s.name}: playhead ${s.time.toFixed(2)} s, errors ${s.errors.join('; ') || 'none'}`);
+
 console.log(`release dry-run: ${published.length} packages at ${version}, npm dist-tag "${tag}"`);
 console.log(rows.join('\n'));
 console.log(`host install of all ${tgzs.length} tarballs: passed; examples typecheck: ${typecheck}; examples bundle (vod, surveillance, basic): ${bundle}`);
+console.log(cdnBuild);
+console.log(smoke.map((s) => `CDN ${s.name} in Chromium: playhead ${s.time.toFixed(2)} s, ${s.chunks} chunks fetched, ${s.errors.length} errors`).join('\n'));
 if (keep) console.log(`kept: ${work}`);
 else rmSync(work, { recursive: true, force: true });
 if (problems.length > 0) {

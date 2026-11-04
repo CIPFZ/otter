@@ -134,7 +134,9 @@
   - 已做：changesets fixed 模式，pre 模式 tag `beta`，第一条 changeset，`changeset version` 出 `0.1.0-beta.0` 与各包 CHANGELOG；发布说明 `docs/release-notes/0.1.0-beta.0.md`（英文）。
   - 已做：各发布包的 `LICENSE` 与 `NOTICE`（`scripts/release-files.ts`，`pnpm check` 校验）；浏览器基线写进 SPEC §1.1 与 README。
   - 已做：`pnpm release:dry-run`（`scripts/release-dry-run.ts`），步骤见 `docs/RELEASE.md`。dry-run 查出并已修：打包进 dist 的依赖（`@otter-vendor/*`、imsc、lucide）原来在 `dependencies` 里，发布后 npm 会去装 `@otter-vendor/*`（不存在）——改到 `devDependencies`，`check-boundaries` 拦截；`dist/.tsbuildinfo` 进了 tarball——`files` 排除；29 个包没有 README——补了最小的英文 README。
-  - 未做：首发与登记脚本、发布工作流、`otterplayer` 占位包、两个 ESM 单文件、文档站 Pages 部署。
+  - 已做（2026-11-04 第二轮）：首发与登记脚本 `scripts/first-publish.ts`（检查、`changeset publish`、`otterplayer`、逐包 `npm trust github … --allow-stage-publish`）；发布工作流 `.github/workflows/release.yml`（手动；dry run，或 `npm stage publish` + GitHub pre-release）与 `scripts/stage-release.ts`；`otterplayer` 占位包（`placeholder/otterplayer`）；CDN 构建 `scripts/build-cdn.ts`；Pages 工作流 `.github/workflows/pages.yml`（设变量 `PAGES_ENABLED` 后才部署）。步骤见 `docs/RELEASE.md`。均未运行（首发由负责人做）。
+  - CDN 的偏离：「单文件」把按需块全内联后 basic 2.8 MB、vod 3.0 MB（hls.js、Shaka、mediabunny 都进去了），改为「一个入口文件 + 旁边的按需块」：入口 basic 18.7 kB / vod 34.8 kB gzip，块用到才按相对地址加载。另：jsDelivr 只分发 npm 包与 GitHub 仓库里的文件，不分发 GitHub Release 的附件；要 jsDelivr 直接可用，块得在 npm 包（例如 `@otter-player/presets` 带一个 `cdn/` 目录）或仓库的 tag 里。待负责人定。
+  - 未做：文档站「在 Electron 里用」一页（§8 Q6）。
   - 已定（2026-11-04）：许可规则见 §4a；`decoder-wasm-hevc` 改为 private。
 - SPEC §23 的 Q2 / Q4 / Q5 / Q6 已随本 ADR 标为结案（2026-10-28）。
 - 发布工作流需要 `id-token: write` 权限，而且只能跑在 GitHub 托管的 runner 上。

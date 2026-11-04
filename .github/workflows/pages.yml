@@ -1,0 +1,51 @@
+# The docs site on GitHub Pages (ADR-014 §7, https://cipfz.github.io/otter/): generated from the
+# sources on every push to main that can change it. The docs alone (`OTTER_DOCS_PAGES=1`): the
+# example site with its fixtures stays local (`pnpm docs:serve`). Deploys once the repository has
+# Pages enabled with "GitHub Actions" as the source and the variable PAGES_ENABLED=true (settings);
+# until then only the build runs.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['packages/**', 'scripts/docs-site.ts', 'scripts/lib/**', 'e2e/site/examples/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - run: npm install -g pnpm@12.11.2
+      - run: pnpm install --frozen-lockfile
+      - name: Docs site (TSDoc gate included)
+        env:
+          OTTER_DOCS_PAGES: '1'
+        run: node scripts/docs-site.ts docs-site/dist
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs-site/dist
+  deploy:
+    needs: build
+    if: vars.PAGES_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,16 @@
+{
+  "name": "otterplayer",
+  "version": "0.0.1",
+  "description": "Placeholder for the Otter web video player: install @otter-player/presets.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CIPFZ/otter.git",
+    "directory": "placeholder/otterplayer"
+  },
+  "homepage": "https://github.com/CIPFZ/otter#readme",
+  "files": [
+    "README.md",
+    "LICENSE"
+  ]
+}

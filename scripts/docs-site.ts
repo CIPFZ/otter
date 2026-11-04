@@ -192,10 +192,18 @@ const headerComment = (file: string): string =>
     .join(' ')
     .trim();
 
+/**
+ * Published on GitHub Pages (`OTTER_DOCS_PAGES=1`, ADR-014 §7): the docs alone, without the e2e
+ * site and its fixtures (live streams need its dev server), so the "run it" links become a note.
+ */
+const PAGES = process.env['OTTER_DOCS_PAGES'] === '1';
+const RUN_LOCALLY = '<p class="muted">Runnable in the repository: <code>pnpm docs:serve</code> builds the example site with its fixtures and serves these docs under <code>/docs/</code>, with a link here.</p>';
+
 /** The page of the e2e site that runs a docs example with its fixture. */
 const exampleLink = (region: string, depth: number): string => {
   const src = EXAMPLE_SOURCES[region];
   if (src === undefined) return '';
+  if (PAGES) return RUN_LOCALLY;
   const href = `${'../'.repeat(depth + 1)}examples.html?example=${encodeURIComponent(region)}&src=${src}`;
   return `<p>Run it on the example site (e2e fixtures; <code>pnpm docs:serve</code> or the e2e preview server): <a class="live" href="${esc(href)}">examples.html?example=${esc(region)}</a>${region === 'ott-drm' ? ' (the e2e test injects the ClearKey keys, see <code>e2e/examples.spec.ts</code>)' : ''}</p>`;
 };
@@ -255,7 +263,7 @@ export function buildDocsSite(outDir: string): { pages: number; undocumented: nu
     const [specifier, name] = b.example.split('#') as [string, string];
     const example = api.entries.find((e) => e.specifier === specifier)?.exports.find((x) => x.name === name)?.tags.find((t) => t.name === 'example');
     const region = EXAMPLES[b.example] as string;
-    const live = ['basic', 'vod', 'surveillance'].map((p) => `<a class="live" href="../../${b.id}-${p}.html">${b.id}-${p}.html</a>`).join(', ');
+    const live = ['basic', 'vod', 'surveillance'].map((p) => (PAGES ? `<code>e2e/site/${b.id}-${p}.html</code>` : `<a class="live" href="../../${b.id}-${p}.html">${b.id}-${p}.html</a>`)).join(', ');
     const body = [
       readme,
       `<h2>Example</h2><p class="muted">The @example of <code>${esc(name)}</code> (<code>e2e/site/examples/</code>).</p><pre><code>${esc(example === undefined ? '' : exampleCode(example))}</code></pre>`,
