@@ -362,7 +362,27 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     }
   };
 
+  /**
+   * The last audio chunks fed (µs timestamp, duration) with when they went in and when their
+   * output came out (performance.now()): an underrun says which side was late (F16).
+   */
+  const audioTrace: { ts: number; dur: number; fed: number; out?: number }[] = [];
+  const traceAudio = (media: number): string => {
+    const us = media * 1e6;
+    const at = audioTrace.findIndex((c) => c.ts <= us + 1 && us < c.ts + c.dur);
+    const c = at < 0 ? undefined : audioTrace[at];
+    if (c === undefined) return `; no chunk fed covers ${media.toFixed(3)} s (fed to ${((audioTrace.at(-1)?.ts ?? 0) / 1e6).toFixed(3)} s)`;
+    const now = performance.now();
+    const next = audioTrace[at + 1];
+    return `; its chunk ${(c.ts / 1e6).toFixed(3)} s fed ${Math.round(now - c.fed)} ms ago, ${c.out === undefined ? 'no output yet' : `out ${Math.round(now - c.out)} ms ago`}${next === undefined ? ', nothing fed after it' : `; next ${(next.ts / 1e6).toFixed(3)} s fed ${Math.round(now - next.fed)} ms ago, ${next.out === undefined ? 'no output yet' : `out ${Math.round(now - next.out)} ms ago`}`}`;
+  };
+
   const onAudioData = (data: DecodedFrame): void => {
+    const t = (data as { timestamp?: number }).timestamp;
+    if (t !== undefined) {
+      const c = audioTrace.find((x) => Math.abs(x.ts - t) < 500);
+      if (c !== undefined) c.out ??= performance.now();
+    }
     if (destroyed || sink === undefined || isI420(data)) return closeFrame(data);
     sink.push(data as AudioData, audio?.decodeQueueSize ?? 0);
     signal.notify();
@@ -530,6 +550,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         if (g !== gen || destroyed) return;
         decoder.decode(next.value);
         fed = true;
+        audioTrace.push({ ts: next.value.timestamp, dur: next.value.duration ?? 0, fed: performance.now() });
+        if (audioTrace.length > 400) audioTrace.splice(0, audioTrace.length - 400);
       }
       await decoder.flush().catch(() => undefined);
       if (g === gen && !destroyed) audioEos = true;
@@ -905,7 +927,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
             sink.setVolume(volume, muted);
             // A dry worklet is said, not just heard as silence (M6 F14).
             sink.onUnderrun((media, ms, dq) =>
-              bus.emit('error', createError({ type: 'media', details: 'audioUnderrun', fatal: false, recoverable: true, message: `audio ran dry at ${media.toFixed(3)} s for ${Math.round(ms)} ms (decode queue ${dq})` })),
+              bus.emit('error', createError({ type: 'media', details: 'audioUnderrun', fatal: false, recoverable: true, message: `audio ran dry at ${media.toFixed(3)} s for ${Math.round(ms)} ms (decode queue ${dq})${traceAudio(media)}` })),
             );
             audio = decoder.create({ ...a.setup, output: onAudioData, error: fail });
           } catch (err) {
