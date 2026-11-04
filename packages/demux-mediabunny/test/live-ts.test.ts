@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createError } from '@otter-player/core';
 import type { EncodedChunk, PacketStream } from '@otter-player/media';
 import { openLiveTs } from '../src/index.js';
+import { shiftTimestamps } from './ts-writer.js';
 
 const clip = new Uint8Array(readFileSync(new URL('../../../e2e/media/ts/clip.ts', import.meta.url)));
 
@@ -92,6 +93,65 @@ describe('live MPEG-TS for WebCodecs', () => {
     }
     expect(live.map((c) => c.timestamp)).toEqual(whole.slice(0, 40).map((c) => c.timestamp));
     expect(live.map((c) => Buffer.from(new Uint8Array(c.data)).toString('hex'))).toEqual(whole.slice(0, 40).map((c) => Buffer.from(c.data).toString('hex')));
+  });
+
+  /** Live audio timestamps vs mediabunny reading the whole file (its timeline, minus the first keyframe). */
+  async function compareWithMediabunny(bytes: Uint8Array, n: number): Promise<{ live: number[]; whole: number[] }> {
+    vi.stubGlobal('fetch', () => Promise.resolve(endless(bytes, 32 * 1024)));
+    const d = await openLiveTs('http://x/live.ts', { signal: new AbortController().signal, createError });
+    const live = (await take(d.packets('audio'), n)).map((c) => c.timestamp);
+    d.destroy();
+    const { Input, BufferSource, MPEG_TS, EncodedPacketSink } = await import('mediabunny');
+    const input = new Input({ source: new BufferSource(bytes), formats: [MPEG_TS] });
+    const base = (await new EncodedPacketSink((await input.getPrimaryVideoTrack())!).getFirstPacket())!.timestamp;
+    const sink = new EncodedPacketSink((await input.getPrimaryAudioTrack())!);
+    const whole: number[] = [];
+    for (let p = await sink.getFirstPacket(); p !== null && whole.length < n; p = await sink.getNextPacket(p)) {
+      const t = Math.round((p.timestamp - base) * 1e6);
+      if (t >= 0) whole.push(t);
+    }
+    return { live, whole };
+  }
+
+  it('PTS across the 33-bit wrap: the audio stays on the video’s (mediabunny’s) timeline', async () => {
+    // Every PTS / DTS moved so that the first one (video, 1.421333 s) is 1 s before 2^33: the
+    // stream wraps one second in.
+    const shifted = shiftTimestamps(clip, 2 ** 33 - 90_000 - Math.round(1.421333 * 90_000));
+    const { live, whole } = await compareWithMediabunny(shifted, 150);
+    expect(live).toHaveLength(150);
+    expect(live.map((t) => Math.round(t / 100))).toEqual(whole.map((t) => Math.round(t / 100)));
+    // Across the wrap (about 1 s in): continuous.
+    for (let i = 1; i < live.length; i++) expect((live[i] as number) - (live[i - 1] as number)).toBeCloseTo(21_333, -2);
+  });
+
+  for (const [file, type, codec] of [
+    ['audio-mp3.ts', '0x03', 'mp3'],
+    ['audio-ac3.ts', '0x81', 'ac-3'],
+  ] as const) {
+    it(`${codec} audio (stream type ${type}): mediabunny's path, said once as a non-fatal tsAudioFallback; the audio still plays`, async () => {
+      const bytes = new Uint8Array(readFileSync(new URL(`../../../e2e/media/ts/${file}`, import.meta.url)));
+      vi.stubGlobal('fetch', () => Promise.resolve(endless(bytes, 32 * 1024)));
+      const notices: { details: string; fatal: boolean; message?: string }[] = [];
+      const d = await openLiveTs('http://x/live.ts', { signal: new AbortController().signal, createError, notice: (e) => notices.push(e as never) });
+      expect(d.info.audio?.codec).toBe(codec);
+      const a = await take(d.packets('audio'), 10);
+      expect(a).toHaveLength(10);
+      expect(notices).toEqual([expect.objectContaining({ details: 'tsAudioFallback', fatal: false })]);
+      expect(notices[0]?.message).toContain(type);
+      d.destroy();
+    });
+  }
+
+  it('AAC in LATM (stream type 0x11), which mediabunny does not read: a tsAudioFallback saying there is no sound; video plays', async () => {
+    const bytes = new Uint8Array(readFileSync(new URL('../../../e2e/media/ts/audio-latm.ts', import.meta.url)));
+    vi.stubGlobal('fetch', () => Promise.resolve(endless(bytes, 32 * 1024)));
+    const notices: { details: string; message?: string }[] = [];
+    const d = await openLiveTs('http://x/live.ts', { signal: new AbortController().signal, createError, notice: (e) => notices.push(e as never) });
+    expect(d.info.audio).toBeNull();
+    expect((await take(d.packets('video'), 5))[0]).toMatchObject({ type: 'key', timestamp: 0 });
+    expect(notices).toEqual([expect.objectContaining({ details: 'tsAudioFallback', message: expect.stringContaining('0x11') as unknown })]);
+    expect(notices[0]?.message).toContain('no sound');
+    d.destroy();
   });
 
   it('a failed request is a network error', async () => {

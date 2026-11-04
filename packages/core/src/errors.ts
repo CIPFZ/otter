@@ -90,6 +90,7 @@ export type OtterErrorType = 'network' | 'media' | 'drm' | 'mux' | 'other';
  * | `subtitleLoadError` | other | no | format-hls | A subtitle playlist or segment failed to load |
  * | `textTrackLoadFailed` | network | no | text | A sidecar caption file failed to load |
  * | `tooManyConnectionsPerHost` | network | no | presets (surveillance) | More than 6 HTTP/1.1 streams from one host: use WS-FLV or HTTP/2 |
+ * | `tsAudioFallback` | media | no | demux-mediabunny | Live MPEG-TS audio that is not ADTS AAC (MP3, AC-3, LATM …): read by mediabunny, with its late last frame per PES; LATM not at all (no sound) |
  * | `tsDemuxFailed` | mux | yes | demux-mediabunny | The MPEG-TS stream could not be parsed |
  * | `tsRequestFailed` | network | yes | demux-mediabunny | The MPEG-TS request failed |
  * | `unsupportedSource` | other | yes | engine adapters, engine-pipeline, format-hls, format-mp4-range, format-whep | The engine got a source it cannot take (a Blob for a URL engine, ...) |

@@ -119,6 +119,11 @@ JSON
 "${FF[@]}" -stream_loop 2 -i ts/clip.ts -c copy -f mpegts ts/live-loop.ts
 # Video-only TS (cameras): mpegts.js never reports complete media info without an audio track.
 "${FF[@]}" -f lavfi -i "$SRC_V" -t $DUR "${V360[@]}" -an -f mpegts ts/clip-video-only.ts
+# 2 s of the clip with other audio codecs (stream types 0x03 MP3, 0x81 AC-3, 0x11 AAC in LATM):
+# the live TS demuxer reads only ADTS AAC itself and hands the rest to mediabunny (M6 F16).
+"${FF[@]}" -i ts/clip.ts -t 2 -c:v copy -c:a libmp3lame -b:a 64k -f mpegts ts/audio-mp3.ts
+"${FF[@]}" -i ts/clip.ts -t 2 -c:v copy -c:a ac3 -b:a 96k -f mpegts ts/audio-ac3.ts
+"${FF[@]}" -i ts/clip.ts -t 2 -c:v copy -c:a aac -b:a 64k -mpegts_flags latm -f mpegts ts/audio-latm.ts
 
 # Quiet demo picture for the UI review screenshots (docs/reports/M2.5.md): slow dark gradients,
 # 720p / 360p fMP4 HLS ladder with one subtitle. Not used by the scenario matrix.

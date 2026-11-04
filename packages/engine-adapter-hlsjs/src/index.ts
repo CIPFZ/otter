@@ -120,6 +120,15 @@ const usesMms = (prefer: boolean): boolean => {
 };
 
 /**
+ * Loads hls.js and the modules the adapter uses with it, without starting anything, so that a
+ * later hand-over to the adapter does not wait for the download (format-hls calls it once the own
+ * engine plays). Resolves when they are in; a failure is the caller's to ignore.
+ */
+export async function prefetchHlsJs(options: Pick<HlsJsEngineOptions, 'light' | 'abr'> = {}): Promise<void> {
+  await Promise.all([options.light === true ? import('hls.js/light') : import('hls.js'), options.abr === 'engine' ? undefined : import('@otter-player/pipeline'), options.abr === 'engine' ? undefined : import('./abr.js')]);
+}
+
+/**
  * The hls.js engine adapter (hls.js loaded on demand): what format-hls hands over from its own
  * engine.
  */

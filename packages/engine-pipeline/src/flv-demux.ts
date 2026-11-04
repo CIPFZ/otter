@@ -29,6 +29,8 @@ export interface FlvDemuxOptions {
 }
 
 /** Packets kept for new subscribers (a seek, the audio started at the first gesture). */
+/** Audio frames kept while waiting for the first keyframe (~10 s of AAC at 48 kHz). */
+const EARLY_AUDIO_MAX = 500;
 const HISTORY_S = 15;
 /** After the video is ready, how long to wait for the audio configuration of a stream that declares audio. */
 const AUDIO_WAIT_MS = 1500;
@@ -82,6 +84,8 @@ export function openFlvDemuxer(url: string, options: FlvDemuxOptions): Promise<D
   let audioConfig: FlvAudioConfig | undefined;
   /** FLV ms of media time 0 (the first video keyframe; the first audio frame without video). */
   let base: number | undefined;
+  /** Audio read before media time 0 is known. */
+  const earlyAudio: FlvSamples['audio'][number][] = [];
   let videoSeen = false;
   /** The connection answered; the first bytes came (the startup breakdown). */
   const timing: { connectedAt?: number; firstBytesAt?: number } = {};
@@ -100,9 +104,15 @@ export function openFlvDemuxer(url: string, options: FlvDemuxOptions): Promise<D
       fanout.push('video', { key: v.key, timestamp, data: v.data });
     }
     const audioMs = audioConfig === undefined ? 0 : (1024 / audioConfig.sampleRate) * 1000;
-    for (const a of samples.audio) {
-      // Before the video's first keyframe there is no media time yet (unless there is no video).
-      if (base === undefined && reader.declared?.video !== false) continue;
+    // Audio that came before the video's first keyframe waits for it (media time 0): what is at or
+    // after the keyframe's time plays, the rest is dropped, whichever arrived first (as live TS,
+    // ADR-013 §7). Without video, the first audio frame is media time 0.
+    if (base === undefined && reader.declared?.video !== false) {
+      earlyAudio.push(...samples.audio);
+      if (earlyAudio.length > EARLY_AUDIO_MAX) earlyAudio.splice(0, earlyAudio.length - EARLY_AUDIO_MAX);
+      return;
+    }
+    for (const a of [...earlyAudio.splice(0), ...samples.audio]) {
       base ??= a.pts;
       const timestamp = (a.pts - base) * 1000;
       if (timestamp < 0) continue;

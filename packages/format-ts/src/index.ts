@@ -65,7 +65,9 @@ export function createTsFormat(options: TsFormatOptions = {}): FormatPlugin {
       if (typeof ctx.source.src !== 'string') throw createError({ type: 'other', details: 'notAUrl', fatal: true, recoverable: false, message: 'format-ts plays live stream URLs (files: format-file)' });
       const { openLiveTs } = await import('@otter-player/demux-mediabunny');
       const url = new URL(ctx.source.src, typeof location === 'object' ? location.href : undefined).href;
-      return openLiveTs(url, { signal: ctx.signal, createError, ...(ctx.source.headers === undefined ? {} : { headers: ctx.source.headers }) });
+      // The demuxer's non-fatal notices (tsAudioFallback) go where the player's errors go: QoE.
+      const notice = (error: ReturnType<typeof createError>): void => ctx.qoe.emit('error', { error, fallback: [] });
+      return openLiveTs(url, { signal: ctx.signal, createError, notice, ...(ctx.source.headers === undefined ? {} : { headers: ctx.source.headers }) });
     },
   };
 }

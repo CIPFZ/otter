@@ -14,8 +14,26 @@ const state = (page: Page) => page.evaluate(() => (window.preset as Player).stor
 const explain = (page: Page) => page.evaluate(() => (window.preset as Player).explain());
 const HLSJS = /hls(\.light)?(\.min)?\.m?js|hls-[\w-]+\.js/;
 
+/**
+ * Scripts matching `re` whose fetch started before the page's first `playing` (resource timing):
+ * hls.js must not be part of the first load on the own engine. format-hls prefetches it once the
+ * own engine plays (2026-11-04), so it may come after.
+ */
+async function scriptsBeforePlaying(page: Page, re: RegExp): Promise<string[]> {
+  return page.evaluate(
+    (source) =>
+      performance
+        .getEntriesByType('resource')
+        .filter((e) => new RegExp(source).test(e.name.split('/').pop() ?? '') && e.startTime < ((window as unknown as { otterFirstPlaying?: number }).otterFirstPlaying ?? Number.POSITIVE_INFINITY))
+        .map((e) => e.name),
+    re.source,
+  );
+}
+
 function scripts(page: Page): string[] {
   const seen: string[] = [];
+  // The first `playing` of the page, for scriptsBeforePlaying.
+  void page.addInitScript(() => document.addEventListener('playing', () => ((window as unknown as { otterFirstPlaying?: number }).otterFirstPlaying ??= performance.now()), true));
   page.on('request', (r) => {
     if (r.resourceType() === 'script') seen.push(r.url());
   });
@@ -23,7 +41,7 @@ function scripts(page: Page): string[] {
 }
 
 test('basic preset: five controls only, HLS on the own engine and MP4 by range requests, mute and fullscreen work', async ({ page }) => {
-  const loaded = scripts(page);
+  scripts(page);
   await page.goto('/presets.html?preset=basic&src=/hls-fmp4/master.m3u8');
   // The shell: play / pause, mute, time, progress, fullscreen; nothing else.
   const tags = await page.locator('#player [data-otter-controls] *').evaluateAll((els) => els.map((e) => e.localName).filter((n) => n.startsWith('otter-')));
@@ -32,7 +50,7 @@ test('basic preset: five controls only, HLS on the own engine and MP4 by range r
   await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.5);
   let s = await state(page);
   expect(s).toMatchObject({ format: 'hls', backend: 'mse', muted: true });
-  expect(loaded.some((u) => HLSJS.test(u))).toBe(false);
+  expect(await scriptsBeforePlaying(page, HLSJS)).toEqual([]);
   expect((s as { textTracks?: unknown }).textTracks).toBeUndefined();
   // Mute button: sound on.
   await page.locator('otter-mute-button').getByRole('button').click();
@@ -59,7 +77,7 @@ test('basic preset: five controls only, HLS on the own engine and MP4 by range r
 });
 
 test('vod preset: builds the shell, plays HLS on the own engine, controls drive it, captions offered, explain()', async ({ page }) => {
-  const loaded = scripts(page);
+  scripts(page);
   await page.goto('/presets.html?preset=vod&src=/hls-fmp4/master.m3u8');
   await expect(page.locator('#player[data-otter-player] [data-otter-controls] otter-time-slider')).toHaveCount(1);
   await expect(page.locator('[data-otter-title]')).toHaveText('Preset vod');
@@ -69,9 +87,9 @@ test('vod preset: builds the shell, plays HLS on the own engine, controls drive 
   const s = await state(page);
   expect(s.format).toBe('hls');
   expect(s.backend).toBe('mse');
-  // The own CMAF-HLS engine: no hand-over step, no hls.js module loaded.
+  // The own CMAF-HLS engine: no hand-over step, hls.js not in the first load (prefetched after).
   expect((s.route?.steps ?? []).map((x) => x.reason).join('\n')).not.toContain('own engine');
-  expect(loaded.some((u) => HLSJS.test(u))).toBe(false);
+  expect(await scriptsBeforePlaying(page, HLSJS)).toEqual([]);
   expect(s.textTracks.length).toBeGreaterThan(0);
   // Preview pictures: the on-demand chunk arrived and the provider is in place.
   await expect.poll(() => page.evaluate(() => window.hasThumbnails?.() === true)).toBe(true);

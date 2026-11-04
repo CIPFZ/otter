@@ -52,6 +52,31 @@ describe('FLV demuxer for WebCodecs', () => {
     d.destroy();
   });
 
+  it('audio that arrives before the first keyframe but is timed at or after it plays from media time 0 (ADR-013 §7)', async () => {
+    // clip.flv's first keyframe tag (21 ms) moved after the two audio tags timed 21 and 42 ms, as
+    // an encoder that muxes audio ahead does; each tag (with its PreviousTagSize) moves whole.
+    const blocks: Uint8Array[] = [];
+    for (let o = 13; o + 11 <= clip.length; ) {
+      const size = ((clip[o + 1] as number) << 16) | ((clip[o + 2] as number) << 8) | (clip[o + 3] as number);
+      blocks.push(clip.subarray(o, o + 11 + size + 4));
+      o += 11 + size + 4;
+    }
+    // Blocks: script, AVC config, AAC config, AAC 0, keyframe 21, AAC 21, AAC 42, ...
+    const [script, avcc, aacc, a0, key, a21, a42, ...tail] = blocks as [Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array, ...Uint8Array[]];
+    const reordered = new Uint8Array(clip.length);
+    let at = 0;
+    for (const b of [clip.subarray(0, 13), script, avcc, aacc, a0, a21, a42, key, ...tail]) {
+      reordered.set(b, at);
+      at += b.length;
+    }
+    vi.stubGlobal('fetch', () => Promise.resolve(streamOf(reordered, 256)));
+    const d = await openFlvDemuxer('http://x/live.flv', { signal: new AbortController().signal, createError });
+    const a = await take(d.packets('audio'), 3);
+    // The 21 ms frame is media time 0, the 42 ms one 21 ms; the 0 ms one is before 0 and dropped.
+    expect(a.map((c) => c.timestamp)).toEqual([0, 21_000, 43_000]);
+    d.destroy();
+  });
+
   it('a seek starts at the last keyframe at or before the time; each subscriber gets its own bytes', async () => {
     vi.stubGlobal('fetch', () => Promise.resolve(streamOf(clip, 64 * 1024, true)));
     const d = await openFlvDemuxer('http://x/live.flv', { signal: new AbortController().signal, createError });

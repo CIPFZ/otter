@@ -159,11 +159,16 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
       - 每个 PES 的**最后一帧**还要再等一个 PES（实测比该 PES 其余帧晚 443 ms）：`PacketBuffer.readNext` 要拿到下一个包才能算当前包的时长（`ensureCurrentPacketHasNext`）。
       - 结果：最后一帧在播放时刻之后才到，sink 在那一帧上放空；和 CI 的放空时刻（每个 PES 最后一帧）一致。Chromium 也有（CI 与本地 desktop-chrome、emulated-android 都在 0.320 s 放空 75 ms），不是 Safari 特有。
       - 夹具没有缺口：AAC 时间戳全片连续（`ffprobe -show_packets`），所以「补静音」那一支不适用。
-    - **修复（`demux-mediabunny`）**：直播 TS 的 AAC 由适配层自己读（`src/ts-aac.ts`：PAT → PMT → ADTS 流；PES 按 `PES_packet_length` 收齐即完成，没有长度的到下一个 PES 起点；帧时长 1024 / 采样率，不等下一个包）。同一字节流 `tee` 一份给它，视频仍由 mediabunny 读。顺带：旧代码在首个视频关键帧之前到的音频会被丢掉（live 音频从 0.149 s 起），现在等媒体时间 0 定下来再放出，从 0 起。
+    - **修复（`demux-mediabunny`）**：直播 TS 的 AAC 由适配层自己读（`src/ts-aac.ts`：PAT → PMT → ADTS 流；PES 按 `PES_packet_length` 收齐即完成，没有长度的到下一个 PES 起点；帧时长 1024 / 采样率，不等下一个包）。同一字节流 `tee` 一份给它，视频仍由 mediabunny 读。媒体时间 0 不变（第一个视频关键帧）：旧代码把关键帧之前**读到**的音频整块丢掉（取决于两路并发读取的先后，live 音频从 0.149 s 起），现在按时间戳：不早于 0 的都放出（ADR-013 §7，FLV 同口径）。
       - 单测在旧代码上失败：只送到第 5 个音频 PES 之前的字节，第 4 个 PES 已完整，旧代码只放出到 1.003 s，新代码到 1.365 s；与 mediabunny 读整个文件的前 40 帧逐字节、逐时刻相同；无 `PES_packet_length` 的流结果不变。
       - 本地 e2e：desktop-chrome 与 emulated-android 的直播 TS 四路墙，旧代码两者都在 0.320 s 放空 75 ms，新代码没有欠载。
       - **CI `0561ae1` 验证**：desktop-safari、emulated-iphone、desktop-chrome、emulated-android 的直播 TS 四路墙 tile errors 全部为空（此前每次都有 3–8 条欠载）；desktop-firefox 只有无头 Firefox 一贯的 `audioClockUnavailable`（只记录）。这一型关闭。
       - 上游 issue 草稿：`docs/reports/m6/mediabunny-live-ts-issue.md`（我没有向上游仓库发 issue 的凭据）。
+    - 边界补齐（2026-11-04 负责人，`ts-aac.ts`，每条单测在 `0561ae1` 的代码上失败）：
+      - ADTS 帧跨 PES：残片带到下一个 PES 拼上，时间按它开始所在的 PES 算（测试把片段按 1000 字节切 PES，几乎每个 PES 都切在帧中间）；
+      - PTS 33 位回绕：按 mediabunny 的口径归一（锚在流的第一个 PTS，早于锚 60 s 的算回绕过，锚在 2^33 前 60 s 内的算负数），再按 2^32 tick 的跳变连续展开。**读代码得出（未用实际流复现）**：mediabunny 的 `normalizeTimestamp` 只处理一次回绕（锚定后约 26.5 h 内），之后它的视频时间应会跳回去；我们的音频继续连续，届时两者不再对齐（写进上游 issue 草稿，同样标明是读代码）；
+      - 非 ADTS 音频（MP3 0x03 / 0x04、AC-3 0x81、LATM 0x11 …）：整条音频走 mediabunny 原路径，发一条非致命 `tsAudioFallback`；LATM mediabunny 不读，这时没有声音（通知里写明）。夹具 `e2e/media/ts/audio-{mp3,ac3,latm}.ts`（`generate.sh`）；
+      - 同步字校验：一帧只有在下一帧也以同步字开头时才收（PES 末尾的那帧以 PES 结束为界）；假同步字之后若读成跨 PES 的残片、在下一个 PES 里仍不完整，丢弃该残片。
     - emulated-android 30 s 用例那一次（dq 0、ahead 1.28）是文件源，不归这一型，仍按 F16 记录（原因未查明）。
   - 同一次本地加载里还看到一次：片尾到 12 s 时测试已 seek 回 0.2 s，之后 20 s 一直无声（第 9–29 秒）。只在人为满载下出现过一次，CI 没见过，记在这里，未查。2026-11-02 负责人：放过的欠载在每次 CI 通知里逐条列出对应的 sink 汇总（media / ahead / under / dq）及「同窗 / 相邻窗」；实际没观测到 dq ≥ 17 的，这条放宽撤回。
 - 直播流在 fetch 里（2026-10-30，ADR-013 §7）：Firefox 对同一个可缓存 URL 的第二个请求要等第一个完成（缓存条目锁），无尽的直播流永远不完成，于是同一 URL 的第二路一直卡在 loading；`fetch(url, { cache: 'no-store' })` 绕开。另外浏览器对同一主机最多 6 个 HTTP/1.1 连接，直播流一直占着：一面墙上同一主机的 HTTP-FLV / TS 超过 6 路时，第 7 路起不来（本地 8 路实测 6 路在播）；要用 WS-FLV（WebSocket 不占这 6 个）或 HTTP/2。mediabunny 1.61 的 `ReadableStreamSource` 能读不断增长、长度未知的 MPEG-TS：头 64 KB 到达约 110 ms 就有了轨道，之后数据到一点出一点包（顺序读；缓存上限默认 32 MiB）。

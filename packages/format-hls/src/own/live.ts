@@ -111,9 +111,18 @@ export function startLive(h: EngineInner): Live {
           if (delays.length > 0) tick(Math.min(...delays));
           else h._ended();
         },
-        () => {
+        (err: unknown) => {
+          if (stopped) return;
+          // What the own engine leaves to hls.js turning up in a reload (a live EXT-X-DISCONTINUITY,
+          // parts): a fatal media error, so the adapter takes over from the position
+          // (withAdapterFallback), instead of reloads retried while the buffer runs dry.
+          if (h._core._isOtterError(err) && err.details === 'ownEngineUnsupported') {
+            stopped = true;
+            h._bus.emit('error', err);
+            return;
+          }
           // A failed reload is retried at the next interval; the engine reports lasting errors.
-          if (!stopped) tick(delay);
+          tick(delay);
         },
       );
     }, delay);

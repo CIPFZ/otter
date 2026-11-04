@@ -113,7 +113,8 @@
   | basic 入口 | 18.7 kB | ui-core 24.4、media 23.8、engine-adapter-hlsjs 7.9、engine-adapter-shaka 6.5、core 3.8 | hls.js 适配器只在自研引擎移交时用，Shaka 适配器只在有 DRM 时用：`format-hls` 改为首次用到才加载（`src/lazy-adapter.ts`）。改后 13.9 kB |
   | vod 入口 | 34.8 kB | ui-core 58.2、media 23.8、input 8.3、engine-adapter-hlsjs 7.9、presentation 6.7 | 同上去掉 hls.js 适配器；Shaka 适配器仍由 `format-dash` 静态引入（DASH 源必需）。改后 30.1 kB |
 
-  ui-core、media、input、presentation、core 是起播与控件本身，留在入口。这一改动同样作用于 npm 用户：§19 短视频行 30.26 → 25.45 KB，长视频、直播、低延迟各约 −2.5 KB。
+  ui-core、media、input、presentation、core 是起播与控件本身，留在入口。
+- 预取（2026-11-04 负责人）：hls.js 不再随首屏加载之后，自研引擎开始播放（`playing`）后在空闲时预取（`requestIdleCallback`，没有时 500 ms 后；Save-Data 时不预取；失败忽略），移交时不等下载。`e2e/hls-handover.spec.ts`：直播流中途出现 EXT-X-DISCONTINUITY，自研引擎移交 hls.js；把 hls.js 脚本人为延迟 3 s，有预取时移交（失败通知到新 MediaSource 上开始走）约 2.08 s，去掉预取时 5.2 s，用例断言 < 4 s，并断言 hls.js 在首个 `playing` 之后、移交之前取到。剩下的 ~2.1 s 是 hls.js 自己在直播上起播（清单、分片、直播同步点）。这一改动同样作用于 npm 用户：§19 短视频行 30.26 → 25.45 KB，长视频、直播、低延迟各约 −2.5 KB。
 - 其余包只走 npm。
 
 ### 7. 文档站

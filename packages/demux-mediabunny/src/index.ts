@@ -73,6 +73,8 @@ export interface OpenOptions {
   readonly createError: typeof CreateError;
   /** Request headers for URL sources (HLS playlists and segments). */
   readonly headers?: Readonly<Record<string, string>>;
+  /** Non-fatal notices of the demuxer (`tsAudioFallback`); the format hands them to QoE. */
+  readonly notice?: (error: ReturnType<typeof CreateError>) => void;
 }
 
 /** A local File / Blob in any container mediabunny reads. */
@@ -291,16 +293,26 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
       }),
     )
     .tee();
-  // AAC is read here, not by mediabunny (F16, ts-aac.ts): frames queue until the pump takes them.
+  // ADTS AAC is read here, not by mediabunny (F16, ts-aac.ts): frames of the audio PID queue until
+  // the pump takes them. Until that PID is known, every AAC stream's frames are kept by PID.
+  const aacByPid = new Map<number, AacFrame[]>();
   const aac: AacFrame[] = [];
+  let aacPid: number | undefined;
   let aacEnded = false;
   let aacWake: (() => void) | undefined;
   const wake = (): void => {
     aacWake?.();
     aacWake = undefined;
   };
-  const reader = createAacReader((frames) => {
-    aac.push(...frames);
+  const reader = createAacReader((frames, pid) => {
+    if (aacPid !== undefined) {
+      if (pid === aacPid) aac.push(...frames);
+      wake();
+      return;
+    }
+    let list = aacByPid.get(pid);
+    if (list === undefined) aacByPid.set(pid, (list = []));
+    list.push(...frames);
     wake();
   });
   const ownReader = own.getReader();
@@ -336,23 +348,35 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
     input.dispose();
     throw isOtter(err) ? err : muxError('tsDemuxFailed', err);
   }
-  // Media time 0: the first video keyframe (the first audio packet without video).
+  // Media time 0: the first video keyframe (the first audio packet without video). Audio timed at
+  // or after it plays, whether it arrived before or after the keyframe; audio before it is dropped
+  // (ADR-013 §7, the same rule as live FLV).
   let base: number | undefined;
+  const early: EncodedPacket[] = [];
   const pump = async (kind: 'video' | 'audio', track: InputVideoTrack | InputAudioTrack): Promise<void> => {
     const sink = new mb.EncodedPacketSink(track);
     for (let p = await sink.getFirstPacket(); p !== null && !options.signal.aborted; p = await sink.getNextPacket(p, { verifyKeyPackets: false })) {
       if (base === undefined) {
-        if (kind === 'audio' && video !== null) continue;
+        // Audio before media time 0 is known waits for it (ADR-013 §7), as the own AAC path does.
+        if (kind === 'audio' && video !== null) {
+          early.push(p);
+          if (early.length > EARLY_AUDIO_MAX) early.shift();
+          continue;
+        }
         if (kind === 'video' && p.type !== 'key') continue;
         base = p.timestamp;
         wake();
       }
-      const timestamp = Math.round((p.timestamp - base) * 1e6);
-      if (timestamp < 0) continue;
-      fanout.push(kind, { key: p.type === 'key', timestamp, duration: Math.round(p.duration * 1e6), data: p.data });
+      for (const q of kind === 'audio' ? [...early.splice(0), p] : [p]) {
+        const timestamp = Math.round((q.timestamp - base) * 1e6);
+        if (timestamp < 0) continue;
+        fanout.push(kind, { key: q.type === 'key', timestamp, duration: Math.round(q.duration * 1e6), data: q.data });
+      }
     }
   };
-  // AAC from the adapter's own reader (F16): the frames wait in `aac` until media time 0 is known.
+  // AAC from the adapter's own reader (F16): the frames wait in `aac` until media time 0 is known
+  // (the first video keyframe: what is timed at or after it plays, whichever arrived first; the same
+  // rule as live FLV, ADR-013 §7).
   const pumpAac = async (): Promise<void> => {
     for (let i = 0; ; ) {
       while (i < aac.length && base !== undefined && !options.signal.aborted) {
@@ -376,8 +400,27 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
       });
     }
   };
-  const ownAac = audio !== null && info.audio?.setup.codec.startsWith('mp4a.') === true;
-  if (!ownAac) void ownReader.cancel().catch(() => undefined);
+  // Which audio path: the own reader for ADTS AAC (stream type 0x0f); anything else (MP3, AC-3,
+  // AAC in LATM 0x11 ...) stays with mediabunny, said once (tsAudioFallback, non-fatal): those
+  // keep the late last frame of each PES (F16). LATM mediabunny does not read: no sound then.
+  const streams = await reader.streams();
+  const audioType = audio === null ? undefined : streams.get(audio.id);
+  const ownAac = audio !== null && audioType === 0x0f;
+  if (audio !== null && ownAac) {
+    aacPid = audio.id;
+    aac.push(...(aacByPid.get(audio.id) ?? []));
+    aacByPid.clear();
+  } else {
+    void ownReader.cancel().catch(() => undefined);
+    aacByPid.clear();
+    const hex = (t: number): string => `0x${t.toString(16).padStart(2, '0')}`;
+    const unread = audio === null ? [...streams].filter(([, t]) => AUDIO_STREAM_TYPES.has(t)) : [];
+    if (audio !== null && audioType !== undefined) {
+      options.notice?.(createError({ type: 'media', details: 'tsAudioFallback', fatal: false, recoverable: false, message: `audio stream type ${hex(audioType)} (${info.audio?.codec ?? '?'}) is read by mediabunny, not the adapter's ADTS reader: the last frame of each PES comes one PES late (M6 F16)` }));
+    } else if (unread.length > 0) {
+      options.notice?.(createError({ type: 'media', details: 'tsAudioFallback', fatal: false, recoverable: false, message: `audio stream type ${unread.map(([, t]) => hex(t)).join(', ')} is not read (mediabunny takes no such audio): no sound` }));
+    }
+  }
   const done = Promise.all([video === null ? undefined : pump('video', video), audio === null ? undefined : ownAac ? pumpAac() : pump('audio', audio)]);
   void done.then(
     () => fanout.end(),
@@ -396,5 +439,11 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
     },
   };
 }
+
+/** Audio packets kept while waiting for the first keyframe (~10 s of AAC). */
+const EARLY_AUDIO_MAX = 500;
+
+/** PMT stream types of audio (MPEG audio, AAC ADTS / LATM, AC-3, E-AC-3, DTS). */
+const AUDIO_STREAM_TYPES: ReadonlySet<number> = new Set([0x03, 0x04, 0x0f, 0x11, 0x81, 0x87, 0x82, 0x8a]);
 
 const isOtter = (e: unknown): e is Error => typeof e === 'object' && e !== null && 'details' in e && 'fatal' in e;

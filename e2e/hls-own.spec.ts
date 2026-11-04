@@ -30,14 +30,32 @@ const state = (page: Page) =>
     };
   });
 
-/** Script URLs the page loaded: hls.js must not be among them on the own engine. */
+/** Script URLs the page loaded (and, through an init script, the time of its first `playing`). */
 const scripts = (page: Page): string[] => {
   const seen: string[] = [];
+  // The first `playing` of the page, for scriptsBeforePlaying.
+  void page.addInitScript(() => document.addEventListener('playing', () => ((window as unknown as { otterFirstPlaying?: number }).otterFirstPlaying ??= performance.now()), true));
   page.on('request', (r) => {
     if (r.resourceType() === 'script') seen.push(r.url());
   });
   return seen;
 };
+
+/**
+ * Scripts matching `re` whose fetch started before the page's first `playing` (resource timing):
+ * hls.js must not be part of the first load on the own engine. format-hls prefetches it once the
+ * own engine plays (2026-11-04), so it may come after.
+ */
+async function scriptsBeforePlaying(page: Page, re: RegExp): Promise<string[]> {
+  return page.evaluate(
+    (source) =>
+      performance
+        .getEntriesByType('resource')
+        .filter((e) => new RegExp(source).test(e.name.split('/').pop() ?? '') && e.startTime < ((window as unknown as { otterFirstPlaying?: number }).otterFirstPlaying ?? Number.POSITIVE_INFINITY))
+        .map((e) => e.name),
+    re.source,
+  );
+}
 
 async function load(page: Page, src: string, autoplay = true): Promise<void> {
   await page.goto('/player.html?idle=0');
@@ -58,10 +76,11 @@ test('VOD: plays on the own engine, manual switch at a segment boundary, seek, s
   await load(page, '/hls-fmp4/master.m3u8');
   await expect.poll(async () => (await state(page)).t, { timeout: 15_000 }).toBeGreaterThan(0.5);
   let s = await state(page);
-  // Own engine: no fallback step, no hls.js module.
+  // Own engine: no fallback step, hls.js not in the first load (prefetched once it plays).
   expect(s.steps.join('\n')).not.toContain('own engine');
   expect(s.errors).toEqual([]);
-  expect(loaded.some((u) => /hls(\.light)?(\.min)?\.m?js|hls-[\w-]+\.js/.test(u))).toBe(false);
+  expect(await scriptsBeforePlaying(page, /^(hls(\.light)?(\.min)?\.m?js|hls-[\w-]+\.js)$/)).toEqual([]);
+  void loaded;
   expect(s.tracks.video.map((v) => v.height)).toEqual([360, 180]);
   expect(s.seekable).toEqual([0, expect.closeTo(8.02, 1)]);
   // Subtitles: the WebVTT rendition's cues reach the text package, on the media timeline

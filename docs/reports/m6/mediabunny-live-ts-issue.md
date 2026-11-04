@@ -31,6 +31,12 @@ plays the audio as it is demuxed runs dry on every PES's last frame.
 - For audio codecs with a fixed frame duration (AAC: 1024 / sample rate, also MP3, AC-3 …), compute
   the packet duration from the codec instead of waiting for the next packet.
 
+**Also, from reading the code (not reproduced on a stream): one PTS wrap only.** `normalizeTimestamp` anchors at the first PTS and treats
+timestamps more than 60 s before it as wrapped; once a 24/7 stream has run through a whole 2^33
+cycle (~26.5 h after the anchor) timestamps fall below the anchor again and are no longer
+unwrapped, so media time would jump back. A continuous unwrap (a jump of more than 2^32 ticks is a wrap)
+would keep long live streams monotonic.
+
 **Repro.** A ReadableStream that enqueues a TS file in whole 188-byte packets at its byte rate plus
 300 ms; log `performance.now()` for each audio packet from `EncodedPacketSink` against the arrival
 time of the TS packet that starts its PES and of the one that starts the next PES.

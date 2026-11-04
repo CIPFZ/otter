@@ -3,7 +3,10 @@
 // sliding-window live playlist. Segment n of the live stream is file n % 15 with its tfdt moved on
 // by whole loops, so the media timeline keeps growing (no discontinuity). The window is six
 // segments, the edge advances with the wall clock since the server started; HOLD-BACK is 6 s.
-// Served at /live-hls/master.m3u8 by the e2e Vite server.
+// Served at /live-hls/master.m3u8 by the e2e Vite server. /live-hls/disc-<epoch ms>/master.m3u8 is
+// the same stream whose playlists mark the first segment published after that time with
+// EXT-X-DISCONTINUITY (the timeline stays continuous): what the own engine leaves to hls.js,
+// turning up mid-stream (the hand-over e2e).
 
 import { readFileSync } from 'node:fs';
 import type { Connect, Plugin } from 'vite';
@@ -49,21 +52,29 @@ export function liveHlsPlugin(dir: string): Plugin {
     'v1.m3u8',
     '',
   ].join('\n');
-  const playlist = (r: number): string => {
+  const edgeAt = (ms: number): number => Math.max(WINDOW - 1, Math.floor((ms - started) / 1000 / SEGMENT_S) + WINDOW - 1);
+  const playlist = (r: number, discAt?: number): string => {
     const last = edge();
     const first = last - WINDOW + 1;
+    const disc = discAt === undefined || Date.now() < discAt ? undefined : edgeAt(discAt) + 1;
     const lines = ['#EXTM3U', '#EXT-X-VERSION:7', `#EXT-X-TARGETDURATION:${SEGMENT_S}`, '#EXT-X-SERVER-CONTROL:HOLD-BACK=6.0', `#EXT-X-MEDIA-SEQUENCE:${first}`, `#EXT-X-MAP:URI="init_${r}.mp4"`];
     // Capture time of the first segment's start: segment k is published as its end becomes the live
     // point, which is server time + 12 s (/live-hls/clock), so stream time 2k was captured at
     // started + (2k - 12) s.
     lines.push(`#EXT-X-PROGRAM-DATE-TIME:${new Date(started + (first - WINDOW) * SEGMENT_S * 1000).toISOString()}`);
-    for (let n = first; n <= last; n++) lines.push(`#EXTINF:${SEGMENT_S.toFixed(6)},`, `v${r}_${n}.m4s`);
+    for (let n = first; n <= last; n++) {
+      if (n === disc) lines.push('#EXT-X-DISCONTINUITY');
+      lines.push(`#EXTINF:${SEGMENT_S.toFixed(6)},`, `v${r}_${n}.m4s`);
+    }
     return `${lines.join('\n')}\n`;
   };
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
     const path = req.url?.split('?')[0] ?? '';
     if (!path.startsWith('/live-hls/')) return next();
-    const name = path.slice('/live-hls/'.length);
+    const rest = path.slice('/live-hls/'.length);
+    const variant = /^disc-(\d+)\/(.*)$/.exec(rest);
+    const discAt = variant === null ? undefined : Number(variant[1]);
+    const name = variant === null ? rest : (variant[2] as string);
     const send = (type: string, body: string | Buffer): void => {
       res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
       res.end(body);
@@ -73,7 +84,7 @@ export function liveHlsPlugin(dir: string): Plugin {
     // The real-time live point on the stream timeline: segment k (2k..2k+2 s) is published when
     // its end is 6 segments ahead of the server's time, so the live point is now + 12 s.
     if (name === 'clock') return send('application/json', JSON.stringify({ live: (Date.now() - started) / 1000 + WINDOW * SEGMENT_S }));
-    if ((m = /^v([01])\.m3u8$/.exec(name)) !== null) return send('application/vnd.apple.mpegurl', playlist(Number(m[1])));
+    if ((m = /^v([01])\.m3u8$/.exec(name)) !== null) return send('application/vnd.apple.mpegurl', playlist(Number(m[1]), discAt));
     if ((m = /^init_([01])\.mp4$/.exec(name)) !== null) return send('video/mp4', readFileSync(`${dir}/init_${m[1]}.mp4`));
     if ((m = /^v([01])_(\d+)\.m4s$/.exec(name)) !== null) {
       const n = Number(m[2]);

@@ -1,30 +1,60 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { adtsFrames, createAacReader, type AacFrame } from '../src/ts-aac.js';
+import { createAacReader, createPtsClock, type AacFrame } from '../src/ts-aac.js';
+import { join, pes, tables } from './ts-writer.js';
 
 const clip = new Uint8Array(readFileSync(new URL('../../../e2e/media/ts/clip.ts', import.meta.url)));
 
-const read = (bytes: Uint8Array, chunk: number): { frames: AacFrame[]; afterPes: number[] } => {
+/** Every frame the reader gives, pushing `bytes` in chunks of `chunk`. */
+const read = (bytes: Uint8Array, chunk: number): AacFrame[] => {
   const frames: AacFrame[] = [];
-  const afterPes: number[] = [];
-  const r = createAacReader((f) => {
-    frames.push(...f);
-    afterPes.push(f.length);
-  });
+  const r = createAacReader((f) => void frames.push(...f));
   for (let o = 0; o < bytes.length; o += chunk) r.push(bytes.subarray(o, o + chunk));
   r.end();
-  return { frames, afterPes };
+  return frames;
 };
+
+const reference = read(clip, 4096);
+const hex = (f: AacFrame): string => Buffer.from(f.data).toString('hex');
+
+/**
+ * A TS stream of the clip's ADTS frames, cut into PES of `pesBytes` (frames across PES), with
+ * `junk` bytes between two frames if given.
+ */
+function recut(pesBytes: number, junk?: { after: number; bytes: number[] }): Uint8Array {
+  // Byte offset → time of the frame starting there.
+  const starts = new Map<number, number>();
+  const pieces: Uint8Array[] = [];
+  let o = 0;
+  reference.forEach((f, i) => {
+    starts.set(o, f.time);
+    pieces.push(f.data);
+    o += f.data.length;
+    if (junk?.after === i) {
+      pieces.push(new Uint8Array(junk.bytes));
+      o += junk.bytes.length;
+    }
+  });
+  const all = join(pieces);
+  const cc = { n: 0 };
+  const parts = tables([{ pid: 0x100, type: 0x0f }]);
+  for (let at = 0; at < all.length; at += pesBytes) {
+    const end = Math.min(all.length, at + pesBytes);
+    // The PES's PTS: its first frame that starts in it.
+    let first: number | undefined;
+    for (let b = at; b < end && first === undefined; b++) first = starts.get(b);
+    parts.push(...pes(0x100, all.subarray(at, end), first === undefined ? undefined : first * 90_000, cc));
+  }
+  return join(parts);
+}
 
 describe('AAC from live MPEG-TS (M6 F16)', () => {
   it('reads every ADTS frame of the clip, timed PTS + i × 1024 / rate, whatever the chunking', () => {
-    const a = read(clip, 188 * 7);
     const b = read(clip, 1000);
-    expect(a.frames.length).toBeGreaterThan(300);
-    expect(b.frames.map((f) => f.time)).toEqual(a.frames.map((f) => f.time));
-    expect(a.frames[0]?.time).toBeCloseTo(1.4, 6);
-    for (let i = 1; i < a.frames.length; i++) expect((a.frames[i] as AacFrame).time - (a.frames[i - 1] as AacFrame).time).toBeCloseTo(1024 / 48000, 6);
-    expect(a.frames.every((f) => f.data[0] === 0xff && f.duration === 1024 / 48000)).toBe(true);
+    expect(reference.length).toBeGreaterThan(300);
+    expect(b.map((f) => f.time)).toEqual(reference.map((f) => f.time));
+    expect(reference[0]?.time).toBeCloseTo(1.4, 6);
+    for (let i = 1; i < reference.length; i++) expect((reference[i] as AacFrame).time - (reference[i - 1] as AacFrame).time).toBeCloseTo(1024 / 48000, 6);
   });
 
   it('a PES without PES_packet_length ends at the next PES start of its PID', () => {
@@ -39,14 +69,39 @@ describe('AAC from live MPEG-TS (M6 F16)', () => {
         zeroed[start + 5] = 0;
       }
     }
-    expect(read(zeroed, 4096).frames.map((f) => f.time)).toEqual(read(clip, 4096).frames.map((f) => f.time));
+    expect(read(zeroed, 4096).map((f) => f.time)).toEqual(reference.map((f) => f.time));
   });
 
-  it('skips bytes that are not an ADTS frame; stops at a truncated one', () => {
-    const one = read(clip, 4096).frames[0] as AacFrame;
-    const payload = new Uint8Array([0x00, 0x12, ...one.data, ...one.data.subarray(0, 5)]);
-    const frames = adtsFrames(payload, 10);
-    expect(frames).toHaveLength(1);
-    expect(frames[0]?.time).toBe(10);
+  it('frames cut by the end of a PES: carried into the next PES, timed by the PES they started in', () => {
+    // PES of 1000 bytes: nearly every PES ends inside a frame (frames are 120-240 bytes).
+    const frames = read(recut(1000), 188 * 3);
+    expect(frames.length).toBe(reference.length);
+    expect(frames.map(hex)).toEqual(reference.map(hex));
+    frames.forEach((f, i) => expect(f.time).toBeCloseTo((reference[i] as AacFrame).time, 4));
+  });
+
+  it('a false sync word: a frame is taken only when the next one starts with a sync word', () => {
+    // Junk between the 10th and 11th frame that reads as an ADTS header (48 kHz, 64 bytes) whose
+    // end is no sync word.
+    const junk = [0xff, 0xf1, 0x4c, 0x80, 0x08, 0x1f, 0xfc, ...Array<number>(80).fill(0x11)];
+    const frames = read(recut(1000, { after: 9, bytes: junk }), 188 * 3);
+    expect(frames.map(hex)).toEqual(reference.map(hex));
+  });
+
+  it('PTS across the 33-bit wrap: mediabunny’s normalisation, then continuous over further wraps', () => {
+    const M = 2 ** 33;
+    // Anchored within 60 s below 2^33 (mediabunny: those count as negative).
+    const near = createPtsClock();
+    expect(near.seconds(M - 90_000)).toBeCloseTo(-1, 6);
+    expect(near.seconds(90_000)).toBeCloseTo(1, 6);
+    // Anchored at 0: a later wrap continues, and so does the one after it (mediabunny stops there).
+    const zero = createPtsClock();
+    const times: number[] = [];
+    for (let t = 0; t < 3 * M; t += 2 ** 30) times.push(zero.seconds(t % M));
+    for (let i = 1; i < times.length; i++) expect((times[i] as number) - (times[i - 1] as number)).toBeCloseTo(2 ** 30 / 90_000, 3);
+    // Anchored elsewhere: timestamps more than 60 s before the anchor have wrapped.
+    const mid = createPtsClock();
+    mid.anchor(10 * 90_000);
+    expect(mid.seconds(10 * 90_000)).toBeCloseTo(10, 6);
   });
 });

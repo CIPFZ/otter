@@ -10,6 +10,7 @@
 
 - Updated dependencies
 - Updated dependencies
+- Updated dependencies
   - @otter-player/core@0.1.0-beta.0
   - @otter-player/engine-pipeline@0.1.0-beta.0
   - @otter-player/media@0.1.0-beta.0

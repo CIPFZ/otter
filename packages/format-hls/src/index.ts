@@ -52,6 +52,28 @@ export interface HlsFormatOptions {
 const HLS_TYPE = /mpegurl/i;
 const HLS_EXT = /\.m3u8(\?|#|$)/i;
 
+/**
+ * Once the own engine plays, when the page is idle: hls.js comes in ahead of a hand-over (a fatal
+ * media error during playback, something the own engine leaves to it showing up in a live reload),
+ * so the switch does not wait for its download. Not with Save-Data; a failed prefetch is ignored
+ * (the hand-over loads it again).
+ */
+function prefetchAdapter(media: HTMLMediaElement, hlsjs: HlsJsEngineOptions | undefined): void {
+  const saveData = (globalThis.navigator as { connection?: { saveData?: boolean } } | undefined)?.connection?.saveData === true;
+  if (saveData) return;
+  const idle = (f: () => void): void => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(f, { timeout: 2000 });
+    else setTimeout(f, 500);
+  };
+  const go = (): void =>
+    idle(() => {
+      void import('@otter-player/engine-adapter-hlsjs')
+        .then((m) => m.prefetchHlsJs({ ...(hlsjs?.light === undefined ? {} : { light: hlsjs.light }), ...(hlsjs?.abr === undefined ? {} : { abr: hlsjs.abr }) }))
+        .catch(() => undefined);
+    });
+  media.addEventListener('playing', go, { once: true });
+}
+
 /** How likely a source is HLS, 0..1 (an `mpegurl` type, `.m3u8`): the router's probe. */
 export function probeHls(source: Source): number {
   if (typeof source.src !== 'string') return 0;
@@ -83,6 +105,7 @@ export function createHlsFormat(options: HlsFormatOptions = {}): FormatPlugin {
       const hlsjs = (startTime?: number): Engine =>
         lazyEngine('hls', async () => (await import('@otter-player/engine-adapter-hlsjs')).createHlsJsEngine(startTime === undefined ? ctx : { ...ctx, options: { ...ctx.options, startTime } }, { ...options.hlsjs, ...abr }));
       if (options.engine === 'hlsjs') return hlsjs();
+      prefetchAdapter(ctx.media, options.hlsjs);
       return withAdapterFallback(lazyCmafHlsEngine(ctx, options.own ?? {}), hlsjs, { media: ctx.media });
     },
     async createDemuxer(ctx) {

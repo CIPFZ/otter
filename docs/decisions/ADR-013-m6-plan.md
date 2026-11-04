@@ -69,6 +69,12 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - 预热（半天时间盒）：surveillance 创建时让解码池按路数起 Worker 并先载入解码代码（`Decoder.warm()`、`DecodePool.warm()`），不等 `load()`。本地一路首帧中位数 Chrome 82 → 78 ms、Firefox 128 → 109 ms，四路 Chrome 99 → 92 ms、Firefox 156 → 126 ms（各 16 / 64 个样本）；有效但小，进产品。worklet 不预热：它要 AudioContext，而无手势时不建上下文（ADR-008 F1）。
   - 同一来源超过 6 路 HTTP(S) 直播流：第 7 路起各发一条非致命错误 `tooManyConnectionsPerHost`（浏览器每主机 6 个 HTTP/1.1 连接，直播流一直占着；HTTP/2 不受限，但页面看不出来，所以只是警告）。
 
+- 直播的媒体时间（2026-11-04 负责人要求写明；FLV 与 TS 同口径）：
+  - 媒体时间 0 = 第一个视频关键帧（FLV：它的 DTS；TS：mediabunny 给的时间戳）；没有视频时 = 第一个音频帧。
+  - 音频按时间戳归属，不按到达先后：时间戳不早于 0 的音频照常放出，哪怕它比那个关键帧先到（先到的暂存，关键帧一到再放）；早于 0 的丢弃。
+  - 之前两边都是「关键帧之前读到的音频一律丢」，结果取决于到达顺序：直播 TS 的音频由另一路并发读取，首个 PES 常在关键帧之前读到而整块丢掉，音频从 0.149 s 起（`0561ae1` 之前）。现在 TS 与 FLV 都按上面的规则，各有单测在旧代码上失败（`demux-mediabunny/test/live-ts.test.ts`、`engine-pipeline/test/flv-demux.test.ts`）。
+  - 直播 TS 的 AAC 由适配层自己读（M6 F16，`demux-mediabunny/src/ts-aac.ts`），时间戳与 mediabunny 的视频同一条时间线（同样的 33 位回绕归一）。只覆盖 ADTS AAC（stream type 0x0f）；MP3、AC-3、LATM 等走 mediabunny 原路径并发非致命 `tsAudioFallback`（mediabunny 不读 LATM：没有声音）。
+
 ### 7a. 监控墙用例拆成功能与测量（2026-11-02 负责人）
 
 - 依据：ADR-008 §7「基准独占 runner」。CI macOS 的 main 步骤里，四路墙的丢帧率与首帧随 runner 负载摆动：负载 7–18（4 核），空闲 CPU 低到 2 %；同一棵树 c93d22f 放在 main 的位置也超 5 %（RESEARCH §1）。所以这不是产品回归，判定放错了地方。
