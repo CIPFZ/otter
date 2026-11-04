@@ -67,6 +67,8 @@ export interface OtterFixture {
   /** Blob of a same-origin URL, for the local-file scenario. */
   fetchBlob(url: string): Promise<Blob>;
   setPolicy(policy: RoutePolicy): Promise<void>;
+  /** Tears the player down (engines, MediaSource, listeners), as a host's destroy() would. */
+  destroy(): Promise<void>;
   /** ?danmaku=1: the danmaku engine's frame state. */
   danmaku(): DanmakuInspection | null;
 }
@@ -470,6 +472,11 @@ async function start(): Promise<OtterFixture> {
     contentRect: () => {
       const r = current.surface.contentRect;
       return { x: r.x, y: r.y, width: r.width, height: r.height };
+    },
+    async destroy() {
+      current.dispose();
+      await current.core.destroy();
+      current.layer.destroy();
     },
     async setPolicy(policy) {
       current.dispose();

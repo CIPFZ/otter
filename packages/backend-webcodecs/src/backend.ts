@@ -296,13 +296,27 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
    * the demuxer's first keyframe (with the tracks), the video decoder configured, first frame
    * decoded, first frame on the surface. Live demuxers say the first two (Demuxer.timing).
    */
+  /**
+   * The audio at the start (M6 2026-11-04, A/B of the early audio): the chunks fed in the first
+   * 5 ms of feeding (what the demuxer had at media time 0), their media length, when, and how the
+   * audio decodes; `none` when no audio was fed by the first frame (no AudioContext before a
+   * gesture: F1).
+   */
+  const audioStart = (ms: (at: number | undefined) => string): string => {
+    const first = audioTrace[0];
+    if (first === undefined) return `audio at start: none fed${audioSupport === undefined ? '' : ` (decoder ${audioSupport})`}`;
+    const burst = audioTrace.filter((c) => c.fed - first.fed <= 5);
+    const media = burst.reduce((n, c) => n + c.dur, 0) / 1000;
+    return `audio at start: ${burst.length} chunks, ${Math.round(media)} ms of media from ${(first.ts / 1e6).toFixed(3)} s, fed at ${ms(first.fed)}, decoder ${audioSupport ?? '-'}`;
+  };
+
   const sayStartup = (shown: number): void => {
     const t0 = startup.load;
     if (t0 === undefined) return;
     const ms = (at: number | undefined): string => (at === undefined ? '-' : String(Math.round(at - t0)));
     const timing = demuxer?.timing;
     bus.emit('route-detail', {
-      reason: `startup ms: connect ${ms(timing?.connectedAt)}, first bytes ${ms(timing?.firstBytesAt)}, keyframe ${ms(startup.keyframe)}, decoder configure ${ms(startup.configure)}..${ms(startup.configured)} (at ${startup.configure === undefined ? '-' : Math.round(startup.configure)}..${startup.configured === undefined ? '-' : Math.round(startup.configured)} page ms), decoded ${ms(startup.decoded)}, shown ${ms(shown)}`,
+      reason: `startup ms: connect ${ms(timing?.connectedAt)}, first bytes ${ms(timing?.firstBytesAt)}, keyframe ${ms(startup.keyframe)}, decoder configure ${ms(startup.configure)}..${ms(startup.configured)} (at ${startup.configure === undefined ? '-' : Math.round(startup.configure)}..${startup.configured === undefined ? '-' : Math.round(startup.configured)} page ms), decoded ${ms(startup.decoded)}, shown ${ms(shown)}; ${audioStart(ms)}`,
     });
   };
 
@@ -366,6 +380,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
    * output came out (performance.now()): an underrun says which side was late (F16).
    */
   const audioTrace: { ts: number; dur: number; fed: number; out?: number }[] = [];
+  /** How the audio decodes here (hardware / software / none), once known. */
+  let audioSupport: 'hardware' | 'software' | 'none' | undefined;
   const traceAudio = (media: number): string => {
     const us = media * 1e6;
     const at = audioTrace.findIndex((c) => c.ts <= us + 1 && us < c.ts + c.dur);
@@ -916,6 +932,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         if (a === null) return;
         const decoder = pickDecoder('audio');
         const support = decoder === undefined ? false : await decoder.supports(a.codec, ctx.caps);
+        audioSupport = support === false ? 'none' : support;
         if (decoder !== undefined && support !== false && c !== undefined) {
           try {
             sink = await createAudioSink(c);

@@ -30,6 +30,22 @@ test('live: EXT-X-DISCONTINUITY appears mid-stream, the own engine hands over to
     await new Promise((res) => setTimeout(res, SCRIPT_DELAY_MS));
     await route.continue();
   });
+  // Every MediaSource the page makes (both engines', MMS on WebKit), to check none is left open.
+  await page.addInitScript(() => {
+    const all: { readyState: string }[] = [];
+    (window as unknown as { mediaSources: typeof all }).mediaSources = all;
+    for (const name of ['MediaSource', 'ManagedMediaSource'] as const) {
+      const Base = (window as unknown as Record<string, (new () => { readyState: string }) | undefined>)[name];
+      if (Base === undefined) continue;
+      const Tracked = class extends Base {
+        constructor() {
+          super();
+          all.push(this);
+        }
+      };
+      Object.defineProperty(window, name, { value: Tracked, configurable: true, writable: true });
+    }
+  });
   await page.goto('/player.html?idle=0');
   // The discontinuity marks the first segment published 4 s from now.
   const src = `/live-hls/disc-${Date.now() + 4000}/master.m3u8`;
@@ -105,4 +121,20 @@ test('live: EXT-X-DISCONTINUITY appears mid-stream, the own engine hands over to
   expect(r.prefetchedMsBefore, 'hls.js fetched before the hand-over').toBeGreaterThan(0);
   expect(r.hlsAfterPlay, 'hls.js not part of the first load').toBe(true);
   expect(r.ms).toBeLessThan(HANDOVER_MAX_MS);
+  // On hls.js the playhead keeps going (not one jump then stuck).
+  const t1 = await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime);
+  await page.waitForTimeout(1000);
+  const t2 = await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).currentTime);
+  expect(t2 - t1, 'currentTime advances on hls.js').toBeGreaterThan(0.5);
+  // destroy(): nothing of either engine left on the element or open.
+  const left = await page.evaluate(async () => {
+    await ((await window.otter) as OtterFixture).destroy();
+    await new Promise((res) => setTimeout(res, 300));
+    const video = document.querySelector('video') as HTMLVideoElement;
+    const sources = (window as unknown as { mediaSources: { readyState: string }[] }).mediaSources;
+    return { sourceChildren: video.querySelectorAll('source').length, made: sources.length, notClosed: sources.filter((m) => m.readyState !== 'closed').length };
+  });
+  expect(left.made, 'both engines made a MediaSource').toBeGreaterThanOrEqual(2);
+  expect(left.sourceChildren, 'no <source> child left after destroy').toBe(0);
+  expect(left.notClosed, 'no MediaSource left open after destroy').toBe(0);
 });
