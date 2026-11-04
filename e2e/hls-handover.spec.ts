@@ -54,8 +54,10 @@ test('live: EXT-X-DISCONTINUITY appears mid-stream, the own engine hands over to
     const handedOver = (): boolean => o.events.some((e) => e.type === 'error' && (e.payload as { error: { details: string; message?: string } }).error.details === 'pipelineFallback');
     const played = await until(() => video.currentTime > 0.5 && !handedOver(), 20_000);
     const playedAt = performance.now();
-    // The own engine's MediaSource: hls.js attaches its own (a new blob URL on the element).
-    const ownSrc = video.src;
+    // The own engine's MediaSource: hls.js attaches its own, a new blob URL as the element's `src`,
+    // or, with ManagedMediaSource (WebKit), as a <source> child with `src` removed (hls.js
+    // buffer-controller `appendSource`): `currentSrc` covers both.
+    const ownSrc = video.currentSrc;
     if (!(await until(handedOver, 40_000))) return { played, handover: false as const };
     const at = performance.now();
     const position = video.currentTime;
@@ -70,7 +72,7 @@ test('live: EXT-X-DISCONTINUITY appears mid-stream, the own engine hands over to
       const from = video.currentTime;
       await new Promise((res) => setTimeout(res, 250));
       const d = video.currentTime - from;
-      if (video.src !== ownSrc && video.src !== '' && !video.paused && d >= 0.15 && d <= 0.5) {
+      if (video.currentSrc !== ownSrc && video.currentSrc !== '' && !video.paused && d >= 0.15 && d <= 0.5) {
         movedAt = a;
         break;
       }
