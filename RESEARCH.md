@@ -213,6 +213,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - `db3bb30` 的 desktop-safari solo：三面墙一起变差（四路首帧 HTTP-FLV 至 1728 ms、WS-FLV 至 1510 ms、直播 TS 1052–1632 ms；丢帧至 5.7 %），慢在 configure 之后到首帧解出；configure ≤ 15 ms，load 4–8。desktop-chrome 不变。
   - **时间 0 放出的音频（Node 里接 e2e 预览服务器实测，`db3bb30` / `0561ae1` / 更早三个版本）**：HTTP-FLV 与 WS-FLV 三个版本都是 14 块、298.7 ms（0..298 ms，夹具开播时 300 ms 的提前量，关键帧前只有 −21 ms 那一块，丢弃）；直播 TS 在 `0561ae1` 与 `db3bb30` 都是 16 块、341.3 ms（首个 PES），`0561ae1` 之前是 8 块、170.7 ms、从 149 ms 起。**即 `db3bb30` 与绿着的 `0561ae1` 在三面墙上放出的音频完全相同**：它的「早到音频保留」在这些夹具上不改变任何输出（FLV 关键帧前的音频都早于 0，TS 的保留 `0561ae1` 已有）。
   - `68e3d8b` 的 WebKit 作业没有拿到 runner（作业无步骤、无日志，15 分钟后取消），没有数据。
+  - `678cb28`（产品代码与 `db3bb30` 相同，只多了观测与用例）：desktop-safari solo 三面墙第 1 次尝试全过，四路首帧 HTTP-FLV 211–367 ms、WS-FLV 180–278 ms、直播 TS 529–700 ms，丢帧全部 0.0 %；emulated-iphone 同样。新观测：每面墙的音频都在视频 configure 的同一毫秒送入（HTTP-FLV 121 / 121、WS-FLV 78 / 79、TS 559 / 559 ms），14–17 块、299–363 ms，解码器软解；Chrome 相同。即同一份音频路径代码下，`db3bb30` 红、`678cb28` 绿。
 - **F17：WHEP 录音多出接缝（2026-11-03 负责人：升为缺陷，半天时间盒）**：
   - flaky 标记去掉。
   - 用例把每个异常接缝对齐三样东西，写进通知：
