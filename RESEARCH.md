@@ -161,7 +161,8 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
       - 夹具没有缺口：AAC 时间戳全片连续（`ffprobe -show_packets`），所以「补静音」那一支不适用。
     - **修复（`demux-mediabunny`）**：直播 TS 的 AAC 由适配层自己读（`src/ts-aac.ts`：PAT → PMT → ADTS 流；PES 按 `PES_packet_length` 收齐即完成，没有长度的到下一个 PES 起点；帧时长 1024 / 采样率，不等下一个包）。同一字节流 `tee` 一份给它，视频仍由 mediabunny 读。顺带：旧代码在首个视频关键帧之前到的音频会被丢掉（live 音频从 0.149 s 起），现在等媒体时间 0 定下来再放出，从 0 起。
       - 单测在旧代码上失败：只送到第 5 个音频 PES 之前的字节，第 4 个 PES 已完整，旧代码只放出到 1.003 s，新代码到 1.365 s；与 mediabunny 读整个文件的前 40 帧逐字节、逐时刻相同；无 `PES_packet_length` 的流结果不变。
-      - 本地 e2e：desktop-chrome 与 emulated-android 的直播 TS 四路墙，旧代码两者都在 0.320 s 放空 75 ms，新代码没有欠载。CI（含 desktop-safari）待验证。
+      - 本地 e2e：desktop-chrome 与 emulated-android 的直播 TS 四路墙，旧代码两者都在 0.320 s 放空 75 ms，新代码没有欠载。
+      - **CI `0561ae1` 验证**：desktop-safari、emulated-iphone、desktop-chrome、emulated-android 的直播 TS 四路墙 tile errors 全部为空（此前每次都有 3–8 条欠载）；desktop-firefox 只有无头 Firefox 一贯的 `audioClockUnavailable`（只记录）。这一型关闭。
       - 上游 issue 草稿：`docs/reports/m6/mediabunny-live-ts-issue.md`（我没有向上游仓库发 issue 的凭据）。
     - emulated-android 30 s 用例那一次（dq 0、ahead 1.28）是文件源，不归这一型，仍按 F16 记录（原因未查明）。
   - 同一次本地加载里还看到一次：片尾到 12 s 时测试已 seek 回 0.2 s，之后 20 s 一直无声（第 9–29 秒）。只在人为满载下出现过一次，CI 没见过，记在这里，未查。2026-11-02 负责人：放过的欠载在每次 CI 通知里逐条列出对应的 sink 汇总（media / ahead / under / dq）及「同窗 / 相邻窗」；实际没观测到 dq ≥ 17 的，这条放宽撤回。
@@ -202,7 +203,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - 同一尝试的停顿记录：AudioContext 停顿 ≥ 300 ms 的没有；四路播放时长一起偏短（4.40–4.70 s），4.40 s 那一路 0 丢帧，客户机 load 12.6。四路同步变慢、没有停顿记录、最慢那路不丢帧，更像整机（虚拟机）停顿，不像解码器；产品不改。
   - `46ee373`（2026-11-04）：desktop-safari solo 三组墙一起不稳：HTTP-FLV 两次都红（丢帧 6.3 % / 8.0 %），直播 TS 两次都红（一次 5 s 只播 4.45 s，一次丢帧 9.6 %），WS-FLV 重试才过。每路 configure ≤ 30 ms（最长 1919..1948），**不算 F15 再现**；慢在 configure 之后到第一帧解码（约 0.9–1.2 s），客户机 load 3.2–8.4。被测代码与前一次全绿的 `101ac9d` 相同（`packages/*/src`、`e2e`、构建配置无改动）。按标准 flaky 规则计数：HTTP-FLV 自 `78fc4d9` 标记后的 3 次 CI 里红 1 次（`f3e56a6` 绿、`101ac9d` 绿、`46ee373` 红），再红 1 次即触发升级；直播 TS、WS-FLV 各计第 1 次。触发升级时按负责人 2026-11-04 的预先决定处理：desktop-safari 的 solo 性能判定降为只记录（同 ADR-013 §7a 的手机仿真），判定留在 desktop-chrome 与真 Edge，真 Safari 列入 M7。
   - 同一次 main 里新 flaky：`webcodecs.spec`「h264.mp4: after 6 s paused the AudioContext is suspended」在 desktop-safari 第 1 次 15 s 内 `currentTime` 一直是 NaN（页面没开始播），重试通过；计第 1 次。
-  - **窗口结束（2026-11-04 负责人）**：「surveillance HTTP-FLV solo（desktop-safari）」自 `78fc4d9` 标记后的 5 次有效 CI（`f3e56a6`、`101ac9d`、`46ee373`、`c2b3dfe`、`fff69cd`；`487a400` 被取消不计）只红 1 次，未达升级条件，flaky 标记摘掉。直播 TS、WS-FLV（desktop-safari solo）与 `webcodecs.spec` AudioContext 挂起用例各已计 1 次（`46ee373`），继续计数；`c2b3dfe`、`fff69cd` 三者都绿。
+  - **窗口结束（2026-11-04 负责人）**：「surveillance HTTP-FLV solo（desktop-safari）」自 `78fc4d9` 标记后的 5 次有效 CI（`f3e56a6`、`101ac9d`、`46ee373`、`c2b3dfe`、`fff69cd`；`487a400` 被取消不计）只红 1 次，未达升级条件，flaky 标记摘掉。直播 TS、WS-FLV（desktop-safari solo）与 `webcodecs.spec` AudioContext 挂起用例各已计 1 次（`46ee373`），继续计数；`c2b3dfe`、`fff69cd` 三者都绿。`0561ae1`：三者都绿。新 flaky：emulated-android「Document PiP still works with the WebCodecs canvas picture」重试通过（`f369598` 标记后的窗口早已结束，按新的一次计 1）；desktop-firefox solo「svg mask on canvas2d」重试通过，计第 1 次。
 - **F17：WHEP 录音多出接缝（2026-11-03 负责人：升为缺陷，半天时间盒）**：
   - flaky 标记去掉。
   - 用例把每个异常接缝对齐三样东西，写进通知：
