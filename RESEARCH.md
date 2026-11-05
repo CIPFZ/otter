@@ -220,6 +220,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     
     desktop-safari 三面墙的 solo 降为只记录（ADR-013 §7a）；判定留在 desktop-chrome 与真 Edge；真 Safari 的数字列入 M7。HTTP-FLV 与直播 TS（desktop-safari solo）的 flaky 计数作废，WS-FLV 的也一并作废，因为这一组已经不判定。没有加临时 A/B 步骤。
   - **发版后候选优化（2026-11-05 负责人：只记录，不动代码）**：启动时音频与视频的 configure 在同一毫秒送入（`678cb28` 的观测）。M7 在真 Safari 上量过再定。startup 观测保留。
+- flaky 计数（`0edda47`）：emulated-android 的 `webcodecs.spec`「h264.mp4: after 6 s paused the AudioContext is suspended」第 1 次尝试失败，重试通过。失败原因是一次断音：2.944 s 断 17 ms，decode queue 17，符合 F14 的特征。这条用例不套用 F14 的放过规则。按这个项目计第 1 次（desktop-safari 那次计数是 `46ee373`）。
 - **F17：WHEP 录音多出接缝（2026-11-03 负责人：升为缺陷，半天时间盒）**：
   - flaky 标记去掉。
   - 用例把每个异常接缝对齐三样东西，写进通知：
@@ -270,6 +271,13 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     - (c) 直播设目标延迟（抖动缓冲）。
     
     用例 `surveillance.spec`「live MPEG-TS joined mid-GOP」里，直播 TS 的断音只记录、不判定（标注 F18）。其他判定照常：音频从媒体时间 0 起、与视频同一时间线（≤ 40 ms）。
+  - CI `0edda47`（run 41960999309）在五个项目上都重现了：
+    - desktop-safari 15 次，8–195 ms；
+    - desktop-chrome 13 次，18–199 ms；
+    - emulated-iphone 12 次，51–192 ms；
+    - emulated-android 11 次，15–199 ms。
+    
+    每次都在 PES 开头（0.365、0.707、1.048 s……）。无头 Firefox 没有运行的 AudioContext，不出声，所以没有断音可记。同一跑里 HTTP-FLV 与 WS-FLV 在 GOP 中间接入时都不断音；三种传输的首个音频都是 0.003 s（按文件算：FLV 0.0030 s，TS 0.0027 s）。
 - e2e 的 WHEP 夹具会话泄漏（2026-11-02，已修）：会话只在收到 `DELETE` 时停发，页面直接关闭时不发 `DELETE`，那路会话会在预览服务里一直发到步骤结束（视频每 16 ms、音频每 10 ms 一次）。werift 的 `connectionState` 只跟 ICE，看不到对端 DTLS 的 close_notify；现在 DTLS 关闭、连接 disconnected / failed / closed、或 30 s 收不到 RTCP 都会停发，global teardown 断言跑完后没有会话还在发。
 - 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
   - **约 2 s：环境，不是产品。** 夹具服务只在 `localhost` 上监听，Windows 上 Node 解析成 `[::1]`，只监听 IPv6。Firefox 连 `localhost` 时有时先试 127.0.0.1，Windows 上连一个没人监听的本机端口要约 2 s 才失败，然后才换 ::1。WebSocket 每次都中（`new WebSocket` 到 open 恒为约 2.0 s，Edge 0 ms），HTTP 时有时无。服务改为监听全部地址、页面用 `http://127.0.0.1:4173` 后，WS 打开约 6 ms，四路 WS-FLV 首帧 240 ms。（`OTTER_E2E_BASE_URL` 会关掉 Playwright 的 webServer，要自己起 preview，见 tmp/winps/round22.cmd 的写法。）
