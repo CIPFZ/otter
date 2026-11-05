@@ -1,10 +1,11 @@
 // AAC (ADTS) from a live MPEG-TS byte stream, read by the adapter itself (M6 F16). Measured: on a
 // live stream mediabunny returns an audio PES only once the next PES of its PID starts, and the
 // last packet of each PES only once the PES after that starts (it needs the next packet for a
-// duration); CI's underruns were each at a PES's last frame. Here a PES is complete when its
-// PES_packet_length is reached (or, without one, at the next PES start), and its ADTS frames go out
-// at once, timed PTS + i × 1024 / sample rate. The frames are the bytes mediabunny would hand out
-// (whole ADTS frames, header included).
+// duration); CI's underruns were each at a PES's last frame. Here each ADTS frame goes out as soon
+// as its bytes and the next frame's sync word are in (owner 2026-11-05), not when the PES is
+// complete; a PES is complete when its PES_packet_length is reached (or, without one, at the next
+// PES start), and its last frame goes out then. Frames are timed PTS + i × 1024 / sample rate. The
+// frames are the bytes mediabunny would hand out (whole ADTS frames, header included).
 // - A frame cut by the end of a PES is carried into the next one and goes out with it, timed by
 //   the PES it started in.
 // - Times are on mediabunny's timeline (its video is the other half of the stream): PTS is
@@ -42,45 +43,8 @@ function adtsHeader(b: Uint8Array, i: number): { rate: number; length: number } 
 
 const syncAt = (b: Uint8Array, i: number): boolean => b[i] === 0xff && ((b[i + 1] as number) & 0xf6) === 0xf0;
 
-/**
- * The ADTS frames of a buffer: whole frames, each followed by a sync word or the buffer's end, and
- * where an incomplete last frame (or header) starts, if any. `timeAt(start, n)`: the time of the
- * n-th frame found, which starts at byte `start`.
- */
-export function adtsFrames(b: Uint8Array, timeAt: (start: number, n: number) => number): { frames: AacFrame[]; rest: number | undefined } {
-  const frames: AacFrame[] = [];
-  let i = 0;
-  while (i < b.length) {
-    if (b[i] !== 0xff) {
-      i++;
-      continue;
-    }
-    if (i + 7 > b.length) {
-      // A header cut by the end: carried if it can still be one.
-      return { frames, rest: i + 1 >= b.length || ((b[i + 1] as number) & 0xf6) === 0xf0 ? i : undefined };
-    }
-    const h = adtsHeader(b, i);
-    if (h === undefined) {
-      i++;
-      continue;
-    }
-    const end = i + h.length;
-    if (end > b.length) return { frames, rest: i };
-    // A false sync word inside the data would read a frame whose end is not the next one's start.
-    if (end + 2 <= b.length && !syncAt(b, end)) {
-      i++;
-      continue;
-    }
-    if (end + 1 === b.length && b[end] !== 0xff) {
-      i++;
-      continue;
-    }
-    const duration = 1024 / h.rate;
-    frames.push({ time: timeAt(i, frames.length), duration, data: b.slice(i, end) });
-    i = end;
-  }
-  return { frames, rest: undefined };
-}
+/** One frame's duration at `i` (by its header's rate; 48 kHz when the header is cut). */
+const frameLength = (b: Uint8Array, i: number): number => 1024 / (adtsHeader(b, i)?.rate ?? 48000);
 
 /**
  * PTS ticks to seconds on mediabunny's timeline: its normalisation (anchored at the first PTS seen,
@@ -126,9 +90,31 @@ export interface AacReader {
   streams(): Promise<ReadonlyMap<number, number>>;
 }
 
+/** The PES being read on one audio PID: the bytes carried from the last PES, then its own. */
+interface Pes {
+  buf: Uint8Array;
+  /** Bytes in `buf`. */
+  size: number;
+  /** Carried bytes at the start of `buf`. */
+  readonly prefix: number;
+  /** Time of the carried frame. */
+  readonly carryTime: number | undefined;
+  /** The PTS (s); undefined: the frames continue from the last one out. */
+  readonly time: number | undefined;
+  /** Payload bytes the PES has (PES_packet_length); undefined: up to the next PES start. */
+  readonly want: number | undefined;
+  /** Own payload bytes in so far. */
+  got: number;
+  /** Where reading goes on: everything before is out or skipped. */
+  pos: number;
+  /** Frames out so far that started in the carried bytes / in this PES. */
+  before: number;
+  own: number;
+}
+
 /** One audio PID's reading state. */
 interface Lane {
-  pes: { parts: Uint8Array[]; size: number; want: number | undefined; time: number | undefined } | undefined;
+  pes: Pes | undefined;
   /** A frame (or header) cut by the end of the last PES: its bytes and its time. */
   carry: { bytes: Uint8Array; time: number } | undefined;
   /** End of the last frame out (a PES without PTS continues from it). */
@@ -136,9 +122,10 @@ interface Lane {
 }
 
 /**
- * A push parser: `push(bytes)` as the stream arrives, `onFrames(frames, pid)` gets each PES's frames
- * once it is complete, for every ADTS AAC stream (stream type 0x0f) of the PMT; the caller picks
- * its PID (mediabunny's track id). Streams of other types yield nothing.
+ * A push parser: `push(bytes)` as the stream arrives, `onFrames(frames, pid)` gets each ADTS frame
+ * once it is in (and the next frame's sync word, or the PES's end), for every ADTS AAC stream
+ * (stream type 0x0f) of the PMT; the caller picks its PID (mediabunny's track id). Streams of other
+ * types yield nothing.
  */
 export function createAacReader(onFrames: (frames: AacFrame[], pid: number) => void): AacReader {
   let rest = new Uint8Array(0);
@@ -155,56 +142,106 @@ export function createAacReader(onFrames: (frames: AacFrame[], pid: number) => v
   const clock = createPtsClock();
   let ended = false;
 
+  /**
+   * The frames of `p` from where reading stopped, as one pass over the whole PES would. Not `final` (the PES
+   * goes on): a frame goes out only once the next frame's sync word is in too; one whose end or
+   * next bytes are not in yet waits. `final`: the end of the bytes ends the last frame. Returns where an incomplete frame (or header) starts, if any.
+   */
+  const scan = (lane: Lane, p: Pes, final: boolean, frames: AacFrame[]): number | undefined => {
+    const b = p.buf.subarray(0, p.size);
+    let i = p.pos;
+    let cut: number | undefined;
+    while (i < b.length) {
+      if (b[i] !== 0xff) {
+        i++;
+        continue;
+      }
+      if (i + 7 > b.length) {
+        // A header cut by the end: carried if it can still be one.
+        if (final && (i + 1 >= b.length || ((b[i + 1] as number) & 0xf6) === 0xf0)) cut = i;
+        else if (final) i = b.length;
+        break;
+      }
+      const h = adtsHeader(b, i);
+      if (h === undefined) {
+        i++;
+        continue;
+      }
+      const end = i + h.length;
+      if (end > b.length) {
+        if (final) cut = i;
+        break;
+      }
+      // A false sync word inside the data would read a frame whose end is not the next one's start.
+      if (end + 2 <= b.length) {
+        if (!syncAt(b, end)) {
+          i++;
+          continue;
+        }
+      } else if (!final) {
+        break;
+      } else if (end + 1 === b.length && b[end] !== 0xff) {
+        i++;
+        continue;
+      }
+      const duration = 1024 / h.rate;
+      const time = i < p.prefix && p.carryTime !== undefined ? p.carryTime + p.before++ * duration : p.time !== undefined ? p.time + p.own++ * duration : (lane.lastEnd as number);
+      const frame = { time, duration, data: b.slice(i, end) };
+      frames.push(frame);
+      lane.lastEnd = time + duration;
+      i = end;
+    }
+    p.pos = i;
+    return cut;
+  };
+
   const finish = (pid: number, lane: Lane): void => {
-    if (lane.pes === undefined) return;
     const p = lane.pes;
+    if (p === undefined) return;
     lane.pes = undefined;
-    const carry = lane.carry;
-    const prefix = carry?.bytes.length ?? 0;
-    const buf = new Uint8Array(prefix + p.size);
-    if (carry !== undefined) buf.set(carry.bytes);
-    let o = prefix;
-    for (const part of p.parts) {
-      buf.set(part, o);
-      o += part.length;
-    }
-    const carried = carry;
-    lane.carry = undefined;
-    const start = p.time ?? lane.lastEnd;
-    if (start === undefined) return;
-    let own = 0;
-    let before = 0;
-    const duration = (n: number, at: number): number => {
-      const h = adtsHeader(buf, at);
-      return n * (1024 / (h?.rate ?? 48000));
-    };
-    let { frames, rest: cut } = adtsFrames(buf, (at) => {
-      if (at < prefix && carried !== undefined) return carried.time + duration(before++, at);
-      return start + duration(own++, at);
-    });
-    if (carried !== undefined && cut !== undefined && cut < prefix) {
+    const frames: AacFrame[] = [];
+    let cut = scan(lane, p, true, frames);
+    if (p.carryTime !== undefined && cut !== undefined && cut < p.prefix) {
       // The carried frame does not end in this PES either: not a frame (a false sync word at the
-      // end of the last PES). Dropped; this PES is read on its own.
-      own = 0;
-      ({ frames, rest: cut } = adtsFrames(buf.subarray(prefix), (at) => start + duration(own++, at + prefix)));
-      if (cut !== undefined) cut += prefix;
+      // end of the last PES). Dropped; this PES is read on its own (nothing of it is out yet:
+      // reading stopped inside the carried bytes).
+      const own: Pes = { ...p, buf: p.buf.slice(p.prefix, p.size), size: p.size - p.prefix, prefix: 0, carryTime: undefined, pos: 0, own: 0, before: 0 };
+      cut = scan(lane, own, true, frames);
+      if (cut !== undefined) lane.carry = { bytes: own.buf.slice(cut, own.size), time: (own.time ?? (lane.lastEnd as number)) + own.own * frameLength(own.buf, cut) };
+    } else if (cut !== undefined) {
+      const time = cut < p.prefix && p.carryTime !== undefined ? p.carryTime + p.before * frameLength(p.buf, cut) : p.time !== undefined ? p.time + p.own * frameLength(p.buf, cut) : (lane.lastEnd as number);
+      lane.carry = { bytes: p.buf.slice(cut, p.size), time };
     }
-    if (cut !== undefined) {
-      const t = cut < prefix && carried !== undefined ? carried.time + duration(before, cut) : start + duration(own, cut);
-      lane.carry = { bytes: buf.slice(cut), time: t };
-    }
-    const lastFrame = frames.at(-1);
-    if (lastFrame !== undefined) lane.lastEnd = lastFrame.time + lastFrame.duration;
     if (frames.length > 0) onFrames(frames, pid);
   };
 
   const add = (pid: number, lane: Lane, bytes: Uint8Array): void => {
-    const pes = lane.pes;
-    if (pes === undefined) return;
-    const take = pes.want === undefined ? bytes : bytes.subarray(0, Math.max(0, pes.want - pes.size));
-    pes.parts.push(take.slice());
-    pes.size += take.length;
-    if (pes.want !== undefined && pes.size >= pes.want) finish(pid, lane);
+    const p = lane.pes;
+    if (p === undefined) return;
+    const take = p.want === undefined ? bytes : bytes.subarray(0, Math.max(0, p.want - p.got));
+    if (p.size + take.length > p.buf.length) {
+      const grown = new Uint8Array(Math.max(p.buf.length * 2, p.size + take.length));
+      grown.set(p.buf.subarray(0, p.size));
+      p.buf = grown;
+    }
+    p.buf.set(take, p.size);
+    p.size += take.length;
+    p.got += take.length;
+    if (p.want !== undefined && p.got >= p.want) return finish(pid, lane);
+    const frames: AacFrame[] = [];
+    scan(lane, p, false, frames);
+    if (frames.length > 0) onFrames(frames, pid);
+  };
+
+  /** A new PES on `lane`: the carried bytes first. Without a PTS and nothing out before, not read. */
+  const open = (lane: Lane, time: number | undefined, want: number | undefined): void => {
+    const carry = lane.carry;
+    lane.carry = undefined;
+    if (time === undefined && lane.lastEnd === undefined) return;
+    const prefix = carry?.bytes.length ?? 0;
+    const buf = new Uint8Array(Math.max(4096, prefix + (want ?? 0)));
+    if (carry !== undefined) buf.set(carry.bytes);
+    lane.pes = { buf, size: prefix, prefix, carryTime: carry?.time, time, want, got: 0, pos: 0, before: 0, own: 0 };
   };
 
   const section = (body: Uint8Array): Uint8Array => body.subarray(1 + (body[0] as number)); // after pointer_field
@@ -267,7 +304,7 @@ export function createAacReader(onFrames: (frames: AacFrame[], pid: number) => v
       const length = ((body[4] as number) << 8) | (body[5] as number);
       const headerLength = body[8] as number;
       const ticks = ptsOf(body);
-      lane.pes = { parts: [], size: 0, want: length === 0 ? undefined : length - 3 - headerLength, time: ticks === undefined ? undefined : clock.seconds(ticks) };
+      open(lane, ticks === undefined ? undefined : clock.seconds(ticks), length === 0 ? undefined : length - 3 - headerLength);
       add(id, lane, body.subarray(9 + headerLength));
       return;
     }

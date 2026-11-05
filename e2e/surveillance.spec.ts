@@ -255,10 +255,41 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
 // the audio starts at media time 0 (the first frame within one AAC frame of the keyframe), the
 // audio is on the video's timeline (its first frame's media time against the file's PTS: that
 // frame minus the keyframe, within 40 ms; both are then presented by one clock, backend-webcodecs
-// clock.ts), and no underrun. Live TS joined mid-GOP runs dry at each audio PES (M6 F18, RESEARCH):
-// its underruns are recorded, not judged, until the owner decides the fix.
+// clock.ts), no underrun, and sound within the live start's audio lead (300 ms) + 100 ms of the
+// first frame (the clock waits for the audio to be ahead: ADR-013 §7, M6 F18).
 const AAC_FRAME_S = 1024 / 48000;
 const AV_MAX_S = 0.04;
+/** The backend's default live audio lead (liveAudioLeadMs). */
+const LIVE_LEAD_MS = 300;
+
+/**
+ * When the page first makes a sound: an AnalyserNode on each AudioWorkletNode's output (before the
+ * player's gain, so a muted tile counts too), read every 5 ms; `window.firstSound` is the
+ * performance.now() of the first non-silent read.
+ */
+async function recordFirstSound(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { firstSound?: number };
+    const Native = window.AudioWorkletNode;
+    window.AudioWorkletNode = class extends Native {
+      constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+        super(context, name, options);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 512;
+        const silent = context.createGain();
+        silent.gain.value = 0;
+        this.connect(analyser);
+        analyser.connect(silent).connect(context.destination);
+        const buf = new Float32Array(analyser.fftSize);
+        const id = setInterval(() => {
+          analyser.getFloatTimeDomainData(buf);
+          if (w.firstSound === undefined && buf.some((x) => Math.abs(x) > 1e-4)) w.firstSound = performance.now();
+          if (w.firstSound !== undefined) clearInterval(id);
+        }, 5);
+      }
+    };
+  });
+}
 /** The file's first audio frame at or after the keyframe a mid-GOP join reaches first, s after it. */
 function midGopFirstAudioS(transport: Transport): number {
   if (transport === 'ts') {
@@ -272,6 +303,7 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
   test(`surveillance: ${NAMES[transport]} joined mid-GOP (delta frames and audio before the first keyframe): audio from media time 0 on the video's timeline (≤ 40 ms), no underrun`, async ({ page, baseURL }) => {
     test.setTimeout(60_000);
     await recordSinkStats(page);
+    await recordFirstSound(page);
     await wall(page, [`${urlOf(transport, baseURL as string)}?join=mid-gop`]);
     await expect.poll(async () => (await tiles(page))[0]?.currentTime ?? 0, { timeout: 30_000 }).toBeGreaterThan(1);
     const [row] = await play(page, 3);
@@ -297,7 +329,14 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
       void c.close().catch(() => undefined);
       return ok;
     });
-    ciNotice(`surveillance ${NAMES[transport]} joined mid-GOP: first audio at ${from?.[1] ?? '-'} s of media time (file: ${expected.toFixed(4)} s); ${startup.replace(/^startup ms: /, 'startup ms ')}; AudioContext runs ${audioRuns}; tile errors ${r.messages.join(' | ') || 'none'}; clock steps ${clock.join(' | ') || 'none'}${test.info().project.name === 'emulated-android' ? `; ${f14Notice(`surveillance ${NAMES[transport]} mid-GOP`, v)}` : ''}`);
+    // Sound against the first frame (the backend's startup step is said when it is shown).
+    const sound = await page.evaluate(() => {
+      const log = (window as unknown as { tileLog: Log }).tileLog;
+      const shown = log.stepsAt[0]?.find((x) => x.reason.startsWith('startup ms:'))?.at;
+      const first = (window as unknown as { firstSound?: number }).firstSound;
+      return { afterFirstFrame: shown === undefined || first === undefined ? null : first - shown, start: log.stepsAt[0]?.find((x) => x.reason.startsWith('live start'))?.reason ?? null };
+    });
+    ciNotice(`surveillance ${NAMES[transport]} joined mid-GOP: first audio at ${from?.[1] ?? '-'} s of media time (file: ${expected.toFixed(4)} s); sound ${sound.afterFirstFrame === null ? 'none' : `${Math.round(sound.afterFirstFrame)} ms after the first frame`}; ${sound.start ?? 'no live start step'}; ${startup.replace(/^startup ms: /, 'startup ms ')}; AudioContext runs ${audioRuns}; tile errors ${r.messages.join(' | ') || 'none'}; clock steps ${clock.join(' | ') || 'none'}${test.info().project.name === 'emulated-android' ? `; ${f14Notice(`surveillance ${NAMES[transport]} mid-GOP`, v)}` : ''}`);
     expect(from, `audio fed at the start: ${startup}`).not.toBeNull();
     const first = Number((from as RegExpExecArray)[1]);
     expect(first, 'audio from media time 0 (within one frame)').toBeGreaterThanOrEqual(0);
@@ -310,12 +349,10 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
       return;
     }
     expect(others).toEqual([]);
-    if (transport === 'ts') {
-      if (underruns.length > 0) test.info().annotations.push({ type: 'issue', description: `M6 F18 (recorded, not judged): ${underruns.length} underrun(s)` });
-      return;
-    }
     // Underruns: none (on emulated-android, F14's signature is let through: e2e/audio-stalls.ts).
     expect(v.kept).toEqual([]);
+    expect(sound.afterFirstFrame, 'sound came').not.toBeNull();
+    expect(sound.afterFirstFrame as number, `sound within ${LIVE_LEAD_MS} + 100 ms of the first frame`).toBeLessThanOrEqual(LIVE_LEAD_MS + 100);
   });
 }
 

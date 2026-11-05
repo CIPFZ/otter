@@ -152,6 +152,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     - 已加的观测：欠载事件现在带「放空那一刻的解码队列深度」（消息里 `decode queue N`）；30 s 用例对 F14 之外的欠载逐窗打印 under / gap / late / disc / dq，以及前后 800 ms 内的主线程长任务。
     - 本地复现：emulated-android 加 6 个满载进程跑 4 次，所有欠载放空时 dq 都是 17，即 F14，没有复现 dq 0 的那种。
     - **结论：原因未查明**，按负责人规则记为 F16，列入发版已知限制（ADR-014）。`39b2fe5` 的 CI 里 emulated-android 所有欠载放空那一刻的 dq 都是 17（F14），没有再出现 dq 低的那种。下次 CI 出现时，看放空时刻的 dq 与长任务：dq ≥ 17 归 F14；dq 低且有长任务，归主线程繁忙；两者都不是，再查送料侧的时间戳。
+    - **发版说明的口径（2026-11-05 负责人：放空时刻都是 dq 17 就改写为 CI 仿真限制）**：欠载消息带上放空时刻的 dq 之后，本地留存的 13 次 CI 通知里，emulated-android 文件源用例（不含监控墙与直播 TS）的欠载放空时都是 dq 17，共 9 条，没有低于 17 的。`0ca7823` 那一条发生在加这项观测之前，只有窗末汇总 dq 0，放空时刻的 dq 无从核对。发版说明改写为「Chromium 的 Android 仿真（仅 CI）偶发短暂静音」，并写明第一条无法核对。
     - **第二个平台的数据点（2026-11-04 负责人：记入 F16）**：`f3e56a6` 的 CI，desktop-safari solo 的直播 TS 四路墙（第 1 次尝试即通过，这一组不按欠载判定）tile errors 里有 4 条 `audioUnderrun`：6.464 s 放空 8 ms、5.440 s 51 ms、5.781 s 43 ms、6.464 s 又一路，消息里放空那一刻都是 `decode queue 0`。同一次 HTTP-FLV / WS-FLV 两组没有。不是 F14 的签名（dq 不在上限），与 emulated-android 30 s 用例那次同型。F16 因此不是 Android 模拟环境独有：WebCodecs 音频路径在 Chromium 与 WebKit 上都观察到。
     - **更正（2026-11-04）**：`c2b3dfe` 的提交信息（「F16 Safari cause fixed」）与 `audio-feed.ts` 的注释把「Safari 的 AAC 解码器压着两帧」写成了原因，那是**未验证的判断，已被数据否定**：`487a400` 加的观测显示，放空时刻那一块在放空结束前 3–11 ms 才送进解码器，送进后 1–2 ms 就有输出，解码器没有压帧，是数据到得晚。flush 改动与它的单测已删除（`audio-feed.ts`）。另外，我当时算的「各比一个 PES 起点早 42.7 ms」用错了时间基准（音频起点 1.400 s 而不是媒体时间 0 = 首个视频关键帧 1.421 s）；换算正确后，这些放空时刻正是**每个 PES 的最后一帧**（5.440 s = 6.541 s 那个 PES 的第 16 帧，5.781、6.123、6.464 同样，0.320 s 是第一个 17 帧 PES 的最后一帧）。（AGENT §4 因此加了「只写观测到的事实」一条。）
     - **原因（2026-11-04 半小时验证，已证实）**：在 Node 里按夹具的节奏（提前 300 ms、每 40 ms 一批整 188 字节包）把 `live-loop.ts` 喂给 mediabunny 的 `ReadableStreamSource`，记每个 AAC 包吐出的时刻：
@@ -220,7 +221,10 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     
     desktop-safari 三面墙的 solo 降为只记录（ADR-013 §7a）；判定留在 desktop-chrome 与真 Edge；真 Safari 的数字列入 M7。HTTP-FLV 与直播 TS（desktop-safari solo）的 flaky 计数作废，WS-FLV 的也一并作废，因为这一组已经不判定。没有加临时 A/B 步骤。
   - **发版后候选优化（2026-11-05 负责人：只记录，不动代码）**：启动时音频与视频的 configure 在同一毫秒送入（`678cb28` 的观测）。M7 在真 Safari 上量过再定。startup 观测保留。
-- flaky 计数（`0edda47`）：emulated-android 的 `webcodecs.spec`「h264.mp4: after 6 s paused the AudioContext is suspended」第 1 次尝试失败，重试通过。失败原因是一次断音：2.944 s 断 17 ms，decode queue 17，符合 F14 的特征。这条用例不套用 F14 的放过规则。按这个项目计第 1 次（desktop-safari 那次计数是 `46ee373`）。
+- `0edda47`：emulated-android 的 `webcodecs.spec`「h264.mp4: after 6 s paused the AudioContext is suspended」第 1 次尝试失败，重试通过。原因是一次断音：2.944 s 断 17 ms，消息里写着放空那一刻 decode queue 17。
+  - 这条用例早就接了 F14 helper（`05f4572` 起），但 helper 只按 0.2 s 汇总判 F14：汇总里的 dq 是这一窗最后一块数据带来的值，放空后又来了新的一块，窗末的 dq 就低于 17，没有匹配上。
+  - 改法（负责人 2026-11-05：接 F14 helper，不计 flaky）：`f14Verdict` 也看欠载消息本身。放空那一刻 decode queue ≥ 17 的，只在 emulated-android 上放过。单测 `tests/f14-verdict.test.ts` 在旧 helper 上失败。
+  - 这一次不计 flaky。
 - **F17：WHEP 录音多出接缝（2026-11-03 负责人：升为缺陷，半天时间盒）**：
   - flaky 标记去掉。
   - 用例把每个异常接缝对齐三样东西，写进通知：
@@ -258,7 +262,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - WHEP 录音「RTCP 空档 > 1 s 判环境停顿」（2026-11-03 负责人）按指令实现后在本地验证：4 次全部被跳过，而接缝都是 4.02 s。原因是 1 s 以上的 RTCP 空档在正常录音里就有：会话前几秒 Chrome 的接收报告稀疏，录音从会话后约 1.7–6.8 s 开始，空档落在录音开头（实测 0.8–2.3 s、5.6–10.1 s 等）。这条规则分不出好坏录音，所以没有启用跳过，只把对齐后的空档写进通知（`recording a..b ms; in the recording …`），flaky 标记保留，等负责人改规则。
   - desktop-chrome 的 cn-live WHEP 录音（@solo）：`f369598` 两次尝试都红。接缝间隔一次 3.77 s（下限 3.77），一次多出一个接缝（3.05 + 1.00 s）；此前 4 次 CI 都稳定在 4.02 s 左右。用例通知里加了夹具那一路会话的连接状态变迁与 RTCP 到达间隔（`/whep/log/last`）。本地一次：ICE 242 ms 连上，RTCP 173 个，间隔 p50 117 / p95 204 ms，最长一次 1.33 s（在 2.2 s 处，录音开始前）。
   - emulated-android 的 Document PiP 与 WebCodecs 画面：`f369598` 第一次失败、重试通过。
-- **F18：直播 TS 从 GOP 中间接入，每个音频 PES 开头都断音（2026-11-05 发现，待负责人定）**：
+- **F18：直播 TS 从 GOP 中间接入，每个音频 PES 开头都断音（2026-11-05 发现；同日负责人定：进 beta.0，一停修完）**：
   - **怎么发现的**：新夹具 `?join=mid-gop`（负责人 2026-11-05）。它让流从第一个 GOP 的中点开始，关键帧之前先到 delta 帧和音频。本地 desktop-chrome 与 emulated-android 上，直播 TS 一路连续断音，都在 PES 开头：0.365 s 断 99 ms、0.707 s 断 199 ms、1.048 s 断 90 ms，之后每 0.341 s 一次（15–199 ms）。断音时那一块的送入时间，只比恢复出声早 17–26 ms。
   - **不出问题的情况**：同一夹具下 HTTP-FLV 与 WS-FLV 不断音。按原来从头接入的直播 TS 墙，CI 上自 `0561ae1` 起也没有断音。
   - **从文件量得的数据**（`live-loop.ts`，按夹具的发送节奏：字节率加 300 ms 提前量）：
@@ -278,6 +282,20 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     - emulated-android 11 次，15–199 ms。
     
     每次都在 PES 开头（0.365、0.707、1.048 s……）。无头 Firefox 没有运行的 AudioContext，不出声，所以没有断音可记。同一跑里 HTTP-FLV 与 WS-FLV 在 GOP 中间接入时都不断音；三种传输的首个音频都是 0.003 s（按文件算：FLV 0.0030 s，TS 0.0027 s）。
+  - **量（2026-11-05，负责人第 1 条）**：
+    - 夹具 `live-loop.ts` 里，一个音频 PES 首字节与末字节的到达时刻差：按当时的平均字节率发送是 19–49 ms（中位数 49 ms，71 个 PES），PES 本身长 341 ms，接近 0。
+    - 按 PCR 发送时，一个 PES 落在同一个 PCR 间隔里（PCR 约每 80 ms 一个）。
+    - 每个音频 PES 的 PTS 比它首字节处的 PCR 早到 359–428 ms，视频关键帧则约 700 ms（首个关键帧 1.421 s 在 PCR 0.721 处）。即音频在流里比同时刻的视频晚约 0.3 s。
+    - 模拟按 PCR 发送：以关键帧到达为时钟起点，每个音频 PES 到达时都比它的媒体时间晚 0.27–0.34 s，从头接入与 GOP 中间接入都一样。按平均字节率发送是 0.28–0.50 s。
+    
+    所以帧一到就放出，最多省一个 PES 的到达时间差（≤ 49 ms），不够；按负责人的条件，夹具也改为按 PCR 节奏发送（PCR 之间按字节位置插值）。
+  - **修法（负责人第 2 条）**：
+    - WebCodecs 后端的直播最小抖动缓冲（ADR-013 §7「直播的时钟起点与音频提前量」）：首帧立即上屏；音频提前量 ≥ 300 ms 才起时钟，首帧后 1 s 未达到就直接起；播放中音频断粮不停时钟。
+    - `ts-aac.ts` 每帧一到就放出。
+    - 单测在旧代码上失败：
+      - backend 两条：held 0.4 s 内时钟不走；音频不够时 1 s 后起；
+      - ts-aac 一条：按 188 字节逐包推入时，每个 PES 的首帧在 PES 末包到达前放出。
+  - **本地（desktop-chrome、emulated-android、desktop-firefox）**：GOP 中间接入三条用例都没有断音。出声比首帧晚 179–232 ms，`live start` 记录的是 audio 301–302 ms ahead，在首帧后 161–201 ms。四路墙 solo 也没有断音，直播 TS 四路首帧 530–543 ms。
 - e2e 的 WHEP 夹具会话泄漏（2026-11-02，已修）：会话只在收到 `DELETE` 时停发，页面直接关闭时不发 `DELETE`，那路会话会在预览服务里一直发到步骤结束（视频每 16 ms、音频每 10 ms 一次）。werift 的 `connectionState` 只跟 ICE，看不到对端 DTLS 的 close_notify；现在 DTLS 关闭、连接 disconnected / failed / closed、或 30 s 收不到 RTCP 都会停发，global teardown 断言跑完后没有会话还在发。
 - 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
   - **约 2 s：环境，不是产品。** 夹具服务只在 `localhost` 上监听，Windows 上 Node 解析成 `[::1]`，只监听 IPv6。Firefox 连 `localhost` 时有时先试 127.0.0.1，Windows 上连一个没人监听的本机端口要约 2 s 才失败，然后才换 ::1。WebSocket 每次都中（`new WebSocket` 到 open 恒为约 2.0 s，Edge 0 ms），HTTP 时有时无。服务改为监听全部地址、页面用 `http://127.0.0.1:4173` 后，WS 打开约 6 ms，四路 WS-FLV 首帧 240 ms。（`OTTER_E2E_BASE_URL` 会关掉 Playwright 的 webServer，要自己起 preview，见 tmp/winps/round22.cmd 的写法。）

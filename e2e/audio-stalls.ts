@@ -166,12 +166,22 @@ export const sinkStats = (page: Page): Promise<SinkStat[]> => page.evaluate(() =
 /** A sink summary that ran dry with the decoder's queue at its cap: F14's signature. */
 export const isF14Window = (x: Pick<SinkStat, 'under' | 'dq'>): boolean => x.under > 0 && x.dq >= 17;
 
-/** Underrun messages ("audio ran dry at T s for N ms ..."): media time and length. */
-const parseUnderrun = (m: string): { at: number; ms: number } => ({ at: Number(/dry at ([\d.]+) s/.exec(m)?.[1] ?? Number.NaN), ms: Number(/for (\d+) ms/.exec(m)?.[1] ?? 0) });
+/**
+ * Underrun messages ("audio ran dry at T s for N ms (decode queue Q) ..."): media time, length, and
+ * the decoder's queue depth at the moment it ran dry (-1 if not said).
+ */
+const parseUnderrun = (m: string): { at: number; ms: number; dq: number } => ({
+  at: Number(/dry at ([\d.]+) s/.exec(m)?.[1] ?? Number.NaN),
+  ms: Number(/for (\d+) ms/.exec(m)?.[1] ?? 0),
+  dq: Number(/\(decode queue (\d+)\)/.exec(m)?.[1] ?? -1),
+});
 
 export interface F14Verdict {
-  /** Underruns let through, each with the summary it matched (same / adjacent 0.2 s window). */
-  readonly letThrough: readonly { readonly message: string; readonly summary: SinkStat; readonly adjacent: boolean; readonly offset: number }[];
+  /**
+   * Underruns let through, each with the summary it matched (same / adjacent 0.2 s window), or
+   * none: the underrun itself says the queue was at its cap when it ran dry.
+   */
+  readonly letThrough: readonly { readonly message: string; readonly summary: SinkStat | undefined; readonly adjacent: boolean; readonly offset: number }[];
   /** Underruns outside the signature: still failures. */
   readonly kept: readonly string[];
   /** Total silence let through, ms (more than 1 s in one run is still a failure). */
@@ -183,22 +193,25 @@ export const F14_MAX_MS = 1000;
 
 /**
  * F14's rule, the same for every audio case on emulated-android: an underrun whose media time is
- * within 0.4 s of a summary with F14's signature is let through; every other underrun is kept.
- * Elsewhere every underrun is kept.
+ * within 0.4 s of a summary with F14's signature, or whose own message says the decode queue was at
+ * its cap (≥ 17) the moment it ran dry, is let through; every other underrun is kept. Elsewhere
+ * every underrun is kept. (A summary's dq is the last chunk's of its 0.2 s window, so one that ran
+ * dry at 17 can end the window lower: `0edda47`, the idle-suspend case, owner 2026-11-05.)
  */
 export function f14Verdict(project: string, underruns: readonly string[], stats: readonly SinkStat[]): F14Verdict {
   if (project !== 'emulated-android') return { letThrough: [], kept: [...underruns], letMs: 0 };
   const letThrough: F14Verdict['letThrough'][number][] = [];
   const kept: string[] = [];
   for (const message of underruns) {
-    const { at } = parseUnderrun(message);
+    const { at, dq } = parseUnderrun(message);
     const hit = stats.filter((x) => Math.abs(x.media - at) <= 0.4 && isF14Window(x)).sort((a, b) => Math.abs(a.media - at) - Math.abs(b.media - at))[0];
-    if (hit === undefined) kept.push(message);
-    else letThrough.push({ message, summary: hit, adjacent: Math.abs(hit.media - at) > 0.2, offset: Math.abs(hit.media - at) });
+    if (hit !== undefined) letThrough.push({ message, summary: hit, adjacent: Math.abs(hit.media - at) > 0.2, offset: Math.abs(hit.media - at) });
+    else if (dq >= 17) letThrough.push({ message, summary: undefined, adjacent: false, offset: 0 });
+    else kept.push(message);
   }
   return { letThrough, kept, letMs: letThrough.reduce((n, u) => n + parseUnderrun(u.message).ms, 0) };
 }
 
 /** The notice line of a verdict (per case: `F14 [<case>]: ...`), for the per-case tally in RESEARCH. */
 export const f14Notice = (name: string, v: F14Verdict): string =>
-  `F14 [${name}]: ${v.letThrough.length} underruns let through, ${Math.round(v.letMs)} ms in all${v.letThrough.length > 0 ? `: ${v.letThrough.map((u) => `${u.message} -> summary [media ${u.summary.media.toFixed(3)} ahead ${u.summary.ahead.toFixed(2)} under ${u.summary.under} dq ${u.summary.dq}] ${u.adjacent ? 'adjacent' : 'same'} window (${u.offset.toFixed(3)} s)`).join(' | ')}` : ''}`;
+  `F14 [${name}]: ${v.letThrough.length} underruns let through, ${Math.round(v.letMs)} ms in all${v.letThrough.length > 0 ? `: ${v.letThrough.map((u) => (u.summary === undefined ? `${u.message} -> decode queue at its cap when it ran dry` : `${u.message} -> summary [media ${u.summary.media.toFixed(3)} ahead ${u.summary.ahead.toFixed(2)} under ${u.summary.under} dq ${u.summary.dq}] ${u.adjacent ? 'adjacent' : 'same'} window (${u.offset.toFixed(3)} s)`)).join(' | ')}` : ''}`;

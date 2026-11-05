@@ -54,7 +54,22 @@ export interface WebCodecsBackendOptions {
    * elsewhere while the page is hidden (video PiP of the canvas) says so: no background mode then.
    */
   readonly visible?: () => boolean;
+  /**
+   * Live sources with sound: how far (ms) the decoded audio must be ahead of the clock before
+   * playback starts, a minimal jitter buffer (ADR-013 §7). The first frame is shown at once as a
+   * still (time to first frame is unchanged); the clock starts once the audio is this far ahead,
+   * or 1 s after the first frame at the latest. Once playing, audio running
+   * dry does not stop the clock: it is reported (`audioUnderrun`). Fixed, not adaptive. `0`: start
+   * at once.
+   * @defaultValue `300`
+   */
+  readonly liveAudioLeadMs?: number;
 }
+
+/** Live start: the clock starts this long (ms) after the first frame at the latest, audio ahead or not. */
+const LIVE_START_MAX_MS = 1000;
+/** Default of WebCodecsBackendOptions.liveAudioLeadMs. */
+const LIVE_AUDIO_LEAD_MS = 300;
 
 /** A frame counts as "at or before t" up to this much after t (µs), against rounding. */
 const EPS_US = 500;
@@ -246,6 +261,15 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   let seek: { target: number; candidate: DecodedFrame | undefined; resume: boolean } | undefined;
   let shownAt = Number.NEGATIVE_INFINITY;
   let firstFrame = false;
+  /** performance.now() of the first frame on the surface. */
+  let firstFrameAt: number | undefined;
+  const liveLeadMs = Math.max(0, options.liveAudioLeadMs ?? LIVE_AUDIO_LEAD_MS);
+  /**
+   * Live start (ADR-013 §7): set at load for a live source with sound; the clock waits for the
+   * audio to be liveLeadMs ahead (or LIVE_START_MAX_MS after the first frame). `wanted`: playback
+   * was asked for meanwhile.
+   */
+  let startHold: { wanted: boolean } | undefined;
   /** Startup moments (performance.now()) for the breakdown said on the route at the first frame. */
   const startup: { load?: number; keyframe?: number; configure?: number; configured?: number; decoded?: number } = {};
   let dropped = 0;
@@ -286,6 +310,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     if (!firstFrame) {
       firstFrame = true;
       const at = performance.now();
+      firstFrameAt = at;
       bus.emit('first-frame', { at });
       sayStartup(at);
     }
@@ -320,6 +345,29 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     });
   };
 
+  /** Starts the clock; a live start held for the audio starts it once the audio is ahead (releaseHold). */
+  const startClock = (): void => {
+    if (clock === undefined) return;
+    if (startHold === undefined) return clock.start();
+    startHold.wanted = true;
+    releaseHold();
+  };
+
+  /** The held live start: the clock starts once the audio is liveLeadMs ahead of it, or the wait is over. */
+  const releaseHold = (): void => {
+    const h = startHold;
+    if (h === undefined || !h.wanted || clock === undefined || firstFrameAt === undefined || seek !== undefined) return;
+    // No sound after all (setup failed, the stream's audio ended): nothing to wait for.
+    const lead = audio === undefined || sink === undefined || audioEos ? Number.POSITIVE_INFINITY : (sink.bufferedEnd - clock.now()) * 1000;
+    const waited = performance.now() - firstFrameAt;
+    if (lead < liveLeadMs && waited < LIVE_START_MAX_MS) return;
+    startHold = undefined;
+    clock.start();
+    bus.emit('route-detail', {
+      reason: `live start: audio ${Number.isFinite(lead) ? `${Math.round(lead)} ms` : 'not waited for'} ahead (target ${liveLeadMs} ms), ${Math.round(waited)} ms after the first frame${lead < liveLeadMs ? ` (not reached in ${LIVE_START_MAX_MS} ms)` : ''}`,
+    });
+  };
+
   const finishSeek = (frame: DecodedFrame | undefined): void => {
     const s = seek;
     if (s === undefined) return;
@@ -330,7 +378,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     loaded?.resolve();
     loaded = undefined;
     if (s.resume && clock !== undefined) {
-      clock.start();
+      startClock();
       update({ paused: false });
     }
   };
@@ -400,6 +448,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     }
     if (destroyed || sink === undefined || isI420(data)) return closeFrame(data);
     sink.push(data as AudioData, audio?.decodeQueueSize ?? 0);
+    releaseHold();
     signal.notify();
   };
 
@@ -809,6 +858,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       perfReported = false;
     }
     checkStalls();
+    releaseHold();
     const t = clock.now();
     if (seek === undefined) {
       // The latest frame at or before the clock; the ones before it were skipped (dropped).
@@ -1015,6 +1065,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         };
       }
       if (destroyed) return;
+      // A live source with sound starts once its audio is ahead of the clock (ADR-013 §7).
+      if (info.duration === Number.POSITIVE_INFINITY && audio !== undefined && liveLeadMs > 0) startHold = { wanted: false };
 
       tracks = trackList();
       buffered = timeRanges(Math.max(0, info.startTime), info.duration);
@@ -1047,12 +1099,13 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         update({ paused: false });
         return Promise.resolve();
       }
-      clock.start();
+      startClock();
       update({ paused: false, waiting: false });
       return Promise.resolve();
     },
     pause() {
       if (seek !== undefined) seek.resume = false;
+      if (startHold !== undefined) startHold.wanted = false;
       if (clock !== undefined) {
         clock.stop();
         update({ paused: true, waiting: false, currentTime: clock.now() });

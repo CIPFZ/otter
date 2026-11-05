@@ -70,6 +70,14 @@ export interface SurveillanceOptions {
    * @defaultValue `[]` (WebCodecs only: an HEVC stream on a device without an HEVC decoder reports the non-fatal `hevcDecoderUnavailable` and does not play)
    */
   readonly decoders?: readonly Decoder[];
+  /**
+   * Live tiles with sound: how far (ms) the decoded audio must be ahead before a tile's clock
+   * starts (a minimal jitter buffer, ADR-013 §7). The first frame shows at once as a still; the
+   * clock starts once the audio is this far ahead, or 1 s after the first frame at the latest.
+   * Fixed, not adaptive. `0`: start at once.
+   * @defaultValue `300`
+   */
+  readonly liveAudioLeadMs?: number;
 }
 
 /** One tile of the wall: its own playback session. */
@@ -171,7 +179,7 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
     const media = createMediaPlugin<TileState, MediaActionMap>({
       target: root.ownerDocument.createElement('video'),
       formats,
-      backends: [createWebCodecsBackendFactory({ sink: tile.surface })],
+      backends: [createWebCodecsBackendFactory({ sink: tile.surface, ...(options.liveAudioLeadMs === undefined ? {} : { liveAudioLeadMs: options.liveAudioLeadMs }) })],
       decoders,
       // The tiles draw on the wall's canvas: WebCodecs, not the default MSE first.
       policy: { preferBackend: 'webcodecs' },

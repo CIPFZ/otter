@@ -88,6 +88,38 @@ describe('AAC from live MPEG-TS (M6 F16)', () => {
     expect(frames.map(hex)).toEqual(reference.map(hex));
   });
 
+  it('pushed one TS packet at a time: each frame is out once the next one’s sync word is in, before its PES ends (owner 2026-11-05)', () => {
+    // Every audio PES of the clip: the byte its last TS packet ends at.
+    const pesEnds: number[] = [];
+    let last: number | undefined;
+    for (let i = 0; i + 188 <= clip.length; i += 188) {
+      const pid = (((clip[i + 1] as number) & 0x1f) << 8) | (clip[i + 2] as number);
+      if (pid !== 257) continue;
+      if (((clip[i + 1] as number) & 0x40) !== 0 && last !== undefined) pesEnds.push(last);
+      last = i + 188;
+    }
+    // When (bytes pushed) each frame came out.
+    const outAt: number[] = [];
+    let pushed = 0;
+    const r = createAacReader((f) => {
+      for (let k = 0; k < f.length; k++) outAt.push(pushed);
+    });
+    for (; pushed < clip.length; ) {
+      pushed += 188;
+      r.push(clip.subarray(pushed - 188, pushed));
+    }
+    r.end();
+    expect(outAt).toHaveLength(reference.length);
+    // Per PES (16 frames), its first frame is out before the PES's last packet is in, and the
+    // frames come out spread over its packets, not all at its end.
+    const firsts = pesEnds.map((end, k) => ({ end, first: outAt[k * 16] as number, distinct: new Set(outAt.slice(k * 16, k * 16 + 16)).size }));
+    expect(firsts.length).toBeGreaterThan(20);
+    for (const p of firsts) {
+      expect(p.first, `PES ending at byte ${p.end}`).toBeLessThan(p.end);
+      expect(p.distinct).toBeGreaterThan(4);
+    }
+  });
+
   it('PTS across the 33-bit wrap: mediabunny’s normalisation, then continuous over further wraps', () => {
     const M = 2 ** 33;
     // Anchored within 60 s below 2^33 (mediabunny: those count as negative).

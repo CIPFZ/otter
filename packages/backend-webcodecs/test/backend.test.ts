@@ -85,7 +85,7 @@ const makeDecoder = (id: string, o: FakeOptions = {}): Decoder => ({
 });
 const fakeDecoder: Decoder = makeDecoder('webcodecs');
 
-function setup(decoders: readonly Decoder[] = [fakeDecoder], demux?: (fed: number[]) => Demuxer) {
+function setup(decoders: readonly Decoder[] = [fakeDecoder], demux?: (fed: number[]) => Demuxer, options?: { liveAudioLeadMs?: number }) {
   const fed: number[] = [];
   const drawn: number[] = [];
   const sink: FrameSink = { draw: (f) => void drawn.push(Math.round((f.timestamp / 1e6) * FPS)), clear: vi.fn() };
@@ -105,7 +105,7 @@ function setup(decoders: readonly Decoder[] = [fakeDecoder], demux?: (fed: numbe
     qoe: { emit: () => undefined } as unknown as BackendContext['qoe'],
     decoders,
   };
-  const backend = createWebCodecsBackend(ctx, { sink });
+  const backend = createWebCodecsBackend(ctx, { sink, ...options });
   const state: Record<string, unknown> = {};
   backend.on('playback-change', (p) => Object.assign(state, p));
   const details: { reason: string; candidate?: string; outcome?: string }[] = [];
@@ -433,6 +433,144 @@ describe('backend-webcodecs', () => {
     expect(state['waiting']).not.toBe(true);
     backend.destroy();
   }, 15_000);
+
+  describe('live start: the clock waits for the audio to be ahead (ADR-013 §7, owner 2026-11-05)', () => {
+    /** A running AudioContext whose time is the wall clock, with an AudioWorklet that takes anything. */
+    class Running extends EventTarget {
+      state = 'running';
+      readonly t0 = performance.now();
+      get currentTime(): number {
+        return (performance.now() - this.t0) / 1000;
+      }
+      audioWorklet = { addModule: () => Promise.resolve() };
+      destination = {};
+      createGain = () => ({ gain: { value: 1 }, connect: (x: unknown) => x, disconnect: () => undefined });
+      resume = () => Promise.resolve();
+      suspend = () => Promise.resolve();
+      close = () => Promise.resolve();
+    }
+    class Worklet {
+      port = { postMessage: () => undefined, onmessage: null };
+      connect = (x: unknown) => x;
+      disconnect = () => undefined;
+    }
+    const AAC_US = Math.round((1024 / 48000) * 1e6);
+
+    /**
+     * A live source (no end) with AAC: video at once; audio only up to `audioTo()` µs (re-read as
+     * the test raises it).
+     */
+    const liveDemuxer = (audioTo: () => number) => (fed: number[]): Demuxer => {
+      async function* video(start: number): AsyncGenerator<EncodedChunk> {
+        for (let i = start; ; i++) {
+          fed.push(i);
+          yield { type: i % GOP === 0 ? 'key' : 'delta', timestamp: us(i), duration: us(1), data: new ArrayBuffer(1) };
+        }
+      }
+      async function* sound(): AsyncGenerator<EncodedChunk> {
+        for (let t = 0; ; t += AAC_US) {
+          while (t + AAC_US > audioTo()) await new Promise((r) => setTimeout(r, 10));
+          yield { type: 'key', timestamp: t, duration: AAC_US, data: new ArrayBuffer(1) };
+        }
+      }
+      return {
+        info: {
+          duration: Number.POSITIVE_INFINITY,
+          startTime: 0,
+          video: { id: 1, codec: 'avc1.42c01e', setup: { codec: 'avc1.42c01e', codedWidth: 2, codedHeight: 2 }, width: 2, height: 2, frameRate: FPS },
+          audio: { id: 2, codec: 'mp4a.40.2', sampleRate: 48000, channels: 2, setup: { codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2 } },
+        },
+        packets: () => video(0),
+        seek: (track) => Promise.resolve(track === 'audio' ? sound() : video(0)),
+        destroy: () => undefined,
+      };
+    };
+    /** fakeDecoder for video; for AAC, AudioData-like output 1 ms after each chunk. */
+    const withAudio: Decoder = {
+      ...fakeDecoder,
+      create(config) {
+        if (!config.codec.startsWith('mp4a')) return fakeDecoder.create(config);
+        let queued = 0;
+        return {
+          state: 'configured',
+          get decodeQueueSize() {
+            return queued;
+          },
+          decode(chunk) {
+            queued++;
+            setTimeout(() => {
+              queued--;
+              config.output({ timestamp: chunk.timestamp, numberOfFrames: 1024, numberOfChannels: 2, sampleRate: 48000, copyTo: () => undefined, close: () => undefined } as unknown as AudioData);
+            }, 1);
+          },
+          flush: () => Promise.resolve(),
+          reset: () => undefined,
+          close: () => undefined,
+        };
+      },
+    };
+    const run = async (body: (t: ReturnType<typeof setup>, audio: { to: number }) => Promise<void>, options?: { liveAudioLeadMs?: number }) => {
+      vi.stubGlobal('AudioContext', Running);
+      vi.stubGlobal('AudioWorkletNode', Worklet);
+      try {
+        const audio = { to: 100_000 };
+        const t = setup([withAudio], liveDemuxer(() => audio.to), options);
+        await body(t, audio);
+        t.backend.destroy();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    };
+
+    it('the first frame shows at once; the clock starts once 300 ms of audio are ahead, not before', async () => {
+      await run(async ({ backend, state, details, drawn, errors }, audio) => {
+        await backend.load({ src: 'live' }, {});
+        expect(errors).toEqual([]);
+        expect(drawn).toEqual([0]);
+        await backend.play();
+        expect(state['paused']).toBe(false);
+        // 0.1 s of audio: the clock holds at 0 (a still), no rebuffering said.
+        await new Promise((r) => setTimeout(r, 400));
+        expect(state['currentTime']).toBe(0);
+        expect(state['waiting'] ?? false).toBe(false);
+        expect(details.some((d) => d.reason.startsWith('live start'))).toBe(false);
+        audio.to = 600_000;
+        await vi.waitFor(() => expect(state['currentTime'] as number).toBeGreaterThan(0.2), { timeout: 2000 });
+        const step = details.find((d) => d.reason.startsWith('live start'))?.reason ?? '';
+        expect(step).toMatch(/^live start: audio \d+ ms ahead \(target 300 ms\), \d+ ms after the first frame$/);
+        expect(Number(/audio (\d+) ms/.exec(step)?.[1])).toBeGreaterThanOrEqual(300);
+      });
+    });
+
+    it('audio never 300 ms ahead: the clock starts 1 s after the first frame anyway, and audio running dry later does not stop it', async () => {
+      await run(async ({ backend, state, details }) => {
+        await backend.load({ src: 'live' }, {});
+        const shown = performance.now();
+        await backend.play();
+        await vi.waitFor(() => expect(details.some((d) => d.reason.startsWith('live start'))).toBe(true), { timeout: 2000 });
+        const started = performance.now() - shown;
+        expect(started).toBeGreaterThan(900);
+        expect(started).toBeLessThan(1300);
+        expect(details.find((d) => d.reason.startsWith('live start'))?.reason).toMatch(/\(not reached in 1000 ms\)$/);
+        // Past the 0.1 s of audio: the clock goes on.
+        await new Promise((r) => setTimeout(r, 500));
+        expect(state['currentTime'] as number).toBeGreaterThan(0.3);
+        expect(state['waiting'] ?? false).toBe(false);
+      });
+    });
+
+    it('liveAudioLeadMs 0: the clock starts at play, as for a source without sound', async () => {
+      await run(
+        async ({ backend, state, details }) => {
+          await backend.load({ src: 'live' }, {});
+          await backend.play();
+          await vi.waitFor(() => expect(state['currentTime'] as number).toBeGreaterThan(0.2), { timeout: 1000 });
+          expect(details.some((d) => d.reason.startsWith('live start'))).toBe(false);
+        },
+        { liveAudioLeadMs: 0 },
+      );
+    });
+  });
 
   it('background: no video decoding while hidden, the clock goes on; back in view, video restarts at the clock', async () => {
     const setVisibility = (v: 'hidden' | 'visible'): void => {

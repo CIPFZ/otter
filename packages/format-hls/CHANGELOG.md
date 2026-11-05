@@ -16,6 +16,7 @@
 - Updated dependencies
 - Updated dependencies
 - Updated dependencies
+- Updated dependencies
   - @otter-player/core@0.1.0-beta.0
   - @otter-player/demux-mediabunny@0.1.0-beta.0
   - @otter-player/engine-adapter-hlsjs@0.1.0-beta.0
