@@ -3,6 +3,10 @@
 // timeline. Served at /live/stream.flv by the e2e Vite server, over HTTP (chunked) and over a
 // WebSocket (ws://…/live/stream.flv, binary messages: WS-FLV), the latter by a minimal RFC 6455
 // server here (one way, server to client) rather than a dependency.
+//
+// `?join=mid-gop` (owner 2026-11-05): the stream starts in the middle of the clip's first GOP, as a
+// server without a GOP cache sends it to a client that joins there: delta frames and audio come
+// before the first keyframe (the configuration tags still come first).
 
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -80,22 +84,45 @@ function wsSink(req: IncomingMessage, socket: Duplex): Sink {
   };
 }
 
-function stream(file: string, out: Sink): void {
-  const { header, tags } = parseFlv(readFileSync(file));
+/** Codec config tags (AVC sequence header, AAC AudioSpecificConfig), sent once at the start; the rest. */
+function split(tags: readonly FlvTag[]): { config: FlvTag[]; frames: FlvTag[] } {
   const media = tags.filter((t) => t.type === VIDEO || t.type === AUDIO);
-  const loopDuration = (media.at(-1)?.timestamp ?? 0) + 40;
-  // Codec config tags (AVC sequence header, AAC AudioSpecificConfig) are sent once, at the start.
   const isConfig = (t: FlvTag): boolean => t.data.readUInt8(11 + 1) === 0;
   const config = media.filter((t) => isConfig(t) && t.timestamp === 0);
-  const frames = media.filter((t) => !config.includes(t));
+  return { config, frames: media.filter((t) => !config.includes(t)) };
+}
+
+const isKey = (t: FlvTag): boolean => t.type === VIDEO && t.data.readUInt8(11) >> 4 === 1;
+
+/**
+ * The `?join=mid-gop` start: the first frame tag at or after the middle of the first GOP, the
+ * keyframe the stream then reaches first (FLV ms), and the first audio tag at or after it: from the
+ * file, for the e2e's expected values.
+ */
+export function flvMidGop(file: string): { index: number; startMs: number; keyMs: number; firstAudioMs: number } {
+  const { frames } = split(parseFlv(readFileSync(file)).tags);
+  const keys = frames.filter(isKey);
+  const middle = ((keys[0]?.timestamp ?? 0) + (keys[1]?.timestamp ?? 0)) / 2;
+  const index = frames.findIndex((t) => t.timestamp >= middle);
+  const key = frames.slice(index).find(isKey) as FlvTag;
+  const audio = frames.slice(index).find((t) => t.type === AUDIO && t.timestamp >= key.timestamp) as FlvTag;
+  return { index, startMs: (frames[index] as FlvTag).timestamp, keyMs: key.timestamp, firstAudioMs: audio.timestamp };
+}
+
+function stream(file: string, out: Sink, join: string | null): void {
+  const { header, tags } = parseFlv(readFileSync(file));
+  const { config, frames } = split(tags);
+  const loopDuration = (frames.at(-1)?.timestamp ?? 0) + 40;
+  const from = join === 'mid-gop' ? flvMidGop(file) : { index: 0, startMs: 0 };
 
   out.write(header);
   for (const t of tags.filter((x) => x.type === SCRIPT)) out.write(retime(t, 0));
   for (const t of config) out.write(retime(t, 0));
 
-  const started = Date.now();
+  // Paced from the first tag sent (mid-GOP: its own timestamp, not 0).
+  const started = Date.now() - from.startMs;
   let loop = 0;
-  let index = 0;
+  let index = from.index;
   const pump = (): void => {
     const elapsed = Date.now() - started;
     // Send everything up to "now" plus a 300 ms lead, like a live origin with a small buffer.
@@ -117,16 +144,18 @@ function stream(file: string, out: Sink): void {
   out.onClose(() => clearInterval(timer));
 }
 
+const joinOf = (req: IncomingMessage): string | null => new URL(req.url ?? '/', 'http://x').searchParams.get('join');
+
 export function liveFlvPlugin(file: string): Plugin {
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
     if (req.url?.split('?')[0] !== '/live/stream.flv') {
       next();
       return;
     }
-    stream(file, httpSink(res));
+    stream(file, httpSink(res), joinOf(req));
   };
   const upgrade = (req: IncomingMessage, socket: Duplex): void => {
-    if (req.url?.split('?')[0] === '/live/stream.flv' && /websocket/i.test(String(req.headers.upgrade))) stream(file, wsSink(req, socket));
+    if (req.url?.split('?')[0] === '/live/stream.flv' && /websocket/i.test(String(req.headers.upgrade))) stream(file, wsSink(req, socket), joinOf(req));
   };
   return {
     name: 'otter-live-flv',

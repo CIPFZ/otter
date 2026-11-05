@@ -214,6 +214,12 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - **时间 0 放出的音频（Node 里接 e2e 预览服务器实测，`db3bb30` / `0561ae1` / 更早三个版本）**：HTTP-FLV 与 WS-FLV 三个版本都是 14 块、298.7 ms（0..298 ms，夹具开播时 300 ms 的提前量，关键帧前只有 −21 ms 那一块，丢弃）；直播 TS 在 `0561ae1` 与 `db3bb30` 都是 16 块、341.3 ms（首个 PES），`0561ae1` 之前是 8 块、170.7 ms、从 149 ms 起。**即 `db3bb30` 与绿着的 `0561ae1` 在三面墙上放出的音频完全相同**：它的「早到音频保留」在这些夹具上不改变任何输出（FLV 关键帧前的音频都早于 0，TS 的保留 `0561ae1` 已有）。
   - `68e3d8b` 的 WebKit 作业没有拿到 runner（作业无步骤、无日志，15 分钟后取消），没有数据。
   - `678cb28`（产品代码与 `db3bb30` 相同，只多了观测与用例）：desktop-safari solo 三面墙第 1 次尝试全过，四路首帧 HTTP-FLV 211–367 ms、WS-FLV 180–278 ms、直播 TS 529–700 ms，丢帧全部 0.0 %；emulated-iphone 同样。新观测：每面墙的音频都在视频 configure 的同一毫秒送入（HTTP-FLV 121 / 121、WS-FLV 78 / 79、TS 559 / 559 ms），14–17 块、299–363 ms，解码器软解；Chrome 相同。即同一份音频路径代码下，`db3bb30` 红、`678cb28` 绿。
+  - **结案（2026-11-05 负责人：选 (c)，不跑 A/B）**：F15 关闭。已排除两项：
+    - configure 串行化：每次记录的四路 configure 都是并行的，每路 ≤ 30 ms；
+    - `db3bb30` 的音频路径改动：在三个墙夹具上，它放出的音频与 `0561ae1` 完全相同；同一份代码在 `db3bb30` 红、在 `678cb28` 绿。
+    
+    desktop-safari 三面墙的 solo 降为只记录（ADR-013 §7a）；判定留在 desktop-chrome 与真 Edge；真 Safari 的数字列入 M7。HTTP-FLV 与直播 TS（desktop-safari solo）的 flaky 计数作废，WS-FLV 的也一并作废，因为这一组已经不判定。没有加临时 A/B 步骤。
+  - **发版后候选优化（2026-11-05 负责人：只记录，不动代码）**：启动时音频与视频的 configure 在同一毫秒送入（`678cb28` 的观测）。M7 在真 Safari 上量过再定。startup 观测保留。
 - **F17：WHEP 录音多出接缝（2026-11-03 负责人：升为缺陷，半天时间盒）**：
   - flaky 标记去掉。
   - 用例把每个异常接缝对齐三样东西，写进通知：
@@ -251,6 +257,19 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - WHEP 录音「RTCP 空档 > 1 s 判环境停顿」（2026-11-03 负责人）按指令实现后在本地验证：4 次全部被跳过，而接缝都是 4.02 s。原因是 1 s 以上的 RTCP 空档在正常录音里就有：会话前几秒 Chrome 的接收报告稀疏，录音从会话后约 1.7–6.8 s 开始，空档落在录音开头（实测 0.8–2.3 s、5.6–10.1 s 等）。这条规则分不出好坏录音，所以没有启用跳过，只把对齐后的空档写进通知（`recording a..b ms; in the recording …`），flaky 标记保留，等负责人改规则。
   - desktop-chrome 的 cn-live WHEP 录音（@solo）：`f369598` 两次尝试都红。接缝间隔一次 3.77 s（下限 3.77），一次多出一个接缝（3.05 + 1.00 s）；此前 4 次 CI 都稳定在 4.02 s 左右。用例通知里加了夹具那一路会话的连接状态变迁与 RTCP 到达间隔（`/whep/log/last`）。本地一次：ICE 242 ms 连上，RTCP 173 个，间隔 p50 117 / p95 204 ms，最长一次 1.33 s（在 2.2 s 处，录音开始前）。
   - emulated-android 的 Document PiP 与 WebCodecs 画面：`f369598` 第一次失败、重试通过。
+- **F18：直播 TS 从 GOP 中间接入，每个音频 PES 开头都断音（2026-11-05 发现，待负责人定）**：
+  - **怎么发现的**：新夹具 `?join=mid-gop`（负责人 2026-11-05）。它让流从第一个 GOP 的中点开始，关键帧之前先到 delta 帧和音频。本地 desktop-chrome 与 emulated-android 上，直播 TS 一路连续断音，都在 PES 开头：0.365 s 断 99 ms、0.707 s 断 199 ms、1.048 s 断 90 ms，之后每 0.341 s 一次（15–199 ms）。断音时那一块的送入时间，只比恢复出声早 17–26 ms。
+  - **不出问题的情况**：同一夹具下 HTTP-FLV 与 WS-FLV 不断音。按原来从头接入的直播 TS 墙，CI 上自 `0561ae1` 起也没有断音。
+  - **从文件量得的数据**（`live-loop.ts`，按夹具的发送节奏：字节率加 300 ms 提前量）：
+    - ffmpeg 写的每个音频 PES（16 帧，约 0.341 s）在字节流里落在它开头时间之后约 0.36 s 的视频旁边；
+    - 以关键帧到达为时钟起点，每个音频 PES 的最后一个字节比它的开头时间晚 0.38–0.50 s 到（GOP 中间接入）；从头接入时晚 0.28–0.39 s。
+  - **代码事实**：WebCodecs 后端只看视频就起时钟（`backend-webcodecs/src/backend.ts`：首帧解出后由 `finishSeek` 调 `clock.start()`）；只有视频断粮才停时钟等待，音频断粮不停。从头接入时，关键帧在头一批字节里，开播前的启动时间里音频已经攒下；GOP 中间接入时，那段时间花在等关键帧上，开播时音频的提前量只有夹具的 300 ms 加解码时间。
+  - **待定（负责人）**：修法有几种，各有代价。
+    - (a) 直播有音频时，等音频覆盖到某个提前量再起时钟：首帧不变，出声晚；提前量是多少要定。
+    - (b) 像 MSE 那样，音频断粮也停时钟等待：之后每次断粮都是一次可见的停顿，直到提前量攒够。
+    - (c) 直播设目标延迟（抖动缓冲）。
+    
+    用例 `surveillance.spec`「live MPEG-TS joined mid-GOP」里，直播 TS 的断音只记录、不判定（标注 F18）。其他判定照常：音频从媒体时间 0 起、与视频同一时间线（≤ 40 ms）。
 - e2e 的 WHEP 夹具会话泄漏（2026-11-02，已修）：会话只在收到 `DELETE` 时停发，页面直接关闭时不发 `DELETE`，那路会话会在预览服务里一直发到步骤结束（视频每 16 ms、音频每 10 ms 一次）。werift 的 `connectionState` 只跟 ICE，看不到对端 DTLS 的 close_notify；现在 DTLS 关闭、连接 disconnected / failed / closed、或 30 s 收不到 RTCP 都会停发，global teardown 断言跑完后没有会话还在发。
 - 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
   - **约 2 s：环境，不是产品。** 夹具服务只在 `localhost` 上监听，Windows 上 Node 解析成 `[::1]`，只监听 IPv6。Firefox 连 `localhost` 时有时先试 127.0.0.1，Windows 上连一个没人监听的本机端口要约 2 s 才失败，然后才换 ::1。WebSocket 每次都中（`new WebSocket` 到 open 恒为约 2.0 s，Edge 0 ms），HTTP 时有时无。服务改为监听全部地址、页面用 `http://127.0.0.1:4173` 后，WS 打开约 6 ms，四路 WS-FLV 首帧 240 ms。（`OTTER_E2E_BASE_URL` 会关掉 Playwright 的 webServer，要自己起 preview，见 tmp/winps/round22.cmd 的写法。）

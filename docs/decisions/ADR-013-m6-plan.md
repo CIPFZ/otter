@@ -93,6 +93,19 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
     - 当时只播 4.01–4.25 s 的那次没有任何错误事件，但没有停顿记录可核；`87499d6` 起装了独立停顿记录，这一跑没有停顿。
 
 - 预先决定（2026-11-04 负责人）：desktop-safari 的 solo 性能判定（丢帧、5 s 播放时长、首帧）若触发 flaky 升级条件，降为只记录（与手机仿真相同），判定留在 desktop-chrome 与真 Edge；真 Safari 的数字列入 M7。
+- **执行（2026-11-05 负责人）**：直播 TS（desktop-safari solo）触发了升级条件（`46ee373`、`db3bb30`），按上一条执行，不跑 A/B。
+  - desktop-safari 三面墙（HTTP-FLV、WS-FLV、直播 TS）的 solo 降为只记录；判定留在 desktop-chrome 与真 Edge；真 Safari 列入 M7。
+  - F15 结案：configure 串行化、`db3bb30` 的音频路径改动都已排除（RESEARCH）。Safari 的 flaky 计数作废。
+- **GOP 中间接入（2026-11-05 负责人）**：FLV 与 TS 直播夹具加 `?join=mid-gop`，流从第一个 GOP 的中点开始，关键帧之前先到 delta 帧和音频。
+  - main 里每种传输一条功能用例，判定三项：
+    - 音频从媒体时间 0 起：首帧在关键帧后一个 AAC 帧之内；
+    - 与视频同一时间线：首帧的媒体时间与文件 PTS 算出的值相差 ≤ 40 ms；
+    - 不断音。
+  - 单测（在丢弃早到音频的旧代码上失败）：
+    - FLV：`engine-pipeline/test/flv-demux.test.ts`（`0561ae1` 上失败）；
+    - TS，AAC：`demux-mediabunny/test/live-ts.test.ts`（`f10779c` 上失败；`0561ae1` 起 AAC 已按时间戳保留）；
+    - TS，MP3：同一文件（`0561ae1` 上失败）。
+  - 直播 TS 在这种接入下每个音频 PES 都断音（F18，RESEARCH），断音一项只记录，等负责人定修法。
 
 ### 8. 第三批第一停：React 绑定与 SSR（2026-10-30 负责人）
 

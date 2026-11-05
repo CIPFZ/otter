@@ -8,17 +8,21 @@
 //   to itself): real time and lost frames (GPU walls), and TTFF (SPEC §19 surveillance row, owner
 //   2026-10-30): one FLV tile's median within 300 ms of the MSE pipeline's, live TS within 1 s, all
 //   16 tiles of the @bench within 3 s. In the main step these swung with the runner's load (CI
-//   macOS, M6 RESEARCH §1). Judged on desktop-safari, desktop-chrome and the real Edge; the
-//   emulated phones and headless Firefox are measured only (owner 2026-11-03, ADR-013 §7a).
+//   macOS, M6 RESEARCH §1). Judged on desktop-chrome and the real Edge; desktop-safari, the
+//   emulated phones and headless Firefox are measured only (owner 2026-11-03 / 11-05, ADR-013
+//   §7a; the real Safari's numbers are M7's).
 //
 // Browsers open at most 6 HTTP/1.1 connections per host, which endless HTTP-FLV streams keep: more
 // tiles from one host take WS-FLV (or HTTP/2).
 
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { loadavg } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import type { Browser, Page } from '@playwright/test';
 import { acceptEnvironmentStalls, audioStalls, f14Notice, f14Verdict, recordAudioStalls, recordSinkStats, sinkStats } from './audio-stalls';
 import { expect, test } from './fixtures';
+import { flvMidGop } from './live-flv';
+import { tsMidGop } from './live-ts';
 import type { SurveillancePlayer } from '@otter-player/presets/surveillance';
 
 const ciNotice = (text: string): void => {
@@ -230,11 +234,12 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
       const underruns = rows.flatMap((r) => r.messages.filter((m) => m.startsWith('audioUnderrun')).map((m) => m.replace(/^audioUnderrun: /, '')));
       ciNotice(f14Notice(`surveillance ${name}`, f14Verdict('emulated-android', underruns, await sinkStats(page))));
     }
-    // The performance criteria are desktop-safari's and desktop-chrome's (and the real Edge's), not
-    // the emulated phones' or headless Firefox's (owner 2026-11-03, ADR-013 §7a: a surveillance wall
-    // is not a phone scenario; the real iPhone is M7). Elsewhere: measured and noted only.
-    const judged = ['desktop-safari', 'desktop-chrome', 'real-windows-edge'].includes(test.info().project.name);
-    if (!judged) test.info().annotations.push({ type: 'measured only', description: 'performance criteria on desktop-safari / desktop-chrome (ADR-013 §7a)' });
+    // The performance criteria are desktop-chrome's and the real Edge's, not desktop-safari's
+    // (owner 2026-11-05: its solo walls hit the flaky escalation rule, ADR-013 §7a; the real Safari
+    // is M7), the emulated phones' or headless Firefox's (owner 2026-11-03: a surveillance wall is
+    // not a phone scenario). Elsewhere: measured and noted only.
+    const judged = ['desktop-chrome', 'real-windows-edge'].includes(test.info().project.name);
+    if (!judged) test.info().annotations.push({ type: 'measured only', description: 'performance criteria on desktop-chrome / the real Edge (ADR-013 §7a)' });
     ciNotice(`surveillance ${name} x4 (${k} wall, solo, ${judged ? 'judged' : 'measured only'}, attempt ${test.info().retry + 1}): ${await geometry(page)}; AudioContext stalls ≥ 300 ms ${(await audioStalls(page)).join(', ') || 'none'}; tile errors ${rows.flatMap((r) => r.messages).join(' | ') || 'none'}; TTFF phases ${await ttffPhases(page)}; ${ttffNote}four tiles TTFF ${rows.map((r) => Math.round(r.ttff ?? -1)).join(' / ')} ms; 5 s played ${rows.map((r) => r.advanced.toFixed(2)).join(' / ')} s; lost ${rows.map((r) => `${(r.lost * 100).toFixed(1)} %`).join(' / ')}`);
     if (!judged) return;
     for (const r of rows) expect(r.advanced, `${r.tile}: real time`).toBeGreaterThan(4.5);
@@ -242,6 +247,75 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
     if (k === 'gpu') for (const r of rows) expect(r.lost, `${r.tile}: lost frames`).toBeLessThanOrEqual(0.05);
     if (transport === 'http') expect(median(one), `one tile's TTFF median against the MSE pipeline's (${Math.round(median(ref))} ms) + 300 ms`).toBeLessThanOrEqual(median(ref) + 300);
     if (transport === 'ts') for (const r of rows) expect(r.ttff ?? Infinity, `${r.tile}: live TS TTFF ≤ 1 s`).toBeLessThanOrEqual(1000);
+  });
+}
+
+// Joined mid-GOP (owner 2026-11-05): the fixtures' `?join=mid-gop` starts in the middle of the
+// first GOP, so delta frames and audio come before the first keyframe. Function, in the main step:
+// the audio starts at media time 0 (the first frame within one AAC frame of the keyframe), the
+// audio is on the video's timeline (its first frame's media time against the file's PTS: that
+// frame minus the keyframe, within 40 ms; both are then presented by one clock, backend-webcodecs
+// clock.ts), and no underrun. Live TS joined mid-GOP runs dry at each audio PES (M6 F18, RESEARCH):
+// its underruns are recorded, not judged, until the owner decides the fix.
+const AAC_FRAME_S = 1024 / 48000;
+const AV_MAX_S = 0.04;
+/** The file's first audio frame at or after the keyframe a mid-GOP join reaches first, s after it. */
+function midGopFirstAudioS(transport: Transport): number {
+  if (transport === 'ts') {
+    const m = tsMidGop(fileURLToPath(new URL('./media/ts/live-loop.ts', import.meta.url)));
+    return m.firstAudioS - m.keyS;
+  }
+  const m = flvMidGop(fileURLToPath(new URL('./media/flv/clip.flv', import.meta.url)));
+  return (m.firstAudioMs - m.keyMs) / 1000;
+}
+for (const transport of ['http', 'ws', 'ts'] as const) {
+  test(`surveillance: ${NAMES[transport]} joined mid-GOP (delta frames and audio before the first keyframe): audio from media time 0 on the video's timeline (≤ 40 ms), no underrun`, async ({ page, baseURL }) => {
+    test.setTimeout(60_000);
+    await recordSinkStats(page);
+    await wall(page, [`${urlOf(transport, baseURL as string)}?join=mid-gop`]);
+    await expect.poll(async () => (await tiles(page))[0]?.currentTime ?? 0, { timeout: 30_000 }).toBeGreaterThan(1);
+    const [row] = await play(page, 3);
+    const [tile] = await tiles(page);
+    expect(tile).toMatchObject({ backend: 'webcodecs', format: transport === 'ts' ? 'ts' : 'flv', live: true, error: null });
+    const r = row as NonNullable<typeof row>;
+    expect(r.advanced, 'time moves').toBeGreaterThan(2.5);
+    // Expected, from the file: the first audio frame at or after the keyframe the stream reaches first.
+    const expected = midGopFirstAudioS(transport);
+    const startup = await page.evaluate(() => (window.preset as SurveillancePlayer).tiles[0]?.explain()?.steps.find((x) => x.reason.startsWith('startup ms:'))?.reason ?? '');
+    const from = /audio at start: \d+ chunks, \d+ ms of media from (-?[\d.]+) s/.exec(startup);
+    const clock = await page.evaluate(() => (window.preset as SurveillancePlayer).tiles[0]?.explain()?.steps.filter((x) => x.reason.startsWith('audio clock')).map((x) => x.reason) ?? []);
+    const underruns = r.messages.filter((m) => m.startsWith('audioUnderrun')).map((m) => m.replace(/^audioUnderrun: /, ''));
+    const v = f14Verdict(test.info().project.name, underruns, await sinkStats(page));
+    // Where no AudioContext runs (headless Firefox on Linux: resume() never settles), the clock is
+    // performance.now(), said once, and there is no sink to run dry (as in webcodecs.spec).
+    const audioRuns = await page.evaluate(async () => {
+      const c = new AudioContext();
+      const ran = await Promise.race([c.resume().then(() => true), new Promise<boolean>((res) => setTimeout(() => res(false), 1000))]);
+      const t0 = c.currentTime;
+      await new Promise((res) => setTimeout(res, 200));
+      const ok = ran && c.state === 'running' && c.currentTime > t0;
+      void c.close().catch(() => undefined);
+      return ok;
+    });
+    ciNotice(`surveillance ${NAMES[transport]} joined mid-GOP: first audio at ${from?.[1] ?? '-'} s of media time (file: ${expected.toFixed(4)} s); ${startup.replace(/^startup ms: /, 'startup ms ')}; AudioContext runs ${audioRuns}; tile errors ${r.messages.join(' | ') || 'none'}; clock steps ${clock.join(' | ') || 'none'}${test.info().project.name === 'emulated-android' ? `; ${f14Notice(`surveillance ${NAMES[transport]} mid-GOP`, v)}` : ''}`);
+    expect(from, `audio fed at the start: ${startup}`).not.toBeNull();
+    const first = Number((from as RegExpExecArray)[1]);
+    expect(first, 'audio from media time 0 (within one frame)').toBeGreaterThanOrEqual(0);
+    expect(first, 'audio from media time 0 (within one frame)').toBeLessThan(AAC_FRAME_S);
+    // The notice has ms: within 40 ms of the file's, plus that rounding.
+    expect(Math.abs(first - expected), `audio on the video's timeline (file: ${expected.toFixed(4)} s)`).toBeLessThanOrEqual(AV_MAX_S + 0.0005);
+    const others = r.messages.filter((m) => !m.startsWith('audioUnderrun'));
+    if (!audioRuns) {
+      expect(others.map((m) => m.split(':')[0]), 'no running AudioContext: said once').toEqual(['audioClockUnavailable']);
+      return;
+    }
+    expect(others).toEqual([]);
+    if (transport === 'ts') {
+      if (underruns.length > 0) test.info().annotations.push({ type: 'issue', description: `M6 F18 (recorded, not judged): ${underruns.length} underrun(s)` });
+      return;
+    }
+    // Underruns: none (on emulated-android, F14's signature is let through: e2e/audio-stalls.ts).
+    expect(v.kept).toEqual([]);
   });
 }
 

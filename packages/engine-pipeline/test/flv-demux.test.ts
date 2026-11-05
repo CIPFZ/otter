@@ -77,6 +77,44 @@ describe('FLV demuxer for WebCodecs', () => {
     d.destroy();
   });
 
+  it('joined mid-GOP: video before the first keyframe is skipped; audio that arrives before the keyframe plays by its time (ADR-013 §7)', async () => {
+    // clip.flv (GOP 1 s, keyframes at 21 and 1021 ms) from its first tag at or after 521 ms, as a
+    // server without a GOP cache sends it to a client that joins there. The 1021 ms keyframe is
+    // moved after the audio tags timed 1024 and 1045 ms, as a mux with the audio ahead.
+    const tags: { block: Uint8Array; type: number; ts: number }[] = [];
+    for (let o = 13; o + 11 <= clip.length; ) {
+      const size = ((clip[o + 1] as number) << 16) | ((clip[o + 2] as number) << 8) | (clip[o + 3] as number);
+      const ts = (((clip[o + 4] as number) << 16) | ((clip[o + 5] as number) << 8) | (clip[o + 6] as number)) + ((clip[o + 7] as number) << 24);
+      tags.push({ block: clip.subarray(o, o + 11 + size + 4), type: clip[o] as number, ts });
+      o += 11 + size + 4;
+    }
+    // Script, AVC config, AAC config: sent first, as the fixture's server does.
+    const head = tags.slice(0, 3);
+    const tail = tags.slice(3).filter((t) => t.ts >= 521);
+    const key = tail.findIndex((t) => t.type === 9 && t.ts === 1021);
+    const ahead = tail.filter((t) => t.type === 8 && (t.ts === 1024 || t.ts === 1045));
+    expect(key).toBeGreaterThan(0);
+    expect(ahead).toHaveLength(2);
+    const order = [...tail.slice(0, key).filter((t) => !ahead.includes(t)), ...ahead, ...tail.slice(key).filter((t) => !ahead.includes(t))];
+    const bytes = new Uint8Array(clip.length);
+    let at = 0;
+    for (const b of [clip.subarray(0, 13), ...head.map((t) => t.block), ...order.map((t) => t.block)]) {
+      bytes.set(b, at);
+      at += b.length;
+    }
+    vi.stubGlobal('fetch', () => Promise.resolve(streamOf(bytes.subarray(0, at), 256)));
+    const d = await openFlvDemuxer('http://x/live.flv', { signal: new AbortController().signal, createError });
+    const v = await take(d.packets('video'), 2);
+    expect(v.map((c) => [c.type, c.timestamp])).toEqual([
+      ['key', 0],
+      ['delta', 40_000],
+    ]);
+    // The 1024 ms frame is 3 ms after media time 0; every audio tag before 1021 ms is dropped.
+    const a = await take(d.packets('audio'), 3);
+    expect(a.map((c) => c.timestamp)).toEqual([3000, 24_000, 45_000]);
+    d.destroy();
+  });
+
   it('a seek starts at the last keyframe at or before the time; each subscriber gets its own bytes', async () => {
     vi.stubGlobal('fetch', () => Promise.resolve(streamOf(clip, 64 * 1024, true)));
     const d = await openFlvDemuxer('http://x/live.flv', { signal: new AbortController().signal, createError });

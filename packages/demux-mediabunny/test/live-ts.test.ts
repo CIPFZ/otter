@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createError } from '@otter-player/core';
 import type { EncodedChunk, PacketStream } from '@otter-player/media';
 import { openLiveTs } from '../src/index.js';
-import { shiftTimestamps } from './ts-writer.js';
+import { join, shiftTimestamps } from './ts-writer.js';
 
 const clip = new Uint8Array(readFileSync(new URL('../../../e2e/media/ts/clip.ts', import.meta.url)));
 
@@ -153,6 +153,79 @@ describe('live MPEG-TS for WebCodecs', () => {
     expect(notices[0]?.message).toContain('no sound');
     d.destroy();
   });
+
+  /**
+   * `bytes` joined mid-GOP: from the first video PES at or after the middle of the first GOP (no
+   * PAT / PMT first: they repeat every ~0.1 s in the e2e files), with the first `ahead` audio PES
+   * that start after the next keyframe's PES moved before it, as a mux with the audio ahead.
+   */
+  function midGop(bytes: Uint8Array, ahead: number): Uint8Array {
+    const n = bytes.length / 188;
+    const at = (i: number) => {
+      const o = i * 188;
+      const pid = (((bytes[o + 1] as number) & 0x1f) << 8) | (bytes[o + 2] as number);
+      const afc = ((bytes[o + 3] as number) >> 4) & 3;
+      const s = o + 4 + ((afc & 2) !== 0 ? 1 + (bytes[o + 4] as number) : 0);
+      const start = ((bytes[o + 1] as number) & 0x40) !== 0 && bytes[s] === 0 && bytes[s + 1] === 0 && bytes[s + 2] === 1;
+      const p = bytes.subarray(s + 9);
+      const pts = start && ((bytes[s + 7] as number) & 0x80) !== 0 ? (((p[0] as number) & 0x0e) * 2 ** 29 + (p[1] as number) * 2 ** 22 + ((p[2] as number) & 0xfe) * 2 ** 14 + (p[3] as number) * 2 ** 7 + ((p[4] as number) >> 1)) / 90_000 : undefined;
+      // random_access_indicator: set on the video's keyframes (and on every audio PES) in these files.
+      const rai = (afc & 2) !== 0 && (bytes[o + 4] as number) > 0 && ((bytes[o + 5] as number) & 0x40) !== 0;
+      return { pid, start, pts, rai };
+    };
+    const all = Array.from({ length: n }, (_, i) => ({ i, ...at(i) }));
+    const keys = all.filter((p) => p.pid === 0x100 && p.start && p.rai);
+    const [k0, k1] = keys as [(typeof all)[number], (typeof all)[number]];
+    const middle = ((k0.pts as number) + (k1.pts as number)) / 2;
+    const from = all.find((p) => p.pid === 0x100 && p.start && (p.pts as number) >= middle) as (typeof all)[number];
+    const audioStarts = all.filter((p) => p.pid === 0x101 && p.start && p.i > k1.i).slice(0, ahead + 1);
+    const moved = all.filter((p) => p.pid === 0x101 && p.i >= (audioStarts[0] as (typeof all)[number]).i && p.i < (audioStarts[ahead] as (typeof all)[number]).i);
+    const order = [...all.slice(from.i, k1.i), ...moved, ...all.slice(k1.i).filter((p) => !moved.includes(p))];
+    return join(order.map((p) => bytes.subarray(p.i * 188, p.i * 188 + 188)));
+  }
+
+  for (const [file, codec] of [
+    ['clip.ts', 'AAC (own reader)'],
+    ['audio-mp3.ts', 'MP3 (mediabunny)'],
+  ] as const) {
+    it(`joined mid-GOP, ${codec}: video before the first keyframe is skipped; audio that arrives before the keyframe plays by its time (ADR-013 §7)`, async () => {
+      // Audio ~0.7 s ahead (three PES of ~0.34 s): its frames at or after the keyframe have all
+      // come out of the demuxer before the keyframe's bytes arrive.
+      const bytes = midGop(new Uint8Array(readFileSync(new URL(`../../../e2e/media/ts/${file}`, import.meta.url))), 3);
+      vi.stubGlobal('fetch', () => Promise.resolve(endless(bytes, 188 * 8)));
+      const d = await openLiveTs('http://x/live.ts', { signal: new AbortController().signal, createError });
+      const v = await take(d.packets('video'), 2);
+      // Up to 20 frames, or what came before 1.5 s without one (the stream does not end).
+      const live: number[] = [];
+      const it = d.packets('audio')[Symbol.asyncIterator]();
+      while (live.length < 20) {
+        const next = await Promise.race([it.next(), new Promise<'idle'>((r) => setTimeout(() => r('idle'), 1500))]);
+        if (next === 'idle' || next.done === true) break;
+        live.push(next.value.timestamp);
+      }
+      d.destroy();
+      expect(v.map((c) => [c.type, c.timestamp])).toEqual([
+        ['key', 0],
+        ['delta', 40_000],
+      ]);
+      // The same bytes read whole by mediabunny: audio at or after the first keyframe.
+      const { Input, BufferSource, MPEG_TS, EncodedPacketSink } = await import('mediabunny');
+      const input = new Input({ source: new BufferSource(bytes), formats: [MPEG_TS] });
+      const video = new EncodedPacketSink((await input.getPrimaryVideoTrack())!);
+      let key = await video.getFirstPacket();
+      while (key !== null && key.type !== 'key') key = await video.getNextPacket(key);
+      const base = (key as { timestamp: number }).timestamp;
+      const sink = new EncodedPacketSink((await input.getPrimaryAudioTrack())!);
+      const whole: number[] = [];
+      for (let p = await sink.getFirstPacket(); p !== null && whole.length < 20; p = await sink.getNextPacket(p)) {
+        const t = Math.round((p.timestamp - base) * 1e6);
+        if (t >= 0) whole.push(t);
+      }
+      // The first frame is within one frame of media time 0 (AAC 21.3 ms, MP3 24 ms).
+      expect(whole[0]).toBeLessThan(24_000);
+      expect(live.map((t) => Math.round(t / 100))).toEqual(whole.map((t) => Math.round(t / 100)));
+    });
+  }
 
   it('a failed request is a network error', async () => {
     vi.stubGlobal('fetch', () => Promise.resolve(new Response(null, { status: 404 })));
