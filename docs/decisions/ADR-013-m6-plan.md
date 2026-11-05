@@ -79,9 +79,10 @@ M5 于 2026-10-27 关闭。负责人按「M5 → M6 交接」定了 M6 的四批
   - **时钟起点**：
     - 有声音的直播源，首帧解出后立刻上屏，作为静帧；时钟停在首帧的媒体时间上，等提前量 ≥ 目标值才起。
     - 首帧上屏后 1 s 还没达到目标值，就直接起时钟。
-    - 起时钟时，路由上记一步 `live start: audio N ms ahead (target T ms), M ms after the first frame`。
+    - 起时钟时，路由上记一步 `live start: audio N ms ahead (target T ms), M ms after the first frame`。走了 1 s 兜底的，末尾再加 ` (not reached in 1000 ms)`（`backend.test.ts` 断言）；没有这段就是按提前量起的。
     - 首帧口径（TTFF）不变；等待期间不算 waiting，也不计卡顿。
   - **目标值**：默认 300 ms，选项 `liveAudioLeadMs`，在 `createWebCodecsBackendFactory` 和 surveillance preset 上，`0` 表示不等。固定值，不自适应；自适应列入 M7。
+  - **适用范围（2026-11-05 负责人）**：只对 WebCodecs 后端的直播路径生效（surveillance 的 FLV / TS / 直播 HLS 等走 WebCodecs 的源）。MSE 与原生路径不受影响，它们的起播由引擎自己决定。lowlatency preset 走 hls.js / Shaka 加 MSE，没有这个选项。
   - **播放中**：音频断粮不停时钟，只报 `audioUnderrun`。视频断粮照旧停时钟等帧。
   - **原因**：ffmpeg 写的 TS 里，每个音频 PES（16 帧，约 0.341 s）在字节流里落在比同时刻的视频晚约 0.3 s 的位置。按 PCR 节奏发送也是这样。
     - 从头接入时，等关键帧的那段启动时间里音频已经攒下了；

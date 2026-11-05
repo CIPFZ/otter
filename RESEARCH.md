@@ -296,6 +296,29 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
       - backend 两条：held 0.4 s 内时钟不走；音频不够时 1 s 后起；
       - ts-aac 一条：按 188 字节逐包推入时，每个 PES 的首帧在 PES 末包到达前放出。
   - **本地（desktop-chrome、emulated-android、desktop-firefox）**：GOP 中间接入三条用例都没有断音。出声比首帧晚 179–232 ms，`live start` 记录的是 audio 301–302 ms ahead，在首帧后 161–201 ms。四路墙 solo 也没有断音，直播 TS 四路首帧 530–543 ms。
+  - **CI `800d692`（run 41989523804，全绿，beta.0 代码冻结在此）**：
+    - GOP 中间接入，有 AudioContext 的四个项目（desktop-safari、emulated-iphone、desktop-chrome、emulated-android）× 三种传输：
+      - 零断音；
+      - 首个音频 0.003 s，与按文件算的值一致；
+      - 出声比首帧晚 180–255 ms；
+      - 时钟在音频提前量 301–302 ms 时起，首帧后 160–236 ms，没有一路走 1 s 兜底。
+    - 无头 Firefox 只报 `audioClockUnavailable`。
+    - 四路墙 solo 的 tile 里没有断音。整次运行唯一一条断音在 emulated-android 暂停用例里（3.051 s，29 ms，dq 17），由新的 F14 helper 放过。30 s 用例放过 2 条，共 151 ms，dq 17。F17 放过 0 次。
+  - **直播 TS 四路墙首帧变长，按首帧分解对比 `0edda47` 与 `800d692` 的产物（负责人 2026-11-05：不跑 CI）**：
+
+    | 段 | desktop-chrome | desktop-safari | emulated-iphone |
+    |---|---|---|---|
+    | 首字节 → 首关键帧 | 317–319 → 395–398 ms | 336–344 → 390–426 ms | 309–316 → 374–417 ms |
+    | 解出 → 上屏 | 1–3 → 3–9 ms | 4–9 → 4–12 ms | 1–5 → 5–23 ms |
+    | 请求 → 连上 | 83–88 → 90–96 ms | 116–131 → 193–210 ms | 73–83 → 146–176 ms |
+    | 关键帧 → 开始 configure | 10–17 → 11–20 ms | 16–17 → 34–35 ms，一路 280 ms | 25–26 → 18–26 ms，一路 306 ms |
+
+    - 三个项目的「首字节 → 首关键帧」都长了 50–100 ms，这一段在产品代码之前，**归夹具**：TS 夹具在这一提交里由按平均字节率发送改为按 PCR 发送。新数字作为新基线：直播 TS 四路墙，desktop-chrome 首帧 560–566 ms。
+    - 「解出 → 上屏」最多 23 ms，**没有被等待提前量挡住**，产品不改。
+    - 「请求 → 连上」在 macOS 两个项目上长了约 75 ms，desktop-chrome 没变；原因没有查。
+    - 两路的「关键帧 → 开始 configure」长到约 300 ms（每个项目各一路），原因没有查。
+    
+    以上都是只记录的项目上的数，不判定。
 - e2e 的 WHEP 夹具会话泄漏（2026-11-02，已修）：会话只在收到 `DELETE` 时停发，页面直接关闭时不发 `DELETE`，那路会话会在预览服务里一直发到步骤结束（视频每 16 ms、音频每 10 ms 一次）。werift 的 `connectionState` 只跟 ICE，看不到对端 DTLS 的 close_notify；现在 DTLS 关闭、连接 disconnected / failed / closed、或 30 s 收不到 RTCP 都会停发，global teardown 断言跑完后没有会话还在发。
 - 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
   - **约 2 s：环境，不是产品。** 夹具服务只在 `localhost` 上监听，Windows 上 Node 解析成 `[::1]`，只监听 IPv6。Firefox 连 `localhost` 时有时先试 127.0.0.1，Windows 上连一个没人监听的本机端口要约 2 s 才失败，然后才换 ::1。WebSocket 每次都中（`new WebSocket` 到 open 恒为约 2.0 s，Edge 0 ms），HTTP 时有时无。服务改为监听全部地址、页面用 `http://127.0.0.1:4173` 后，WS 打开约 6 ms，四路 WS-FLV 首帧 240 ms。（`OTTER_E2E_BASE_URL` 会关掉 Playwright 的 webServer，要自己起 preview，见 tmp/winps/round22.cmd 的写法。）
