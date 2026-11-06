@@ -552,9 +552,14 @@ describe('backend-webcodecs', () => {
         expect(started).toBeGreaterThan(900);
         expect(started).toBeLessThan(1300);
         expect(details.find((d) => d.reason.startsWith('live start'))?.reason).toMatch(/\(not reached in 1000 ms\)$/);
-        // Past the 0.1 s of audio: the clock goes on.
-        await new Promise((r) => setTimeout(r, 500));
-        expect(state['currentTime'] as number).toBeGreaterThan(0.3);
+        // Past the 0.1 s of audio: the clock goes on, never waiting. (currentTime is said every
+        // 250 ms: polled, not read once after a fixed sleep; 800d692's nightly read 0.25 s there.)
+        const waited: unknown[] = [];
+        backend.on('playback-change', (p) => {
+          if (p.waiting !== undefined) waited.push(p.waiting);
+        });
+        await vi.waitFor(() => expect(state['currentTime'] as number).toBeGreaterThan(0.3), { timeout: 2000 });
+        expect(waited).not.toContain(true);
         expect(state['waiting'] ?? false).toBe(false);
       });
     });

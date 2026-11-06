@@ -319,6 +319,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     - 两路的「关键帧 → 开始 configure」长到约 300 ms（每个项目各一路），原因没有查。
     
     以上都是只记录的项目上的数，不判定。
+  - **`800d692` 的夜间定时运行（run 42016407977，2026-11-05）verify 红**：新单测「audio never 300 ms ahead…」在起时钟后固定睡 500 ms 再读 `currentTime`，读到 0.25 s（断言 > 0.3）。后端每 250 ms 才更新一次 `currentTime`，这一读和下一次更新撞在一起，是用例的计时假设错了，不是产品。用例改为轮询，并另记播放中 `waiting` 从未为 true；本地 10 次（其中 4 次加 6 个满载进程）都过，在 `0edda47` 的后端上仍失败。只改测试文件，发布包内容不变（`files` 不含 `test/`）。
 - e2e 的 WHEP 夹具会话泄漏（2026-11-02，已修）：会话只在收到 `DELETE` 时停发，页面直接关闭时不发 `DELETE`，那路会话会在预览服务里一直发到步骤结束（视频每 16 ms、音频每 10 ms 一次）。werift 的 `connectionState` 只跟 ICE，看不到对端 DTLS 的 close_notify；现在 DTLS 关闭、连接 disconnected / failed / closed、或 30 s 收不到 RTCP 都会停发，global teardown 断言跑完后没有会话还在发。
 - 真 Windows Firefox 上墙的首帧慢（2026-10-30，半天时间盒，负责人第 5 条）：c93d22f 报的「四路 HTTP-FLV 首帧约 12.4 s」拆成了两件事。
   - **约 2 s：环境，不是产品。** 夹具服务只在 `localhost` 上监听，Windows 上 Node 解析成 `[::1]`，只监听 IPv6。Firefox 连 `localhost` 时有时先试 127.0.0.1，Windows 上连一个没人监听的本机端口要约 2 s 才失败，然后才换 ::1。WebSocket 每次都中（`new WebSocket` 到 open 恒为约 2.0 s，Edge 0 ms），HTTP 时有时无。服务改为监听全部地址、页面用 `http://127.0.0.1:4173` 后，WS 打开约 6 ms，四路 WS-FLV 首帧 240 ms。（`OTTER_E2E_BASE_URL` 会关掉 Playwright 的 webServer，要自己起 preview，见 tmp/winps/round22.cmd 的写法。）
