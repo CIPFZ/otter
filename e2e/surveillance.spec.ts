@@ -33,7 +33,7 @@ const ciNotice = (text: string): void => {
 type Tile = { label: string; muted: boolean; currentTime: number; backend: string | null; format: string | null; live: boolean; error: unknown; ttff: number | null; dropped: number; total: number; errors: string[]; messages: string[]; errorAt: number[] };
 type Log = { errors: string[][]; messages: string[][]; errorAt: number[][]; stepsAt: { at: number; reason: string }[][] };
 
-async function wall(page: Page, streams: readonly string[]): Promise<void> {
+async function wall(page: Page, streams: readonly string[], options: { clickStart?: boolean } = {}): Promise<void> {
   // Each tile's errors (audioUnderrun counted apart) and route steps, with when they came; the
   // Workers the page starts (decode pool, render).
   await page.addInitScript(() => {
@@ -77,7 +77,8 @@ async function wall(page: Page, streams: readonly string[]): Promise<void> {
       }
     };
   });
-  await page.goto(`/presets.html?preset=surveillance&streams=${streams.map(encodeURIComponent).join(',')}`);
+  await page.goto(`/presets.html?preset=surveillance&streams=${streams.map(encodeURIComponent).join(',')}${options.clickStart === true ? '&start=click' : ''}`);
+  if (options.clickStart === true) await page.getByRole('button', { name: 'Start surveillance', exact: true }).click();
   test.skip(!(await page.evaluate(() => typeof VideoDecoder === 'function')), 'no WebCodecs here');
 }
 
@@ -269,11 +270,13 @@ const LIVE_LEAD_MS = 300;
  */
 async function recordFirstSound(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const w = window as unknown as { firstSound?: number };
+    const w = window as unknown as { firstSound?: number; firstSoundContexts: BaseAudioContext[] };
+    w.firstSoundContexts = [];
     const Native = window.AudioWorkletNode;
     window.AudioWorkletNode = class extends Native {
       constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
         super(context, name, options);
+        if (!w.firstSoundContexts.includes(context)) w.firstSoundContexts.push(context);
         const analyser = context.createAnalyser();
         analyser.fftSize = 512;
         const silent = context.createGain();
@@ -304,8 +307,9 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
     test.setTimeout(60_000);
     await recordSinkStats(page);
     await recordFirstSound(page);
-    await wall(page, [`${urlOf(transport, baseURL as string)}?join=mid-gop`]);
+    await wall(page, [`${urlOf(transport, baseURL as string)}?join=mid-gop`], { clickStart: true });
     await expect.poll(async () => (await tiles(page))[0]?.currentTime ?? 0, { timeout: 30_000 }).toBeGreaterThan(1);
+    expect((await tiles(page))[0]?.muted, 'the focused tile is unmuted after the start gesture').toBe(false);
     const [row] = await play(page, 3);
     const [tile] = await tiles(page);
     expect(tile).toMatchObject({ backend: 'webcodecs', format: transport === 'ts' ? 'ts' : 'flv', live: true, error: null });
@@ -318,16 +322,13 @@ for (const transport of ['http', 'ws', 'ts'] as const) {
     const clock = await page.evaluate(() => (window.preset as SurveillancePlayer).tiles[0]?.explain()?.steps.filter((x) => x.reason.startsWith('audio clock')).map((x) => x.reason) ?? []);
     const underruns = r.messages.filter((m) => m.startsWith('audioUnderrun')).map((m) => m.replace(/^audioUnderrun: /, ''));
     const v = f14Verdict(test.info().project.name, underruns, await sinkStats(page));
-    // Where no AudioContext runs (headless Firefox on Linux: resume() never settles), the clock is
-    // performance.now(), said once, and there is no sink to run dry (as in webcodecs.spec).
+    // Check the contexts feeding the player's worklets. If they cannot run (headless Firefox on
+    // Linux), the player reports its performance.now() fallback once, as in webcodecs.spec.
     const audioRuns = await page.evaluate(async () => {
-      const c = new AudioContext();
-      const ran = await Promise.race([c.resume().then(() => true), new Promise<boolean>((res) => setTimeout(() => res(false), 1000))]);
-      const t0 = c.currentTime;
+      const contexts = (window as unknown as { firstSoundContexts?: readonly BaseAudioContext[] }).firstSoundContexts ?? [];
+      const before = contexts.map((context) => ({ context, time: context.currentTime }));
       await new Promise((res) => setTimeout(res, 200));
-      const ok = ran && c.state === 'running' && c.currentTime > t0;
-      void c.close().catch(() => undefined);
-      return ok;
+      return before.length > 0 && before.every(({ context, time }) => context.state === 'running' && context.currentTime > time);
     });
     // Sound against the first frame (the backend's startup step is said when it is shown).
     const sound = await page.evaluate(() => {

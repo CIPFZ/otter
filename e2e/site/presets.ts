@@ -52,7 +52,22 @@ if (kind === 'background') {
   window.preset = createShortsPlayer({ container, idleMs: 0, feed: (params.get('feed') ?? src).split(','), onLike: (index, at) => window.likes?.push({ index, ...at }), ...(lang === null ? {} : { lang }) });
 } else if (kind === 'surveillance') {
   // ?streams=<url>,<url>,...: one tile each.
-  window.preset = createSurveillancePlayer({ container, title: 'Preset surveillance', idleMs: 0, streams: (params.get('streams') ?? src).split(','), ...(lang === null ? {} : { lang }) });
+  const start = (): void => {
+    window.preset = createSurveillancePlayer({ container, title: 'Preset surveillance', idleMs: 0, streams: (params.get('streams') ?? src).split(','), ...(lang === null ? {} : { lang }) });
+  };
+  // Audio-start measurements load the wall only after a real user gesture.
+  if (params.get('start') === 'click') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Start surveillance';
+    button.addEventListener('click', () => {
+      button.remove();
+      start();
+    }, { once: true });
+    container.append(button);
+  } else {
+    start();
+  }
 } else if (kind === 'vod') {
   player = createVodPlayer({ ...common, thumbnails: params.get('thumbs') !== '0', captions: params.get('captions') !== '0' });
 } else if (kind === 'live') {
