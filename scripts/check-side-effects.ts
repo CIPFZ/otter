@@ -26,7 +26,7 @@
 //   node scripts/check-side-effects.ts        (run after `pnpm build`)
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { build } from 'esbuild';
 import { topLevelBrowserClasses } from './lib/dom-classes.ts';
 
@@ -134,7 +134,7 @@ for (const { dir, entry } of entries) {
         name: 'externalize-third-party',
         setup(b) {
           b.onResolve({ filter: /^[^./]/ }, (args) =>
-            args.path.startsWith('@otter-player/') ? undefined : { path: args.path, external: true, ...(peers.has(args.path.replace(/^((?:@[^/]+\/)?[^/]+).*$/, '$1')) ? { sideEffects: false } : {}) },
+            isAbsolute(args.path) || args.path.startsWith('@otter-player/') ? undefined : { path: args.path, external: true, ...(peers.has(args.path.replace(/^((?:@[^/]+\/)?[^/]+).*$/, '$1')) ? { sideEffects: false } : {}) },
           );
           // What only import() reaches does not run when the entry is imported (every package is
           // judged as its own entry anyway). Inlined, a module shared by the static and the dynamic
@@ -170,7 +170,7 @@ for (const name of ${JSON.stringify(TRAPS)}) {
   if (name in globalThis) continue;
   // Reads from a framework peer's own module code (Vue's runtime-dom checks \`typeof document\` at
   // import) are the framework's: only reads from Otter's files count.
-  Object.defineProperty(globalThis, name, { configurable: true, get() { const at = String(new Error().stack).split('\\n')[2] ?? ''; if (!at.includes('/node_modules/')) touched.push(name); return undefined; } });
+  Object.defineProperty(globalThis, name, { configurable: true, get() { const at = String(new Error().stack).split('\\n')[2] ?? ''; if (!/[\\\\/]node_modules[\\\\/]/.test(at)) touched.push(name); return undefined; } });
 }
 const out = [];
 for (const [dir, entry] of JSON.parse(process.argv[1])) {

@@ -71,7 +71,7 @@ function copiedFiles(vendorRoot: string, root: string): Item[] {
       const head = /\.(ts|js|mjs|css)$/.test(file) ? readFileSync(file, 'utf8').slice(0, 2000) : '';
       const header = /Derived from \S+@[0-9a-f]+ \S+ ([A-Za-z0-9.+-]+(?: (?:OR|AND) [A-Za-z0-9.+-]+)*)\s*$/m.exec(head)?.[1];
       const license = header ?? upstream.license ?? '';
-      out.push({ kind: 'copied', name: relative(root, file), license, verdict: classify(license) });
+      out.push({ kind: 'copied', name: relative(root, file).replaceAll('\\', '/'), license, verdict: classify(license) });
     }
   }
   return out;
@@ -125,7 +125,8 @@ export function cdnInputs(root: string, pkgDir: string): CdnInputs {
   if (!existsSync(file)) throw new Error(`${relative(root, file)} is missing: build the package first (pnpm build)`);
   const workspace = new Set<string>();
   const npm = new Map<string, CdnInputs['npm'][number]>();
-  for (const f of readJson<string[]>(file)) {
+  for (const input of readJson<string[]>(file)) {
+    const f = input.replaceAll('\\', '/');
     if (!existsSync(join(root, f))) continue;
     const ws = /^packages\/([^/]+)\//.exec(f)?.[1];
     if (ws !== undefined) {
@@ -158,7 +159,7 @@ export function audit(root: string, pkgDir: string): Item[] {
   const items = copiedFiles(join(pkgDir, 'src/vendor'), root);
   for (const b of manifest.otter?.bundle ?? []) {
     if (b.startsWith('@otter-vendor/')) {
-      items.push(...copiedFiles(join(root, 'vendor'), root).filter((i) => i.name.startsWith(join('vendor', b.slice('@otter-vendor/'.length)))).map((i) => ({ ...i, kind: 'bundled' as const })));
+      items.push(...copiedFiles(join(root, 'vendor'), root).filter((i) => i.name.startsWith(join('vendor', b.slice('@otter-vendor/'.length)).replaceAll('\\', '/'))).map((i) => ({ ...i, kind: 'bundled' as const })));
     } else {
       const tree = dependencyTree(pkgDir, [b]);
       // The bundled package itself, and whatever of its tree is bundled with it (sax under imsc).

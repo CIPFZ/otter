@@ -61,7 +61,7 @@ export const EXAMPLES: Readonly<Record<string, string>> = {
 };
 
 const dedent = (s: string): string => {
-  const lines = s.replace(/^\n+|\s+$/g, '').split('\n');
+  const lines = s.replace(/\r\n/g, '\n').replace(/^\n+|\s+$/g, '').split('\n');
   const indent = Math.min(...lines.filter((l) => l.trim() !== '').map((l) => /^ */.exec(l)?.[0].length ?? 0));
   return lines.map((l) => l.slice(indent)).join('\n');
 };
@@ -70,7 +70,7 @@ const dedent = (s: string): string => {
 export function exampleRegions(files: readonly { name: string; text: string }[]): Map<string, { code: string; file: string }> {
   const out = new Map<string, { code: string; file: string }>();
   for (const f of files) {
-    for (const m of f.text.matchAll(/^[ \t]*(?:\/\/|<!--) #region example:([\w-]+)(?: -->)?\n([\s\S]*?)\n[ \t]*(?:\/\/|<!--) #endregion/gm)) {
+    for (const m of f.text.replace(/\r\n/g, '\n').matchAll(/^[ \t]*(?:\/\/|<!--) #region example:([\w-]+)(?: -->)?\n([\s\S]*?)\n[ \t]*(?:\/\/|<!--) #endregion/gm)) {
       out.set(m[1] as string, { code: dedent(m[2] as string), file: f.name });
     }
   }
@@ -78,7 +78,10 @@ export function exampleRegions(files: readonly { name: string; text: string }[])
 }
 
 /** The code of an @example tag: its fenced block (TS keeps the fence in the tag text). */
-export const exampleCode = (tag: ApiTag): string => dedent(/```\w*\n([\s\S]*?)```/.exec(tag.text)?.[1] ?? tag.text);
+export const exampleCode = (tag: ApiTag): string => {
+  const text = tag.text.replace(/\r\n/g, '\n');
+  return dedent(/```\w*\n([\s\S]*?)```/.exec(text)?.[1] ?? text);
+};
 
 /** The e2e example site's sources (e2e/site/examples/). */
 export function readExampleRegions(root: string): Map<string, { code: string; file: string }> {

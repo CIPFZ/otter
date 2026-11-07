@@ -116,6 +116,20 @@ jobs:
             size-report.json
           if-no-files-found: ignore
 
+  windows-release-tools:
+    name: release tools (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      # Keep pnpm in npm's execution cache instead of installing a global tool.
+      - run: npm exec --yes --package=pnpm@${{ env.PNPM_VERSION }} -- pnpm install --frozen-lockfile
+      - name: Windows validation and release tooling
+        run: npm exec --yes --package=pnpm@${{ env.PNPM_VERSION }} -- pnpm check
+
   e2e:
     name: e2e (${{ matrix.name }})
     needs: verify

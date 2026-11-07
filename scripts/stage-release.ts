@@ -5,14 +5,14 @@
 //
 //   node scripts/stage-release.ts [--dry-run]
 
-import { execFileSync } from 'node:child_process';
+import { runCommand } from './lib/process.ts';
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const dryRun = process.argv.includes('--dry-run');
-const run = (cmd: string, args: string[], cwd = root, quiet = false): string => execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', quiet ? 'pipe' : 'inherit'] }).trim();
+const run = (cmd: string, args: string[], cwd = root, quiet = false): string => runCommand(cmd, args, { cwd, stdio: ['ignore', 'pipe', quiet ? 'pipe' : 'inherit'] }).trim();
 
 const pre = JSON.parse(readFileSync(join(root, '.changeset/pre.json'), 'utf8')) as { mode?: string; tag?: string };
 const tag = pre.mode === 'pre' && pre.tag !== undefined ? pre.tag : 'latest';
@@ -33,7 +33,7 @@ for (const dir of dirs.sort()) {
     skipped.push(`${m.name}@${m.version}`);
     continue;
   }
-  const tgz = run('pnpm', ['pack', '--pack-destination', work], join(root, 'packages', dir)).split('\n').pop() as string;
+  const tgz = run('pnpm', ['pack', '--pack-destination', work], join(root, 'packages', dir)).split(/\r?\n/).pop() as string;
   if (!dryRun) run('npm', ['stage', 'publish', tgz, '--tag', tag]);
   staged.push(`${m.name}@${m.version}`);
 }

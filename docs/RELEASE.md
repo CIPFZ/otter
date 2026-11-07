@@ -12,7 +12,9 @@
 
 ## 首发（负责人的机器，ADR-014 §3）
 
-前提：npm ≥ 11.15（`npm trust`），已 `npm login` 且账号开了 2FA，本地 main 干净且与 origin/main 一致。
+前提：Node ≥ 22.18、pnpm 12.11.2、npm ≥ 11.15（`npm trust`），已 `npm login` 且账号开了 2FA，本地 main 干净且与 origin/main 一致。先执行 `pnpm install --frozen-lockfile` 安装项目依赖，以及 `pnpm exec playwright install chromium` 准备 dry-run 的浏览器。
+
+Windows 上的 npm、pnpm 与 `node_modules/.bin` 入口由统一的子进程工具处理；参数仍按数组传递，包含空格的路径不需要手工拼接 shell 命令。首发检查先构建，再检查许可与发布文件，确保新克隆也有 CDN 许可审计需要的 `dist/inputs.json`。
 
 1. 先看一遍：`node scripts/first-publish.ts --dry-run`。检查照跑（许可规则与发布文件、完整的 release dry-run），发布与登记的命令只打印。
 2. 首发：`node scripts/first-publish.ts`（2FA 用 `--otp=<码>`，或按提示输入）。依次：

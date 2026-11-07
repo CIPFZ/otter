@@ -12,6 +12,9 @@ import { checkVendor, type VendorDir } from './lib/vendor.ts';
 
 const root = join(import.meta.dirname, '..');
 
+// UPSTREAM.json uses forward slashes on every platform.
+const recordPath = (from: string, file: string): string => relative(from, file).replace(/\\/g, '/');
+
 const walk = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
     e.name === 'node_modules' || e.name === 'dist' ? [] : e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)],
@@ -30,11 +33,11 @@ for (const parent of candidateParents) {
   for (const entry of readdirSync(parent, { withFileTypes: true })) {
     const dir = join(parent, entry.name);
     if (!entry.isDirectory()) {
-      strays.push(relative(root, dir));
+      strays.push(recordPath(root, dir));
       continue;
     }
     const manifest = join(dir, 'UPSTREAM.json');
-    const files = walk(dir).map((f) => relative(dir, f)).filter((f) => f !== 'UPSTREAM.json');
+    const files = walk(dir).map((f) => recordPath(dir, f)).filter((f) => f !== 'UPSTREAM.json');
     let upstream: unknown;
     try {
       upstream = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')) : undefined;
@@ -42,7 +45,7 @@ for (const parent of candidateParents) {
       upstream = `invalid JSON: ${String(err)}`;
     }
     vendorDirs.push({
-      dir: relative(root, dir),
+      dir: recordPath(root, dir),
       upstream,
       files,
       contents: Object.fromEntries(files.map((f) => [f, readFileSync(join(dir, f), 'utf8')])),

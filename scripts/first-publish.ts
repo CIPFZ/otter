@@ -10,7 +10,8 @@
 //   node scripts/first-publish.ts --dry-run     the checks, then print what it would run
 //   node scripts/first-publish.ts [--otp=123456]
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { setTimeout } from 'node:timers/promises';
+import { runCommand } from './lib/process.ts';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -21,13 +22,12 @@ const otp = process.argv.find((a) => a.startsWith('--otp='))?.slice('--otp='.len
 export const RELEASE_WORKFLOW = 'release.yml';
 export const REPOSITORY = 'CIPFZ/otter';
 
-const out = (cmd: string, args: string[]): string => execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const out = (cmd: string, args: string[]): string => runCommand(cmd, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 /** Runs a command; with `--dry-run` only prints it, unless `always` (the checks). */
 const step = (cmd: string, args: string[], always = false): void => {
   console.log(`$ ${cmd} ${args.join(' ')}`);
   if (dryRun && !always) return;
-  const r = spawnSync(cmd, args, { cwd: root, stdio: 'inherit' });
-  if (r.status !== 0) throw new Error(`${cmd} ${args.join(' ')} exited with ${r.status}`);
+  runCommand(cmd, args, { cwd: root, stdio: 'inherit' });
 };
 const fail = (message: string): never => {
   console.error(`✗ ${message}`);
@@ -55,10 +55,11 @@ const packages = readdirSync(join(root, 'packages'))
 const version = packages[0]?.version ?? fail('no public package');
 console.log(`npm user ${user}; ${packages.length} packages at ${version}${pre.mode === 'pre' ? `, dist-tag ${pre.tag}` : ''}`);
 
-// The release checks: license rules and release files, then the full dry run (build, tarballs,
-// npm --dry-run, host install, CDN builds in Chromium).
+// Build first: the CDN license audit reads dist/inputs.json, including on a fresh clone.
+// Then check license rules and release files before packing, npm --dry-run, host install and playback.
+step('pnpm', ['build'], true);
 step('node', ['scripts/release-files.ts', '--check'], true);
-step('pnpm', ['release:dry-run'], true);
+step('node', ['scripts/release-dry-run.ts'], true);
 
 // Publish.
 step('pnpm', ['changeset', 'publish', ...(otp === undefined ? [] : [`--otp=${otp}`])]);
@@ -87,7 +88,7 @@ for (const p of packages) {
     continue;
   }
   step('npm', ['trust', 'github', p.name, '--file', RELEASE_WORKFLOW, '--repository', REPOSITORY, '--allow-stage-publish', '--yes']);
-  if (!dryRun) spawnSync('sleep', ['2']);
+  if (!dryRun) await setTimeout(2000);
 }
 
 console.log(dryRun ? '✓ dry run: nothing published' : `✓ published ${version}; push the tags: git push origin --tags`);

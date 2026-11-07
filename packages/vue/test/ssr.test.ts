@@ -19,7 +19,7 @@ beforeAll(() => {
       get() {
         // Vue's own renderer checks `typeof window` (devtools hook): only reads from Otter's code count.
         const stack = String(new Error().stack).split('\n').slice(2);
-        if (stack[0]?.includes('/node_modules/') === true) return undefined;
+        if (/[\\/]node_modules[\\/]/.test(stack[0] ?? '')) return undefined;
         touched.push(name);
         stacks.push(stack.slice(0, 3).join(' <- '));
         return undefined;

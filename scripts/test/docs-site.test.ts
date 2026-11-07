@@ -48,6 +48,28 @@ describe('TSDoc gate (AGENT §4)', () => {
     expect(docsGate(passing())).toEqual([]);
   });
 
+  it.each([
+    ['CRLF sources with LF docs', '\r\n', '\n'],
+    ['LF sources with CRLF docs', '\n', '\r\n'],
+    ['CRLF sources and docs', '\r\n', '\r\n'],
+  ])('compares examples across checkout line endings: %s', (_label, sourceEol, docEol) => {
+    const input = passing();
+    const examples = exampleRegions([...input.examples].map(([region, { code, file }]) => ({
+      name: file,
+      text: `// #region example:${region}\n${code}\n// #endregion\n`.replace(/\n/g, sourceEol),
+    })));
+    const entries = input.api.entries.map((e) => ({
+      ...e,
+      exports: e.exports.map((item) => ({ ...item, tags: item.tags.map((tag) => ({ ...tag, text: tag.text.replace(/\n/g, docEol) })) })),
+    }));
+    const candidate = { ...input, api: { ...input.api, entries }, examples };
+    expect(docsGate(candidate)).toEqual([]);
+    const vod = examples.get('vod');
+    if (vod === undefined) throw new Error('The VOD region must be extracted');
+    examples.set('vod', { ...vod, code: vod.code.replace('container', 'container, title: "changed"') });
+    expect(docsGate(candidate)).toEqual(['@otter-player/presets/vod#createVodPlayer: @example differs from e2e/site/examples/vod.ts (region vod)']);
+  });
+
   it('fails an undocumented user-facing export; an internal one and an allowlisted structural type pass', () => {
     const input = passing();
     const entries = [...input.api.entries, entry('@otter-player/format-hls', [x('createHlsFormat', { doc: '' })]), entry('@otter-player/media', [x('createSession', { doc: '' })]), entry('@otter-player/core', [x('Unsubscribe', { kind: 'type', doc: '' })])];
@@ -110,10 +132,10 @@ describe('TSDoc gate (AGENT §4)', () => {
     expect(docsGate({ ...input, errorCodes })).toEqual(["error code liveOnly (packages/format-flv/src/index.ts): not in OtterError's table", "error code shaka*: in OtterError's table, raised nowhere"]);
   });
 
-  it('reads example regions (TS and Svelte markers, dedented) and table codes', () => {
+  it.each(['\n', '\r\n'])('reads example regions (TS and Svelte markers, dedented) and table codes with %j', (eol) => {
     const regions = exampleRegions([
-      { name: 'a.ts', text: "import x from './x';\n  // #region example:a\n  const p = 1;\n    nested();\n  // #endregion\n" },
-      { name: 'B.svelte', text: '<!-- #region example:b -->\n<script>\n  let x = 1;\n</script>\n<!-- #endregion -->\n' },
+      { name: 'a.ts', text: "import x from './x';\n  // #region example:a\n  const p = 1;\n    nested();\n  // #endregion\n".replace(/\n/g, eol) },
+      { name: 'B.svelte', text: '<!-- #region example:b -->\n<script>\n  let x = 1;\n</script>\n<!-- #endregion -->\n'.replace(/\n/g, eol) },
     ]);
     expect(regions.get('a')).toEqual({ code: 'const p = 1;\n  nested();', file: 'a.ts' });
     expect(regions.get('b')?.code).toBe('<script>\n  let x = 1;\n</script>');

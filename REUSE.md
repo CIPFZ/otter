@@ -85,3 +85,9 @@
 - `scripts/vendor-sync.ts`：联网对比 `UPSTREAM.json` 固定的 commit 与上游默认分支，输出漂移报告（CI 定时任务中运行，不阻断）；上游修了 MSE / iOS bug 要在一周内跟上。
 - 所有 L2/L3 代码过 strict TS 与项目 ESLint 再入库。
 - 顺序：先 L1 把 hls.js、Shaka、mpegts.js 接上跑通全场景，QoE 面板有数据后，再按"哪个场景体积或行为不满意"决定降到 L2/L3 替换。先有可用的全场景产品，再做替换。
+
+## 6. 开发工具依赖
+
+| 工具 | 来源 | 等级 | 用途 |
+|---|---|---|---|
+| 发布脚本子进程 | [cross-spawn](https://github.com/moxystudio/node-cross-spawn) 7.0.6（MIT），类型 `@types/cross-spawn` 6.0.6（MIT） | L1 开发依赖 | 在 Windows 下解析 npm / pnpm 与 `.bin` 命令并转义参数；统一保留启动错误、退出码和输出。仅用于仓库脚本，不进入播放器包。 |

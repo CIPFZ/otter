@@ -12,7 +12,7 @@
 //
 //   pnpm build && node scripts/release-dry-run.ts [--keep]     (needs the npm registry)
 
-import { execFileSync } from 'node:child_process';
+import { runCommand } from './lib/process.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { cdnSmoke } from './lib/cdn-smoke.ts';
@@ -33,7 +33,7 @@ interface Manifest {
   peerDependencies?: Record<string, string>;
 }
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(file, 'utf8')) as T;
-const run = (cmd: string, args: string[], cwd: string): string => execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+const run = (cmd: string, args: string[], cwd: string): string => runCommand(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
 const targets = (exports: unknown, condition?: string): string[] =>
   typeof exports === 'string'
     ? condition === '@otter-player/source'
@@ -58,8 +58,8 @@ for (const dir of published) {
   const m = manifests.get(dir) as Manifest;
   const pkgDir = join(root, 'packages', dir);
   const out = run('pnpm', ['pack', '--pack-destination', tarballs], pkgDir);
-  const tgz = out.trim().split('\n').pop() as string;
-  const files = run('tar', ['-tzf', tgz], work).split('\n').filter((f) => f !== '').map((f) => f.replace(/^package\//, ''));
+  const tgz = out.trim().split(/\r?\n/).pop() as string;
+  const files = run('tar', ['-tzf', tgz], work).split(/\r?\n/).filter((f) => f !== '').map((f) => f.replace(/^package\//, ''));
   const packed = JSON.parse(run('tar', ['-xzOf', tgz, 'package/package.json'], work)) as Manifest;
   const where = `${m.name}`;
   if (packed.version !== version) problems.push(`${where}: version ${packed.version}, not ${version}`);

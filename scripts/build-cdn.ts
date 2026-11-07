@@ -65,7 +65,7 @@ for (const b of bundles) {
     absWorkingDir: root,
     logLevel: 'error',
   });
-  for (const f of Object.keys(result.metafile.inputs)) if (f !== '<stdin>') inputs.add(relative(root, resolve(root, f)));
+  for (const f of Object.keys(result.metafile.inputs)) if (f !== '<stdin>') inputs.add(relative(root, resolve(root, f)).replaceAll('\\', '/'));
   const css = join(root, 'packages', b.skin, 'dist', 'index.css');
   if (!existsSync(css)) throw new Error(`${b.skin} is not built: run pnpm build`);
   copyFileSync(css, join(dir, `${b.name}.css`));

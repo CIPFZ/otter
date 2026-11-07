@@ -176,6 +176,11 @@ export function releaseFiles(): Map<string, string> {
   return out;
 }
 
+/** Compares release text while tolerating Git's CRLF checkout conversion. */
+export function releaseFileMatches(actual: string | undefined, expected: string): boolean {
+  return actual !== undefined && actual.replace(/\r\n/g, '\n') === expected.replace(/\r\n/g, '\n');
+}
+
 if (import.meta.filename === process.argv[1]) {
   if (process.argv.includes('--audit')) {
     console.log(auditTable());
@@ -192,7 +197,7 @@ if (import.meta.filename === process.argv[1]) {
   for (const [rel, content] of releaseFiles()) {
     const file = join(root, rel);
     const now = existsSync(file) ? readFileSync(file, 'utf8') : undefined;
-    if (now === content) continue;
+    if (releaseFileMatches(now, content)) continue;
     if (check) stale.push(rel);
     else writeFileSync(file, content);
   }

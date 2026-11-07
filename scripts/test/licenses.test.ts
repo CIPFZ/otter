@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { audit, classify, licenseProblems } from '../lib/licenses.ts';
+import { audit, cdnInputs, classify, licenseProblems } from '../lib/licenses.ts';
 
 describe('license rules of published packages (ADR-014 §4a)', () => {
   it('classifies names and SPDX expressions', () => {
@@ -41,5 +41,39 @@ describe('license rules of published packages (ADR-014 §4a)', () => {
       'p: copied packages/p/src/vendor/b/z.ts is without a license: no recognised license',
       'p: dependency dep > sub is LGPL-3.0: LGPL only as a separately loaded artefact outside the tarball',
     ]);
+  });
+
+  it.each(['/', '\\'])('audits workspace and npm CDN inputs with %s separators', (separator) => {
+    const root = mkdtempSync(join(tmpdir(), 'otter-cdn-licenses-'));
+    try {
+      const pkg = join(root, 'packages', 'cdn');
+      const workspace = join(root, 'packages', 'p');
+      const vendor = join(root, 'vendor', 'a');
+      const depPath = 'node_modules/.pnpm/@scope+dep@1.0.0/node_modules/@scope/dep';
+      const dep = join(root, depPath);
+      for (const dir of [join(pkg, 'dist'), join(workspace, 'dist'), vendor, dep]) mkdirSync(dir, { recursive: true });
+      writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@otter-player/cdn', otter: { cdn: true } }));
+      writeFileSync(join(workspace, 'package.json'), JSON.stringify({ name: '@otter-player/p', otter: { bundle: ['@otter-vendor/a'] } }));
+      writeFileSync(join(workspace, 'dist/index.js'), '// built workspace code\n');
+      writeFileSync(join(vendor, 'UPSTREAM.json'), JSON.stringify({ project: 'a', license: 'GPL-3.0' }));
+      writeFileSync(join(vendor, 'x.js'), '// vendored code\n');
+      writeFileSync(join(dep, 'package.json'), JSON.stringify({ name: '@scope/dep', version: '1.0.0', license: 'MIT' }));
+      writeFileSync(join(dep, 'index.js'), '// npm dependency\n');
+      const inputs = ['packages/p/dist/index.js', depPath + '/index.js'].map((file) => file.replaceAll('/', separator));
+      writeFileSync(join(pkg, 'dist/inputs.json'), JSON.stringify(inputs));
+
+      expect(cdnInputs(root, pkg)).toEqual({
+        workspace: ['p'],
+        npm: [{ name: '@scope/dep', version: '1.0.0', license: 'MIT', dir: dep }],
+      });
+      const items = audit(root, pkg);
+      expect(items).toEqual([
+        { kind: 'bundled', name: 'vendor/a/x.js', license: 'GPL-3.0', verdict: 'gpl' },
+        { kind: 'bundled', name: '@scope/dep@1.0.0', license: 'MIT', verdict: 'permissive' },
+      ]);
+      expect(licenseProblems('cdn', items)).toEqual(['cdn: bundled vendor/a/x.js is GPL-3.0: GPL / AGPL may not be in a public package']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

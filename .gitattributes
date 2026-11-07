@@ -3,3 +3,7 @@ e2e/media/**/*.ts binary
 e2e/media/**/*.m4s binary
 e2e/media/**/*.mp4 binary
 e2e/media/**/*.flv binary
+
+# Pinned decoder glue must retain the bytes recorded in UPSTREAM.json.
+packages/decoder-wasm-hevc/src/vendor/jessibuca/videodec.js text eol=lf
+packages/decoder-wasm-hevc/src/vendor/jessibuca/videodec_simd.js text eol=lf
