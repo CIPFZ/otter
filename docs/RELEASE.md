@@ -17,10 +17,11 @@
 Windows 上的 npm、pnpm 与 `node_modules/.bin` 入口由统一的子进程工具处理；参数仍按数组传递，包含空格的路径不需要手工拼接 shell 命令。首发检查先构建，再检查许可与发布文件，确保新克隆也有 CDN 许可审计需要的 `dist/inputs.json`。
 
 1. 先看一遍：`node scripts/first-publish.ts --dry-run`。检查照跑（许可规则与发布文件、完整的 release dry-run），发布与登记的命令只打印。
-2. 首发：`node scripts/first-publish.ts`（2FA 用 `--otp=<码>`，或按提示输入）。依次：
+2. 首发：在交互式终端运行 `node scripts/first-publish.ts`。不要提前提供 `--otp=<码>` 或 OTP 环境变量；脚本会拒绝它们。构建和完整预演结束后，Changesets/npm 先完成自己的查询，再在实际需要 2FA 时提示输入新码或完成网页验证。stdin 与 stdout 都必须连接真实终端，不能通过管道或普通输出重定向运行正式首发；后台检查用 `--dry-run`。需要同时留存 Node 命令输出时，使用 `scripts/lib/terminal-capture.ts` 提供的预加载捕获环境，保持原有终端输入、输出与验证行为。依次：
    - `pnpm changeset publish`：发布全部公开包的当前版本，dist-tag 取 pre 模式的 `beta`，已在 npm 上的版本跳过，git tag 打在本地；
    - `otterplayer` 占位包（`placeholder/otterplayer`，不在工作区里，只发一次）；
-   - 对每个公开包 `npm trust github <包> --file release.yml --repository CIPFZ/otter --allow-stage-publish --yes`，间隔 2 s。第一次会要 2FA，网页上勾选「5 分钟内跳过 2FA」。
+   - 对每个公开包 `npm trust github <包> --file release.yml --repository CIPFZ/otter --allow-stage-publish --yes`，间隔 2 s。查询或登记都可能要求 2FA，按当次终端提示完成；不能假设之前的验证会覆盖之后的命令。
+   - 验证码过期时等待新的 2FA 提示，再向负责人取新码，不能重复旧码。其他错误立即停止；若命令退出，先检查已发布状态，再重新运行（已发布版本会跳过）。占位包和可信发布各自按实际提示验证，不沿用首个码。
 3. 推 tag：`git push origin --tags`。
 
 ## 之后的版本：发布工作流
@@ -31,7 +32,7 @@ Windows 上的 npm、pnpm 与 `node_modules/.bin` 入口由统一的子进程工
 
 ## CDN（ADR-014 §6）
 
-`@otter-player/cdn` 是普通的公开包，随其他包一起发布；它的 `build`（`scripts/build-cdn.ts`）在 presets 与皮肤之后出 `dist/otter-basic/`、`dist/otter-vod/`：入口 `otter-*.esm.js`（gzip：basic 13.9 kB，vod 30.1 kB）、按需块 `chunks/`、皮肤 CSS。jsDelivr 地址：`https://cdn.jsdelivr.net/npm/@otter-player/cdn@<版本>/dist/otter-vod/otter-vod.esm.js`（固定版本：块的文件名随版本变）。release dry-run 把它从 tarball 装好，在 Chromium 里按 URL 导入两个入口并播放夹具。
+`@otter-player/cdn` 是普通的公开包，随其他包一起发布；它的 `build`（`scripts/build-cdn.ts`）在 presets 与皮肤之后出 `dist/otter-basic/`、`dist/otter-vod/`：入口 `otter-*.esm.js`（gzip：basic 14.2 kB，vod 30.6 kB）、按需块 `chunks/`、皮肤 CSS。jsDelivr 地址：`https://cdn.jsdelivr.net/npm/@otter-player/cdn@<版本>/dist/otter-vod/otter-vod.esm.js`（固定版本：块的文件名随版本变）。release dry-run 把它从 tarball 装好，在 Chromium 里按 URL 导入两个入口并播放夹具。
 
 ## 文档站（ADR-014 §7）
 

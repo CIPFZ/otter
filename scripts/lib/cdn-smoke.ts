@@ -1,11 +1,8 @@
-// Plays the CDN builds (scripts/build-cdn.ts) in Chromium: a page imports `<name>.esm.js` by URL,
-// as a page using jsDelivr would, makes the preset's player and plays the HLS fixture. Used by the
-// release dry-run.
-
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { extname, join } from 'node:path';
-import { chromium } from '@playwright/test';
+// Plays the CDN builds from a loopback-only fixture server, as URL imports from jsDelivr.
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { chromium, type Browser } from '@playwright/test';
 
 const TYPES: Readonly<Record<string, string>> = { '.js': 'text/javascript', '.css': 'text/css', '.m3u8': 'application/vnd.apple.mpegurl', '.mp4': 'video/mp4', '.m4s': 'video/iso.segment' };
 
@@ -17,40 +14,73 @@ window.p = p;
 p.load('/hls-fmp4/master.m3u8', { autoplay: true }).catch((e) => (window.err = String(e)));
 </script></body></html>`;
 
-/** Per build: the playhead after up to 10 s, page errors, chunks fetched. */
-export async function cdnSmoke(cdnDir: string, mediaDir: string, names: readonly string[]): Promise<{ name: string; time: number; errors: string[]; chunks: number }[]> {
-  const server = createServer((req, res) => {
-    const url = (req.url ?? '/').split('?')[0] as string;
+const within = (root: string, file: string): boolean => {
+  const rel = relative(root, file);
+  return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+};
+
+/** Serve only the selected CDN and fixture roots, including after resolving symbolic links. */
+export function createCdnSmokeServer(cdnDir: string, mediaDir: string, names: readonly string[]): Server {
+  const roots = [['/cdn/', realpathSync(cdnDir)], ['/', realpathSync(mediaDir)]] as const;
+  return createServer((req, res) => {
+    let url: string;
+    try {
+      url = decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/');
+      if (url.includes('\0')) throw new Error('Invalid path');
+    } catch {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
     const html = /^\/([\w-]+)\.html$/.exec(url)?.[1];
     if (html !== undefined && names.includes(html)) {
       res.writeHead(200, { 'content-type': 'text/html' });
       res.end(page(html));
       return;
     }
-    for (const [prefix, dir] of [['/cdn/', cdnDir], ['/', mediaDir]] as const) {
+    for (const [prefix, dir] of roots) {
       if (!url.startsWith(prefix)) continue;
-      const file = join(dir, url.slice(prefix.length));
-      if (existsSync(file) && statSync(file).isFile()) {
+      const candidate = resolve(dir, url.slice(prefix.length));
+      if (!within(dir, candidate)) continue;
+      try {
+        if (!existsSync(candidate)) continue;
+        const file = realpathSync(candidate);
+        if (!within(dir, file) || !statSync(file).isFile()) continue;
+        const content = readFileSync(file);
         res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
-        res.end(readFileSync(file));
+        res.end(content);
         return;
+      } catch {
+        // A disappearing fixture is a failed request, not an uncaught server error.
       }
     }
     res.writeHead(404);
     res.end();
   });
-  await new Promise<void>((r) => server.listen(0, r));
-  const port = (server.address() as { port: number }).port;
-  const browser = await chromium.launch();
+}
+
+/** Per build: the playhead after up to 10 s, page errors, chunks fetched. */
+export async function cdnSmoke(cdnDir: string, mediaDir: string, names: readonly string[]): Promise<{ name: string; time: number; errors: string[]; chunks: number }[]> {
+  const server = createCdnSmokeServer(cdnDir, mediaDir, names);
+  let browser: Browser | undefined;
   const results: { name: string; time: number; errors: string[]; chunks: number }[] = [];
   try {
+    await new Promise<void>((done, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        server.off('error', reject);
+        done();
+      });
+    });
+    const port = (server.address() as { port: number }).port;
+    browser = await chromium.launch();
     for (const name of names) {
       const pg = await browser.newPage();
       const errors: string[] = [];
       let chunks = 0;
       pg.on('pageerror', (e) => errors.push(String(e)));
       pg.on('request', (r) => void (r.url().includes('/chunks/') && chunks++));
-      await pg.goto(`http://localhost:${port}/${name}.html`);
+      await pg.goto(`http://127.0.0.1:${port}/${name}.html`);
       let time = 0;
       for (let i = 0; i < 40 && time <= 1; i++) {
         await pg.waitForTimeout(250);
@@ -62,8 +92,11 @@ export async function cdnSmoke(cdnDir: string, mediaDir: string, names: readonly
       await pg.close();
     }
   } finally {
-    await browser.close();
-    server.close();
+    try {
+      await browser?.close();
+    } finally {
+      if (server.listening) await new Promise<void>((done, reject) => server.close((error) => error === undefined ? done() : reject(error)));
+    }
   }
   return results;
 }

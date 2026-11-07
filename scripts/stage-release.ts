@@ -6,6 +6,7 @@
 //   node scripts/stage-release.ts [--dry-run]
 
 import { runCommand } from './lib/process.ts';
+import { npmErrorCode } from './lib/npm-error.ts';
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,8 +15,13 @@ const root = join(import.meta.dirname, '..');
 const dryRun = process.argv.includes('--dry-run');
 const run = (cmd: string, args: string[], cwd = root, quiet = false): string => runCommand(cmd, args, { cwd, stdio: ['ignore', 'pipe', quiet ? 'pipe' : 'inherit'] }).trim();
 
-const pre = JSON.parse(readFileSync(join(root, '.changeset/pre.json'), 'utf8')) as { mode?: string; tag?: string };
-const tag = pre.mode === 'pre' && pre.tag !== undefined ? pre.tag : 'latest';
+let pre: { mode?: string; tag?: string } | undefined;
+try {
+  pre = JSON.parse(readFileSync(join(root, '.changeset/pre.json'), 'utf8')) as { mode?: string; tag?: string };
+} catch (error) {
+  if (error === null || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT') throw error;
+}
+const tag = pre?.mode === 'pre' && pre.tag !== undefined ? pre.tag : 'latest';
 const dirs = readdirSync(join(root, 'packages')).filter((d) => existsSync(join(root, 'packages', d, 'package.json')));
 const work = mkdtempSync(join(tmpdir(), 'otter-stage-'));
 const staged: string[] = [];
@@ -25,9 +31,11 @@ for (const dir of dirs.sort()) {
   if (m.private === true) continue;
   let exists = false;
   try {
-    exists = run('npm', ['view', `${m.name}@${m.version}`, 'version'], root, true) === m.version;
-  } catch {
-    exists = false;
+    const publishedVersion: unknown = JSON.parse(run('npm', ['view', `${m.name}@${m.version}`, 'version', '--json'], root, true));
+    if (publishedVersion !== m.version) throw new Error(`npm view ${m.name}@${m.version} returned an unexpected version`);
+    exists = true;
+  } catch (error) {
+    if (npmErrorCode(error) !== 'E404') throw error;
   }
   if (exists) {
     skipped.push(`${m.name}@${m.version}`);

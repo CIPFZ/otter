@@ -42,10 +42,12 @@ jobs:
       - run: npm install -g npm@^12 pnpm@${{ env.PNPM_VERSION }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Build release packages
+        run: pnpm build
       - name: License rules and release files (ADR-014 §4a)
         run: pnpm check:release-files
       - name: Release dry run (tarballs, npm --dry-run, host install, the CDN package in Chromium)
-        run: pnpm release:dry-run
+        run: node scripts/release-dry-run.ts
       - name: Stage on npm
         if: inputs.stage
         run: node scripts/stage-release.ts

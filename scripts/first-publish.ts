@@ -8,16 +8,19 @@
 // Needs: npm ≥ 11.15 (`npm trust`), logged in to npm with 2FA, a clean main equal to origin/main.
 //
 //   node scripts/first-publish.ts --dry-run     the checks, then print what it would run
-//   node scripts/first-publish.ts [--otp=123456]
+//   node scripts/first-publish.ts             use an interactive terminal; npm asks for 2FA when needed
 
 import { setTimeout } from 'node:timers/promises';
 import { runCommand } from './lib/process.ts';
+import { assertInteractivePublish } from './lib/publish-input.ts';
+import { npmErrorCode } from './lib/npm-error.ts';
+import { runInteractiveCommand } from './lib/interactive-command.ts';
+import { hasReleaseTrust } from './lib/npm-trust.ts';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = join(import.meta.dirname, '..');
 const dryRun = process.argv.includes('--dry-run');
-const otp = process.argv.find((a) => a.startsWith('--otp='))?.slice('--otp='.length);
 /** The workflow file trusted publishing is bound to: never rename it (ADR-014 §3). */
 export const RELEASE_WORKFLOW = 'release.yml';
 export const REPOSITORY = 'CIPFZ/otter';
@@ -33,6 +36,13 @@ const fail = (message: string): never => {
   console.error(`✗ ${message}`);
   process.exit(1);
 };
+
+// Reject early codes before any work; npm asks for fresh authentication at the actual publish.
+try {
+  assertInteractivePublish(process.argv.slice(2), process.env, process.stdin.isTTY === true, process.stdout.isTTY === true);
+} catch (error) {
+  fail((error as Error).message);
+}
 
 // Checks.
 const [major = 0, minor = 0] = out('npm', ['--version']).split('.').map(Number);
@@ -61,28 +71,24 @@ step('pnpm', ['build'], true);
 step('node', ['scripts/release-files.ts', '--check'], true);
 step('node', ['scripts/release-dry-run.ts'], true);
 
-// Publish.
-step('pnpm', ['changeset', 'publish', ...(otp === undefined ? [] : [`--otp=${otp}`])]);
+// npm/Changesets request 2FA after their own registry checks, directly before publishing.
+if (!dryRun) console.log('✓ checks passed; enter a fresh code only when npm requests 2FA.');
+step('pnpm', ['changeset', 'publish']);
 let placeholder = true;
 try {
-  out('npm', ['view', 'otterplayer', 'version']);
+  const publishedVersion: unknown = JSON.parse(out('npm', ['view', 'otterplayer', 'version', '--json']));
+  if (typeof publishedVersion !== 'string' || publishedVersion.length === 0) throw new Error('npm view otterplayer returned an invalid version');
   placeholder = false;
-} catch {
-  // not on npm yet
+} catch (error) {
+  if (npmErrorCode(error) !== 'E404') throw error;
 }
-if (placeholder) step('npm', ['publish', join(root, 'placeholder/otterplayer'), '--access', 'public', ...(otp === undefined ? [] : [`--otp=${otp}`])]);
+if (placeholder) step('npm', ['publish', join(root, 'placeholder/otterplayer'), '--access', 'public']);
 
-// Trusted publishing: staged only (CI stages, the owner approves). The first call asks for 2FA;
-// tick "skip 2FA for 5 minutes" there. 2 s between calls (rate limit, npm docs).
+// Trusted publishing: staged only (CI stages, the owner approves). Queries and registration may
+// request 2FA; follow each actual prompt. Keep 2 s between registration calls (npm rate limit).
 for (const p of packages) {
   let has = false;
-  if (!dryRun) {
-    try {
-      has = out('npm', ['trust', 'list', p.name, '--json']).includes(REPOSITORY);
-    } catch {
-      has = false;
-    }
-  }
+  if (!dryRun) has = hasReleaseTrust(runInteractiveCommand('npm', ['trust', 'list', p.name, '--json'], root), REPOSITORY, RELEASE_WORKFLOW);
   if (has) {
     console.log(`${p.name}: trusted publishing already registered`);
     continue;
