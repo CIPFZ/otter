@@ -13,6 +13,7 @@
 //   pnpm build && node scripts/release-dry-run.ts [--keep]     (needs the npm registry)
 
 import { runCommand } from './lib/process.ts';
+import { parseNpmPublishReport } from './lib/npm-report.ts';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { cdnSmoke } from './lib/cdn-smoke.ts';
@@ -74,7 +75,7 @@ for (const dir of published) {
   if (leftovers.length > 0) problems.push(`${where}: build leftovers in the tarball: ${leftovers.slice(0, 5).join(', ')}`);
   // npm's own view: the dist-tag, access and size it would publish with.
   const report = run('npm', ['publish', tgz, '--dry-run', '--tag', tag, '--json'], work);
-  const r = JSON.parse(report.slice(report.indexOf('{'))) as { size: number; unpackedSize: number; entryCount: number };
+  const r = parseNpmPublishReport(report, m.name, version);
   rows.push(`${m.name.padEnd(38)} ${String(r.entryCount).padStart(4)} files ${(r.size / 1024).toFixed(1).padStart(8)} kB packed ${(r.unpackedSize / 1024).toFixed(1).padStart(8)} kB unpacked`);
 }
 
