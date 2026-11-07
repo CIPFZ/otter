@@ -183,10 +183,9 @@ export function createMseSink(MediaSourceCtor: typeof MediaSource, options: MseS
     });
     sb.addEventListener('error', () => {
       if (created.aborted > 0) return;
-      const op = created.ops.shift();
-      created.busy = false;
-      op?.fail(new Error('SourceBuffer error'));
-      next(created);
+      // The failed operation still owns its following updateend event.
+      // Keep the queue busy until then so it cannot complete a later append.
+      created.ops[0]?.fail(new Error('SourceBuffer error'));
     });
     queues.set(segment.type, created);
   };

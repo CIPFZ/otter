@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCore, type QoeEventMap } from '@otter-player/core';
-import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationPluginOptions, type PresentationState } from '@otter-player/presentation';
+import { createPresentationController, createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMap, type PresentationPluginOptions, type PresentationState } from '@otter-player/presentation';
 import type { Surface } from '@otter-player/surface';
 
 type State = PresentationState & { paused: boolean; currentTime: number; duration: number; playbackRate: number };
@@ -70,6 +70,111 @@ async function setup(env: Env = {}, options: Partial<PresentationPluginOptions> 
 }
 
 describe('presentation controller', () => {
+  it.each(['fullscreen', 'pip'] as const)('does not exit a replacement controller when an old %s request resolves', async (target) => {
+    const { core, plugin, container, video } = await setup();
+    const old = plugin.controller;
+    if (old === undefined) throw new Error('not installed');
+    let complete!: () => void;
+    const originalFullscreen = container.requestFullscreen.bind(container);
+    const originalPip = video.requestPictureInPicture.bind(video);
+    if (target === 'fullscreen') {
+      container.requestFullscreen = () => new Promise<void>((resolve) => { complete = resolve; });
+    } else {
+      video.requestPictureInPicture = () => new Promise<PictureInPictureWindow>((resolve) => { complete = () => resolve({} as PictureInPictureWindow); });
+      stub(document, 'pictureInPictureElement', null);
+      stub(document, 'exitPictureInPicture', vi.fn(async () => stub(document, 'pictureInPictureElement', null)));
+    }
+    const pending = old.request(target);
+    old.destroy();
+    container.requestFullscreen = originalFullscreen;
+    video.requestPictureInPicture = originalPip;
+    const replacement = createPresentationController({ container, surface: { element: video } as unknown as Surface, lockOrientation: false });
+    expect(await replacement.request(target)).toBe(target);
+    complete();
+    expect(await pending).toBe('inline');
+    expect(replacement.mode).toBe(target);
+    expect(target === 'fullscreen' ? document.fullscreenElement : document.pictureInPictureElement).toBe(target === 'fullscreen' ? container : video);
+    replacement.destroy();
+    await core.destroy();
+  });
+
+  it('restores scrolling when destroyed before pseudo-fullscreen settles', async () => {
+    const { core, plugin, container } = await setup({ fullscreen: false });
+    const controller = plugin.controller;
+    if (controller === undefined) throw new Error('not installed');
+    document.body.style.overflow = 'auto';
+    const pending = controller.request('fullscreen');
+    controller.destroy();
+    expect(document.body.style.overflow).toBe('auto');
+    expect(await pending).toBe('inline');
+    expect(controller.pending).toBeNull();
+    expect(container.getAttribute('data-otter-presentation')).toBe('inline');
+    expect(await controller.request('fullscreen')).toBe('inline');
+    expect(document.body.style.overflow).toBe('auto');
+    document.body.style.overflow = '';
+    await core.destroy();
+  });
+
+  it('exits a native fullscreen request that finishes after destroy', async () => {
+    const { core, plugin, container } = await setup();
+    const controller = plugin.controller;
+    if (controller === undefined) throw new Error('not installed');
+    const original = container.requestFullscreen.bind(container);
+    let complete!: () => void;
+    container.requestFullscreen = () => new Promise<void>((resolve) => { complete = () => { void original().then(resolve); }; });
+    const changes = vi.fn();
+    controller.on('change', changes);
+    const pending = controller.request('fullscreen');
+    controller.destroy();
+    complete();
+    expect(await pending).toBe('inline');
+    expect(document.fullscreenElement).toBeNull();
+    expect(document.exitFullscreen).toHaveBeenCalledOnce();
+    expect(changes).not.toHaveBeenCalled();
+    await core.destroy();
+  });
+
+  it('exits video PiP if its browser request completes after destroy', async () => {
+    const { core, plugin, video } = await setup();
+    const controller = plugin.controller;
+    if (controller === undefined) throw new Error('not installed');
+    let complete!: () => void;
+    video.requestPictureInPicture = () => new Promise<PictureInPictureWindow>((resolve) => {
+      complete = () => {
+        stub(document, 'pictureInPictureElement', video);
+        resolve({} as PictureInPictureWindow);
+      };
+    });
+    stub(document, 'pictureInPictureElement', null);
+    stub(document, 'exitPictureInPicture', vi.fn(async () => stub(document, 'pictureInPictureElement', null)));
+    const pending = controller.request('pip');
+    controller.destroy();
+    complete();
+    expect(await pending).toBe('inline');
+    expect(document.pictureInPictureElement).toBeNull();
+    expect(document.exitPictureInPicture).toHaveBeenCalledOnce();
+    await core.destroy();
+  });
+
+  it('closes a late Document PiP window without moving the destroyed container', async () => {
+    let opened!: (value: Window) => void;
+    stub(window, 'documentPictureInPicture', { requestWindow: () => new Promise<Window>((resolve) => { opened = resolve; }) });
+    const { core, plugin, container } = await setup();
+    const controller = plugin.controller;
+    if (controller === undefined) throw new Error('not installed');
+    const pipWindow = Object.assign(new EventTarget(), {
+      document: document.implementation.createHTMLDocument('late pip'),
+      close: vi.fn(),
+    });
+    const pending = controller.request('docpip');
+    controller.destroy();
+    opened(pipWindow as unknown as Window);
+    expect(await pending).toBe('inline');
+    expect(pipWindow.close).toHaveBeenCalledOnce();
+    expect(container.parentElement).toBe(document.body);
+    await core.destroy();
+  });
+
   it('reports capabilities from feature detection', async () => {
     const { core } = await setup();
     expect(core.store.getState().presentation.capabilities).toEqual({

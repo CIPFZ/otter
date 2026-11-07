@@ -8,6 +8,7 @@ import {
   EMPTY_TRACKS,
   NO_CODEC_RANKING,
   observeMediaElement,
+  waitForMediaDetach,
   type BackendContext,
   type BackendEvents,
   type BackendFactory,
@@ -40,6 +41,7 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
   let media: HTMLMediaElement | undefined;
   let observer: MediaElementObserver | undefined;
   let engine: Engine | undefined;
+  let destroyed = false;
   let added: HTMLSourceElement | undefined;
   const offs: Unsubscribe[] = [];
 
@@ -100,6 +102,9 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
     },
     async load(source, opts) {
       const m = element();
+      const detach = waitForMediaDetach(m);
+      if (detach !== undefined) await detach;
+      if (destroyed) return;
       const mms = useManagedMediaSource(options.preferManagedMediaSource ?? true);
       const alternate = airPlayAlternate(source);
       prepareRemotePlayback(m, mms, alternate);
@@ -131,6 +136,7 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
         }),
       );
       await e.load();
+      if (destroyed) return;
       // The engine decides whether it really runs on MMS (Shaka always uses MMS when present).
       const result = finishRemotePlayback(m, e.mms, alternate);
       added = result.added;
@@ -166,6 +172,8 @@ export function createMseBackend(ctx: BackendContext, options: MseBackendOptions
     thumbnails: () => engine?.thumbnails?.() ?? null,
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
+      if (destroyed) return;
+      destroyed = true;
       // Stop observing first: detaching the MediaSource fires element errors we must not report.
       observer?.destroy();
       for (const off of offs.splice(0)) off();

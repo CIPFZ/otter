@@ -84,6 +84,8 @@ export interface DocumentPictureInPicture {
 type Layout = 'inline' | 'theater';
 
 const TIMEOUT_MS = 1500;
+// Created on demand so importing presentation stays free of runtime side effects.
+let owners: WeakMap<HTMLElement, object> | undefined;
 
 /** Resolves once `ok()` holds (checked now and on each event), rejects with 'dismissed' after a timeout. */
 const nextEvent = (target: EventTarget, types: readonly string[], ok: () => boolean): Promise<void> =>
@@ -109,6 +111,8 @@ const nextEvent = (target: EventTarget, types: readonly string[], ok: () => bool
 
 export function createPresentationController(options: PresentationOptions): PresentationController {
   const { container, pipVideo } = options;
+  const owner = {};
+  (owners ??= new WeakMap()).set(container, owner);
   const doc = container.ownerDocument;
   const win = doc.defaultView as (Window & { documentPictureInPicture?: DocumentPictureInPicture }) | null;
   const video = (options.surface.element instanceof HTMLVideoElement ? options.surface.element : undefined) as (HTMLVideoElement & WebKitVideo) | undefined;
@@ -116,6 +120,7 @@ export function createPresentationController(options: PresentationOptions): Pres
   const offs: Unsubscribe[] = [];
 
   let mode: PresentationMode = 'inline';
+  let destroyed = false;
   let layout: Layout = 'inline';
   let pending: PresentationMode | null = null;
   // How the current fullscreen is done: element API, pseudo (CSS) or the iPhone system player.
@@ -199,24 +204,25 @@ export function createPresentationController(options: PresentationOptions): Pres
 
   // Leaves the current non-layout mode. Synchronous side effects only; the browser's own events
   // (fullscreenchange, leavepictureinpicture, pagehide) confirm.
-  const leave = (): Promise<void> => {
-    const current = mode;
+  const leave = (current: PresentationMode = mode): Promise<void> => {
     // Deferred: by then a new request may already have taken over from `current`.
     const settle = (): void => {
-      if (mode === current) set(layout);
+      if (mode === current) set(destroyed ? 'inline' : layout);
     };
     if (current === 'fullscreen') {
       unlockOrientation();
       if (fullscreenKind === 'pseudo') {
         restoreScroll?.();
         restoreScroll = undefined;
-        set(layout);
+        set(destroyed ? 'inline' : layout);
         return Promise.resolve();
       }
       if (fullscreenKind === 'system') {
-        video?.webkitExitFullscreen?.();
+        if (video?.webkitDisplayingFullscreen !== true) return Promise.resolve();
+        video.webkitExitFullscreen?.();
         return nextEvent(video as HTMLVideoElement, ['webkitendfullscreen'], () => mode !== 'fullscreen').catch(settle);
       }
+      if (!inFullscreen()) return Promise.resolve();
       return doc
         .exitFullscreen()
         .catch(() => undefined)
@@ -224,7 +230,7 @@ export function createPresentationController(options: PresentationOptions): Pres
         .catch(() => undefined)
         .then(settle);
     }
-    if (current === 'pip') return doc.exitPictureInPicture().catch(() => undefined).then(settle);
+    if (current === 'pip') return inPip() ? doc.exitPictureInPicture().catch(() => undefined).then(settle) : Promise.resolve();
     if (current === 'docpip') {
       pipWindow?.close();
       return Promise.resolve();
@@ -284,8 +290,11 @@ export function createPresentationController(options: PresentationOptions): Pres
     const size = options.docPipSize ?? { width: Math.round(container.clientWidth) || 640, height: Math.round(container.clientHeight) || 360 };
     const opened = (win?.documentPictureInPicture as DocumentPictureInPicture).requestWindow(size);
     return opened.then(async (w) => {
+      if (destroyed) return w.close();
+      const { moveInto } = await import('./docpip.js');
+      if (destroyed) return w.close();
       pipWindow = w;
-      (await import('./docpip.js')).moveInto(container, w, video, () => {
+      moveInto(container, w, video, () => {
         pipWindow = undefined;
         if (mode === 'docpip') set(layout);
       });
@@ -304,6 +313,7 @@ export function createPresentationController(options: PresentationOptions): Pres
       return (mode === 'fullscreen' && fullscreenKind === 'system') || mode === 'pip';
     },
     request(to, opts = {}) {
+      if (destroyed) return Promise.resolve(mode);
       if (pending !== null) return Promise.resolve(deny(to, 'busy'));
       if (to === mode) return Promise.resolve(mode);
       if (to === 'inline') return controller.exit().then(() => mode);
@@ -322,6 +332,7 @@ export function createPresentationController(options: PresentationOptions): Pres
       return entering.then(
         () => {
           pending = null;
+          if (destroyed) return owners?.get(container) === owner ? leave(to).then(() => mode) : mode;
           set(to);
           if (to === 'fullscreen') lockOrientation();
           return mode;
@@ -332,7 +343,7 @@ export function createPresentationController(options: PresentationOptions): Pres
             restoreScroll?.();
             restoreScroll = undefined;
           }
-          return deny(to, refusal(err, active));
+          return destroyed ? mode : deny(to, refusal(err, active));
         },
       );
     },
@@ -341,9 +352,14 @@ export function createPresentationController(options: PresentationOptions): Pres
     },
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
-      if (mode !== 'inline') void leave();
-      for (const off of offs.splice(0)) off();
+      if (destroyed) return;
+      destroyed = true;
       bus.clear();
+      if (pending !== null && pending !== mode) void leave(pending);
+      if (mode !== 'inline') void leave();
+      pending = null;
+      set('inline');
+      for (const off of offs.splice(0)) off();
     },
   };
 

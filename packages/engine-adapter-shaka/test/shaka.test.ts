@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createQoeHook } from '@otter-player/core';
-import { NO_CAPABILITIES, NO_CODEC_RANKING, type EngineContext, type EngineEvents } from '@otter-player/media';
+import { NO_CAPABILITIES, NO_CODEC_RANKING, waitForMediaDetach, type EngineContext, type EngineEvents } from '@otter-player/media';
 
 type Listener = (event: { detail?: unknown }) => void;
 
@@ -163,6 +163,32 @@ describe('Shaka adapter', () => {
     finish();
     await loading;
     expect(p2.calls.slice(0, 2)).toEqual(['attach', 'load:https://e.test/a.mpd@3']);
+  });
+
+  it('registers pending destruction so a different backend can wait before attaching', async () => {
+    const media = { src: 'old-shaka' } as HTMLMediaElement;
+    const first = createShakaEngine(ctx({ media }));
+    await first.load();
+    const player = FakePlayer.instances.at(-1) as FakePlayer;
+    let finish: () => void = () => undefined;
+    player.destroy = () => new Promise<void>((resolve) => {
+      finish = () => {
+        media.src = '';
+        resolve();
+      };
+    });
+    first.destroy();
+    let attached = false;
+    const attachNext = (async () => {
+      await waitForMediaDetach(media);
+      media.src = 'new-native.mp4';
+      attached = true;
+    })();
+    await Promise.resolve();
+    expect(attached).toBe(false);
+    finish();
+    await attachNext;
+    expect(media.src).toBe('new-native.mp4');
   });
 
   it('maps Shaka errors and rejects load with them', async () => {

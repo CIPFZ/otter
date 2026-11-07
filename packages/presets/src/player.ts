@@ -179,7 +179,7 @@ export interface Player<S extends PlayerState = PlayerState, A extends PlayerAct
   readonly ready: Promise<void>;
   /**
    * Loads a source (a URL, or a `Source` with renditions, tracks, DRM); resolves once it can play,
-   * rejects with an {@link OtterError} when no route works.
+   * rejects with an {@link OtterError} when no route works, or an AbortError when replaced or destroyed.
    */
   load(source: string | Source, options?: LoadOptions): Promise<void>;
   /** Everything the player decided and why (diagnostics, support tickets). */
@@ -206,13 +206,17 @@ export interface Player<S extends PlayerState = PlayerState, A extends PlayerAct
  *   backends: [createMseBackendFactory(), createNativeBackendFactory()],
  *   title: 'Example',
  * });
- * void player.load(src);
+ * void player.load(src).catch((error: unknown) => {
+ *   if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+ * });
  * ```
  */
 export function createPlayer<S extends PlayerState = PlayerState, A extends PlayerActions = PlayerActions>(options: PlayerOptions<S, A>): Player<S, A> {
   const root = options.container;
   if (options.lang !== undefined) root.lang = options.lang;
+  const ownsShell = root.querySelector('video') === null;
   const video = buildShell(root, options.ui !== false, options.title);
+  const shell = ownsShell ? Array.from(root.children) : [];
   defineOtterElements();
   const surface = createVideoSurface(video);
   const media = createMediaPlugin<S, A>({
@@ -248,6 +252,12 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
             },
           };
         })();
+  const presentation = createPresentationPlugin<S>({
+    ...(options.title === undefined ? {} : { mediaSession: { metadata: { title: options.title } } }),
+    ...options.presentation,
+    container: root,
+    surface,
+  });
   const core: OtterCore<S, A> = createCore<S, A>({
     slices: [MEDIA_SLICE, QOE_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE, ...(options.slices ?? [])],
     plugins: [
@@ -255,18 +265,15 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
       createQoePlugin(),
       ...(text === undefined ? [] : [text]),
       createPlayerUiPlugin({ idleMs: options.idleMs ?? 3000 }),
-      createPresentationPlugin({
-        ...(options.title === undefined ? {} : { mediaSession: { metadata: { title: options.title } } }),
-        ...options.presentation,
-        container: root,
-        surface,
-      }),
+      presentation,
       ...(options.plugins ?? []),
     ],
   });
   const store = core.store.view();
-  const offs: Unsubscribe[] = [];
+  const offs: Unsubscribe[] = [() => presentation.controller?.destroy()];
+  let destroyed = false;
   const ready = core.start().then(() => {
+    if (destroyed) return;
     if (options.muted === true) store.dispatch('set-muted', { muted: true });
     root.querySelector('[data-otter-overlays]')?.remove();
     // The presented frame's media time, for frame-exact overlays (danmaku masks).
@@ -290,7 +297,8 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
     ready,
     async load(source, loadOptions) {
       await ready;
-      store.dispatch('load', { source: typeof source === 'string' ? { src: source } : source, ...(loadOptions === undefined ? {} : { options: loadOptions }) });
+      if (destroyed) throw Object.assign(new Error('player destroyed'), { name: 'AbortError' });
+      await media.load(typeof source === 'string' ? { src: source } : source, loadOptions);
     },
     explain() {
       const s = store.getState();
@@ -303,9 +311,14 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
       };
     },
     async destroy() {
-      await ready.catch(() => undefined);
+      destroyed = true;
+      for (const child of shell) child.remove();
       for (const off of offs.splice(0)) off();
-      await core.destroy();
+      try {
+        await Promise.all([ready.catch(() => undefined), core.destroy()]);
+      } finally {
+        surface.destroy();
+      }
     },
   };
 }

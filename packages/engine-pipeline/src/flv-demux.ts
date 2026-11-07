@@ -158,7 +158,7 @@ export function openFlvDemuxer(url: string, options: FlvDemuxOptions): Promise<D
         audioConfig === undefined
           ? null
           : { id: 2, codec: audioConfig.codec, sampleRate: audioConfig.sampleRate, channels: audioConfig.channels, setup: { codec: audioConfig.codec, sampleRate: audioConfig.sampleRate, numberOfChannels: audioConfig.channels, description: audioConfig.description.slice().buffer } };
-      const info: DemuxInfo = { duration: Number.POSITIVE_INFINITY, startTime: 0, video, audio };
+      const info: DemuxInfo = { duration: Number.POSITIVE_INFINITY, get startTime() { return fanout.startTime(video === null ? 'audio' : 'video'); }, video, audio };
       resolve({
         info,
         timing,

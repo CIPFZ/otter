@@ -59,6 +59,7 @@ describe('<OtterPlayer> (Vue)', () => {
     await settle();
     expect(log).toEqual(['create in box, empty true', 'destroy']);
     expect(host.querySelector('video')).toBeNull();
+    expect(seen).toEqual(['player', null]);
   });
 
   it('remakes the player when a dependency changes', async () => {

@@ -5,6 +5,8 @@
 import { createError, createEventBus, type OtterError, type OtterErrorType } from '@otter-player/core';
 import {
   EMPTY_TRACKS,
+  trackMediaDetach,
+  waitForMediaDetach,
   type AudioTrack,
   type Engine,
   type EngineContext,
@@ -140,13 +142,6 @@ export function mapShakaTracks(variants: readonly ShakaTrack[], textTracks: read
     requestedQuality: abr || selected === undefined ? 'auto' : selected.id,
   };
 }
-
-/**
- * Shaka's destroy() is asynchronous and detaches the element at its end (src removed, load()):
- * a new player attached meanwhile (a reload on the same element) would lose its MediaSource,
- * which ManagedMediaSource never reopens (WebKit). Per element, the last pending destroy.
- */
-const detaching = new WeakMap<HTMLMediaElement, Promise<unknown>>();
 
 /** The Shaka Player engine adapter (Shaka loaded on demand): DASH, and HLS with DRM. */
 export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOptions = {}): Engine {
@@ -305,7 +300,7 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       }
 
       // A previous player on this element finishes detaching first.
-      await detaching.get(ctx.media)?.catch(() => undefined);
+      await waitForMediaDetach(ctx.media);
       if (destroyed) return;
       await p.attach(ctx.media);
       try {
@@ -368,8 +363,8 @@ export function createShakaEngine(ctx: EngineContext, options: ShakaEngineOption
       destroyed = true;
       bus.clear();
       if (player !== undefined) {
-        const done = player.destroy().catch(() => undefined);
-        detaching.set(ctx.media, done);
+        // Shaka's final detach also has to finish before another backend reuses this element.
+        trackMediaDetach(ctx.media, player.destroy());
       }
       player = undefined;
     },

@@ -157,3 +157,38 @@ describe('withAdapterFallback', () => {
     expect(errors).toEqual(['fragLoadError']);
   });
 });
+
+it('does not resume or reapply selections when runtime fallback finishes after destroy', async () => {
+  const tracks: TrackList = { ...EMPTY_TRACKS, video: [{ kind: 'video', id: 'v', height: 360, selected: true }] };
+  const own = fakeEngine('own', undefined, tracks);
+  const adapter = fakeEngine('adapter', undefined, tracks);
+  let finish: (() => void) | undefined;
+  adapter.load = () => new Promise<void>((resolve) => { finish = resolve; });
+  const media = { currentTime: 4, paused: false, playbackRate: 2, play: vi.fn(async () => undefined) } as unknown as HTMLMediaElement;
+  const engine = withAdapterFallback(own, () => adapter, { media });
+  await engine.load();
+  engine.selectQuality('v');
+  own.emit('error', createError({ type: 'media', details: 'decodeError', fatal: true, recoverable: false }));
+  expect(finish).toBeDefined();
+  engine.destroy();
+  media.playbackRate = 1;
+  finish?.();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(adapter.calls).toEqual(['destroy']);
+  expect(media.playbackRate).toBe(1);
+  expect(media.play).not.toHaveBeenCalled();
+});
+
+it('does not create a fallback when the primary rejects after destroy', async () => {
+  const own = fakeEngine('own');
+  let fail: ((error: unknown) => void) | undefined;
+  own.load = () => new Promise<void>((_, reject) => { fail = reject; });
+  const create = vi.fn(() => fakeEngine('adapter'));
+  const engine = withAdapterFallback(own, create);
+  const loaded = engine.load();
+  engine.destroy();
+  fail?.(createError({ type: 'media', details: 'decodeError', fatal: true, recoverable: false }));
+  await loaded;
+  expect(create).not.toHaveBeenCalled();
+});

@@ -192,6 +192,7 @@ M1 接口补充（`setVolume` 等、`BackendFactory`、`FormatPlugin.backends`�
 - 无音轨时仍用 AudioContext 时钟保持一致。
 - AudioContext 恢复期间 `performance.now()` 作备用时钟，宽限 3 s；resume 完成即无缝切回。只有 resume 明确失败或 3 s 未完成才报 `audioClockUnavailable`（ADR-008 §2）。
 - 多实例共享 Worker 解码池，限制同时解码路数。
+- FLV/TS 直播按 15 s 时间窗口裁剪各轨共享的编码包历史，并独立限制每轨最多 64 MiB payload、8192 个包；高码率时窗口可能更短，时间戳不推进或回退也不能无界增长。超大单包或非有限时间戳使该轨此前连续段失效，视频等待下一关键帧；保留包拥有独立存储，不通过小视图保留大输入缓冲。订阅者只持游标；后台停止视频读取与解码。暂停超过窗口后仍保持暂停，恢复时跳到窗口内首个可解码关键帧，同时重置音视频缓冲和时钟；窗口暂无关键帧则等待，不能从 delta 帧开始。纯音频按首个保留音频帧恢复，音视频仍使用原包时间戳。
 - PiP：`canvas.captureStream()` 喂隐藏 `<video>`。
 - 三级降级：WebCodecs 硬解 → WASM 软解 → MSE（Jessibuca / EasyPlayer 模式）。
 

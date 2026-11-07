@@ -33,13 +33,13 @@ export interface OtterPlayerLike {
 export function useOtterState<S, T>(store: OtterStoreLike<S> | null | undefined, selector: (state: S) => T, equals: (a: T, b: T) => boolean = Object.is): T | undefined {
   // The last state seen and what the selector made of it: the same value until the slice changes
   // (useSyncExternalStore requires a stable snapshot).
-  const memo = useRef<{ store: OtterStoreLike<S>; state: S; value: T } | undefined>(undefined);
+  const memo = useRef<{ store: OtterStoreLike<S>; state: S; selector: (state: S) => T; equals: (a: T, b: T) => boolean; value: T } | undefined>(undefined);
   const select = (s: OtterStoreLike<S>, state: S): T => {
     const m = memo.current;
-    if (m !== undefined && m.store === s && m.state === state) return m.value;
+    if (m !== undefined && m.store === s && m.state === state && m.selector === selector && m.equals === equals) return m.value;
     const next = selector(state);
     const value = m !== undefined && m.store === s && equals(m.value, next) ? m.value : next;
-    memo.current = { store: s, state, value };
+    memo.current = { store: s, state, selector, equals, value };
     return value;
   };
   const subscribe = useCallback((onChange: () => void): (() => void) => (store == null ? () => undefined : store.subscribe(onChange)), [store]);
@@ -142,7 +142,9 @@ export interface OtterPlayerProps<P extends OtterPlayerLike> {
  *     <OtterPlayer
  *       create={(container) => {
  *         const player = createVodPlayer({ container, title: 'Example' });
- *         void player.load(src);
+ *         void player.load(src).catch((error: unknown) => {
+ *           if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+ *         });
  *         return player;
  *       }}
  *       deps={[src]}
@@ -157,6 +159,7 @@ export function OtterPlayer<P extends OtterPlayerLike>(props: OtterPlayerProps<P
   onPlayer.current = props.onPlayer;
   useEffect(() => {
     onPlayer.current?.(player);
+    return player === null ? undefined : () => onPlayer.current?.(null);
   }, [player]);
   const style: CSSProperties = {
     position: 'relative',

@@ -60,6 +60,7 @@ describe('<OtterPlayer>', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(log).toEqual(['create in box, empty true', 'destroy']);
     expect(host.querySelector('video')).toBeNull();
+    expect(seen).toEqual([null, 'player', null]);
   });
 
   it('leaves exactly one player under Strict Mode (double effects and ref callbacks)', async () => {
@@ -109,6 +110,20 @@ describe('<OtterPlayer>', () => {
 });
 
 describe('useOtterState', () => {
+  it('reselects when props change without a store update', async () => {
+    const store = fakeStore({ a: 'A', b: 'B' });
+    function Selected({ field }: { field: 'a' | 'b' }): ReactElement {
+      return createElement('span', null, useOtterState(store, (s) => s[field]));
+    }
+    const host = document.body.appendChild(document.createElement('div'));
+    const root = createRoot(host);
+    await act(async () => root.render(createElement(Selected, { field: 'a' })));
+    expect(host.textContent).toBe('A');
+    await act(async () => root.render(createElement(Selected, { field: 'b' })));
+    expect(host.textContent).toBe('B');
+    await act(async () => root.unmount());
+  });
+
   it('reads a slice, re-renders only when it changes, and unsubscribes on unmount', async () => {
     const store = fakeStore({ currentTime: 0, paused: true });
     let renders = 0;

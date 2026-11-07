@@ -161,12 +161,13 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
   if (options.lang !== undefined) root.lang = options.lang;
   const video = buildShell(root, true, options.title);
   defineOtterElements();
+  const surface = createVideoSurface(video);
   const wall = createMultiview({ container: root, label: options.title ?? `${options.streams.length} streams`, ...(options.columns === undefined ? {} : { columns: options.columns }), before: root.querySelector('[data-otter-top]') });
   // The shell: player UI and presentation (fullscreen of the whole wall); media actions go to the
   // focused tile through the focus store.
   const shell: OtterCore<PlayerState, PlayerActions> = createCore<PlayerState, PlayerActions>({
     slices: [MEDIA_SLICE, QOE_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE],
-    plugins: [createPlayerUiPlugin({ idleMs: options.idleMs ?? 3000 }), createPresentationPlugin({ container: root, surface: createVideoSurface(video) })],
+    plugins: [createPlayerUiPlugin({ idleMs: options.idleMs ?? 3000 }), createPresentationPlugin({ container: root, surface })],
   });
   const tiles: { tile: MultiviewTile; core: OtterCore<TileState, MediaActionMap> }[] = [];
   const decoders = [createWebCodecsDecoder(), ...(options.decoders ?? [])];
@@ -254,7 +255,11 @@ export function createSurveillancePlayer(options: SurveillanceOptions): Surveill
       focusStore.destroy();
       for (const t of tiles) await t.core.destroy();
       wall.destroy();
-      await shell.destroy();
+      try {
+        await shell.destroy();
+      } finally {
+        surface.destroy();
+      }
     },
   };
 }

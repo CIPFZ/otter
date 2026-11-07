@@ -171,6 +171,8 @@ export interface MediaPluginOptions {
 export interface MediaPlugin<S extends MediaState = MediaState, A extends MediaActionMap = MediaActionMap>
   extends Plugin<S, A> {
   readonly router: Router;
+  /** Loads one source; rejects on failure or with AbortError when superseded or unloaded. */
+  load(source: Source, options?: LoadOptions): Promise<void>;
   /** In-band cues of the track chosen with `set-text-track`, for the text renderer. */
   onTextCues(h: (cues: InbandCues) => void): Unsubscribe;
   /** The active engine's seek-preview pictures (I-frame playlist), null without. */
@@ -291,8 +293,8 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     set({ ...patch, ...live });
   };
 
-  const wire = (backend: MediaBackend, decision: RouteDecision, loadToken: number): Unsubscribe[] => {
-    const current = (): boolean => loadToken === token;
+  const wire = (backend: MediaBackend, decision: RouteDecision, loadToken: number, failLoad: (error: OtterError) => boolean): Unsubscribe[] => {
+    const current = (): boolean => loadToken === token && active?.backend === backend;
     const on = <E extends keyof BackendEvents>(e: E, h: (p: BackendEvents[E]) => void): Unsubscribe =>
       backend.on(e, (p) => {
         if (current()) h(p);
@@ -354,6 +356,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       }),
       on('error', (error) => {
         if (error.fatal) {
+          if (failLoad(error)) return;
           void recover(decision, error, loadToken);
         } else {
           qoe?.emit('error', { error, fallback: decision.remaining.map(stepLabel) });
@@ -380,7 +383,16 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     } catch (err) {
       return toError(err, 'backendCreateFailed');
     }
-    active = { backend, decision, offs: wire(backend, decision, loadToken), loadToken };
+    let loading = true;
+    let rejectLoad: (error: OtterError) => void = () => undefined;
+    const loadFailure = new Promise<never>((_, reject) => { rejectLoad = reject; });
+    // A backend may emit a fatal error and also throw before returning its load promise.
+    void loadFailure.catch(() => undefined);
+    active = { backend, decision, offs: wire(backend, decision, loadToken, (error) => {
+      if (!loading) return false;
+      rejectLoad(error);
+      return true;
+    }), loadToken };
     set({ backend: stepLabel(decision.step), format: decision.format.id });
     try {
       backend.attach(options.target);
@@ -391,8 +403,9 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       backend.setVolume(prefs.volume);
       backend.setMuted(prefs.muted);
       backend.setPlaybackRate(prefs.playbackRate);
-      await backend.load(source, opts);
-      if (loadToken !== token) return null;
+      await Promise.race([loadFailure, backend.load(source, opts)]);
+      loading = false;
+      if (loadToken !== token || active?.backend !== backend) return null;
       // Loading a resource resets the element's playbackRate to defaultPlaybackRate (HTML): the
       // viewer's speed again (the element's ratechange then mirrors it into the store).
       if (prefs.playbackRate !== 1) backend.setPlaybackRate(prefs.playbackRate);
@@ -403,7 +416,8 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       if (opts.autoplay === true) play();
       return null;
     } catch (err) {
-      if (loadToken === token) teardown();
+      loading = false;
+      if (loadToken === token && active?.backend === backend) teardown();
       return toError(err, 'backendLoadFailed');
     }
   };
@@ -591,7 +605,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     };
   };
 
-  const load = async (source: Source, opts: LoadOptions): Promise<void> => {
+  const loadSource = async (source: Source, opts: LoadOptions): Promise<void> => {
     emitExit();
     teardown();
     const loadToken = ++token;
@@ -690,7 +704,67 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
     await run(decision, source, opts, caps, loadToken);
   };
 
+  let cancelLoad: (() => void) | undefined;
+  const beginLoad = (source: Source, opts: LoadOptions = {}): Promise<void> => {
+    cancelLoad?.();
+    if (store === undefined) return Promise.reject(toError(new Error('media plugin is not installed'), 'backendLoadFailed'));
+    return new Promise<void>((resolve, reject) => {
+      const cancel = (): void => reject(Object.assign(new Error('load superseded or unloaded'), { name: 'AbortError' }));
+      cancelLoad = cancel;
+      void loadSource(source, opts).then(
+        () => {
+          if (cancelLoad !== cancel) return;
+          cancelLoad = undefined;
+          const s = state();
+          if (s.status === 'error' && s.error !== null) reject(s.error);
+          else resolve();
+        },
+        (err: unknown) => {
+          if (cancelLoad !== cancel) return;
+          cancelLoad = undefined;
+          reject(toError(err, 'backendLoadFailed'));
+        },
+      );
+    });
+  };
+
+  let loadSequence = 0;
+  const loadWaiters = new WeakMap<MediaActionMap['load'], { sequence: number; resolve(): void; reject(error: unknown): void }>();
+  const load = (source: Source, opts: LoadOptions = {}): Promise<void> => {
+    if (store === undefined) return Promise.reject(toError(new Error('media plugin is not installed'), 'backendLoadFailed'));
+    const s = store as unknown as Store<MediaState, MediaActionMap>;
+    const payload = { source, options: opts };
+    const sequence = ++loadSequence;
+    cancelLoad?.();
+    cancelLoad = undefined;
+    return new Promise<void>((resolve, reject) => {
+      loadWaiters.set(payload, { sequence, resolve, reject });
+      try {
+        s.dispatch('load', payload);
+      } catch (error) {
+        loadWaiters.delete(payload);
+        reject(error);
+      }
+    });
+  };
+  const handleLoad = (payload: MediaActionMap['load']): void => {
+    const waiter = loadWaiters.get(payload);
+    loadWaiters.delete(payload);
+    // A preceding observer may synchronously dispatch a newer request before this handler runs.
+    if (waiter !== undefined && waiter.sequence !== loadSequence) {
+      waiter.reject(Object.assign(new Error('load superseded or unloaded'), { name: 'AbortError' }));
+      return;
+    }
+    if (waiter === undefined) loadSequence++;
+    const completion = beginLoad(payload.source, payload.options);
+    if (waiter === undefined) void completion.catch(() => undefined);
+    else void completion.then(waiter.resolve, waiter.reject);
+  };
+
   const unload = (): void => {
+    loadSequence++;
+    cancelLoad?.();
+    cancelLoad = undefined;
     emitExit();
     teardown();
     token++;
@@ -743,6 +817,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
   return {
     id: 'media',
     router,
+    load,
     onTextCues(h) {
       cueListeners.add(h);
       return () => cueListeners.delete(h);
@@ -754,7 +829,7 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
       // Cast: the plugin is generic over any store that contains MediaState / MediaActionMap.
       const s = ctx.store as unknown as Store<MediaState, MediaActionMap>;
       handlerOffs = [
-        s.handle('load', ({ source, options: o }) => void load(source, o ?? {})),
+        s.handle('load', handleLoad),
         s.handle('unload', unload),
         s.handle('play', play),
         s.handle('pause', () => active?.backend.pause()),

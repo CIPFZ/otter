@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createError } from '@otter-player/core';
 import { createWebCodecsBackend } from '@otter-player/backend-webcodecs';
-import { NO_CAPABILITIES, type BackendContext, type Decoder, type Demuxer, type EncodedChunk, type FormatPlugin, type FrameSink, type I420Frame } from '@otter-player/media';
+import { createLiveFanout, NO_CAPABILITIES, type BackendContext, type Decoder, type Demuxer, type EncodedChunk, type FormatPlugin, type FrameSink, type I420Frame } from '@otter-player/media';
 
 const FPS = 30;
 const GOP = 90;
@@ -522,6 +522,90 @@ describe('backend-webcodecs', () => {
       }
     };
 
+    const liveWindow = (audioOnly = false) => {
+      const fanout = createLiveFanout(2);
+      const seeks: { track: string; time: number }[] = [];
+      const resets: string[] = [];
+      const decoder: Decoder = {
+        ...withAudio,
+        create(config) {
+          const instance = withAudio.create(config);
+          return { ...instance, get decodeQueueSize() { return instance.decodeQueueSize; }, reset() { resets.push(config.codec); instance.reset(); } };
+        },
+      };
+      const template = liveDemuxer(() => 0)([]).info;
+      const demux: Demuxer = {
+        info: { ...template, video: audioOnly ? null : template.video, get startTime() { return fanout.startTime(audioOnly ? 'audio' : 'video'); } },
+        packets: (track) => fanout.packets(track, 0),
+        seek: (track, time) => { seeks.push({ track, time }); return Promise.resolve(fanout.packets(track, time)); },
+        destroy: () => fanout.end(),
+      };
+      const push = (from: number, to: number, keys = true): void => {
+        for (let f = from * FPS; f <= to * FPS; f++) {
+          if (!audioOnly) fanout.push('video', { key: keys && f % FPS === 0, timestamp: us(f), duration: us(1), data: new Uint8Array(1) });
+          fanout.push('audio', { key: true, timestamp: us(f) + 3000, duration: us(1), data: new Uint8Array(1) });
+        }
+      };
+      return { ...setup([decoder], () => demux, { liveAudioLeadMs: 0 }), seeks, resets, push };
+    };
+
+    it.each([false, true])('an expired live window stays paused, then resets both timelines on resume (audio-only: %s)', async (audioOnly) => {
+      vi.stubGlobal('AudioContext', Running);
+      vi.stubGlobal('AudioWorkletNode', Worklet);
+      const t = liveWindow(audioOnly);
+      try {
+        t.push(0, 1);
+        await t.backend.load({ src: 'live' }, {});
+        await t.backend.play();
+        t.backend.pause();
+        const shown = t.drawn.length;
+        const reads = t.seeks.length;
+        t.push(20, 22);
+        await new Promise((r) => setTimeout(r, 100));
+        expect(t.state['paused']).toBe(true);
+        expect(t.drawn).toHaveLength(shown);
+        expect(t.seeks).toHaveLength(reads);
+        await t.backend.play();
+        await vi.waitFor(() => expect(t.state['seeking']).toBe(false));
+        const target = audioOnly ? 20.003 : 20;
+        expect(t.seeks.slice(reads)).toContainEqual({ track: 'audio', time: target });
+        if (!audioOnly) {
+          expect(t.seeks.slice(reads)).toContainEqual({ track: 'video', time: target });
+          expect(t.resets).toContain('avc1.42c01e');
+          expect(t.drawn.at(-1)).toBeGreaterThanOrEqual(20 * FPS);
+        }
+        expect(t.resets).toContain('mp4a.40.2');
+        expect(t.state['currentTime'] as number).toBeGreaterThanOrEqual(target);
+        expect(t.errors).toEqual([]);
+      } finally {
+        t.backend.destroy();
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('a live source without a retained keyframe waits and starts paused at the next keyframe', async () => {
+      vi.stubGlobal('AudioContext', Running);
+      vi.stubGlobal('AudioWorkletNode', Worklet);
+      const t = liveWindow();
+      try {
+        t.push(20, 20.5, false);
+        const loading = t.backend.load({ src: 'live' }, {});
+        await new Promise((r) => setTimeout(r, 100));
+        expect(t.drawn).toEqual([]);
+        expect(t.seeks).toEqual([]);
+        t.push(21, 21.5);
+        await loading;
+        expect(t.drawn[0]).toBe(21 * FPS);
+        expect(t.state).toMatchObject({ currentTime: 21, seeking: false });
+        expect(t.state['paused'] ?? true).toBe(true);
+        expect(t.seeks).toContainEqual({ track: 'audio', time: 21 });
+        expect(t.errors).toEqual([]);
+      } finally {
+        t.backend.destroy();
+        vi.unstubAllGlobals();
+      }
+    });
+
     it('the first frame shows at once; the clock starts once 300 ms of audio are ahead, not before', async () => {
       await run(async ({ backend, state, details, drawn, errors }, audio) => {
         await backend.load({ src: 'live' }, {});
@@ -592,8 +676,8 @@ describe('backend-webcodecs', () => {
       const fedAtHide = fed.length;
       const drawnAtHide = drawn.length;
       await new Promise((r) => setTimeout(r, 1500));
-      // Nothing decoded or drawn in the background (a few packets already read ahead may go in).
-      expect(fed.length - fedAtHide).toBeLessThan(15);
+      // Stop reading as well as decoding: at most the one already-pending read can finish.
+      expect(fed.length - fedAtHide).toBeLessThanOrEqual(1);
       expect(drawn.length).toBe(drawnAtHide);
       // The clock went on.
       expect(state['currentTime'] as number).toBeGreaterThan(2.5);
@@ -607,4 +691,29 @@ describe('backend-webcodecs', () => {
       Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
     }
   }, 10_000);
+});
+
+it('does not create audio resources after destroy while decoder support is pending', async () => {
+  let finish: ((support: 'software') => void) | undefined;
+  const contexts: object[] = [];
+  class Context extends EventTarget {
+    state = 'running';
+    currentTime = 0;
+    close = () => Promise.resolve();
+    constructor() { super(); contexts.push(this); }
+  }
+  vi.stubGlobal('AudioContext', Context);
+  const decoder: Decoder = { ...fakeDecoder, supports: () => new Promise<'software'>((resolve) => { finish = resolve; }) };
+  const { backend } = setup([decoder]);
+  try {
+    const loaded = backend.load({ src: 'fake.mp4' }, {});
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    backend.destroy();
+    finish?.('software');
+    await loaded;
+    expect(contexts).toHaveLength(0);
+  } finally {
+    backend.destroy();
+    vi.unstubAllGlobals();
+  }
 });

@@ -13,6 +13,8 @@ const player = createPlayer({
   backends: [createMseBackendFactory(), createNativeBackendFactory()],
   title: 'Example',
 });
-void player.load(src);
+void player.load(src).catch((error: unknown) => {
+  if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+});
 // #endregion
 export { player };

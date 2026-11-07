@@ -113,15 +113,14 @@ export function startLive(h: EngineInner): Live {
         },
         (err: unknown) => {
           if (stopped) return;
-          // What the own engine leaves to hls.js turning up in a reload (a live EXT-X-DISCONTINUITY,
-          // parts): a fatal media error, so the adapter takes over from the position
-          // (withAdapterFallback), instead of reloads retried while the buffer runs dry.
-          if (h._core._isOtterError(err) && err.details === 'ownEngineUnsupported') {
+          // The request layer has exhausted retries, or the playlist needs the adapter: pass the
+          // fatal error to the session's recovery path instead of silently reloading forever.
+          if (h._core._isOtterError(err) && err.fatal) {
             stopped = true;
             h._bus.emit('error', err);
             return;
           }
-          // A failed reload is retried at the next interval; the engine reports lasting errors.
+          // A non-fatal refresh failure is tried again at the next interval.
           tick(delay);
         },
       );

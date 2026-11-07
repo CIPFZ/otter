@@ -124,7 +124,7 @@ export const setFill = (el: HTMLElement, name: 'played' | 'buffered', fraction: 
 };
 
 /** Shared lifecycle: find the store and strings, subscribe while connected, render on change. */
-export function createBase(): abstract new () => HTMLElement & StoreConsumer & { readonly ui: UiStore | undefined; readonly strings: UiStrings } {
+export function createBase(): abstract new () => HTMLElement & StoreConsumer & { readonly ui: UiStore | undefined; readonly strings: UiStrings; connectedCallback(): void; disconnectedCallback(): void } {
   abstract class OtterElement extends HTMLElement implements StoreConsumer {
     #store: UiStore | undefined;
     #off: Unsubscribe | undefined;
@@ -144,10 +144,13 @@ export function createBase(): abstract new () => HTMLElement & StoreConsumer & {
       this.#store = undefined;
     }
     connectStore(): void {
-      if (this.#off !== undefined || !this.isConnected) return;
+      if (!this.isConnected) return;
       const store = findStore(this);
-      if (store === undefined) return;
+      if (this.#store === store) return;
+      this.#off?.();
+      this.#off = undefined;
       this.#store = store;
+      if (store === undefined) return;
       this.#off = store.subscribe((s: Readonly<UiState>) => this.render(s));
       this.render(store.getState());
     }

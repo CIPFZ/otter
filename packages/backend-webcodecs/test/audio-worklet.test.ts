@@ -10,6 +10,7 @@ interface Port {
   postMessage(m: unknown): void;
 }
 interface Processor {
+  readonly q: readonly unknown[];
   port: Port;
   process(inputs: unknown[], outputs: Float32Array[][]): boolean;
 }
@@ -124,4 +125,14 @@ describe('audio worklet underruns (M6 F14)', () => {
     expect(stats.reduce((n, x) => n + (x.under ?? 0), 0)).toBe(0);
     expect(w.underruns()).toEqual([]);
   });
+});
+
+it.each([0.5, 2])('releases past PCM while silent at playback rate %s', (rate) => {
+  const w = worklet();
+  w.send({ t: 'anchor', media: 0, context: 0, rate, playing: true });
+  w.chunks(0, rate * 5);
+  w.render(5.1);
+  expect(w.p.q).toHaveLength(0);
+  expect(w.silent.length).toBeGreaterThan(0);
+  expect(w.underruns()).toEqual([]);
 });

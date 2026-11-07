@@ -153,3 +153,28 @@ describe('MSE sink segment ledger and abort (ADR-010 §4)', () => {
     sink.destroy();
   });
 });
+
+it('an append error keeps ownership of its updateend before the next append starts', async () => {
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:sink');
+  vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
+  const sink = createMseSink(FakeMs as unknown as typeof MediaSource, { backBufferS: 10 });
+  await sink.init([{ type: 'video', mimeType: 'video/mp4', data: new Uint8Array(0) }]);
+  const sb = (sink.mediaSource as unknown as FakeMs).buffers[0] as FakeSourceBuffer;
+  const append = vi.spyOn(sb, 'appendBuffer').mockImplementation(() => { sb.updating = true; });
+  const first = sink.append('video', media(0, 4));
+  let finished = false;
+  const second = sink.append('video', media(4, 8)).then(() => { finished = true; });
+  sb.updating = false;
+  sb.dispatchEvent(new Event('error'));
+  await expect(first).rejects.toThrow('SourceBuffer error');
+  expect(append).toHaveBeenCalledTimes(1);
+  sb.dispatchEvent(new Event('updateend'));
+  expect(append).toHaveBeenCalledTimes(2);
+  await Promise.resolve();
+  expect(finished).toBe(false);
+  expect(sb.updating).toBe(true);
+  sb.updating = false;
+  sb.dispatchEvent(new Event('updateend'));
+  await second;
+  sink.destroy();
+});

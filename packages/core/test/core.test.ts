@@ -273,3 +273,38 @@ describe('createCore', () => {
     expect(seen).toHaveBeenCalledOnce();
   });
 });
+
+it('destroy waits for an in-flight plugin installation and releases it before resolving', async () => {
+  let finish: (() => void) | undefined;
+  const calls: string[] = [];
+  const core = createCore({
+    plugins: [
+      { id: 'slow', install: () => new Promise<void>((resolve) => { calls.push('install'); finish = resolve; }), uninstall: () => { calls.push('uninstall'); } },
+      { id: 'later', install: () => { calls.push('later'); }, uninstall: () => undefined },
+    ],
+  });
+  const started = core.start();
+  let destroyed = false;
+  const closed = core.destroy().then(() => { destroyed = true; });
+  await Promise.resolve();
+  expect(destroyed).toBe(false);
+  finish?.();
+  await Promise.all([started, closed]);
+  expect(calls).toEqual(['install', 'uninstall']);
+});
+
+it('an install callback can synchronously request teardown without escaping the installation barrier', async () => {
+  const registry = createPluginRegistry();
+  const calls: string[] = [];
+  let closed: Promise<void> | undefined;
+  registry.register({
+    id: 'reentrant',
+    install() { calls.push('install'); closed = registry.uninstallAll(); },
+    uninstall() { calls.push('uninstall'); },
+  });
+  const core = createCore();
+  await registry.installAll({ store: core.store, events: core.events, qoe: core.qoe });
+  await closed;
+  expect(calls).toEqual(['install', 'uninstall']);
+  await core.destroy();
+});

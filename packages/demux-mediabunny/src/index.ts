@@ -166,7 +166,17 @@ async function describeVideo(track: InputVideoTrack, frameRate: number | undefin
 async function open(mb: typeof import('mediabunny'), input: Input, options: OpenOptions, downloads?: Set<(d: DemuxDownload) => void>): Promise<Demuxer> {
   createError = options.createError;
   const signal = options.signal;
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) return;
+    disposed = true;
+    signal.removeEventListener('abort', dispose);
+    downloads?.clear();
+    input.dispose();
+  };
+  signal.addEventListener('abort', dispose, { once: true });
   try {
+    signal.throwIfAborted();
     const [video, audio] = await Promise.all([input.getPrimaryVideoTrack(), input.getPrimaryAudioTrack()]);
     if (video === null && audio === null) throw muxError('noTracks', 'no audio or video track');
     const used = [video, audio].filter((t) => t !== null);
@@ -215,6 +225,7 @@ async function open(mb: typeof import('mediabunny'), input: Input, options: Open
       if (s === null) throw muxError('noTrack', `no ${track} track`);
       return s;
     };
+    signal.throwIfAborted();
     return {
       info,
       packets(track): PacketStream {
@@ -247,13 +258,11 @@ async function open(mb: typeof import('mediabunny'), input: Input, options: Open
               return () => downloads.delete(h);
             },
           }),
-      destroy() {
-        downloads?.clear();
-        input.dispose();
-      },
+      destroy: dispose,
     };
   } catch (err) {
-    input.dispose();
+    dispose();
+    signal.throwIfAborted();
     if ((err as { details?: unknown } | null)?.details !== undefined) throw err;
     throw muxError('demuxFailed', err);
   }
@@ -340,7 +349,7 @@ export async function openLiveTs(url: string, options: OpenOptions): Promise<Dem
     const as = audio === null ? undefined : await audioSetup(audio);
     info = {
       duration: Number.POSITIVE_INFINITY,
-      startTime: 0,
+      get startTime() { return fanout.startTime(video === null ? 'audio' : 'video'); },
       video: video === null || vs === undefined ? null : { id: video.id, codec: vs.codec, width: video.codedWidth, height: video.codedHeight, setup: vs },
       audio: audio === null || as === undefined ? null : { id: audio.id, codec: as.codec, sampleRate: audio.sampleRate, channels: audio.numberOfChannels, setup: as },
     };

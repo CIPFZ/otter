@@ -108,7 +108,7 @@ export interface BasicPlayer<S extends BasicState = BasicState, A extends BasicA
   readonly qoe: QoeHook;
   /** Resolves once every plugin is installed; `load` before that waits for it. */
   readonly ready: Promise<void>;
-  /** Loads a source; resolves once it can play. */
+  /** Loads a source; resolves once it can play, rejects on failure or with AbortError when replaced or destroyed. */
   load(source: string | Source, options?: LoadOptions): Promise<void>;
   /** router.explain() and the last error. */
   explain(): { readonly route: RouteExplanation | null; readonly error: MediaState['error'] };
@@ -182,7 +182,9 @@ function createFullscreenPlugin<S extends BasicState, A extends BasicActions>(ro
  * import '@otter-player/ui-skin-minimal';
  *
  * const player = createBasicPlayer({ container });
- * void player.load(src);
+ * void player.load(src).catch((error: unknown) => {
+ *   if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+ * });
  * ```
  */
 export function createBasicPlayer<S extends BasicState = BasicState, A extends BasicActions = BasicActions>(options: BasicOptions<S, A>): BasicPlayer<S, A> {
@@ -193,10 +195,12 @@ export function createBasicPlayer<S extends BasicState = BasicState, A extends B
   if (!root.hasAttribute('aria-label')) root.setAttribute('aria-label', findStrings(root).player);
   if (!root.hasAttribute('tabindex')) root.tabIndex = -1;
   let video = root.querySelector('video');
+  const ownsShell = video === null;
   if (video === null) {
     root.innerHTML = options.ui === false ? '<video playsinline crossorigin="anonymous" tabindex="-1"></video>' : SHELL;
     video = root.querySelector('video') as HTMLVideoElement;
   }
+  const shell = ownsShell ? Array.from(root.children) : [];
   defineElements({
     'otter-play-button': otterPlayButton,
     'otter-mute-button': otterMuteButton,
@@ -216,7 +220,9 @@ export function createBasicPlayer<S extends BasicState = BasicState, A extends B
   });
   const store = core.store.view();
   const offs: Unsubscribe[] = [];
+  let destroyed = false;
   const ready = core.start().then(() => {
+    if (destroyed) return;
     if (options.muted === true) store.dispatch('set-muted', { muted: true });
     provideStore(root, store);
     const controls = root.querySelector<HTMLElement>('[data-otter-controls]');
@@ -235,16 +241,18 @@ export function createBasicPlayer<S extends BasicState = BasicState, A extends B
     ready,
     async load(source, loadOptions) {
       await ready;
-      store.dispatch('load', { source: typeof source === 'string' ? { src: source } : source, ...(loadOptions === undefined ? {} : { options: loadOptions }) });
+      if (destroyed) throw Object.assign(new Error('player destroyed'), { name: 'AbortError' });
+      await media.load(typeof source === 'string' ? { src: source } : source, loadOptions);
     },
     explain() {
       const s = store.getState();
       return { route: s.route, error: s.error };
     },
     async destroy() {
-      await ready.catch(() => undefined);
+      destroyed = true;
+      for (const child of shell) child.remove();
       for (const off of offs.splice(0)) off();
-      await core.destroy();
+      await Promise.all([ready.catch(() => undefined), core.destroy()]);
     },
   };
 }

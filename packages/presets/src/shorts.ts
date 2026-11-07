@@ -118,8 +118,9 @@ export function createShortsPlayer(options: ShortsOptions): ShortsPlayer {
         ended = s.ended;
       });
       const onKey = (e: KeyboardEvent): void => {
-        if (NEXT.has(e.key)) void step(1);
-        else if (PREV.has(e.key)) void step(-1);
+        // Media failures are already reported through the store and QoE.
+        if (NEXT.has(e.key)) void step(1).catch(() => undefined);
+        else if (PREV.has(e.key)) void step(-1).catch(() => undefined);
         else return;
         e.preventDefault();
       };
@@ -158,7 +159,7 @@ export function createShortsPlayer(options: ShortsOptions): ShortsPlayer {
     next: () => step(1),
     prev: () => step(-1),
   };
-  if (feed.length > 0) void go(index);
+  if (feed.length > 0) void go(index).catch(() => undefined);
   return shorts;
 }
 
@@ -261,7 +262,7 @@ function bindShortsGestures(root: HTMLElement, video: HTMLVideoElement, store: {
         setTimeout(() => {
           move(0, 0);
           switching = false;
-          void feed.step(d);
+          void feed.step(d).catch(() => undefined);
         }, 180);
       } else {
         move(0, 200);

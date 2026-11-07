@@ -43,7 +43,9 @@ if (kind === 'background') {
 } else if (kind === 'basic') {
   const basic = createBasicPlayer({ container, idleMs: 0, muted: true, ...(lang === null ? {} : { lang }) });
   window.preset = basic;
-  void basic.load(src, { autoplay: true });
+  void basic.load(src, { autoplay: true }).catch((error: unknown) => {
+    if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+  });
 } else if (kind === 'ott-drm') {
   player = createOttDrmPlayer({ ...common, ...(window.OTTER_DRM === undefined ? {} : { drm: window.OTTER_DRM }) });
 } else if (kind === 'shorts') {
@@ -90,5 +92,7 @@ if (kind === 'background') {
 }
 if (player !== undefined) {
   window.preset = player;
-  void player.load(src, { autoplay: true });
+  void player.load(src, { autoplay: true }).catch((error: unknown) => {
+    if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+  });
 }

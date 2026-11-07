@@ -60,6 +60,7 @@ export function withAdapterFallback(
   let current: Engine & SeekToLive = primary;
   let usingFallback = false;
   let loaded = false;
+  let destroyed = false;
   let forwards: Unsubscribe[] = [];
   // The user's choices, re-applied on the adapter after a runtime switch.
   let quality = 'auto';
@@ -106,6 +107,7 @@ export function withAdapterFallback(
   };
 
   const runtimeFallback = async (error: OtterError): Promise<void> => {
+    if (destroyed) return;
     const media = options.media;
     const at = media?.currentTime;
     const playing = media !== undefined && !media.paused;
@@ -120,9 +122,11 @@ export function withAdapterFallback(
     try {
       await current.load();
     } catch (err) {
+      if (destroyed) return;
       bus.emit('error', isOtterError(err) ? err : createError({ type: 'media', details: 'adapterLoadFailed', fatal: true, recoverable: false, message: String(err), cause: err }));
       return;
     }
+    if (destroyed) return;
     reapply(before);
     if (media !== undefined && rate !== undefined && media.playbackRate !== rate) media.playbackRate = rate;
     bus.emit('tracks-change', current.tracks);
@@ -149,10 +153,13 @@ export function withAdapterFallback(
       return usingFallback;
     },
     async load() {
+      if (destroyed) return;
       try {
         await primary.load();
+        if (destroyed) return;
         loaded = true;
       } catch (err) {
+        if (destroyed) return;
         const error = isOtterError(err) ? err : undefined;
         if (error === undefined || error.type === 'network' || error.details === 'unsupportedSource') throw err;
         primary.destroy();
@@ -182,6 +189,8 @@ export function withAdapterFallback(
     seekToLive: () => current.seekToLive?.(),
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
+      if (destroyed) return;
+      destroyed = true;
       for (const off of forwards) off();
       forwards = [];
       current.destroy();

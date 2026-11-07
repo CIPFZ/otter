@@ -476,3 +476,47 @@ describe('chrome plugin', () => {
     expect(seeks).toEqual([12]);
   });
 });
+
+describe('connected element lifetime', () => {
+  it('rebinds existing controls when their root is given a new store', () => {
+    const { root, store } = mount('<otter-play-button></otter-play-button>');
+    const oldAction = vi.fn();
+    const newAction = vi.fn();
+    store.handle('toggle-paused', oldAction);
+    store.setState({ status: 'ready' });
+    const next = createStore<UiState, UiActions>({ slices: [MEDIA_SLICE, TEXT_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE] });
+    next.handle('toggle-paused', newAction);
+    next.setState({ status: 'ready' });
+    const button = root.querySelector('otter-play-button')?.shadowRoot?.querySelector('button');
+    button?.click();
+    expect(oldAction).toHaveBeenCalledOnce();
+    provideStore(root, next.view());
+    button?.click();
+    expect(oldAction).toHaveBeenCalledOnce();
+    expect(newAction).toHaveBeenCalledOnce();
+    root.remove();
+    store.destroy();
+    next.destroy();
+  });
+
+  it('releases outside-click listeners on disconnect and restores one on reconnect', () => {
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const menu = document.createElement('otter-menu');
+    try {
+      for (let i = 0; i < 3; i++) {
+        document.body.append(menu);
+        menu.remove();
+      }
+      const outside = add.mock.calls.filter(([type]) => type === 'pointerdown');
+      expect(outside).toHaveLength(3);
+      const removed = remove.mock.calls.filter(([type]) => type === 'pointerdown');
+      expect(removed).toHaveLength(3);
+      expect(removed.map(([, listener]) => listener)).toEqual(outside.map(([, listener]) => listener));
+    } finally {
+      menu.remove();
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
+});

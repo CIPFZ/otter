@@ -21,6 +21,17 @@ function setup(options?: Parameters<typeof bindRemote>[2]) {
 }
 
 describe('remote key map', () => {
+  it('keeps separate Play and Pause keys absolute, including platform codes', () => {
+    const { sent, key, off } = setup();
+    key({ key: 'MediaPause' });
+    key({ key: 'MediaPause', repeat: true });
+    key({ key: 'MediaPlay' });
+    key({ key: 'Unidentified', keyCode: 19 });
+    key({ key: 'Unidentified', keyCode: 415 });
+    expect(sent).toEqual([['pause', {}], ['play', {}], ['pause', {}], ['play', {}]]);
+    off();
+  });
+
   it('maps key names and platform key codes to logical keys; a host map replaces a key\'s list', () => {
     expect(remoteKeyOf({ key: 'Escape', keyCode: 27 }, DEFAULT_REMOTE_KEYS)).toBe('back');
     expect(remoteKeyOf({ key: 'Unidentified', keyCode: 10009 }, DEFAULT_REMOTE_KEYS)).toBe('back');

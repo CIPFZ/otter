@@ -86,7 +86,9 @@ export interface OtterPlayerActionOptions<P extends OtterPlayerLike> {
  *   let { src } = $props();
  *   const create = (container) => {
  *     const player = createVodPlayer({ container, title: 'Example' });
- *     void player.load(src);
+ *     void player.load(src).catch((error) => {
+ *       if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+ *     });
  *     return player;
  *   };
  * </script>

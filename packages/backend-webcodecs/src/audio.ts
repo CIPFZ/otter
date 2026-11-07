@@ -51,15 +51,17 @@ class OtterAudio extends AudioWorkletProcessor {
     const out = outputs[0];
     for (const ch of out) ch.fill(0);
     const a = this.a;
-    if (a === null || !a.playing || a.rate !== 1 || out.length === 0) return true;
+    if (a === null || out.length === 0) return true;
     const q = this.q;
-    const t0 = a.media + (currentTime - a.context);
+    const t0 = a.media + (a.playing ? (currentTime - a.context) * a.rate : 0);
     const end = (c) => c.start + c.planes[0].length / c.rate;
     const s = this.s;
     while (q.length > 0 && end(q[0]) <= t0) {
       q.shift();
       s.late++;
     }
+    // Silent rates still release PCM that is behind the media clock.
+    if (!a.playing || a.rate !== 1) return true;
     const n = out[0].length;
     let k = 0;
     let i = 0;

@@ -16,12 +16,16 @@ const query = (name: string, fallback: string): string => new URLSearchParams(lo
 export const create: Record<ExamplePreset, (container: HTMLElement) => ExamplePlayer> = {
   basic(container) {
     const p = createBasicPlayer({ container, muted: true, idleMs: 0 });
-    void p.load(query('src', '/hls-fmp4/master.m3u8'), { autoplay: true });
+    void p.load(query('src', '/hls-fmp4/master.m3u8'), { autoplay: true }).catch((error: unknown) => {
+      if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+    });
     return p;
   },
   vod(container) {
     const p = createVodPlayer({ container, title: 'Example: vod', muted: true, idleMs: 0 });
-    void p.load(query('src', '/hls-fmp4/master.m3u8'), { autoplay: true });
+    void p.load(query('src', '/hls-fmp4/master.m3u8'), { autoplay: true }).catch((error: unknown) => {
+      if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+    });
     return p;
   },
   surveillance(container) {

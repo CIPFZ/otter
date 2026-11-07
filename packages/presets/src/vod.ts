@@ -36,7 +36,9 @@ export interface VodOptions extends PresetOptions {
  * import '@otter-player/ui-skin-default';
  *
  * const player = createVodPlayer({ container, title: 'Example' });
- * void player.load(src);
+ * void player.load(src).catch((error: unknown) => {
+ *   if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+ * });
  * ```
  */
 export function createVodPlayer(options: VodOptions): Player {

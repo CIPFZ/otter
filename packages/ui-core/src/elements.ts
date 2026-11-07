@@ -1082,6 +1082,20 @@ const menuClass = () =>
       protected list: HTMLElement | undefined;
       #tip: HTMLElement | undefined;
       readonly menuId = `otter-menu-${++menuIds}`;
+      #outsideDocument: Document | undefined;
+      readonly #outside = (e: PointerEvent): void => {
+        if (this.open && !e.composedPath().includes(this)) this.close(false);
+      };
+      override connectedCallback(): void {
+        super.connectedCallback();
+        this.#outsideDocument = this.ownerDocument;
+        this.#outsideDocument.addEventListener('pointerdown', this.#outside);
+      }
+      override disconnectedCallback(): void {
+        this.#outsideDocument?.removeEventListener('pointerdown', this.#outside);
+        this.#outsideDocument = undefined;
+        super.disconnectedCallback();
+      }
       protected setup(): void {
         if (this.trigger !== undefined) return;
         const root = this.attachShadow({ mode: 'open' });
@@ -1104,10 +1118,6 @@ const menuClass = () =>
         list.addEventListener('click', (e) => {
           const item = this.itemFrom(e);
           if (item !== undefined) this.activateItem(item);
-        });
-        // Clicking elsewhere closes the menu.
-        this.ownerDocument.addEventListener('pointerdown', (e) => {
-          if (this.open && !e.composedPath().includes(this)) this.close(false);
         });
       }
       protected extraCss(): string {

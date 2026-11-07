@@ -56,7 +56,9 @@ export function createFlvFormat(options: FlvFormatOptions = {}): FormatPlugin {
     },
     createEngine: (ctx) => {
       const adapter = () => createMpegtsEngine(ctx, { type: 'flv', ...(options.config === undefined ? {} : { config: options.config }) });
-      if ((options.engine ?? 'otter') === 'mpegts') return adapter();
+      // The own MSE pipeline reads fetch streams; WebSocket URLs use mpegts.js.
+      const websocket = typeof ctx.source.src === 'string' && /^wss?:/i.test(ctx.source.src);
+      if (options.engine === 'mpegts' || websocket) return adapter();
       const own = createPipelineEngine(ctx, { type: 'flv', ...(options.targetLatency === undefined ? {} : { targetLatency: options.targetLatency }) });
       return withAdapterFallback(own, adapter, { media: ctx.media });
     },

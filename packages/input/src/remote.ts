@@ -63,8 +63,8 @@ export interface RemoteOptions {
 export interface RemoteStore {
   /** The state; only `menu` is read (Back closes it first). */
   getState(): { readonly menu?: unknown };
-  /** Dispatches one of the four actions the remote uses. */
-  dispatch(type: 'show-controls' | 'escape' | 'toggle-paused' | 'seek-by', payload: Record<string, unknown>): boolean;
+  /** Dispatches the playback, navigation and control actions the remote uses. */
+  dispatch(type: 'show-controls' | 'escape' | 'toggle-paused' | 'play' | 'pause' | 'seek-by', payload: Record<string, unknown>): boolean;
 }
 
 const DEFAULT_STEPS: readonly (readonly [number, number])[] = [
@@ -194,7 +194,7 @@ export function bindRemote(root: HTMLElement, store: RemoteStore, options: Remot
       case 'pause':
         // Held keys repeat; repeating a toggle would flicker.
         e.preventDefault();
-        if (!e.repeat) store.dispatch('toggle-paused', {});
+        if (!e.repeat) store.dispatch(key === 'playPause' ? 'toggle-paused' : key, {});
         return;
       case 'fastForward':
       case 'rewind':

@@ -40,7 +40,11 @@ export interface DemuxTiming {
 
 export interface DemuxInfo {
   readonly duration: number;
-  /** Timestamp of the first packet; media time 0 starts here. */
+  /**
+   * Earliest playable timestamp. Live demuxers may advance it as time or storage limits evict history;
+   * Infinity means no retained keyframe (audio-only: frame) is currently available. A backend
+   * keeps paused playback paused and resynchronises both tracks and its clock when resuming.
+   */
   readonly startTime: number;
   /** The video track to start with (the primary one). */
   readonly video: DemuxVideoTrack | null;

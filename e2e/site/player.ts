@@ -723,5 +723,7 @@ else {
   // button: sound needs a user gesture), e.g. ?load=/whep/live&type=application/whep.
   const load = new URLSearchParams(location.search).get('load');
   const type = new URLSearchParams(location.search).get('type');
-  if (load !== null) void window.otter.then((o) => o.load({ src: load, ...(type === null ? {} : { type }) }));
+  if (load !== null) void window.otter.then((o) => o.load({ src: load, ...(type === null ? {} : { type }) })).catch((error: unknown) => {
+    if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+  });
 }

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBackgroundPlayer } from '../src/background.js';
 import { PRESET_IDS } from '../src/index.js';
 import { buildShell } from '../src/shell.js';
@@ -77,6 +77,7 @@ describe('basic preset', () => {
     expect(p.store.getState().presentation.mode).toBe('inline');
     expect(p.explain()).toEqual({ route: null, error: null });
     await p.destroy();
+    expect(box.childElementCount).toBe(0);
     const host = document.createElement('div');
     host.innerHTML = '<video id="mine"></video>';
     const q = createBasicPlayer({ container: host });
@@ -134,6 +135,112 @@ describe('surveillance preset', () => {
       await p.destroy();
     } finally {
       HTMLCanvasElement.prototype.getContext = getContext;
+    }
+  });
+});
+
+describe('player ownership', () => {
+  it.each(['basic', 'player'] as const)('does not install old %s UI after replacement during startup', async (kind) => {
+    const { createBasicPlayer } = await import('../src/basic.js');
+    const { createPlayer } = await import('../src/player.js');
+    const container = document.body.appendChild(document.createElement('div'));
+    let finish!: () => void;
+    const blocked = new Promise<void>((resolve) => { finish = resolve; });
+    const install = vi.fn(() => blocked);
+    const oldSetup = vi.fn();
+    const make = (old: boolean) => {
+      const plugins = old ? [{ id: 'slow-start', install, uninstall() {} }] : [];
+      return kind === 'basic'
+        ? createBasicPlayer({ container, plugins, idleMs: 0, ...(old ? { setup: oldSetup } : {}) })
+        : createPlayer({ container, plugins, formats: [], backends: [], captions: false, idleMs: 0, presentation: { mediaSession: false, wakeLock: false }, ...(old ? { setup: oldSetup } : {}) });
+    };
+    const first = make(true);
+    await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+    const stopping = first.destroy();
+    const second = make(false);
+    await second.ready;
+    finish();
+    await stopping;
+    expect(oldSetup).not.toHaveBeenCalled();
+    expect(second.video).not.toBe(first.video);
+    expect(second.video.isConnected).toBe(true);
+    expect((container.querySelector('otter-play-button') as HTMLElement & { ui: unknown }).ui).toBe(second.store);
+    await second.destroy();
+  });
+
+  it.each(['basic', 'player'] as const)('keeps a replacement %s intact when old asynchronous teardown finishes', async (kind) => {
+    const { createBasicPlayer } = await import('../src/basic.js');
+    const { createPlayer } = await import('../src/player.js');
+    const container = document.body.appendChild(document.createElement('div'));
+    let finish!: () => void;
+    const blocked = new Promise<void>((resolve) => { finish = resolve; });
+    const make = (old: boolean) => {
+      const plugins = old ? [{ id: 'slow-cleanup', install() {}, uninstall: () => blocked }] : [];
+      return kind === 'basic'
+        ? createBasicPlayer({ container, plugins, idleMs: 0 })
+        : createPlayer({ container, plugins, formats: [], backends: [], captions: false, idleMs: 0, presentation: { mediaSession: false, wakeLock: false } });
+    };
+    const first = make(true);
+    await first.ready;
+    const stopping = first.destroy();
+    const second = make(false);
+    await second.ready;
+    second.video.src = 'https://example.test/new.mp4';
+    finish();
+    await stopping;
+    expect(second.video).not.toBe(first.video);
+    expect(second.video.isConnected).toBe(true);
+    expect(second.video.src).toBe('https://example.test/new.mp4');
+    expect(container.querySelector('otter-play-button')).not.toBeNull();
+    await second.destroy();
+  });
+
+  it('binds the new player when a host shell is reused in the same container', async () => {
+    const { createBasicPlayer } = await import('../src/basic.js');
+    const box = document.body.appendChild(document.createElement('div'));
+    box.innerHTML = '<video></video><otter-play-button></otter-play-button>';
+    const button = box.querySelector('otter-play-button') as HTMLElement & { readonly ui: unknown };
+    const first = createBasicPlayer({ container: box, idleMs: 0 });
+    await first.ready;
+    expect(button.ui).toBe(first.store);
+    await first.destroy();
+    const second = createBasicPlayer({ container: box, idleMs: 0 });
+    await second.ready;
+    expect(box.querySelector('otter-play-button')).toBe(button);
+    expect(button.ui).toBe(second.store);
+    await second.destroy();
+  });
+
+  it('disconnects the owned video surface when the player is destroyed', async () => {
+    const observers: { nodes: Element[]; disconnect: ReturnType<typeof vi.fn> }[] = [];
+    class Observer {
+      nodes: Element[] = [];
+      disconnect = vi.fn();
+      constructor() { observers.push(this); }
+      observe(node: Element): void { this.nodes.push(node); }
+      unobserve(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', Observer);
+    try {
+      const { createPlayer } = await import('../src/player.js');
+      const container = document.body.appendChild(document.createElement('div'));
+      const player = createPlayer({ container, formats: [], backends: [], ui: false, captions: false, presentation: { mediaSession: false, wakeLock: false } });
+      await player.ready;
+      const owned = observers.filter((o) => o.nodes.includes(player.video));
+      expect(owned).toHaveLength(1);
+      await player.destroy();
+      expect(owned[0]?.disconnect).toHaveBeenCalledOnce();
+      expect(container.childElementCount).toBe(0);
+      const { createSurveillancePlayer } = await import('../src/surveillance.js');
+      const wall = createSurveillancePlayer({ container, streams: [] });
+      await wall.ready;
+      const wallVideo = container.querySelector('video');
+      const wallOwned = observers.filter((o) => wallVideo !== null && o.nodes.includes(wallVideo));
+      expect(wallOwned).toHaveLength(1);
+      await wall.destroy();
+      expect(wallOwned[0]?.disconnect).toHaveBeenCalledOnce();
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 });

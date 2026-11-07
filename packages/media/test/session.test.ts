@@ -23,7 +23,7 @@ interface FakeBackend extends MediaBackend {
   readonly calls: string[];
 }
 
-function fakeBackend(kind: BackendKind, behavior: { failLoad?: boolean } = {}): FakeBackend {
+function fakeBackend(kind: BackendKind, behavior: { failLoad?: boolean; emitLoadError?: boolean } = {}): FakeBackend {
   const listeners = new Map<string, Set<Listener>>();
   const calls: string[] = [];
   return {
@@ -35,7 +35,9 @@ function fakeBackend(kind: BackendKind, behavior: { failLoad?: boolean } = {}): 
     load: async () => {
       calls.push('load');
       if (behavior.failLoad === true) {
-        throw createError({ type: 'media', details: 'mediaSrcNotSupported', fatal: true, recoverable: false });
+        const error = createError({ type: 'media', details: 'mediaSrcNotSupported', fatal: true, recoverable: false });
+        if (behavior.emitLoadError === true) for (const h of listeners.get('error') ?? []) h(error);
+        throw error;
       }
     },
     play: () => {
@@ -78,7 +80,7 @@ const target = {} as HTMLMediaElement;
 
 // No backoff by default so `flush()` covers a retry; stall watchdog off unless a test enables it.
 async function setup(
-  behavior: Partial<Record<BackendKind, { failLoad?: boolean }>> = {},
+  behavior: Partial<Record<BackendKind, { failLoad?: boolean; emitLoadError?: boolean }>> = {},
   recovery: Partial<RecoveryPolicy> = { backoffMs: () => 0, stallTimeoutMs: 0 },
 ) {
   const created: FakeBackend[] = [];
@@ -526,4 +528,56 @@ describe('media plugin: requested quality across a runtime engine switch', () =>
     });
     expect(view.getState().quality).toBe('level-0');
   });
+});
+
+it('a fatal event and rejection from the same load trigger exactly one fallback', async () => {
+  const { core, view, created } = await setup({ mse: { failLoad: true, emitLoadError: true } });
+  view.dispatch('load', { source: { src: 'test.m3u8' } });
+  await flush();
+  expect(created.map((b) => b.kind)).toEqual(['mse', 'native']);
+  expect(created[1]?.calls).not.toContain('destroy');
+  expect(view.getState().status).toBe('ready');
+  await core.destroy();
+});
+
+it('the public load promise resolves when ready and rejects the final load error', async () => {
+  const ok = await setup();
+  await ok.plugin.load({ src: 'test.m3u8' });
+  expect(ok.view.getState().status).toBe('ready');
+  await ok.core.destroy();
+  const bad = await setup({ mse: { failLoad: true }, native: { failLoad: true } });
+  await expect(bad.plugin.load({ src: 'bad.m3u8' })).rejects.toMatchObject({ details: 'mediaSrcNotSupported' });
+  await bad.core.destroy();
+});
+
+it('the public load promise rejects when superseded or unloaded', async () => {
+  const { core, view, plugin } = await setup();
+  const first = plugin.load({ src: 'first.m3u8' });
+  const superseded = expect(first).rejects.toMatchObject({ name: 'AbortError' });
+  await plugin.load({ src: 'second.m3u8' });
+  await superseded;
+  const third = plugin.load({ src: 'third.m3u8' });
+  const unloaded = expect(third).rejects.toMatchObject({ name: 'AbortError' });
+  view.dispatch('unload', undefined);
+  await unloaded;
+  await core.destroy();
+});
+
+it.each(['before', 'after'] as const)('public loads retain their own completion through a reentrant %s observer', async (order) => {
+  const { core, plugin, view } = await setup();
+  if (order === 'before') await plugin.uninstall?.();
+  const seen: string[] = [];
+  let inner: Promise<void> | undefined;
+  const off = core.store.handle('load', ({ source }) => {
+    seen.push(String(source.src));
+    if (source.src === 'outer.m3u8') inner = plugin.load({ src: 'inner.m3u8' });
+  });
+  if (order === 'before') await plugin.install({ store: core.store, qoe: core.qoe } as Parameters<typeof plugin.install>[0]);
+  const outer = plugin.load({ src: 'outer.m3u8' });
+  await expect(outer).rejects.toMatchObject({ name: 'AbortError' });
+  await inner;
+  expect(seen).toEqual(['outer.m3u8', 'inner.m3u8']);
+  expect(view.getState()).toMatchObject({ source: { src: 'inner.m3u8' }, status: 'ready' });
+  off();
+  await core.destroy();
 });

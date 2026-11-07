@@ -71,6 +71,21 @@ export function createPluginRegistry<S extends object = object, A extends object
   const plugins = new Map<string, Plugin<S, A>>();
   let installed: Plugin<S, A>[] = [];
   let context: PluginContext<S, A> | undefined;
+  let generation = 0;
+  let pending: Promise<void> | undefined;
+  const serialize = (run: () => Promise<void>): Promise<void> => {
+    const previous = pending;
+    let finish: () => void = () => undefined;
+    const settled = new Promise<void>((resolve) => { finish = resolve; });
+    // Register before calling a plugin: install itself may synchronously request teardown.
+    pending = settled;
+    const task = previous === undefined ? run() : previous.then(run);
+    void task.then(finish, finish);
+    void settled.then(() => {
+      if (pending === settled) pending = undefined;
+    });
+    return task;
+  };
 
   const order = (): Plugin<S, A>[] => {
     const result: Plugin<S, A>[] = [];
@@ -120,27 +135,35 @@ export function createPluginRegistry<S extends object = object, A extends object
     },
     has: (id) => plugins.has(id),
     order,
-    async installAll(ctx) {
-      context = ctx;
-      for (const p of order()) {
-        if (installed.includes(p)) continue;
-        try {
-          await p.install(ctx);
-        } catch (err) {
-          const rollback = await uninstallInstalled();
-          const cause = rollback.length === 0 ? err : new AggregateError([err, ...rollback]);
-          throw pluginError('pluginInstallFailed', `plugin "${p.id}" failed to install`, cause);
+    installAll(ctx) {
+      const requested = generation;
+      return serialize(async () => {
+        context = ctx;
+        for (const p of order()) {
+          if (requested !== generation) return;
+          if (installed.includes(p)) continue;
+          try {
+            await p.install(ctx);
+          } catch (err) {
+            const rollback = await uninstallInstalled();
+            const cause = rollback.length === 0 ? err : new AggregateError([err, ...rollback]);
+            throw pluginError('pluginInstallFailed', `plugin "${p.id}" failed to install`, cause);
+          }
+          // A concurrent uninstall waits for this installation, then releases it.
+          installed.push(p);
+          if (requested === generation) ctx.events.emit('plugin-installed', { id: p.id });
         }
-        installed.push(p);
-        ctx.events.emit('plugin-installed', { id: p.id });
-      }
+      });
     },
-    async uninstallAll() {
-      const errors = await uninstallInstalled();
-      installed = [];
-      if (errors.length > 0) {
-        throw pluginError('pluginUninstallFailed', 'one or more plugins failed to uninstall', new AggregateError(errors));
-      }
+    uninstallAll() {
+      generation++;
+      return serialize(async () => {
+        const errors = await uninstallInstalled();
+        installed = [];
+        if (errors.length > 0) {
+          throw pluginError('pluginUninstallFailed', 'one or more plugins failed to uninstall', new AggregateError(errors));
+        }
+      });
     },
   };
 }

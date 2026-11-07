@@ -152,7 +152,9 @@ type OtterPlayerEmits = { player: (p: OtterPlayerLike | null) => true };
  *   setup(props) {
  *     const create = (container: HTMLElement) => {
  *       const player = createVodPlayer({ container, title: 'Example' });
- *       void player.load(props.src);
+ *       void player.load(props.src).catch((error: unknown) => {
+ *         if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+ *       });
  *       return player;
  *     };
  *     return () => h(OtterPlayer, { create, deps: [props.src] });
@@ -171,7 +173,7 @@ export const OtterPlayer: DefineSetupFnComponent<OtterPlayerProps, OtterPlayerEm
       () => props.create,
       () => props.deps ?? [],
     );
-    watch(player, (p) => emit('player', p));
+    watch(player, (p) => emit('player', p), { flush: 'sync' });
     return (): VNode => {
       const style: CSSProperties = {
         position: 'relative',

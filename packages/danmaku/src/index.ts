@@ -233,6 +233,13 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
     );
   };
 
+  const disposeLoads = (): void => {
+    loadSeq++;
+    maskSeq++;
+    mask?.destroy();
+    mask = undefined;
+  };
+
   const plugin: DanmakuController['plugin'] = {
     id: 'danmaku',
     install(ctx: PluginContext<S, DanmakuActionMap>) {
@@ -285,6 +292,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
           status({ mask: `${req.kind}: loading` });
           void import('./mask.js')
             .then(async (m) => {
+              if (seq !== maskSeq) return undefined;
               if (req.kind === 'webm') {
                 const fps = req.fps ?? 30;
                 // Ready once the first frame decoded with its alpha.
@@ -301,7 +309,9 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
               return { source: m.createSvgMask(doc, frames), what: `svg: ${frames.length} frames` };
             })
             .then(
-              ({ source, what }) => {
+              (result) => {
+                if (result === undefined) return;
+                const { source, what } = result;
                 if (seq !== maskSeq) return source.destroy();
                 mask = source;
                 maskMissing = 0;
@@ -340,6 +350,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       blocked = blockTest(settings.blocked);
     },
     uninstall() {
+      disposeLoads();
       for (const off of offs) off();
       offs = [];
       store = undefined;
@@ -422,6 +433,7 @@ export function createDanmaku(options: DanmakuOptions = {}): DanmakuController {
       switchTo(d.to, d.reason);
     },
     destroy() {
+      disposeLoads();
       for (const off of hostOffs) off();
       hostOffs = [];
       for (const c of fs.running) renderer?.release(c);

@@ -259,6 +259,8 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   let lastAbrAt = 0;
   let audioEos = false;
   let seek: { target: number; candidate: DecodedFrame | undefined; resume: boolean } | undefined;
+  /** A live history with no retained keyframe yet: wait without advancing the clock. */
+  let pendingLiveSeek: { time: number; resume: boolean } | undefined;
   let shownAt = Number.NEGATIVE_INFINITY;
   let firstFrame = false;
   /** performance.now() of the first frame on the surface. */
@@ -496,7 +498,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     const reader = (async () => {
       try {
         for (;;) {
-          while (live() && clock !== undefined && lane.readTo / 1e6 - clock.now() > READ_AHEAD_S) await signal.wait(100);
+          while (live() && ((background && seek === undefined) || (clock !== undefined && lane.readTo / 1e6 - clock.now() > READ_AHEAD_S))) await signal.wait(100);
           if (!live()) return;
           const next: IteratorResult<EncodedChunk> = await it.next();
           if (!live()) return;
@@ -639,20 +641,29 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     signal.notify();
     if (seek !== undefined) closeFrame(seek.candidate);
     for (const f of queue.splice(0)) closeFrame(f);
-    // Same rendition, same decoder plugin: the decoder is reset and reused.
+    const windowStart = info.duration === Number.POSITIVE_INFINITY ? info.startTime : 0;
+    const available = Number.isFinite(windowStart);
+    // Reuse only when the new lane can start now; otherwise release it while waiting for a keyframe.
     const last = lanes.at(-1);
-    const reuse = last !== undefined && last.track === current && last.plugin === videoPlugin ? last : undefined;
+    const reuse = available && last !== undefined && last.track === current && last.plugin === videoPlugin ? last : undefined;
     closeLanes(reuse);
     switching = false;
     audio?.reset();
     sink?.flush();
     audioEos = info.audio === null || audio === undefined;
-    const target = Math.min(Math.max(time, 0), info.duration);
     clock?.stop();
+    if (!available) {
+      seek = undefined;
+      pendingLiveSeek = { time, resume };
+      update({ seeking: true, waiting: true, paused: !resume, seekableStart: null });
+      return;
+    }
+    pendingLiveSeek = undefined;
+    const target = Math.min(Math.max(time, windowStart, 0), info.duration);
     clock?.set(target);
     driver?.reset();
     seek = { target, candidate: undefined, resume };
-    update({ seeking: true, ended: false, waiting: false, currentTime: target, paused: !resume });
+    update({ seeking: true, ended: false, waiting: false, currentTime: target, paused: !resume, seekableStart: windowStart });
     const track = current;
     if (track !== undefined) {
       void openVideoAt(d, track, target).then(
@@ -675,8 +686,12 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
   const resyncVideo = (): void => {
     const d = demuxer;
     const track = current;
-    if (d === undefined || track === undefined || clock === undefined || seek !== undefined) return;
+    if (d === undefined || track === undefined || clock === undefined || seek !== undefined || pendingLiveSeek !== undefined) return;
     const t = clock.now();
+    if (info?.duration === Number.POSITIVE_INFINITY && t < info.startTime) {
+      if (!snap.paused) startSeek(t, true);
+      return;
+    }
     // Paused and nothing missed: decoding just carries on from where it stopped.
     if (!clock.playing && !snap.waiting && lanes.length > 0) return;
     const vg = ++vgen;
@@ -846,6 +861,12 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     cancelTick = undefined;
     if (destroyed || clock === undefined || info === undefined) return;
     clock.check();
+    if (pendingLiveSeek !== undefined && Number.isFinite(info.startTime)) {
+      const pending = pendingLiveSeek;
+      startSeek(pending.time, pending.resume);
+    } else if (pendingLiveSeek === undefined && seek === undefined && !snap.paused && info.duration === Number.POSITIVE_INFINITY && clock.now() + EPS_US / 1e6 < info.startTime) {
+      startSeek(clock.now(), true);
+    }
     const playing = clock.playing;
     // Playing on the performance.now() stand-in is reported only once the AudioContext clock is
     // settled as out (resume rejected or past its grace, frozen time, no context); a resume that
@@ -860,7 +881,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
     checkStalls();
     releaseHold();
     const t = clock.now();
-    if (seek === undefined) {
+    if (seek === undefined && pendingLiveSeek === undefined) {
       // The latest frame at or before the clock; the ones before it were skipped (dropped).
       // Nothing is drawn in the background (the queue was released on hiding).
       let latest: DecodedFrame | undefined;
@@ -882,7 +903,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         clock.stop();
         update({ waiting: true, currentTime: clock.now() });
         bus.emit('waiting', { position: clock.now() });
-      } else if (snap.waiting && (queue.length >= RESUME_FRAMES || videoEos())) {
+      } else if (!snap.paused && snap.waiting && (queue.length >= RESUME_FRAMES || videoEos())) {
         clock.start();
         update({ waiting: false });
       }
@@ -936,6 +957,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         const decoder = pickDecoder('video');
         if (decoder === undefined) throw fatal('media', 'noDecoder', `no ${ctx.step.decoder ?? 'webcodecs'} decoder registered`);
         const support = await decoder.supports(v.codec, ctx.caps);
+        if (destroyed) return;
         if (support === false) {
           // HEVC without a hardware decoder and without a WASM one to fall back to: said, so the host
           // knows to pass one (none ships with Otter, ADR-014); this route then fails as usual.
@@ -950,11 +972,13 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         const all = info.videoTracks ?? [v];
         levels = [];
         for (const t of all) if (t === v || (await decoder.supports(t.codec, ctx.caps)) !== false) levels.push(t);
+        if (destroyed) return;
         levels.sort((x, y) => (x.bitrate ?? 0) - (y.bitrate ?? 0));
         current = v;
         if (levels.length > 1 && demuxer.openVideo !== undefined) {
           // ABR from the pipeline's rule stack, on demand (only sources with a ladder need it).
           const { createAbrDriver } = await import('@otter-player/pipeline');
+          if (destroyed) return;
           driver = createAbrDriver();
           demuxer.onDownload?.((dl) => {
             driver?.sampleDownload(dl.ms, dl.bytes, dl.ttfbMs);
@@ -982,10 +1006,16 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
         if (a === null) return;
         const decoder = pickDecoder('audio');
         const support = decoder === undefined ? false : await decoder.supports(a.codec, ctx.caps);
+        if (destroyed) return;
         audioSupport = support === false ? 'none' : support;
         if (decoder !== undefined && support !== false && c !== undefined) {
           try {
-            sink = await createAudioSink(c);
+            const next = await createAudioSink(c);
+            if (destroyed) {
+              next.destroy();
+              return;
+            }
+            sink = next;
             sink.setVolume(volume, muted);
             // A dry worklet is said, not just heard as silence (M6 F14).
             sink.onUnderrun((media, ms, dq) =>
@@ -1006,6 +1036,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       if (!gated) {
         if (a !== null) audioCtx = acquireAudioContext();
         await setupAudio(audioCtx);
+        if (destroyed) return;
         audioCtx ??= acquireAudioContext();
       }
       const c = createClock(audioCtx, { deferred: gated });
@@ -1085,11 +1116,20 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       const first = new Promise<void>((resolve, reject) => {
         loaded = { resolve, reject };
       });
-      startSeek(opts.startTime ?? Math.max(0, info.startTime), false);
+      startSeek(opts.startTime ?? (Number.isFinite(info.startTime) ? Math.max(0, info.startTime) : 0), false);
       await first;
     },
     play() {
       if (clock === undefined || info === undefined) return Promise.resolve();
+      if (pendingLiveSeek !== undefined) {
+        pendingLiveSeek.resume = true;
+        update({ paused: false });
+        return Promise.resolve();
+      }
+      if (info.duration === Number.POSITIVE_INFINITY && clock.now() + EPS_US / 1e6 < info.startTime) {
+        startSeek(clock.now(), true);
+        return Promise.resolve();
+      }
       if (snap.ended) {
         startSeek(Math.max(0, info.startTime), true);
         return Promise.resolve();
@@ -1104,6 +1144,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       return Promise.resolve();
     },
     pause() {
+      if (pendingLiveSeek !== undefined) pendingLiveSeek.resume = false;
       if (seek !== undefined) seek.resume = false;
       if (startHold !== undefined) startHold.wanted = false;
       if (clock !== undefined) {
@@ -1112,7 +1153,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       }
     },
     seek(t) {
-      startSeek(t, seek?.resume ?? (clock?.playing === true || snap.waiting));
+      startSeek(t, pendingLiveSeek?.resume ?? seek?.resume ?? (clock?.playing === true || snap.waiting));
     },
     setVolume(v) {
       volume = v;
@@ -1166,6 +1207,7 @@ export function createWebCodecsBackend(ctx: BackendContext, options: WebCodecsBa
       loaded = undefined;
       if (seek !== undefined) closeFrame(seek.candidate);
       seek = undefined;
+      pendingLiveSeek = undefined;
       for (const f of queue.splice(0)) closeFrame(f);
       closeLanes();
       audio?.close();

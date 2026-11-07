@@ -8,6 +8,7 @@ import {
   EMPTY_TRACKS,
   mediaElementError,
   observeMediaElement,
+  waitForMediaDetach,
   type AudioTrack,
   type BackendContext,
   type BackendEvents,
@@ -97,6 +98,7 @@ export function createNativeBackend(ctx: BackendContext, options: NativeBackendO
   let tracks: TrackList = EMPTY_TRACKS;
   let stream: StreamSession | undefined;
   const aborted = new AbortController();
+  let destroyed = false;
   const offs: Unsubscribe[] = [];
 
   const element = (): HTMLMediaElement => {
@@ -147,10 +149,18 @@ export function createNativeBackend(ctx: BackendContext, options: NativeBackendO
     },
     async load(source, opts) {
       const m = element();
+      const detach = waitForMediaDetach(m);
+      if (detach !== undefined) await detach;
+      if (destroyed) return;
       if (options.disableRemotePlayback === true) m.disableRemotePlayback = true;
       if (ctx.format.openStream !== undefined) {
         stream?.destroy();
-        stream = await ctx.format.openStream({ source, options: opts, qoe: ctx.qoe, signal: aborted.signal });
+        const opened = await ctx.format.openStream({ source, options: opts, qoe: ctx.qoe, signal: aborted.signal });
+        if (destroyed) {
+          opened.destroy();
+          return;
+        }
+        stream = opened;
         offs.push(stream.onError((e) => emit('error', e)));
       } else {
         if (objectUrl !== undefined) URL.revokeObjectURL(objectUrl);
@@ -161,6 +171,7 @@ export function createNativeBackend(ctx: BackendContext, options: NativeBackendO
           m.removeEventListener('loadedmetadata', onMeta);
           m.removeEventListener('error', onError);
           opts.signal?.removeEventListener('abort', onAbort);
+          aborted.signal.removeEventListener('abort', onAbort);
         };
         const onMeta = (): void => {
           done();
@@ -179,6 +190,11 @@ export function createNativeBackend(ctx: BackendContext, options: NativeBackendO
         m.addEventListener('loadedmetadata', onMeta);
         m.addEventListener('error', onError);
         opts.signal?.addEventListener('abort', onAbort);
+        aborted.signal.addEventListener('abort', onAbort, { once: true });
+        if (opts.signal?.aborted === true || aborted.signal.aborted) {
+          onAbort();
+          return;
+        }
         m.preload = 'auto';
         if (stream !== undefined) m.srcObject = stream.stream;
         else {
@@ -213,6 +229,8 @@ export function createNativeBackend(ctx: BackendContext, options: NativeBackendO
     },
     on: (e, h) => bus.on(e, (p) => h(p)),
     destroy() {
+      if (destroyed) return;
+      destroyed = true;
       observer?.destroy();
       for (const off of offs.splice(0)) off();
       bus.clear();
