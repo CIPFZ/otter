@@ -12,12 +12,16 @@
 
 - 通过现有 Pages 工作流部署到 https://cipfz.github.io/otter/，保留 `PAGES_ENABLED` 部署开关。此工作流不发布 npm、不创建或推送 tag、不登记可信发布。
 - 文档继续从源码生成，并通过原有 TSDoc 门禁；只在公开站模式增加 Demo / Downloads 导航与 npm 未完成提示，不改变本地示例站的入口。
-- `scripts/build-public-site.ts` 消费一次 workspace build 的 `packages/cdn/dist`，不重建播放器。全量复制为 `browser/0.1.0-beta.0/`，包括 basic / vod 入口、CSS、按需 chunks 和构建输入清单。
-- 浏览器代码仍来自冻结点 `56893d2dd70f370be4e1828f4753f560e9ecc804`。组装前检查包源码、依赖锁定和构建输入与该点相同；站点提交不改变包版本、结构或构建参数，也不能取代最终 npm tag 所指的冻结点。下一版需显式更新版本与来源记录。
+- `scripts/build-public-site.ts` 只从 `site-assets/browser/0.1.0-beta.0.tgz` 分发冻结播放器，为 `browser/0.1.0-beta.0/` 复制 97 个 JS/CSS 运行文件和 LICENSE/NOTICE。固定原件来自已发布且经 npm SHA-512 integrity 核验的 CDN tarball；来源 URL、SHA-512、SHA-256、字节数及源码 SHA 另记 provenance JSON。读取器独立硬编码官方 integrity，避免元数据与原件同时误改后通过校验；生成站点不访问 npm。
+- 浏览器代码仍来自冻结点 `56893d2dd70f370be4e1828f4753f560e9ecc804`。组装前检查包源码、依赖锁定和构建输入与该点相同；站点提交不改变包版本、结构或构建参数，也不能取代最终 npm tag 所指的冻结点。下一版需显式更新版本、原件与来源记录。workspace build 和许可门禁继续校验代码，但其输出不用于下载包。
 - `downloads/otter-browser-0.1.0-beta.0.zip` 包含浏览器目录全部文件，同一个版本前缀下保留相对路径。附 CDN 原有 LICENSE 和完整 NOTICE（含第三方许可全文）、英文 README、逐文件 SHA256SUMS，并另提供 ZIP SHA-256 和下载大小。
 - ZIP 用 Node 内置模块写 store 格式（UTF-8 名称、CRC-32、固定日期、排序文件），可在 Windows / Linux 生成，无新增依赖或全局工具。
 - 在线 demo 用同站浏览器 ESM/CSS，并复制现有 `e2e/media/vod/progressive.mp4` 为 `demo/media/sample.mp4`。这是 `generate.sh` 的纯 testsrc2 / sine 合成样例；附来源说明与仓库 Apache-2.0 许可，不请求外网样例。
 - 部署前运行 `node scripts/check-public-site.ts --browser`：校验本地链接、相对 ESM 依赖、许可、逐文件校验和、ZIP 与托管目录的一致性，并在 `/otter/` 项目路径下验收播放。验收失败不上传或部署。
+
+## 跨平台产物核验（2026-11-08）
+
+首轮 Linux Pages 构建与 Windows 首发产物有 75 个运行文件逐字节相同，另 2 个 CSS 只有换行差异，18 个 chunk 名称及 2 个入口引用改变。逐一重命名映射并规范化 CRLF 后，97 个运行文件无剩余文本差异；构建输入清单另有 2 个 pnpm 目录的 Windows 缩短路径与 Linux 完整路径差异。不能据此声称相同版本字节一致。因此改为分发冻结 tarball 原件，并要求运行文件和许可逐字节匹配，不采用换行豁免、重新打包的 hash 名归一化或放松验收。平台相关 `inputs.json` 不再公开分发。
 
 ## 后果
 

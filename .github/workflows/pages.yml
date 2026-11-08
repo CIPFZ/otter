@@ -8,6 +8,7 @@ on:
     paths:
       - 'packages/**'
       - 'vendor/**'
+      - 'site-assets/browser/**'
       - 'tooling/**'
       - 'scripts/docs-site.ts'
       - 'scripts/build-public-site.ts'
@@ -46,11 +47,12 @@ jobs:
           node-version: 22
           package-manager-cache: false
       - run: npm exec --yes --package=pnpm@12.11.2 -- pnpm install --frozen-lockfile
+      # Verify current sources, but never use this platform build as the frozen download.
       - name: Build workspace once
         run: npm exec --yes --package=pnpm@12.11.2 -- pnpm build
       - name: Check bundled licenses and release files
         run: node scripts/release-files.ts --check
-      - name: Assemble public docs, demo and browser downloads
+      - name: Assemble public docs, demo and verified frozen browser downloads
         run: node scripts/build-public-site.ts
       - name: Install smoke-test browser
         run: node node_modules/@playwright/test/cli.js install --with-deps chromium

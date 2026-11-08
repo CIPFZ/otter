@@ -9,6 +9,7 @@ import { crc32 } from 'node:zlib';
 import { Window } from 'happy-dom';
 import ts from 'ts5';
 import { chromium, type Browser, type Page } from '@playwright/test';
+import { readFrozenBrowser } from './lib/frozen-browser.ts';
 
 const root = resolve(import.meta.dirname, '..');
 let directory: string | undefined;
@@ -34,7 +35,9 @@ for (let i = 0; i < args.length; i++) {
 }
 const site = realpathSync(resolve(root, directory ?? 'docs-site/dist'));
 const manifest = JSON.parse(readFileSync(join(root, 'packages/cdn/package.json'), 'utf8')) as { version: string };
-const version = manifest.version;
+const frozen = readFrozenBrowser();
+const version = frozen.version;
+assert.equal(manifest.version, version, 'CDN version differs from the frozen browser release');
 assert(/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version), 'Invalid browser version');
 const browserDir = 'browser/' + version;
 const archiveName = 'otter-browser-' + version;
@@ -180,22 +183,24 @@ for (const file of filesAt(site)) {
   else if (file.endsWith('.css')) checkCss(bytes(file).toString('utf8'), file);
 }
 const browserFiles = filesAt(join(site, browserDir));
-for (const license of ['LICENSE', 'NOTICE']) {
-  assert(bytes(browserDir + '/' + license).equals(readFileSync(join(root, 'packages/cdn', license))), 'Incomplete browser ' + license);
+const frozenPaths = [...frozen.files.keys(), 'README.md', 'SHA256SUMS'].map((file) => browserDir + '/' + file).sort();
+assert.deepEqual(browserFiles, frozenPaths, 'Browser directory differs from the frozen release file set');
+for (const [file, original] of frozen.files) {
+  assert(bytes(browserDir + '/' + file).equals(original), 'Frozen browser artifact mismatch: ' + file);
 }
-assert(bytes(browserDir + '/README.md').length > 0, 'Browser README is empty');
-const manifestLines = bytes(browserDir + '/SHA256SUMS').toString('utf8').trim().split(/\r?\n/);
-const expectedManifest = browserFiles.filter((file) => file !== browserDir + '/SHA256SUMS').map((file) => sha256(bytes(file)) + '  ' + file.slice(browserDir.length + 1)).sort();
-assert.deepEqual(manifestLines.sort(), expectedManifest, 'Browser checksum manifest does not cover the exact artifact');
+const browserReadme = bytes(browserDir + '/README.md').toString('utf8');
+assert(browserReadme.length > 0 && !browserReadme.includes('\r'), 'Browser README must be nonempty UTF-8 text with LF line endings');
+const expectedManifest = browserFiles.filter((file) => file !== browserDir + '/SHA256SUMS').map((file) => sha256(bytes(file)) + '  ' + file.slice(browserDir.length + 1));
+assert.equal(bytes(browserDir + '/SHA256SUMS').toString('utf8'), expectedManifest.join('\n') + '\n', 'Browser checksum manifest does not cover the exact artifact with canonical LF endings');
 const zip = bytes(archivePath);
-assert.equal(bytes(archivePath + '.sha256').toString('utf8').trim(), sha256(zip) + '  ' + archiveName + '.zip', 'Download checksum mismatch');
+assert.equal(bytes(archivePath + '.sha256').toString('utf8'), sha256(zip) + '  ' + archiveName + '.zip\n', 'Download checksum mismatch');
 const entries = readArchive(zip);
 assert.equal(entries.size, browserFiles.length, 'ZIP file count differs from browser artifact');
 for (const file of browserFiles) {
   const name = archiveName + '/' + file.slice(browserDir.length + 1);
   assert(entries.get(name)?.equals(bytes(file)), 'ZIP differs from browser artifact: ' + name);
 }
-console.log('✓ public site: ' + references + ' local references; ' + browserFiles.length + ' browser files; ZIP, checksums and licenses match');
+console.log('✓ public site: ' + references + ' local references; ' + browserFiles.length + ' browser files; frozen runtime, ZIP, checksums and licenses match');
 
 const TYPES: Readonly<Record<string, string>> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.mp4': 'video/mp4', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json', '.txt': 'text/plain', '.md': 'text/plain', '.zip': 'application/zip' };
 function createSiteServer(): Server {
@@ -249,12 +254,22 @@ if (browserCheck) {
     if (remoteBase !== undefined) {
       base = new URL(remoteBase.endsWith('/') ? remoteBase : remoteBase + '/');
       assert(base.search === '' && base.hash === '', '--url must be a site directory without a query or hash');
-      for (const file of required.filter((file) => !file.endsWith('.mp4'))) {
-        const response = await fetch(new URL(file, base), { signal: AbortSignal.timeout(30_000), cache: 'no-store' });
-        assert.equal(response.status, 200, 'Remote artifact unavailable: ' + file);
-        const remote = Buffer.from(await response.arrayBuffer());
-        assert(remote.equals(bytes(file)), 'Remote artifact differs from local build: ' + file);
+      const remoteFiles = [...new Set([...required, ...browserFiles])];
+      // Bound requests while checking every deployed chunk, not only those used by the sample.
+      for (let i = 0; i < remoteFiles.length; i += 4) {
+        await Promise.all(remoteFiles.slice(i, i + 4).map(async (file) => {
+          const response = await fetch(new URL(file, base), { signal: AbortSignal.timeout(30_000), cache: 'no-store' });
+          assert.equal(response.status, 200, 'Remote artifact unavailable: ' + file);
+          const remote = Buffer.from(await response.arrayBuffer());
+          // Only non-frozen HTML and sample notes tolerate checkout CRLF; runtime/ZIP bytes never do.
+          const pageText = file.endsWith('.html') || file === 'demo/media/README.md';
+          const matches = pageText
+            ? remote.toString('utf8').replaceAll('\r\n', '\n') === bytes(file).toString('utf8').replaceAll('\r\n', '\n')
+            : remote.equals(bytes(file));
+          assert(matches, 'Remote artifact differs from local build: ' + file);
+        }));
       }
+      console.log('✓ remote public site: ' + remoteFiles.length + ' files match (HTML/sample notes: CRLF normalized; browser/ZIP/media: exact bytes)');
     } else {
       server = createSiteServer();
       await new Promise<void>((done, reject) => {

@@ -1,10 +1,11 @@
-// Assemble the public site from the existing workspace build (ADR-015).
-// Run pnpm build first; this script never builds or publishes an npm package.
+// Assemble the public site from the verified frozen browser artifact (ADR-015).
+// Workspace builds remain separate code checks; distributed player bytes are never rebuilt here.
 import { createHash } from 'node:crypto';
-import { copyFileSync, cpSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { buildDocsSite } from './docs-site.ts';
 import { runCommand } from './lib/process.ts';
+import { readFrozenBrowser } from './lib/frozen-browser.ts';
 import { writePublicDemo } from './lib/public-demo.ts';
 
 const root = join(import.meta.dirname, '..');
@@ -90,26 +91,27 @@ function assertFrozenSources(): void {
 
 export function buildPublicSite(outDir: string): void {
   assertFrozenSources();
-  const cdn = join(root, 'packages/cdn');
-  for (const preset of ['basic', 'vod']) {
-    for (const extension of ['esm.js', 'css']) {
-      const entry = join(cdn, 'dist', 'otter-' + preset, 'otter-' + preset + '.' + extension);
-      if (!statSync(entry).isFile()) throw new Error('Run pnpm build before assembling the public site: ' + entry);
-    }
-  }
+  const frozen = readFrozenBrowser();
+  if (frozen.version !== VERSION || frozen.sourceCommit !== SOURCE_COMMIT) throw new Error('Frozen browser provenance differs from the site release record');
   const docs = buildDocsSite(outDir, { publicSite: true });
   if (docs.problems.length !== 0) throw new Error('Docs gate failed:\n' + docs.problems.join('\n'));
   writePublicDemo(outDir, VERSION);
   const browser = join(outDir, 'browser', VERSION);
-  cpSync(join(cdn, 'dist'), browser, { recursive: true });
-  for (const license of ['LICENSE', 'NOTICE']) copyFileSync(join(cdn, license), join(browser, license));
+  for (const [name, bytes] of frozen.files) {
+    const target = join(browser, name);
+    mkdirSync(join(target, '..'), { recursive: true });
+    writeFileSync(target, bytes);
+  }
   const readme = [
     '# Otter browser distribution ' + VERSION,
     '',
     'This archive contains the prebuilt basic and vod ESM presets, their CSS and every on-demand JavaScript chunk.',
     'Player source: https://github.com/CIPFZ/otter/tree/' + SOURCE_COMMIT,
-    'The site build checks that the player sources, dependencies and build configuration still match this frozen npm release source.',
-    'The public site is released independently. The npm first release and trusted-publisher setup are not yet complete.',
+    'The browser files are copied byte for byte from the verified npm CDN tarball; they are not rebuilt by the site workflow.',
+    'Original tarball: ' + frozen.provenance.tarball,
+    'Original SHA-512 integrity: ' + frozen.provenance.integrity,
+    'Original SHA-256: ' + frozen.provenance.sha256,
+    'The public site is released independently. The complete npm installation is still being published.',
     '',
     '## Files',
     '',
@@ -118,7 +120,6 @@ export function buildPublicSite(outDir: string): void {
     '- Each preset\'s chunks/ directory: keep every file beside its entry at the same relative path.',
     '- LICENSE: Otter\'s Apache-2.0 license.',
     '- NOTICE: bundled third-party projects, source locations and their complete license texts (including MPL-2.0 parts).',
-    '- inputs.json: the CDN build input list for its license audit.',
     '- SHA256SUMS: SHA-256 of every file above and this README, with paths relative to this directory; the manifest excludes itself.',
     '',
     '## Use',
@@ -181,7 +182,7 @@ function downloadPage(zipName: string, digest: string, size: number): string {
     ['basic', 'vod'].map((id) => '<tr><td>' + id + '</td><td><a href="../browser/' + VERSION + '/otter-' + id + '/otter-' + id + '.esm.js">otter-' + id + '.esm.js</a></td><td><a href="../browser/' + VERSION + '/otter-' + id + '/otter-' + id + '.css">otter-' + id + '.css</a></td></tr>').join('') +
     '</tbody></table><p>Downloading an entry by itself is not enough: it imports other files. Use the ZIP to keep the complete directory layout.</p>' +
     '<p><a href="../browser/' + VERSION + '/README.md">Archive README</a> · <a href="../browser/' + VERSION + '/LICENSE">Apache-2.0 license</a> · <a href="../browser/' + VERSION + '/NOTICE">Third-party notices and license texts</a></p>' +
-    '<h2>Release status</h2><p>The docs, demo and browser download are available independently. The npm first release and trusted-publisher setup are not yet complete.</p>' +
+    '<h2>Release status</h2><p>The docs, demo and browser download are available independently. The complete npm installation is still being published.</p>' +
     '<p><a href="https://github.com/CIPFZ/otter/tree/' + SOURCE_COMMIT + '">Frozen player source</a>. Site-only updates do not change this player version.</p>' +
     '<p><a href="../demo/index.html">Try the demo</a> with the bundled synthetic sample; no external sample server is required.</p></main></body></html>\n';
 }

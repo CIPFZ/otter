@@ -1,0 +1,10 @@
+{
+  "package": "@otter-player/cdn",
+  "version": "0.1.0-beta.0",
+  "sourceCommit": "56893d2dd70f370be4e1828f4753f560e9ecc804",
+  "tarball": "https://registry.npmjs.org/@otter-player/cdn/-/cdn-0.1.0-beta.0.tgz",
+  "integrity": "sha512-K13xGx0mRQAB6hKIVSJxbXEPQGGvhlQsNXGQj1CJ2VNC/ANXQUwUoflDYaafXv4RbdSLLRFcZxsHePSD19Su3w==",
+  "sha512": "2b5df11b1d26450001ea12885522716d710f4061af86542c3571908f5089d95342fc0357414c14a1f94361a69f5efe116dd48b2d115c671b0778f483d7d4aedf",
+  "sha256": "a6a68a3299d58266bd1573ea522491714267bad3aaf550a6ad8ecdc8f3faf309",
+  "bytes": 1868986
+}
