@@ -1,14 +1,29 @@
-# The docs site on GitHub Pages (ADR-014 §7, https://cipfz.github.io/otter/): generated from the
-# sources on every push to main that can change it. The docs alone (`OTTER_DOCS_PAGES=1`): the
-# example site with its fixtures stays local (`pnpm docs:serve`). Deploys once the repository has
-# Pages enabled with "GitHub Actions" as the source and the variable PAGES_ENABLED=true (settings);
-# until then only the build runs.
+# Public docs, demo and browser downloads are independent of npm publication (ADR-015).
+# Pages must use GitHub Actions as its source and PAGES_ENABLED=true to deploy.
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: ['packages/**', 'scripts/docs-site.ts', 'scripts/lib/**', 'e2e/site/examples/**', '.github/workflows/pages.yml']
+    paths:
+      - 'packages/**'
+      - 'vendor/**'
+      - 'tooling/**'
+      - 'scripts/docs-site.ts'
+      - 'scripts/build-public-site.ts'
+      - 'scripts/build-cdn.ts'
+      - 'scripts/check-public-site.ts'
+      - 'scripts/release-files.ts'
+      - 'scripts/lib/**'
+      - 'e2e/site/**'
+      - 'e2e/media/vod/progressive.mp4'
+      - 'e2e/media/generate.sh'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'tsconfig*.json'
+      - 'LICENSE'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -23,16 +38,24 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The assembler compares player inputs with the frozen release commit.
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           package-manager-cache: false
-      - run: npm install -g pnpm@12.11.2
-      - run: pnpm install --frozen-lockfile
-      - name: Docs site (TSDoc gate included)
-        env:
-          OTTER_DOCS_PAGES: '1'
-        run: node scripts/docs-site.ts docs-site/dist
+      - run: npm exec --yes --package=pnpm@12.11.2 -- pnpm install --frozen-lockfile
+      - name: Build workspace once
+        run: npm exec --yes --package=pnpm@12.11.2 -- pnpm build
+      - name: Check bundled licenses and release files
+        run: node scripts/release-files.ts --check
+      - name: Assemble public docs, demo and browser downloads
+        run: node scripts/build-public-site.ts
+      - name: Install smoke-test browser
+        run: node node_modules/@playwright/test/cli.js install --with-deps chromium
+      - name: Check links, downloads, modules and playback under the Pages path
+        run: node scripts/check-public-site.ts --browser
       - uses: actions/upload-pages-artifact@v5
         with:
           path: docs-site/dist

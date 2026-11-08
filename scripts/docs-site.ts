@@ -11,7 +11,7 @@
 //   example app source, with links to its server-rendered example pages.
 // English (AGENT §4: the docs site, TSDoc and READMEs are English). `pnpm check:docs-site` builds
 // it and runs the TSDoc gate (scripts/lib/docs-gate.ts): it fails on any problem the gate finds.
-// Built in CI (and with every e2e site build); not deployed (ADR-014: later).
+// Built in CI and with every e2e site build; the public site adds demo and download navigation.
 //
 //   node scripts/docs-site.ts [outDir]     (default docs-site/dist)
 
@@ -100,7 +100,7 @@ export function markdown(md: string): string {
   return out.join('\n');
 }
 
-const page = (title: string, body: string, depth: number): string => {
+const page = (title: string, body: string, depth: number, publicSite = false): string => {
   const up = '../'.repeat(depth);
   return `<!doctype html>
 <html lang="en">
@@ -112,8 +112,9 @@ const page = (title: string, body: string, depth: number): string => {
 <link rel="stylesheet" href="${up}style.css">
 </head>
 <body>
-<header><a href="${up}index.html">Otter docs</a></header>
+<header><a href="${up}index.html">Otter docs</a>${publicSite ? `<nav aria-label="Main navigation"><a href="${up}demo/index.html">Demo</a><a href="${up}downloads/index.html">Downloads</a><a href="https://github.com/CIPFZ/otter">GitHub</a></nav>` : ''}</header>
 <main>
+${publicSite ? '<p class="release-note">The browser demo and downloads are available now. The complete npm release is still in progress; some package installation examples below are not ready to use yet.</p>' : ''}
 <h1>${esc(title)}</h1>
 ${body}
 </main>
@@ -123,7 +124,9 @@ ${body}
 };
 
 const STYLE = `body { margin: 0; font: 15px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1b2430; background: #fff; }
-header { padding: 12px 24px; background: #10161e; } header a { color: #1ee9e6; font-weight: 600; text-decoration: none; }
+header { padding: 16px 24px; background: #10161e; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; } header a { color: #1ee9e6; font-weight: 600; text-decoration: none; }
+nav { display: flex; gap: 20px; flex-wrap: wrap; } a:focus-visible { outline: 3px solid #0b6e8a; outline-offset: 4px; }
+.release-note { background: #edf8f7; border: 1px solid #b5d8d5; border-radius: 8px; padding: 12px 16px; color: #294f54; line-height: 1.6; margin-top: 20px; }
 main { max-width: 1040px; margin: 0 auto; padding: 8px 24px 64px; }
 a { color: #0b6e8a; } code { font: 13px ui-monospace, Menlo, Consolas, monospace; background: #f1f4f7; padding: 1px 4px; border-radius: 4px; }
 pre { background: #0f1720; color: #e6edf3; padding: 12px 14px; border-radius: 8px; overflow: auto; } pre code { background: none; color: inherit; padding: 0; }
@@ -200,15 +203,22 @@ const PAGES = process.env['OTTER_DOCS_PAGES'] === '1';
 const RUN_LOCALLY = '<p class="muted">Runnable in the repository: <code>pnpm docs:serve</code> builds the example site with its fixtures and serves these docs under <code>/docs/</code>, with a link here.</p>';
 
 /** The page of the e2e site that runs a docs example with its fixture. */
-const exampleLink = (region: string, depth: number): string => {
+const exampleLink = (region: string, depth: number, publicSite = false): string => {
   const src = EXAMPLE_SOURCES[region];
   if (src === undefined) return '';
-  if (PAGES) return RUN_LOCALLY;
+  if (PAGES || publicSite) return RUN_LOCALLY;
   const href = `${'../'.repeat(depth + 1)}examples.html?example=${encodeURIComponent(region)}&src=${src}`;
   return `<p>Run it on the example site (e2e fixtures; <code>pnpm docs:serve</code> or the e2e preview server): <a class="live" href="${esc(href)}">examples.html?example=${esc(region)}</a>${region === 'ott-drm' ? ' (the e2e test injects the ClearKey keys, see <code>e2e/examples.spec.ts</code>)' : ''}</p>`;
 };
 
-export function buildDocsSite(outDir: string): { pages: number; undocumented: number; exports: number; problems: readonly string[] } {
+/** Optional navigation for a site that also contains the browser demo and downloads. */
+export interface DocsSiteOptions {
+  /** Include public navigation and the npm release notice; hide local fixture links. */
+  readonly publicSite?: boolean;
+}
+
+export function buildDocsSite(outDir: string, options: DocsSiteOptions = {}): { pages: number; undocumented: number; exports: number; problems: readonly string[] } {
+  const publicSite = options.publicSite === true;
   const api = readApiSurface(root);
   const problems = docsGate({ api, examples: readExampleRegions(root), errorCodes: readErrorCodes(root) });
   rmSync(outDir, { recursive: true, force: true });
@@ -233,7 +243,7 @@ export function buildDocsSite(outDir: string): { pages: number; undocumented: nu
     } catch {
       intro = '';
     }
-    writeFileSync(join(outDir, 'api', `${pkg}.html`), page(`@otter-player/${pkg}`, `${intro}${entries.map((e) => entryHtml(e, link)).join('\n')}`, 1));
+    writeFileSync(join(outDir, 'api', `${pkg}.html`), page(`@otter-player/${pkg}`, `${intro}${entries.map((e) => entryHtml(e, link)).join('\n')}`, 1, publicSite));
     pages++;
   }
 
@@ -248,11 +258,11 @@ export function buildDocsSite(outDir: string): { pages: number; undocumented: nu
       `<p>${esc(headerComment(join(root, 'packages/presets/src', `${id}.ts`)))}</p>`,
       `<pre><code>import { ${esc(create?.name ?? 'createPlayer')} } from '@otter-player/presets/${id}';</code></pre>`,
       `<h2>Example</h2><p class="muted">The @example of <code>${esc(create?.name ?? '')}</code>, the same code as <code>e2e/site/examples/</code> (<code>container</code> and <code>src</code> are the example page's host element and source).</p><pre><code>${esc(example === undefined ? '' : exampleCode(example))}</code></pre>`,
-      exampleLink(id, 1),
+      exampleLink(id, 1, publicSite),
       options.length === 0 ? '' : `<h2>Options</h2>${options.map((x) => exportHtml(x, link)).join('\n')}`,
       `<p><a href="../api/presets.html">Full API: @otter-player/presets</a></p>`,
     ].join('\n');
-    writeFileSync(join(outDir, 'presets', `${id}.html`), page(`Preset: ${id}`, body, 1));
+    writeFileSync(join(outDir, 'presets', `${id}.html`), page(`Preset: ${id}`, body, 1, publicSite));
     pages++;
   }
 
@@ -263,15 +273,15 @@ export function buildDocsSite(outDir: string): { pages: number; undocumented: nu
     const [specifier, name] = b.example.split('#') as [string, string];
     const example = api.entries.find((e) => e.specifier === specifier)?.exports.find((x) => x.name === name)?.tags.find((t) => t.name === 'example');
     const region = EXAMPLES[b.example] as string;
-    const live = ['basic', 'vod', 'surveillance'].map((p) => (PAGES ? `<code>e2e/site/${b.id}-${p}.html</code>` : `<a class="live" href="../../${b.id}-${p}.html">${b.id}-${p}.html</a>`)).join(', ');
+    const live = ['basic', 'vod', 'surveillance'].map((p) => (PAGES || publicSite ? `<code>e2e/site/${b.id}-${p}.html</code>` : `<a class="live" href="../../${b.id}-${p}.html">${b.id}-${p}.html</a>`)).join(', ');
     const body = [
       readme,
       `<h2>Example</h2><p class="muted">The @example of <code>${esc(name)}</code> (<code>e2e/site/examples/</code>).</p><pre><code>${esc(example === undefined ? '' : exampleCode(example))}</code></pre>`,
-      exampleLink(region, 1),
+      exampleLink(region, 1, publicSite),
       `<h2>Example app</h2><p class="muted"><code>${esc(b.app)}</code>, rendered on the server in Node at build time and hydrated in the browser: ${live}.</p><pre><code>${esc(app)}</code></pre>`,
       `<p><a href="../api/${b.id}.html">Full API: @otter-player/${b.id}</a></p>`,
     ].join('\n');
-    writeFileSync(join(outDir, 'bindings', `${b.id}.html`), page(`${b.name} bindings`, body, 1));
+    writeFileSync(join(outDir, 'bindings', `${b.id}.html`), page(`${b.name} bindings`, body, 1, publicSite));
     pages++;
   }
 
@@ -292,7 +302,7 @@ export function buildDocsSite(outDir: string): { pages: number; undocumented: nu
     `<h2>API by use</h2><table><thead><tr><th>Group</th><th>Packages</th></tr></thead><tbody>${groupRows}</tbody></table>`,
     `<h2>TSDoc coverage</h2><p class="muted">User-facing entries (${userFacing.length}): ${userExports} exports, gated at 100 % by <code>pnpm check:docs-site</code>${problems.length === 0 ? '' : ` (${problems.length} problems now)`}. Internal packages: ${internal.documented} / ${internal.total} exports documented (recorded, not gated).</p>`,
   ].join('\n');
-  writeFileSync(join(outDir, 'index.html'), page('Otter docs', index, 0));
+  writeFileSync(join(outDir, 'index.html'), page('Otter docs', index, 0, publicSite));
   pages++;
   return { pages, undocumented: api.undocumented.length, exports: exportsCount, problems };
 }

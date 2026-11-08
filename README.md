@@ -1,10 +1,14 @@
 # Otter
 
+[Documentation](https://cipfz.github.io/otter/) · [Live demo](https://cipfz.github.io/otter/demo/) · [Browser downloads](https://cipfz.github.io/otter/downloads/)
+
 A pluggable web video player in TypeScript. One call gives a scenario-ready player (VOD, live, low-latency live, DRM, surveillance walls, danmaku (scrolling comments), vertical feeds, TV); underneath, every format, backend, engine, decoder and UI feature is a plugin you can swap or leave out, so a page carries only what its scenario uses. npm scope `@otter-player/*`.
 
-**Status (2026-11-04):** M0–M5 are accepted (core, engines, WebCodecs, own HLS engine, presentation modes, danmaku). M6 (presets, React / Vue / Svelte bindings, TV and vertical-feed input, generated docs) is delivered and its report is open. The 1.0 release is being prepared (ADR-014): no package is published yet; a beta comes first. M7 (real phone and TV regression) follows.
+**Status (2026-11-08):** The browser edition of `0.1.0-beta.0` provides basic and VOD players through the live demo and complete browser downloads. Publication of the full npm package set is still in progress. M0–M5 are accepted; M6 (presets, framework bindings, TV input and generated docs) is delivered. M7 (real phone and TV regression) follows before 1.0.
 
 ## Install
+
+> The full npm installation is not ready yet. Use the [live demo](https://cipfz.github.io/otter/demo/) or [browser download](https://cipfz.github.io/otter/downloads/) while publication is completed. The commands below describe the npm installation once all packages are available.
 
 ```bash
 npm install @otter-player/presets @otter-player/ui-skin-default
@@ -30,7 +34,7 @@ Each preset is a sub-path (`@otter-player/presets/live`, `/surveillance`, `/shor
 
 ## Docs
 
-The docs site is generated from the sources (TSDoc, package READMEs, the examples of `e2e/site/examples/`): `pnpm docs:serve` builds it with the example site and serves it under `/docs/`, where every example runs. Public hosting comes with the release (ADR-014).
+The docs site is generated from the sources (TSDoc, package READMEs, the examples of `e2e/site/examples/`): `pnpm docs:serve` builds it with the example site and serves it under `/docs/`, where every example runs. The [public documentation](https://cipfz.github.io/otter/) is deployed independently of npm publication, with a standalone VOD demo and complete basic/VOD browser downloads (ADR-015). The full fixture and framework example site remains available locally.
 
 ## Packages
 
