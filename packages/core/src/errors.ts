@@ -7,9 +7,11 @@
 export type OtterErrorType = 'network' | 'media' | 'drm' | 'mux' | 'other';
 
 /**
- * Every error a player reports, on `events` (`error`) and in the store's `error`. Branch on
- * `details`, the stable code; the message is for logs only. A fatal error ends the load (the
- * session tries its recovery path first when `recoverable`); a non-fatal one is a notice.
+ * Every error a player reports. Each goes to `events` (`error`) as it happens, including the ones
+ * the session then recovers from by a retry or a fallback; the store's `error` holds the one that
+ * ended the load (`status: 'error'`) or a refused `play()`. Branch on `details`, the stable code;
+ * the message is for logs only. A fatal error ends the load (the session tries its recovery path
+ * first when `recoverable`); a non-fatal one is a notice.
  *
  * Codes (`*`: a prefix; Fatal "yes" ends the load):
  *

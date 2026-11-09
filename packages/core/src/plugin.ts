@@ -9,7 +9,7 @@ import type { Store } from './store.js';
 
 /** The core's events: errors and the plugin lifecycle. */
 export interface CoreEventMap {
-  /** An error from any part of the player (fatal or not). */
+  /** An error from any part of the player (fatal or not), including ones a retry or fallback then recovers from. */
   error: OtterError;
   /** A plugin finished installing. */
   'plugin-installed': { readonly id: string };

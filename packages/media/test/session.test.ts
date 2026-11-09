@@ -23,7 +23,7 @@ interface FakeBackend extends MediaBackend {
   readonly calls: string[];
 }
 
-function fakeBackend(kind: BackendKind, behavior: { failLoad?: boolean; emitLoadError?: boolean } = {}): FakeBackend {
+function fakeBackend(kind: BackendKind, behavior: { failLoad?: boolean; emitLoadError?: boolean; failNetwork?: boolean } = {}): FakeBackend {
   const listeners = new Map<string, Set<Listener>>();
   const calls: string[] = [];
   return {
@@ -34,6 +34,7 @@ function fakeBackend(kind: BackendKind, behavior: { failLoad?: boolean; emitLoad
     attach: () => calls.push('attach'),
     load: async () => {
       calls.push('load');
+      if (behavior.failNetwork === true) throw createError({ type: 'network', details: 'manifestLoadError', fatal: true, recoverable: true });
       if (behavior.failLoad === true) {
         const error = createError({ type: 'media', details: 'mediaSrcNotSupported', fatal: true, recoverable: false });
         if (behavior.emitLoadError === true) for (const h of listeners.get('error') ?? []) h(error);
@@ -80,7 +81,7 @@ const target = {} as HTMLMediaElement;
 
 // No backoff by default so `flush()` covers a retry; stall watchdog off unless a test enables it.
 async function setup(
-  behavior: Partial<Record<BackendKind, { failLoad?: boolean; emitLoadError?: boolean }>> = {},
+  behavior: Partial<Record<BackendKind, { failLoad?: boolean; emitLoadError?: boolean; failNetwork?: boolean }>> = {},
   recovery: Partial<RecoveryPolicy> = { backoffMs: () => 0, stallTimeoutMs: 0 },
 ) {
   const created: FakeBackend[] = [];
@@ -184,6 +185,19 @@ describe('media plugin', () => {
     created[0]?.emit('error', createError({ type: 'media', details: 'bufferAppendError', fatal: true, recoverable: false }));
     await flush();
     expect(created[1]?.calls).toContain('text:text-0');
+  });
+
+  it('reports a network failure on the events bus while the session waits to retry it', async () => {
+    const { core, view, created } = await setup({ mse: { failNetwork: true } }, { backoffMs: () => 60_000, stallTimeoutMs: 0 });
+    const errors: string[] = [];
+    core.events.on('error', (e) => errors.push(e.details));
+    view.dispatch('load', { source: { src: 'https://e.test/a.m3u8' } });
+    await flush();
+    // The rebuild waits out its backoff: the load is still going, and the host already knows why.
+    expect(created.map((b) => b.kind)).toEqual(['mse']);
+    expect(view.getState()).toMatchObject({ status: 'loading', error: null });
+    expect(errors).toEqual(['manifestLoadError']);
+    await core.destroy();
   });
 
   it('skips the retry for errors a rebuild cannot fix', async () => {

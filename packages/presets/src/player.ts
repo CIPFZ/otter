@@ -171,7 +171,10 @@ export interface Player<S extends PlayerState = PlayerState, A extends PlayerAct
   readonly video: HTMLVideoElement;
   /** Read state and dispatch actions (what the UI and framework bindings use). */
   readonly store: StoreView<S, A>;
-  /** Errors and plugin lifecycle events. */
+  /**
+   * Errors as they happen and plugin lifecycle events. A fatal error here may still be retried or
+   * fall back; `store.getState().status === 'error'` marks the load as ended.
+   */
   readonly events: EventBus<CoreEventMap>;
   /** QoE events: startup, rebuffers, quality switches, errors, the route. */
   readonly qoe: QoeHook;

@@ -247,6 +247,18 @@ describe('createCore', () => {
     await core.destroy();
   });
 
+  it('forwards every QoE error to the events bus as it is reported', async () => {
+    const core = createCore();
+    const errors: string[] = [];
+    core.events.on('error', (e) => errors.push(`${e.details}:${e.fatal}`));
+    await core.start();
+    const retried = createError({ type: 'network', details: 'manifestLoadError', fatal: true, recoverable: true });
+    core.qoe.emit('error', { error: retried, fallback: ['mse', 'native'] });
+    core.qoe.emit('error', { error: createError({ type: 'network', details: 'segmentAbandoned', fatal: false, recoverable: true }), fallback: [] });
+    expect(errors).toEqual(['manifestLoadError:true', 'segmentAbandoned:false']);
+    await core.destroy();
+  });
+
   it('reports a throwing state listener as an error event, and destroy clears the listeners', async () => {
     const slice = { id: 's', initialState: { n: 0 } } satisfies StoreSlice;
     const core = createCore<{ n: number }>({ slices: [slice] });

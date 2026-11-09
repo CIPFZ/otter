@@ -644,7 +644,11 @@ export function createMediaPlugin<S extends MediaState = MediaState, A extends M
         import('./codecs.js'),
       ]);
     } catch (err) {
-      if (loadToken === token) set({ status: 'error', error: toError(err, 'capabilityDetectionFailed') });
+      if (loadToken === token) {
+        const error = toError(err, 'capabilityDetectionFailed');
+        qoe?.emit('error', { error, fallback: [] });
+        set({ status: 'error', error });
+      }
       return;
     }
     if (loadToken !== token) return;

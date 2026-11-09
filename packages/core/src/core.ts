@@ -25,7 +25,7 @@ export interface CoreOptions<S extends object, A extends object> {
 export interface OtterCore<S extends object, A extends object> {
   /** State and actions. */
   readonly store: Store<S, A>;
-  /** Errors and plugin lifecycle events. */
+  /** Errors as they happen (retries and fallbacks included) and plugin lifecycle events. */
   readonly events: EventBus<CoreEventMap>;
   /** QoE events. */
   readonly qoe: QoeHook;
@@ -39,8 +39,8 @@ export interface OtterCore<S extends object, A extends object> {
 
 /**
  * Creates the core a player is built on (createPlayer and the presets call it): the store with its
- * slices, the buses, the plugin registry. A state listener that throws becomes a non-fatal
- * `storeListenerError` event.
+ * slices, the buses, the plugin registry. Every QoE `error` is also emitted on `events`; a state
+ * listener that throws becomes a non-fatal `storeListenerError` event.
  */
 export function createCore<S extends object, A extends object = Record<never, never>>(
   options: CoreOptions<S, A> = {},
@@ -54,6 +54,10 @@ export function createCore<S extends object, A extends object = Record<never, ne
       events.emit('error', createError({ type: 'other', details: 'storeListenerError', fatal: false, recoverable: true, message: `state listener threw: ${String(cause)}`, cause })),
   });
   const qoe = createQoeHook();
+  // Plugins report errors on the QoE hook (with the fallback path left); hosts read them on
+  // `events`. Each one is forwarded as it happens, so retries and fallbacks are seen before the
+  // load ends.
+  qoe.on('error', ({ error }) => events.emit('error', error));
   const plugins = createPluginRegistry<S, A>();
   for (const p of options.plugins ?? []) plugins.register(p);
 
