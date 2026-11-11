@@ -394,6 +394,40 @@ stateDiagram-v2
 | 系统媒体控件 | `navigator.mediaSession` 元数据、封面、上下首、seek 处理器 | 锁屏与耳机按键 |
 | 沉浸竖屏信息流 | preset：全屏容器、`scroll-snap`、预创建相邻实例、首帧海报 | 不是新模式 |
 
+### 15.1 伴随模式（companion，ADR-016，提议中）
+
+需求见 `docs/design/COMPANION.md`。伴随**不是新的 `PresentationMode`**，上面的状态图不变：伴随 = `docpip` + 一份伴随状态。
+
+```ts
+// presentation.companion（PresentationSnapshot 的新字段）
+interface CompanionState {
+  readonly supported: boolean;    // 宿主开启 且 capabilities.docpip !== false（iframe 内为 false）
+  readonly active: boolean;       // 在伴随小窗里（mode === 'docpip'）
+  readonly dim: number;           // 0..0.8
+  readonly size: 's' | 'm' | 'l'; // 宽 240 / 320 / 440 px，高按画面宽高比
+  readonly audioOnly: boolean;
+}
+// PresentationPluginOptions.companion?: boolean | CompanionOptions（默认关闭）
+// 动作：'toggle-companion'；'companion-set' { dim?, size?, audioOnly? }
+```
+
+- 开启后，`toggle-pip` 在有 Document PiP 的浏览器上进伴随小窗；没有时照旧走视频 PiP，`supported` 为 false，不报错。
+- 暗化复用 ui-core 的暗化层：小窗内不透明度 `min(0.8, max(1 - brightness, dim))`，回到页面恢复 `1 - brightness`。只盖画面层，叠加层与控件在它上面。
+- 小窗内控件只随指针进出小窗与键盘焦点显示，不随播放与媒体事件显示。纯音频条隐藏画面层，不停解码。
+- 代码与样式在 presentation 的按需块里，样式只注入 PiP 文档，不进首屏。
+
+Document PiP 的坑（RESEARCH §1「伴随模式第 0 停」，Chromium 156 实测，真 Edge 待测）：
+
+| 坑 | 事实 |
+|---|---|
+| 尺寸单位 | `requestWindow({ width, height })` 是内容区；`resizeTo` / `resizeBy` 是含标题栏的 outer |
+| 最小尺寸 | 打开时内容区最小 240×52；已开的窗口靠 resize 最低到内容区 66 px 高 |
+| 改尺寸 | `resizeTo` / `resizeBy` 要瞬时用户激活，并消耗它；`moveTo` 无效、不报错 |
+| 再次打开 | 请求的尺寸与上次相同，浏览器恢复上次的位置和尺寸，忽略传入值；`preferInitialWindowPlacement: true` 不恢复 |
+| 关窗 | 各种关法的 `pagehide` 完全相同，区分不了「关闭」与「返回标签页」 |
+| 无头浏览器 | 无头 Chromium 的 PiP 窗口是普通页面，尺寸随 viewport，判不了窗口几何 |
+| Playwright Firefox | 自带 `documentPictureInPicture`（正式版没有），能力探测会报支持 |
+
 ## 16. 框架绑定与宿主集成
 
 - 底座 Web Components + 框架无关响应式 store；提供 `react` / `vue` / `svelte` 薄绑定（hooks 与组件包装）。

@@ -18,6 +18,18 @@
 
 AGENT §2.6：只在桌面 Chrome 上测过的播放功能视为未完成；`emulated-*` 不能替代 `real-*`。
 
+## 测量探针
+
+`e2e/probes/*.probe.ts` 只记录浏览器的行为（结果写进 `test-results/probes/<项目>/`），不判定，也不进 `pnpm e2e` 和 CI。用自己的配置运行，项目沿用上表；本地另有 `desktop-chrome-headed`（`OTTER_PROBE_HEADED=1`），量窗口几何时用：
+
+```bash
+pnpm exec playwright test --config e2e/probes/playwright.config.ts --project=desktop-chrome
+OTTER_PROBE_HEADED=1 pnpm exec playwright test --config e2e/probes/playwright.config.ts --project=desktop-chrome-headed
+OTTER_REAL_WINDOWS_EDGE=1 pnpm exec playwright test --config e2e/probes/playwright.config.ts --project=real-windows-edge
+```
+
+- `companion.probe.ts`：伴随模式第 0 停，Document PiP 的六项实测（RESEARCH §1）。
+
 ## 真机接入
 
 - `*_WS_ENDPOINT`：Playwright 协议端点（`browserType.connect`），由设备云或自建 `playwright run-server` 提供。

@@ -334,6 +334,111 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     产品侧没有修改。presets README 写明了这个限制。**WS-FLV 不能绕开它**：去掉 localhost 问题后，WS 和 HTTP 首帧相同，10 s 时两者都中。所以没有按原计划写「Firefox 多路推荐 WS-FLV」，WS-FLV 只用于超过 6 路的场景。
 - 逐帧对齐（蒙版与画面 ≤ 1 帧）在无头浏览器里与并行的其他用例共享软件合成器时测不准：帧会迟到一两帧，误差来自机器而非代码。这类用例单独一步、一个 worker 跑（`@solo`）。
 
+### 伴随模式第 0 停：Document PiP 实测（2026-11-11）
+
+需求见 `docs/design/COMPANION.md`，契约见 ADR-016。探针 `e2e/probes/companion.probe.ts`（不进 `pnpm e2e` 与 CI，用法见 `e2e/probes/playwright.config.ts` 文件头），每次结果写进 `test-results/probes/<项目>/`。
+
+- **环境**：本机 macOS（Darwin 27，Apple Silicon，两块显示器）。Playwright 1.64.1 自带的 Chromium 156.0.8078.4（build 1248）：
+  - `desktop-chrome`：项目原样，即无头 shell。Desktop Chrome 设备描述，所以 UA 写的是 Windows。
+  - `desktop-chrome-headed`：同一个 build 的有界面版（Chrome for Testing），只在本地用，探针配置里 `OTTER_PROBE_HEADED=1` 才有。
+- **真 Edge 没有量**：这份工作副本是 2026-11-09 新 clone 的，`tmp/` 整个不存在。没有 `tmp/env`（`OTTER_WIN_TOKEN`），也没有 M6 用的客户端 `tmp/win.py` 和 `tmp/tools/agrt_token.py`，所以连不上实例 `inst-01m4skyh174y47p9n6yhxdy7at`。按要求没有另建实例。下面六项的 Edge 一栏全部空缺。
+- **无头 shell 里，Document PiP 窗口就是一个普通页面**：
+  - 窗口出现在 Playwright 的 `context.pages()` 里，可以 `evaluate`、截图。
+  - 尺寸是普通新页面的尺寸：有 viewport 时等于 viewport，`viewport: null` 时 800×600。`requestWindow` 传的宽高一律不生效，位置恒为 (0, 0)。
+  - 所以窗口尺寸、位置、沿用这三类结论只能在有界面的浏览器上量，CI 的 `desktop-chrome` 判定不了。`resizeTo` 能改它的尺寸，但改到多小没有窗口系统的约束（见第 3 项）。
+- **1. 最小与最大尺寸**（有界面，每个尺寸用一个新 profile）：
+
+  | 请求（宽×高） | 得到的内容区 inner | 窗口 outer |
+  |---|---|---|
+  | 不传 | 384×350 | 384×384 |
+  | 100×30 | 240×52 | 240×86 |
+  | 240×44 | 240×52 | 240×86 |
+  | 240×135 | 240×135 | 240×169 |
+  | 320×180 | 320×180 | 320×214 |
+  | 440×248 | 440×248 | 440×282 |
+  | 4000×3000 | 831×623 | 831×657 |
+
+  - `requestWindow` 的宽高给的是**内容区**。标题栏 34 px，算在 outer 里。
+  - 内容区最小 240×52：240 px 宽、44 px 高的音频条开不出来，高度会被抬到 52。
+  - 最大值（831×623）与屏幕的关系没有查：页面看到的 `screen.avail` 是设备描述模拟出来的 1920×1080，窗口实际开在第二块显示器上。
+  - 无头 shell 全部是 800×600。
+- **2. 再次打开是否沿用上次的位置和尺寸**（有界面，同一个 profile，依次执行）：
+  1. 先开 320×180。
+  2. 由 opener 带激活调 `resizeTo(500,300)` 加 `moveTo(40,40)`，得到 outer 500×300、inner 500×266。位置跟着变了，看起来是右下角不动；`moveTo` 没有效果，也不报错。
+  3. 关掉后不传尺寸再开：500×266，位置相同，**沿用**。
+  4. 关掉后传 320×180（与第一次请求相同）再开：仍是 500×266，**沿用，传入的尺寸被忽略**。
+  5. 关掉后传 440×248（与上次不同）：440×248，用的是新尺寸和对应的默认位置。
+  6. 传 320×180 加 `preferInitialWindowPlacement: true`：320×180，回到初始位置。
+  7. 刷新 opener 后再传 320×180：320×180，初始位置。上一次用的是 `preferInitialWindowPlacement`，看起来记忆被它清掉了。
+  
+  从上面推断（假设，未在 Chromium 源码里核对）：浏览器按「上一次请求的尺寸」记住上一次窗口的位置和尺寸；请求的尺寸与上次相同就恢复记住的，不同就用新的。用户手动拖拽和缩放脚本模拟不了，没有量；第 2 步用的是脚本 `resizeTo`。无头 shell 每次都是 800×600。
+- **3. 打开后 `resizeTo` / `resizeBy` / `moveTo`**（有界面与无头结论相同；尺寸取有界面的数）：
+  - **`resizeTo` 和 `resizeBy` 都要瞬时用户激活**：
+    - 激活过期后（等 6 s）调用抛 `NotAllowedError: resizeTo() requires user activation in document picture-in-picture`，opener 和窗口自己调都一样。
+    - 带激活调成功，并且**消耗激活**：调完 `navigator.userActivation.isActive` 变成 false。
+  - opener 和窗口自己都能调，各用自己文档的激活。
+  - **`resizeTo` 的宽高是 outer**，与 `requestWindow`（inner）不同：`resizeTo(440,248)` 得到 outer 440×248、inner 440×214。
+  - 缩小有下限：
+    - `resizeBy` 缩到 outer 240×100（inner 240×66）就不再变小；
+    - 窗口自己调 `resizeTo(240,44)` 也停在 240×100。
+    - 所以已经打开的窗口靠 resize 最低只到内容区 66 px 高，比 `requestWindow` 的下限 52 高。
+  - `moveTo` 不报错，位置不变，也不消耗激活。
+  - 无头 shell 里缩到 240×100 也停住，位置恒为 (0, 0)。
+- **4. `pagehide` 能否区分「关闭」和「回到标签页」**：试了三种关法，有界面和无头相同：
+  - 三种关法：opener 调 `close()`；窗口自己调 `window.close()`；Playwright 关掉窗口页面（最接近用户点关闭）。
+  - PiP 窗口收到的都是 `blur`、`pagehide`（`persisted: false`，`visibilityState` 仍是 visible）、`visibilitychange`、`unload`，前后差几毫秒。只有 Playwright 关的那种 `blur` 排在最后。
+  - opener 上什么都没收到：没有 focus、visibilitychange，`document.hasFocus()` 关之前和之后都是 true。
+  - 事件里**没有任何字段能区分关闭方式**。
+  - 浏览器自带的「返回标签页」按钮在窗口标题栏里，不在页面里，Playwright 点不到，没有量。
+  - 用 getter 探测 `requestWindow` 读了哪些字典成员：Chromium 156 读 `width`、`height`、`disallowReturnToOpener`、`preferInitialWindowPlacement`，不读 `copyStyleSheets`、`initialAspectRatio`、`lockAspectRatio`。`disallowReturnToOpener` 照名字是去掉「返回标签页」按钮，按钮本身没有看到，未核实。
+- **5. 画面隐藏后是否还在解码**：
+  - 方法：
+    - 三条路径都播 1280×720 H.264 + AAC，静音、自动播放。MSE 播 `/demo/master.m3u8`（hls 格式、MSE 后端，ABR 停在 720p）：mp4 地址即使 `prefer=mse` 也走 native。native 播 `/frames/h264-720p-av.mp4`。WebCodecs 播同一文件的 Blob。
+    - 先在页面里量一段，再进 Document PiP。小窗里依次量四段：画面显示、`display:none`、`visibility:hidden`、恢复显示。隐藏的是 `<video>` 和 WebCodecs 画布。
+    - 每段前 seek 到 1 s，量 3 s。
+    - 解码帧：`getVideoPlaybackQuality()` 与 `webkitDecodedFrameCount`；WebCodecs 用主线程上 `VideoFrame.close()` 的次数（init script 计数，帧画完即关，作为解码帧数的代理）。
+    - CPU：CDP `SystemInfo.getProcessInfo`，按进程类型累加 cpuTime，换算成单核百分比。
+  - **三条路径隐藏后照常解码**：
+    - MSE 25 帧/s，native 30 帧/s，WebCodecs 30 帧/s，与显示时相同，播放不停、不暂停。
+    - MSE / native 隐藏期间 `droppedVideoFrames` 与解码帧同速增长（每帧都记成丢帧）。
+    - `requestVideoFrameCallback` 隐藏时仍是每秒 25–30 次。
+  - 有界面 CPU（单核 %，三次运行的范围，「浏览器 / 渲染 / GPU 进程，合计」）：
+
+    | 路径 | 小窗内画面显示 | `display:none` | `visibility:hidden` |
+    |---|---|---|---|
+    | MSE | 13.6–14.1 / 7.1–7.5 / 13.9–14.2，合计 35.0–35.6 | 3.6–4.3 / 6.3–7.3 / 7.0–8.4，合计 17.2–20.0 | 3.5–3.9 / 6.4–7.3 / 7.1–8.0，合计 17.6–19.4 |
+    | native | 14.9–15.9 / 7.3–7.9 / 14.0–14.9，合计 37.4–38.1 | 3.2–4.0 / 7.3–7.8 / 8.0–8.3，合计 18.5–20.2 | 4.0–5.8 / 7.1–7.9 / 7.5–8.0，合计 18.6–21.7 |
+    | WebCodecs | 10.7–13.5 / 13.4–14.7 / 20.1–22.4，合计 46.1–51.2 | 3.1 / 13.0–13.3 / 16.1–16.5，合计 32.8–33.1 | 2.9–3.3 / 13.2–14.3 / 16.3–17.3，合计 33.0–35.6 |
+
+    降下来的是浏览器进程和 GPU 进程，渲染进程不变。
+  - 无头 shell（一次）：
+    - MSE 合计 36.6 → 19.8；
+    - native 39.1 → 25.4；
+    - WebCodecs 的 GPU 进程（SwiftShader 软件 WebGL）显示时 115–180 %，`display:none` 时 7.6 %，`visibility:hidden` 时仍是 180 %。
+  - 只是本机一台 Mac 上的数；Windows 真 GPU 的 Edge 没有量。
+- **6. MediaSession `enterpictureinpicture`**（切走标签页自动进小窗）：
+  - Chromium 156 的 `setActionHandler('enterpictureinpicture', …)` 不抛错（有界面和无头都一样）。
+  - `navigator.permissions.query({ name: 'automatic-picture-in-picture' })` 抛 `TypeError`：这不是合法的 PermissionName。
+  - Playwright 的有界面页面不是普通标签页，切不走：
+    - `window.open` 加 `bringToFront`、CDP `Target.createTarget` 都没让 opener 变 hidden，CDP 报「no browser is open」；
+    - 最小化窗口也没让它变 hidden。
+  - 改用不经 Playwright 的做法：直接启动 Chrome for Testing 156（新 profile），用原始 CDP 新开标签页并激活。
+    - opener 在有声播放中（手势里开始、未静音）。
+    - 切走后 `visibilityState` 变 hidden，处理器**没有被调用**，没有开出窗口；回到标签页后也没有。
+    - 加 `--enable-features=AutoPictureInPictureForVideoPlayback,BrowserInitiatedAutomaticPictureInPicture` 结果相同。
+  - 要满足什么条件（站点权限、站点参与度、HTTPS 等）没有查到，属于未知。
+- **能力探测（退化路径）**：
+  - `desktop-safari`（WebKit，UA Version/27.2）和 `emulated-iphone` 都没有 `documentPictureInPicture`，探针整体跳过。
+  - `emulated-android`（Chromium 156 仿真 Pixel 7）有：
+    - PiP 窗口与无头 shell 一样是普通页面，7 种请求尺寸都得到 800×600；
+    - `enterpictureinpicture` 同样被接受、切走后未调用（Playwright 页面切不走）。
+    - 真机 Android Chrome 是否提供，这里看不出来。
+  - **`desktop-firefox` 没有量成**：本机上 Playwright 的 Firefox（build 1555，Firefox 157，`Nightly.app`）每次启动都报「Could not find profile folder」后退出：
+    - 换了 `TMPDIR`、在命令沙箱外运行，结果都一样；
+    - 原因没有查，Chromium 和 WebKit 在同一台机器上正常。
+  - 这个 Firefox 的 `XUL` 里有偏好名 `dom.documentpip.enabled` 的字符串，`playwright.cfg` 没有改这一项；默认值是什么，二进制里看不出来。
+  - M3 时的记录（本节上文）是「Playwright 的 Firefox 构建提供 `documentPictureInPicture`，无头也能真正进入」。当前版本是否仍然如此，待 CI 的 desktop-firefox（Ubuntu）证实。
+
 ## 2. 格式 / 协议 / 编码全景
 
 ### 2.1 传输与封装
