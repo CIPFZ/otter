@@ -1,6 +1,6 @@
 # ADR-016：伴随模式（companion mode）契约
 
-- 状态：**提议**（待负责人批准；批准前不写产品代码）
+- 状态：已采纳（2026-11-11）。负责人对第 0 停汇报回复「那你就继续做呗」，按此执行：各冲突取本文写的**建议项**，见文末「批准记录」。如有不同意见，以负责人后续指示为准，改本 ADR
 - 日期：2026-11-11
 - 关联：
   - 需求：`docs/design/COMPANION.md`。
@@ -35,6 +35,8 @@ interface CompanionState {
   readonly dim: number;                 // 0..0.8
   readonly size: 's' | 'm' | 'l';
   readonly audioOnly: boolean;
+  /** dim、size、audioOnly 是否记进偏好（CompanionOptions.remember）；偏好插件读它。 */
+  readonly remember: boolean;
 }
 ```
 
@@ -274,3 +276,21 @@ readonly companion?: { readonly dim?: number; readonly size?: 's' | 'm' | 'l'; r
 
 - 批准后按 COMPANION.md §5 分三停实现。
 - 每一停照 AGENT §5 汇报，第 1 停开始前补真 Edge 的六项（冲突 8）。
+
+## 批准记录（2026-11-11）
+
+负责人回复「那你就继续做呗」后，按建议项执行：
+
+| 冲突 | 采用 | 落在哪一停 |
+|---|---|---|
+| 1、2 | 音频条内容区高 66 px（进入与切换一致）；无手势的 `companion-set` 只改状态与布局，窗口尺寸不变，发 `presentation-denied`（`noUserGesture`）；标题栏高度按 `outerHeight - innerHeight` 算 | 尺寸：第 1 停；音频条：第 2 停 |
+| 3 | 不传 `preferInitialWindowPlacement`，浏览器记住的位置和尺寸照用 | 第 1 停 |
+| 4 | `requestWindow` 固定传 `disallowReturnToOpener: true`；**不开放** `returnButton` 选项（以后需要再加） | 第 2 停（与 `onClose` 一起） |
+| 6 | desktop-firefox 两个用例：探测结果只记录不判定；删掉 `documentPictureInPicture` 后判退化路径 | 第 3 停 |
+| 7 | 文档不写「省 CPU / GPU」，等真 Edge 复测 | — |
+| 8 | 仍缺 token 与客户端，真 Edge 待负责人提供 | — |
+| 9 | 偏好插件读 `presentation.companion`：`active` 且 quiet 时不写 textLanguage 与 danmaku | 第 2 停 |
+| 10 | `createTvPlayer` 固定 `presentation.companion: false` | 第 1 停 |
+| 13 | 设置页显示名「悬浮窗」/ "Floating player"，页面小窗文案不动 | 第 2 停 |
+
+另外，第 1 停加了 `CompanionState.remember`（偏好插件据此决定读写）。

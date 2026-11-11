@@ -394,7 +394,7 @@ stateDiagram-v2
 | 系统媒体控件 | `navigator.mediaSession` 元数据、封面、上下首、seek 处理器 | 锁屏与耳机按键 |
 | 沉浸竖屏信息流 | preset：全屏容器、`scroll-snap`、预创建相邻实例、首帧海报 | 不是新模式 |
 
-### 15.1 伴随模式（companion，ADR-016，提议中）
+### 15.1 伴随模式（companion，ADR-016）
 
 需求见 `docs/design/COMPANION.md`。伴随**不是新的 `PresentationMode`**，上面的状态图不变：伴随 = `docpip` + 一份伴随状态。
 
@@ -406,6 +406,7 @@ interface CompanionState {
   readonly dim: number;           // 0..0.8
   readonly size: 's' | 'm' | 'l'; // 宽 240 / 320 / 440 px，高按画面宽高比
   readonly audioOnly: boolean;
+  readonly remember: boolean;     // dim / size / audioOnly 记进偏好
 }
 // PresentationPluginOptions.companion?: boolean | CompanionOptions（默认关闭）
 // 动作：'toggle-companion'；'companion-set' { dim?, size?, audioOnly? }
