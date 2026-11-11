@@ -1,12 +1,12 @@
 // Store integration (ADR-007 §5): the PresentationController as a plugin. The UI reads
 // `presentation` / `cast` / `airplay` and dispatches the actions below; handlers call the browser
 // API synchronously inside the dispatch that the click / key / gesture made, so the user
-// activation is still there. Also owns the companions: orientation lock (in the controller), and
+// activation is still there. Also owns the helpers: orientation lock (in the controller), and
 // in a chunk loaded at install (not first-screen code): auto mini window, WakeLock, MediaSession
 // and casting.
 
 import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@otter-player/core';
-import type { MediaSessionActions } from './companions.js';
+import type { MediaSessionActions } from './helpers.js';
 import {
   createPresentationController,
   type PresentationCapabilities,
@@ -69,7 +69,7 @@ export interface PresentationPluginOptions extends PresentationOptions {
 export interface PresentationPlugin<S extends PresentationState> extends Plugin<S, PresentationActionMap> {
   /** The controller, once installed. */
   readonly controller: PresentationController | undefined;
-  /** Settles when the companions (WakeLock, MediaSession, casting) are running. */
+  /** Settles when the helpers (WakeLock, MediaSession, casting) are running. */
   readonly ready: Promise<void>;
 }
 
@@ -130,7 +130,7 @@ export function createPresentationPlugin<S extends PresentationState>(options: P
         store.handle('open-airplay-picker', () => remote?.prompt('airplay')),
         () => c.destroy(),
       );
-      ready = import('./companions.js').then((m) => {
+      ready = import('./helpers.js').then((m) => {
         if (controller !== c) return;
         remote = m.createRemoteControl(video, (patch) => store.setState(patch as Partial<S>));
         offs.push(() => remote?.destroy());

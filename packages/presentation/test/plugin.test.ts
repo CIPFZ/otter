@@ -371,7 +371,7 @@ describe('presentation controller', () => {
   });
 });
 
-describe('presentation companions', () => {
+describe('presentation helpers', () => {
   it('Cast: availability from the Remote Playback API, prompt() inside the dispatch', async () => {
     const remote = Object.assign(new EventTarget(), {
       state: 'disconnected',

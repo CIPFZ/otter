@@ -1,6 +1,6 @@
-// Presentation companions (ADR-007 §5), loaded by the plugin at install: they matter once media
-// plays, not for the first screen. Auto mini window; WakeLock while playing and visible;
-// MediaSession metadata, handlers and position; casting (remote.ts).
+// Presentation helpers (ADR-007 §5; called companions before ADR-016), loaded by the plugin at
+// install: they matter once media plays, not for the first screen. Auto mini window; WakeLock
+// while playing and visible; MediaSession metadata, handlers and position; casting (remote.ts).
 
 import type { Store, Unsubscribe } from '@otter-player/core';
 import type { PresentationController } from './controller.js';

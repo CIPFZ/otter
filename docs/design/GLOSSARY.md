@@ -41,7 +41,7 @@
 | 投屏 | cast | Chromecast / AirPlay 统称；AirPlay 单指时写 AirPlay |
 | 画中画 | picture-in-picture (PiP) | 文档画中画写 Document Picture-in-Picture |
 | 伴随模式 | companion mode | Document PiP 小窗里的一种播放方式（暗化、悬停才显示控件、纯音频条）。公开 API 与正文都写 companion（`presentation.companion`、`CompanionOptions`，ADR-016）；不是一种 `PresentationMode`。不用 ambient / focus mode |
-| 辅助行为 | helpers | presentation 在播放时附带运行的 WakeLock、MediaSession、投屏、自动页面小窗；内部文件现为 `presentation/src/companions.ts`，ADR-016 批准后改名为 `helpers.ts`（伴随第 1 停执行）。不用 companions，免得和伴随模式混淆 |
+| 辅助行为 | helpers | presentation 在播放时附带运行的 WakeLock、MediaSession、投屏、自动页面小窗；内部文件 `presentation/src/helpers.ts`（原 `companions.ts`，ADR-016 改名）。不用 companions，免得和伴随模式混淆 |
 | 页面小窗 | mini player | `mini` 模式：滚出视口后固定在页面角落的播放器（标识符 `mini`、`autoMini`、`closeMini`，UI 文案「关闭小窗」/ "Close mini player"）。与伴随设置页的名字冲突，见文末「改名候选」与 ADR-016 冲突 13 |
 | 体验质量 | QoE (quality of experience) | `qoe` 钩子与事件 |
 
@@ -55,8 +55,8 @@
 
 以后再有改名候选，列在这里由负责人定。
 
-## 改名候选（待负责人定）
+## 改名候选
 
 | 对象 | 现状 | 候选 | 出处 |
 |---|---|---|---|
-| 伴随设置页的显示名（UI 文案，不是标识符） | 初稿：中文「小窗」，英文待定 | (a) 中文「小窗」，页面小窗的按钮改为「关闭页内小窗」/ "Close in-page player"；(b) 「悬浮窗」/ "Floating player"，页面小窗不动；(c) 英文 "Companion" | ADR-016 冲突 13；「小窗」/ mini player 已指页面小窗 |
+| 伴随设置页的显示名（UI 文案，不是标识符） | 初稿：中文「小窗」，英文待定 | **已定（2026-11-11，ADR-016 冲突 13 (b)）**：「悬浮窗」/ "Floating player"，页面小窗文案不动 | ADR-016 冲突 13；「小窗」/ mini player 已指页面小窗 |

@@ -1,5 +1,5 @@
 // @otter-player/presentation (SPEC §15, ADR-007 §5): window-mode state machine, its store plugin
-// and the companions (orientation lock; WakeLock, MediaSession and casting load at install).
+// and the helpers (orientation lock; WakeLock, MediaSession and casting load at install).
 
 export {
   createPresentationController,
