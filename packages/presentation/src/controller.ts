@@ -36,6 +36,8 @@ export interface PresentationRequestOptions {
    * pseudo-fullscreen: only the <video> is shown, so captions move to native TextTracks.
    */
   readonly system?: boolean;
+  /** Document PiP window content size for this request, over `PresentationOptions.docPipSize`. */
+  readonly docPipSize?: { readonly width: number; readonly height: number };
 }
 
 export interface PresentationController {
@@ -287,7 +289,7 @@ export function createPresentationController(options: PresentationOptions): Pres
     }
     if (to === 'pip') return (pipVideo?.() ?? (video as HTMLVideoElement)).requestPictureInPicture().then(() => undefined);
     // docpip
-    const size = options.docPipSize ?? { width: Math.round(container.clientWidth) || 640, height: Math.round(container.clientHeight) || 360 };
+    const size = opts.docPipSize ?? options.docPipSize ?? { width: Math.round(container.clientWidth) || 640, height: Math.round(container.clientHeight) || 360 };
     const opened = (win?.documentPictureInPicture as DocumentPictureInPicture).requestWindow(size);
     return opened.then(async (w) => {
       if (destroyed) return w.close();

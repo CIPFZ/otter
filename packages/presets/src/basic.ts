@@ -126,6 +126,8 @@ const snapshot = (mode: 'inline' | 'fullscreen', fullscreen: 'native' | false): 
   pending: null,
   capabilities: { inline: 'native', theater: false, fullscreen, pip: false, docpip: false, mini: false, background: false },
   videoOnly: false,
+  // No companion mode in basic (ADR-016 §12).
+  companion: { supported: false, active: false, dim: 0.4, size: 'm', audioOnly: false, remember: true },
 });
 
 /**

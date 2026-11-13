@@ -194,3 +194,47 @@ describe('danmaku settings', () => {
     expect(again.store.getState().danmaku).toEqual({ opacity: 0.75 });
   });
 });
+
+describe('companion settings (ADR-016)', () => {
+  type C = S & { presentation?: { companion?: { dim: number; size: 's' | 'm' | 'l'; audioOnly: boolean; remember: boolean } } };
+  /** A stand-in for the presentation plugin with companion mode on. */
+  const fakeCompanion = (remember: boolean): Plugin<C, PreferencesActionMap> => ({
+    id: 'presentation',
+    install(ctx) {
+      ctx.store.setState({ presentation: { companion: { dim: 0.4, size: 'm', audioOnly: false, remember } } });
+      ctx.store.handle('companion-set', (p) => {
+        const c = ctx.store.getState().presentation?.companion;
+        if (c !== undefined) ctx.store.setState({ presentation: { companion: { ...c, ...p } } });
+      });
+    },
+    uninstall: () => undefined,
+  });
+  const start = async (storage: PreferenceStorage, remember: boolean) => {
+    const core = createCore<C, PreferencesActionMap>({ slices: [{ id: 'state', initialState: INITIAL }], plugins: [fakeMedia() as never, fakeCompanion(remember), createPreferencesPlugin<C, PreferencesActionMap>({ storage })] });
+    await core.start();
+    return core.store;
+  };
+
+  it('dim, size and audioOnly are remembered and restored; nothing else of the window', async () => {
+    const storage = memory();
+    const store = await start(storage, true);
+    store.dispatch('companion-set', { dim: 0.6, size: 'l' });
+    expect(JSON.parse(storage.data['preferences'] as string)).toEqual({ companion: { dim: 0.6, size: 'l', audioOnly: false } });
+    const again = await start(storage, true);
+    expect(again.getState().presentation?.companion).toEqual({ dim: 0.6, size: 'l', audioOnly: false, remember: true });
+  });
+
+  it('remember: false neither writes nor restores', async () => {
+    const storage = memory({ preferences: JSON.stringify({ companion: { dim: 0.8 } }) });
+    const store = await start(storage, false);
+    expect(store.getState().presentation?.companion?.dim).toBe(0.4);
+    store.dispatch('companion-set', { size: 's' });
+    expect(JSON.parse(storage.data['preferences'] as string)).toEqual({ companion: { dim: 0.8 } });
+  });
+
+  it('sanitize clamps dim to 0..0.8 and drops unknown sizes and non-booleans', () => {
+    expect(sanitize({ companion: { dim: 2, size: 'xl', audioOnly: 'yes', x: 1 } })).toEqual({ companion: { dim: 0.8 } });
+    expect(sanitize({ companion: { dim: -1, size: 's', audioOnly: true } })).toEqual({ companion: { dim: 0, size: 's', audioOnly: true } });
+    expect(sanitize({ companion: { size: 1 } })).toEqual({});
+  });
+});

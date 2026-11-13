@@ -69,6 +69,8 @@ export function createTvPlayer(options: TvOptions): Player {
     idleMs: 5000,
     hotkeys: TV_HOTKEYS,
     ...options,
+    // No companion mode on TVs (ADR-016 §12), whatever the host passes.
+    presentation: { ...options.presentation, companion: false },
     formats: [createHlsFormat(), createDashFormat()],
     backends: [createMseBackendFactory(), createNativeBackendFactory()],
     setup(parts) {

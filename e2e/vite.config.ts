@@ -93,6 +93,7 @@ export default defineConfig({
         webcodecs: fileURLToPath(new URL('./site/webcodecs.html', import.meta.url)),
         presets: fileURLToPath(new URL('./site/presets.html', import.meta.url)),
         examples: fileURLToPath(new URL('./site/examples.html', import.meta.url)),
+        companion: fileURLToPath(new URL('./site/companion.html', import.meta.url)),
         tv: fileURLToPath(new URL('./site/tv.html', import.meta.url)),
         'react-basic': fileURLToPath(new URL('./site/react-basic.html', import.meta.url)),
         'react-vod': fileURLToPath(new URL('./site/react-vod.html', import.meta.url)),

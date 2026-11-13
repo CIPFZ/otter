@@ -765,7 +765,11 @@ ${glassFallback('span')}</style><span part="tooltip" role="tooltip"></span>`;
     };
   });
 
-/** Gesture surface over the picture: the dimming layer (brightness gesture). */
+/**
+ * Gesture surface over the picture: the dimming layer (brightness gesture; in the companion
+ * window at least the companion dim, ADR-016 §3). It sits under the overlays and the controls, so
+ * only the picture darkens.
+ */
 const gestureClass = () =>
   once('Gesture', () => {
     const Base = base();
@@ -782,7 +786,9 @@ ${REDUCED_MOTION}</style><div class="dim" part="dim"></div><slot></slot>`;
       protected render(s: Readonly<UiState>): void {
         const dim = this.#dim;
         if (dim === undefined) return;
-        const opacity = String(Math.max(0, Math.min(0.8, 1 - (s.brightness ?? 1))));
+        const c = s.presentation?.companion;
+        const base = 1 - (s.brightness ?? 1);
+        const opacity = String(Math.max(0, Math.min(0.8, c?.active === true ? Math.max(base, c.dim) : base)));
         if (dim.style.opacity !== opacity) dim.style.opacity = opacity;
       }
     };

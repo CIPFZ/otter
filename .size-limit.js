@@ -166,9 +166,27 @@ const danmakuChunks = [
   { name: 'danmaku mask chunk (ADR-012 §6, report)', path: danmakuFile('', 'mask'), gzip: true, modifyEsbuildConfig: firstScreenOnly },
 ];
 
+// Companion mode (ADR-016 §14): the presentation chunk (state, actions, window size) and the presets
+// chunk with the shell's companion rules, loaded only by hosts that turn it on; ≤ 3 KB together
+// (owner 2026-11-11, provisional). The first-screen budget above stays 30 KB.
+const pkgChunk = (pkg, prefix) => {
+  const d = `packages/${pkg}/dist`;
+  const f = existsSync(d) ? readdirSync(d).find((x) => x.startsWith(`${prefix}-`) && x.endsWith('.js')) : undefined;
+  return `${d}/${f ?? `${prefix}.js`}`;
+};
+const companionBudget = [
+  {
+    name: 'budget: companion mode chunks, presentation companion + presets companion-style (ADR-016 §14, ≤ 3 KB)',
+    path: [pkgChunk('presentation', 'companion'), pkgChunk('presets', 'companion-style')],
+    gzip: true,
+    limit: '3 KB',
+    modifyEsbuildConfig: firstScreenOnly,
+  },
+];
+
 const reports = readdirSync('packages')
   .filter((name) => existsSync(`packages/${name}/tsconfig.json`))
   .sort()
   .map((name) => ({ name: `@otter-player/${name}`, path: dist(name), import: '*', gzip: true }));
 
-export default [...budgets, ...danmakuBudgets, ...scenarios, ...engineChunks, ...ownHlsEngine, ...danmakuChunks, ...onDemand, ...reports];
+export default [...budgets, ...danmakuBudgets, ...companionBudget, ...scenarios, ...engineChunks, ...ownHlsEngine, ...danmakuChunks, ...onDemand, ...reports];

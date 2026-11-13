@@ -6,6 +6,7 @@
 // and casting.
 
 import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@otter-player/core';
+import type { CompanionRuntime } from './companion.js';
 import type { MediaSessionActions } from './helpers.js';
 import {
   createPresentationController,
@@ -13,14 +14,55 @@ import {
   type PresentationController,
   type PresentationMode,
   type PresentationOptions,
+  type PresentationRequestOptions,
 } from './controller.js';
 import type { RemoteControl, RemoteState } from './remote.js';
+
+/** Companion window width: 240 / 320 / 440 px; the height follows the picture (ADR-016). */
+export type CompanionSize = 's' | 'm' | 'l';
+
+/** Companion mode (ADR-016): the player in a Document PiP window, dimmed, controls on hover. */
+export interface CompanionOptions {
+  /** Dimming of the picture in the window, 0..0.8. Default 0.4. */
+  readonly dim?: number;
+  /** Window width step. Default `'m'`. */
+  readonly size?: CompanionSize;
+  /** Audio strip instead of the picture. Default false. */
+  readonly audioOnly?: boolean;
+  /** Danmaku and captions off while in the window, back on leaving. Default true. */
+  readonly quiet?: boolean;
+  /** When the viewer closes the window: pause, or keep playing in the page. Default `'pause'`. */
+  readonly onClose?: 'pause' | 'continue';
+  /** Keep dim, size and audioOnly in the viewer's preferences. Default true. */
+  readonly remember?: boolean;
+}
+
+/** What `companion-set` changes. */
+export interface CompanionSettings {
+  readonly dim?: number;
+  readonly size?: CompanionSize;
+  readonly audioOnly?: boolean;
+}
+
+/** Companion mode state (`presentation.companion`). */
+export interface CompanionState {
+  /** The host turned companion mode on and this browser has Document PiP (not in an iframe). */
+  readonly supported: boolean;
+  /** In the companion window now (mode `docpip`). */
+  readonly active: boolean;
+  readonly dim: number;
+  readonly size: CompanionSize;
+  readonly audioOnly: boolean;
+  /** dim, size and audioOnly go to the preferences (CompanionOptions.remember). */
+  readonly remember: boolean;
+}
 
 export interface PresentationSnapshot {
   readonly mode: PresentationMode;
   readonly pending: PresentationMode | null;
   readonly capabilities: PresentationCapabilities;
   readonly videoOnly: boolean;
+  readonly companion: CompanionState;
 }
 
 export interface PresentationState {
@@ -32,9 +74,11 @@ export interface PresentationState {
 }
 
 const NONE: PresentationCapabilities = { inline: 'native', theater: false, fullscreen: false, pip: false, docpip: false, mini: false, background: false };
+/** Companion mode off (the host did not turn it on, or it is not loaded yet). */
+const NO_COMPANION: CompanionState = { supported: false, active: false, dim: 0.4, size: 'm', audioOnly: false, remember: true };
 
 export const INITIAL_PRESENTATION_STATE: PresentationState = {
-  presentation: { mode: 'inline', pending: null, capabilities: NONE, videoOnly: false },
+  presentation: { mode: 'inline', pending: null, capabilities: NONE, videoOnly: false, companion: NO_COMPANION },
   cast: 'unavailable',
   airplay: 'unavailable',
   wakeLocked: false,
@@ -53,6 +97,10 @@ export interface PresentationActionMap {
   'exit-fullscreen': Record<string, never>;
   'open-cast-picker': Record<string, never>;
   'open-airplay-picker': Record<string, never>;
+  /** Into the companion window, or out of it (denied `unsupported` where Document PiP is missing). */
+  'toggle-companion': Record<string, never>;
+  /** Changes companion dim / size / audioOnly; in the window at once (a resize needs a gesture). */
+  'companion-set': CompanionSettings;
 }
 
 export interface PresentationPluginOptions extends PresentationOptions {
@@ -64,6 +112,11 @@ export interface PresentationPluginOptions extends PresentationOptions {
   readonly mediaSession?: false | { readonly metadata?: MediaMetadataInit };
   /** Hold a screen WakeLock while playing and visible. Default true. */
   readonly wakeLock?: boolean;
+  /**
+   * Companion mode (ADR-016): `toggle-pip` opens the companion window where Document PiP exists.
+   * Default off; its code is an on-demand chunk loaded at install when on.
+   */
+  readonly companion?: boolean | CompanionOptions;
 }
 
 export interface PresentationPlugin<S extends PresentationState> extends Plugin<S, PresentationActionMap> {
@@ -92,10 +145,15 @@ export function createPresentationPlugin<S extends PresentationState>(options: P
       const store = ctx.store;
       const c = createPresentationController(options);
       controller = c;
+      let companion: CompanionRuntime | undefined;
       const sync = (): void =>
-        store.setState({ presentation: { mode: c.mode, pending: c.pending, capabilities: c.capabilities, videoOnly: c.videoOnly } } as Partial<S>);
+        store.setState({
+          presentation: { mode: c.mode, pending: c.pending, capabilities: c.capabilities, videoOnly: c.videoOnly, companion: companion?.state() ?? NO_COMPANION },
+        } as Partial<S>);
       const request = (mode: PresentationMode, system?: boolean): void => {
-        void c.request(mode, system === true ? { system } : {});
+        const opts: { -readonly [K in keyof PresentationRequestOptions]: PresentationRequestOptions[K] } = system === true ? { system } : {};
+        if (mode === 'docpip' && companion?.supported === true) opts.docPipSize = companion.windowSize();
+        void c.request(mode, opts);
         sync();
       };
       const toggle = (mode: PresentationMode): void => (c.mode === mode ? void c.exit() : request(mode));
@@ -115,7 +173,7 @@ export function createPresentationPlugin<S extends PresentationState>(options: P
         store.handle('toggle-mini', () => toggle('mini')),
         store.handle('toggle-pip', () => {
           if (c.mode === 'pip' || c.mode === 'docpip') return void c.exit();
-          const doc = c.capabilities.docpip !== false && (options.preferDocumentPip === true || c.capabilities.pip === false);
+          const doc = c.capabilities.docpip !== false && (companion?.supported === true || options.preferDocumentPip === true || c.capabilities.pip === false);
           request(doc ? 'docpip' : 'pip');
         }),
         store.handle('exit-fullscreen', () => {
@@ -139,6 +197,15 @@ export function createPresentationPlugin<S extends PresentationState>(options: P
         if (options.mediaSession !== false) offs.push(m.bindMediaSession(store as unknown as Store<S, MediaSessionActions>, options.mediaSession?.metadata));
       });
       sync();
+      if (options.companion === undefined || options.companion === false) return;
+      const settings = options.companion === true ? {} : options.companion;
+      // Installed before the plugins after this one, so a preferences plugin finds the handlers.
+      return import('./companion.js').then((m) => {
+        if (controller !== c) return;
+        companion = m.createCompanion({ controller: c, container: options.container, surface: options.surface, store, qoe: ctx.qoe, options: settings, request: () => request('docpip'), sync });
+        offs.push(() => companion?.destroy());
+        sync();
+      });
     },
     uninstall() {
       for (const off of offs.splice(0)) off();

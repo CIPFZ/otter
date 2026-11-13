@@ -2,7 +2,8 @@
 // remembered across visits through a storage adapter the host can replace (default:
 // localStorage under a prefix). Only these are kept: the video codec order, the quality (as a
 // picture height, so it carries over between streams), the audio and subtitle languages, the
-// volume, the playback speed and the danmaku settings. Never the playback position.
+// volume, the playback speed, the danmaku settings and the companion window's dim / size / audio
+// strip (ADR-016). Never the playback position, nor the companion window's position.
 // Separately (its own key), the device's codec failures: a family that gave no picture although
 // decodingInfo vouched for it (WebKit and AV1) is remembered per user agent for 30 days, so the
 // ~3 s it costs to find out is paid once per device, not on every visit.
@@ -67,6 +68,15 @@ export interface Preferences {
   readonly playbackRate?: number;
   /** `@otter-player/danmaku` settings (the danmaku plugin clamps them again when applied). */
   readonly danmaku?: Readonly<Record<string, number | boolean | readonly string[]>>;
+  /** Companion window settings (`@otter-player/presentation`, ADR-016); dim is 0..0.8. */
+  readonly companion?: CompanionPreference;
+}
+
+/** The companion settings that are remembered (CompanionSettings of `@otter-player/presentation`). */
+export interface CompanionPreference {
+  readonly dim?: number;
+  readonly size?: 's' | 'm' | 'l';
+  readonly audioOnly?: boolean;
 }
 
 /** Keeps what parses and is in range; anything else is dropped (a hand-edited or old entry). */
@@ -89,6 +99,15 @@ export function sanitize(raw: unknown): Preferences {
       ([, v]) => typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)) || (Array.isArray(v) && v.every((w) => typeof w === 'string')),
     ) as [string, number | boolean | string[]][];
     if (kept.length > 0) out.danmaku = Object.fromEntries(kept);
+  }
+  const c = r['companion'];
+  if (typeof c === 'object' && c !== null && !Array.isArray(c)) {
+    const raw = c as Record<string, unknown>;
+    const companion: { -readonly [K in keyof CompanionPreference]: CompanionPreference[K] } = {};
+    if (typeof raw['dim'] === 'number' && Number.isFinite(raw['dim'])) companion.dim = Math.min(0.8, Math.max(0, raw['dim']));
+    if (raw['size'] === 's' || raw['size'] === 'm' || raw['size'] === 'l') companion.size = raw['size'];
+    if (typeof raw['audioOnly'] === 'boolean') companion.audioOnly = raw['audioOnly'];
+    if (Object.keys(companion).length > 0) out.companion = companion;
   }
   return out;
 }
@@ -147,6 +166,8 @@ export interface PreferencesState {
   readonly textTrack?: string | null;
   /** `@otter-player/danmaku` settings (DanmakuState.danmaku). */
   readonly danmaku?: object;
+  /** `@otter-player/presentation`'s companion state (PresentationState.presentation.companion). */
+  readonly presentation?: { readonly companion?: CompanionPreference & { readonly remember?: boolean } };
 }
 
 /** The actions this watches and dispatches (MediaActionMap, TextActionMap). */
@@ -161,6 +182,8 @@ export interface PreferencesActionMap {
   'set-playback-rate': { readonly rate: number };
   /** `@otter-player/danmaku`'s, when installed. */
   'set-danmaku'?: object;
+  /** `@otter-player/presentation`'s, when companion mode is on. */
+  'companion-set'?: CompanionPreference;
 }
 
 export interface PreferencesPlugin<S extends PreferencesState, A extends PreferencesActionMap> extends Plugin<S, A> {
@@ -251,6 +274,11 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
           const d = state().danmaku;
           if (d !== undefined) save({ danmaku: d as Preferences['danmaku'] });
         }),
+        // Companion dim / size / audio strip, unless the host said not to (remember: false).
+        store.handle('companion-set', () => {
+          const c = state().presentation?.companion;
+          if (c !== undefined && c.remember !== false) save({ companion: sanitize({ companion: { dim: c.dim, size: c.size, audioOnly: c.audioOnly } }).companion });
+        }),
       ];
 
       // At start: volume, speed, codec order (the session applies it to the next load).
@@ -258,6 +286,7 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
       if (prefs.playbackRate !== undefined) dispatch('set-playback-rate', { rate: prefs.playbackRate });
       if (prefs.codecs !== undefined) dispatch('set-codec-preference', { order: prefs.codecs });
       if (prefs.danmaku !== undefined) dispatch('set-danmaku', prefs.danmaku as object);
+      if (prefs.companion !== undefined && state().presentation?.companion?.remember !== false) dispatch('companion-set', prefs.companion);
 
       // Codec failures of this device (user agent), not expired: out of the ranking from the start.
       const ua = options.userAgent ?? (() => ((globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent ?? ''));

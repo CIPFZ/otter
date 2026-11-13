@@ -294,3 +294,18 @@ readonly companion?: { readonly dim?: number; readonly size?: 's' | 'm' | 'l'; r
 | 13 | 设置页显示名「悬浮窗」/ "Floating player"，页面小窗文案不动 | 第 2 停 |
 
 另外，第 1 停加了 `CompanionState.remember`（偏好插件据此决定读写）。
+
+## 第 1 停落地的接口（2026-11-12）
+
+除第 1、2 节的状态、选项与两个动作外，第 1 停还加了这些公开接口：
+
+- `PresentationRequestOptions.docPipSize`：单次请求的 Document PiP 内容区尺寸，优先于 `PresentationOptions.docPipSize`。伴随请求用它传档位尺寸。
+- ui-core `PlayerUiActionMap['hide-controls']`：指针和焦点都离开播放器时，`bindActivity` 派发它。只在伴随小窗里立即隐藏控件，别处不起作用。
+- ui-core `bindActivity` 的 `store` 参数类型：从只接受 `'show-controls'` 放宽为 `'show-controls' | 'hide-controls'`。传入的 store 必须也处理 `hide-controls`；带 `PlayerUiActionMap` 的 store 本来就带上了。
+- `PresentationSnapshot.companion` 为必有字段。自己构造快照的代码要补上它；仓库里只有 basic preset 这样做，已补。
+
+实现位置：
+
+- presentation 的按需块 `companion.js`：宿主开启伴随时，在 install 里加载。install 因此变成异步，排在它后面的偏好插件安装时，处理器已经在了。
+- presets 的按需块 `companion-style.js`：进入小窗时加载，样式只加进 PiP 文档。另外三条规则让播放器铺满小窗：把 body 的 margin / padding 置零，根节点 `position: fixed; inset: 0`。原因：页面的样式表会被复制进小窗（`docpip.ts`），宿主页面的 body 内边距和播放器的宽高比也跟着进来了。
+- 首屏代码只多了三样：presentation 插件里读写伴随状态、请求尺寸、`toggle-pip` 的分支；ui-core 的暗化公式与悬停逻辑；presets 加载样式块的几行。

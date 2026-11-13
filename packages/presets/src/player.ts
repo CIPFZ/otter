@@ -102,8 +102,8 @@ export interface PlayerOptions<S extends PlayerState = PlayerState, A extends Pl
    */
   readonly hotkeys?: HotkeyMap;
   /**
-   * Presentation modes: mini window, Document PiP, Media Session (container and surface are the
-   * player's).
+   * Presentation modes: mini window, Document PiP, companion mode (`companion`), Media Session
+   * (container and surface are the player's).
    * @defaultValue `{}` (every mode the environment supports)
    */
   readonly presentation?: Omit<PresentationPluginOptions, 'container' | 'surface'>;
@@ -288,6 +288,16 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
     const input = createInputController({ store, ...(options.hotkeys === undefined ? {} : { hotkeys: options.hotkeys }) });
     input.attach(root);
     offs.push(() => input.destroy(), bindActivity(root, store), trackControls(root, store, layer), () => layer.destroy(), () => presented.stop());
+    // The default shell's slim bar in the companion window (ADR-016 §4): rules added to the PiP
+    // window's document when the player is in it, never to the page.
+    if (options.ui !== false && options.presentation?.companion !== undefined && options.presentation.companion !== false) {
+      const inWindow = (): boolean => store.getState().presentation.companion.active;
+      offs.push(
+        store.select(inWindow, (active) => {
+          if (active) void import('./companion-style.js').then((m) => inWindow() && m.addCompanionStyle(root.ownerDocument));
+        }),
+      );
+    }
     const cleanup = options.setup?.({ root, video, surface, layer, media, store });
     if (cleanup !== undefined) offs.push(cleanup);
   });
