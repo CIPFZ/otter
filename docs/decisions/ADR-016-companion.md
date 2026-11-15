@@ -287,8 +287,8 @@ readonly companion?: { readonly dim?: number; readonly size?: 's' | 'm' | 'l'; r
 | 3 | 不传 `preferInitialWindowPlacement`，浏览器记住的位置和尺寸照用 | 第 1 停 |
 | 4 | `requestWindow` 固定传 `disallowReturnToOpener: true`；**不开放** `returnButton` 选项（以后需要再加） | 第 2 停（与 `onClose` 一起） |
 | 6 | desktop-firefox 两个用例：探测结果只记录不判定；删掉 `documentPictureInPicture` 后判退化路径 | 第 3 停 |
-| 7 | 文档不写「省 CPU / GPU」，等真 Edge 复测 | — |
-| 8 | 仍缺 token 与客户端，真 Edge 待负责人提供 | — |
+| 7 | 等真 Edge 复测，一致再写；2026-11-15 已复测、结论一致（见下文「真 Edge 补量」），可写成「隐藏画面后合成与上屏的 CPU 下降，解码不变」 | 第 3 停（文档） |
+| 8 | 云实例仍缺 token；负责人改为提供局域网 Windows 机器，2026-11-15 已补量 | — |
 | 9 | 偏好插件读 `presentation.companion`：`active` 且 quiet 时不写 textLanguage 与 danmaku | 第 2 停 |
 | 10 | `createTvPlayer` 固定 `presentation.companion: false` | 第 1 停 |
 | 13 | 设置页显示名「悬浮窗」/ "Floating player"，页面小窗文案不动 | 第 2 停 |
@@ -327,3 +327,14 @@ readonly companion?: { readonly dim?: number; readonly size?: 's' | 'm' | 'l'; r
 - 设置页在小窗里铺成窗口内的面板（四周 8 px），不再是控制栏上方的弹出层：240–440 px 的窗口在控制栏上方放不下。播放器根节点在小窗里用 `overflow: clip`：超出窗口的提示气泡会让焦点把播放器横向滚走（本机有界面 Chromium 量到 17–22 px）。
 
 途中修的缺陷（单独提交）：`97e87f7`（小窗里的节点属于小窗的 realm，`instanceof` 判断失效：菜单点不动、方向键在滑块上触发快进、`lang` 被忽略）、`1119ccf`（PiP 文档没有 title 与 lang，axe serious）。
+
+## 真 Edge 补量（2026-11-15）
+
+负责人提供局域网 Windows 机器（192.168.1.2，Edge 157，Intel Iris Xe），经 go-agent-platform 的 `vm-agent` 远程执行，补量了第 0 停的六项，并跑了伴随 e2e。数据见 RESEARCH §1「真 Edge 补量」。与本机 Chromium 的结论一致，只有两处数字不同，都不改契约：
+
+- Edge 打开的内容区最小 248×56（Chromium 240×52）：s 档在 Edge 上实际 248 px 宽。浏览器自己夹取，代码不处理。
+- 已打开的窗口在 Edge 上最低缩到内容区 59 px 高（Chromium 66）：音频条定的 66 px 两边都开得出来。
+
+冲突 7：Edge 三次运行与本机 Chromium 方向一致——隐藏画面后解码帧数不变，浏览器进程与 GPU 进程的 CPU 下降（三条路径的浏览器合计约降 30–50 %），渲染进程不降。按批准的 (a)，文档可以写「隐藏画面后合成与上屏的 CPU 下降，解码不变」，不写「省电」或笼统的「省 CPU / GPU」。
+
+冲突 8：`e2e/companion.spec.ts` 在 `real-windows-edge` 上 11 条全过；暗化像素比 0.996 / 0.598 / 0.199（0 / 0.4 / 0.8）。

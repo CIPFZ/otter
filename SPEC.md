@@ -417,12 +417,12 @@ interface CompanionState {
 - 小窗内控件只随指针进出小窗与键盘焦点显示，不随播放与媒体事件显示。纯音频条隐藏画面层，不停解码。
 - 代码与样式在 presentation 的按需块里，样式只注入 PiP 文档，不进首屏。
 
-Document PiP 的坑（RESEARCH §1「伴随模式第 0 停」，Chromium 156 实测，真 Edge 待测）：
+Document PiP 的坑（RESEARCH §1「伴随模式第 0 停」，Chromium 156 与真 Edge 157 实测）：
 
 | 坑 | 事实 |
 |---|---|
 | 尺寸单位 | `requestWindow({ width, height })` 是内容区；`resizeTo` / `resizeBy` 是含标题栏的 outer |
-| 最小尺寸 | 打开时内容区最小 240×52；已开的窗口靠 resize 最低到内容区 66 px 高 |
+| 最小尺寸 | 打开时内容区最小 240×52（Edge 248×56）；已开的窗口靠 resize 最低到内容区 66 px 高（Edge 59） |
 | 改尺寸 | `resizeTo` / `resizeBy` 要瞬时用户激活，并消耗它；`moveTo` 无效、不报错 |
 | 再次打开 | 请求的尺寸与上次相同，浏览器恢复上次的位置和尺寸，忽略传入值；`preferInitialWindowPlacement: true` 不恢复 |
 | 关窗 | 各种关法的 `pagehide` 完全相同，区分不了「关闭」与「返回标签页」 |

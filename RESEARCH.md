@@ -341,7 +341,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
 - **环境**：本机 macOS（Darwin 27，Apple Silicon，两块显示器）。Playwright 1.64.1 自带的 Chromium 156.0.8078.4（build 1248）：
   - `desktop-chrome`：项目原样，即无头 shell。Desktop Chrome 设备描述，所以 UA 写的是 Windows。
   - `desktop-chrome-headed`：同一个 build 的有界面版（Chrome for Testing），只在本地用，探针配置里 `OTTER_PROBE_HEADED=1` 才有。
-- **真 Edge 没有量**：这份工作副本是 2026-11-09 新 clone 的，`tmp/` 整个不存在。没有 `tmp/env`（`OTTER_WIN_TOKEN`），也没有 M6 用的客户端 `tmp/win.py` 和 `tmp/tools/agrt_token.py`，所以连不上实例 `inst-01m4skyh174y47p9n6yhxdy7at`。按要求没有另建实例。下面六项的 Edge 一栏全部空缺。
+- **云端实例没有连上**：这份工作副本是 2026-11-09 新 clone 的，`tmp/` 整个不存在。没有 `tmp/env`（`OTTER_WIN_TOKEN`），也没有 M6 用的客户端 `tmp/win.py` 和 `tmp/tools/agrt_token.py`，所以连不上实例 `inst-01m4skyh174y47p9n6yhxdy7at`。按要求没有另建实例。真 Edge 的六项改在负责人提供的局域网 Windows 机器上量，见本节末「真 Edge 补量」。
 - **无头 shell 里，Document PiP 窗口就是一个普通页面**：
   - 窗口出现在 Playwright 的 `context.pages()` 里，可以 `evaluate`、截图。
   - 尺寸是普通新页面的尺寸：有 viewport 时等于 viewport，`viewport: null` 时 800×600。`requestWindow` 传的宽高一律不生效，位置恒为 (0, 0)。
@@ -438,6 +438,46 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     - 原因没有查，Chromium 和 WebKit 在同一台机器上正常。
   - 这个 Firefox 的 `XUL` 里有偏好名 `dom.documentpip.enabled` 的字符串，`playwright.cfg` 没有改这一项；默认值是什么，二进制里看不出来。
   - M3 时的记录（本节上文）是「Playwright 的 Firefox 构建提供 `documentPictureInPicture`，无头也能真正进入」。当前版本是否仍然如此，待 CI 的 desktop-firefox（Ubuntu）证实。
+
+#### 真 Edge 补量（2026-11-15）
+
+- **机器**：负责人局域网里的 Windows 11 专业版（192.168.1.2），i5-13500H，Intel Iris Xe（驱动 31.0.101.5333；另装有 MuMu 虚拟显示适配器），内存 15.7 GB，一块 2560×1600 屏、缩放 150 %，控制台会话。Edge 157.0.4341.46（安装版）。不是任务指定的云实例（见本节开头）。
+- **做法**：
+  - 通过那台机器上运行的 go-agent-platform `vm-agent`（7070 端口）的 `exec` 接口在桌面会话里执行命令。
+  - 在那台机器上 clone 仓库、检出 `a2d3575`、`pnpm install`。测试站在那台机器上构建并预览，Edge 打开 `http://localhost:4173`；`127.0.0.1` 连不上，预览只监听 `localhost`。
+  - 探针用 `real-windows-edge` 项目（`OTTER_REAL_WINDOWS_EDGE=1`，有界面），`OTTER_E2E_BASE_URL=http://localhost:4173`。
+  - 注意：Playwright 的 Desktop Edge 设备描述会改 UA，页面里看到的是 `Edg/156.0.8078.4`，实际运行的是 157。
+- **1. 最小与最大尺寸**（每个尺寸一个新 profile）：
+
+  | 请求（宽×高） | 内容区 inner | 窗口 outer |
+  |---|---|---|
+  | 不传 | 327×300 | 342×342 |
+  | 100×30 | 248×56 | 262×98 |
+  | 240×44 | 248×56 | 262×98 |
+  | 240×135 | 248×135 | 263×177 |
+  | 320×180 | 321×180 | 336×222 |
+  | 440×248 | 441×249 | 456×290 |
+  | 4000×3000 | 779×584 | 794×626 |
+
+  - 内容区最小 **248×56**（本机 Chromium 是 240×52）：宽 240 的 s 档在 Edge 上实际 248 px 宽，240×44 的音频条同样开不出来。
+  - 窗口边框约 15 px 宽、42 px 高（标题栏）；内容区有 ±1 px 的出入（150 % 缩放下的取整，假设）。
+- **2. 再次打开**：与本机 Chromium 相同。上次请求的尺寸与这次相同，就恢复上次窗口的位置和尺寸（脚本 `resizeTo` 改过之后，487×260），传入的尺寸被忽略；尺寸不同（440×248）用新尺寸；`preferInitialWindowPlacement: true` 回到 321×181 和初始位置；刷新后也是初始。
+- **3. `resizeTo` / `resizeBy` / `moveTo`**：与本机 Chromium 相同。要瞬时激活并消耗它，没有激活时抛同样的 `NotAllowedError`；宽高是 outer；`moveTo` 无效不报错。缩小下限：outer 256×101，**内容区 241×59**（本机 Chromium 是内容区 66 高）。伴随的音频条定 66 px，两边都开得出来。
+- **4. 关窗**：与本机 Chromium 相同，三种关法事件完全一样（`blur`、`pagehide` `persisted: false`、`visibilitychange`、`unload`），opener 上没有事件。
+- **5. 画面隐藏后是否还在解码**：三条路径都照常解码（MSE 25、native 30、WebCodecs 30 帧/s），播放不停；MSE / native 隐藏时每帧记为丢帧。CPU（单核 %，三次运行，「浏览器 / 渲染 / GPU 进程，合计」，小窗内）：
+
+  | 路径 | 画面显示 | `display:none` | `visibility:hidden` |
+  |---|---|---|---|
+  | MSE | 15.6–16.4 / 9.7–10.0 / 20.0–23.5，合计 45.4–49.3 | 4.5–7.6 / 11.0–12.3 / 11.8–12.0，合计 28.8–31.3 | 4.5–5.8 / 12.1–12.8 / 11.7–12.5，合计 28.3–31.0 |
+  | native | 17.0–27.1 / 10.3–10.4 / 21.4–21.9，合计 48.8–59.6 | 4.7–5.7 / 11.5–13.8 / 11.1–12.6，合计 27.3–32.2 | 4.4–5.3 / 13.9–14.4 / 12.3–12.9，合计 30.6–32.8 |
+  | WebCodecs | 14.1–17.5 / 13.9–18.1 / 22.5–28.5，合计 51.0–64.6 | 4.2–5.8 / 16.0–17.6 / 17.0–18.9，合计 37.8–43.0 | 4.6–4.8 / 19.0–20.5 / 19.9–21.4，合计 44.3–47.2 |
+
+  与本机 Chromium 的方向一致：降下来的是浏览器进程和 GPU 进程（合成与上屏），渲染进程不降反略升，解码帧数不变。
+- **6. MediaSession `enterpictureinpicture`**：
+  - Edge 157 接受这个动作，`automatic-picture-in-picture` 同样不是合法的权限名。
+  - Playwright 页面切不走（与本机相同）。
+  - 用原始 CDP 直接启动 Edge（新 profile），有声播放中新开标签页并激活：opener 变 hidden，处理器**没有被调用**；加同样两个功能开关也一样。第一次运行回到原标签页后 `visibilityState` 又变回 hidden 一次，原因没查。
+- **伴随 e2e**：`e2e/companion.spec.ts` 在 `real-windows-edge` 上 11 条全过；暗化像素比（小窗 / 页面）在 0 / 0.4 / 0.8 时为 0.996 / 0.598 / 0.199。
 
 ## 2. 格式 / 协议 / 编码全景
 
