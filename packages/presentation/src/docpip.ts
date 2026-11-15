@@ -46,6 +46,11 @@ export function moveInto(container: HTMLElement, pip: Window, video: HTMLVideoEl
   const r = container.getBoundingClientRect();
   placeholder.style.cssText = `width:${r.width}px;height:${r.height}px`;
   copyStyles(home, pip.document);
+  // The window's document starts empty: without a title and a language it fails axe's
+  // document-title and html-has-lang (serious), and screen readers have no name for it.
+  pip.document.title = home.title;
+  const lang = home.documentElement.lang;
+  if (lang !== '') pip.document.documentElement.lang = lang;
   pip.document.body.style.margin = '0';
   const before = snapshot(video);
   container.before(placeholder);

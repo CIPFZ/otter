@@ -349,6 +349,22 @@ describe('presentation controller', () => {
     await vi.waitFor(() => expect(container.style.right).toBe('8px'));
   });
 
+  it('Document PiP: the window\'s document gets the page\'s title and language (axe document-title, html-has-lang)', async () => {
+    const pipDoc = document.implementation.createHTMLDocument('');
+    pipDoc.title = '';
+    const pipWindow = Object.assign(new EventTarget(), { document: pipDoc, close: () => pipWindow.dispatchEvent(new Event('pagehide')) });
+    stub(window, 'documentPictureInPicture', { requestWindow: vi.fn(async () => pipWindow as unknown as Window) });
+    document.title = 'The page';
+    document.documentElement.lang = 'zh-CN';
+    const { core, mode } = await setup({}, { preferDocumentPip: true });
+    core.store.dispatch('toggle-pip', {});
+    await vi.waitFor(() => expect(mode()).toBe('docpip'));
+    expect(pipDoc.title).toBe('The page');
+    expect(pipDoc.documentElement.lang).toBe('zh-CN');
+    core.store.dispatch('toggle-pip', {});
+    document.documentElement.removeAttribute('lang');
+  });
+
   it('Document PiP moves the whole player and puts it back when the window closes', async () => {
     const pipDoc = document.implementation.createHTMLDocument('pip');
     const pipWindow = Object.assign(new EventTarget(), {
