@@ -1,11 +1,13 @@
-// Companion mode (ADR-016, docs/design/COMPANION.md §6), stop 1: entering through the PiP button,
-// the window size step, the dim layer in the window and back in the page, controls on hover only,
-// preferences, and nothing left behind. Judged on desktop-chrome and real Edge only (acceptance
+// Companion mode (ADR-016, docs/design/COMPANION.md §6): entering through the PiP button, the
+// window size step, the dim layer in the window and back in the page, controls on hover only,
+// preferences, nothing left behind (stop 1); the audio strip, quiet, closing the window, the
+// settings page and axe in the window's document (stop 2). Judged on desktop-chrome and real Edge only (acceptance
 // 8); elsewhere the cases record what the environment reports and skip.
 //
 // The headless shell gives the PiP window the size of an ordinary page (RESEARCH §1), so the size
 // step is checked on the requestWindow call, not on the window.
 
+import AxeBuilder from '@axe-core/playwright';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import type { BrowserContext, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
@@ -88,7 +90,14 @@ async function back(page: Page, pip: Page): Promise<void> {
   await pip.mouse.move(60, 60);
   await pip.mouse.move(70, 64);
   await expect(pip.locator('[data-otter-controls]')).not.toHaveAttribute('data-idle');
-  await pip.locator('otter-pip-button').getByRole('button').click();
+  // The click closes the window it is in: Playwright may report the page closed as it finishes.
+  await pip
+    .locator('otter-pip-button')
+    .getByRole('button')
+    .click()
+    .catch((e: unknown) => {
+      if (!/closed/.test(String(e))) throw e;
+    });
   await expect.poll(async () => (await state(page)).presentation.mode).toBe('inline');
 }
 
@@ -132,7 +141,7 @@ test('the PiP button opens the companion window at the size step; dim there, bri
   });
   const pip = await enter(page);
   // 320 px wide (step m), height from the 16:9 picture.
-  expect(await page.evaluate(() => (window as unknown as { requested: unknown[] }).requested)).toEqual([{ width: 320, height: 180 }]);
+  expect(await page.evaluate(() => (window as unknown as { requested: unknown[] }).requested)).toEqual([{ width: 320, height: 180, disallowReturnToOpener: true }]);
   expect((await state(page)).presentation.companion).toMatchObject({ active: true, dim: 0.4, size: 'm' });
   await expect.poll(() => dimOpacity(pip)).toBe(0.4);
   // The setting does not move brightness.
@@ -243,4 +252,113 @@ test('out of the window: the idle delay is back, nothing is left in the page; de
   const sources = await page.evaluate(() => (window as unknown as { mediaSources: { readyState: string }[] }).mediaSources.map((m) => m.readyState));
   expect(sources.length).toBeGreaterThan(0);
   expect(sources.filter((s) => s !== 'closed')).toEqual([]);
+});
+
+const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
+const blocking = (results: Awaited<ReturnType<AxeBuilder['analyze']>>): string[] =>
+  results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${v.id} (${v.impact}): ${v.help} [${v.nodes.map((n) => n.target.join(' ')).join(', ')}]`);
+
+test('audio strip: 66 px of content requested, no picture, the strip bar always shown without settings', async ({ page }) => {
+  test.setTimeout(60_000);
+  await open(page, '&audio=1');
+  const pip = await enter(page);
+  expect(await page.evaluate(() => (window as unknown as { requested: unknown[] }).requested)).toEqual([{ width: 320, height: 66, disallowReturnToOpener: true }]);
+  const shown = (selector: string) => pip.locator(selector).first().evaluate((el) => getComputedStyle(el).display !== 'none');
+  expect(await shown('[data-otter-player] > video')).toBe(false);
+  expect(await shown('[data-otter-player] > otter-gesture')).toBe(false);
+  for (const tag of ['otter-play-button', 'otter-mute-button', 'otter-time-slider', 'otter-time-display', 'otter-pip-button']) expect(await shown(tag), tag).toBe(true);
+  expect(await shown('otter-settings-menu')).toBe(false);
+  // Shown with the pointer elsewhere, while playing, past the idle delay.
+  await pip.waitForTimeout(3500);
+  expect((await state(page)).controlsVisible).toBe(true);
+  expect(await pip.locator('[data-otter-controls]').evaluate((el) => el.hasAttribute('data-idle'))).toBe(false);
+  expect((await state(page)).paused).toBe(false);
+  await back(page, pip);
+  expect(await page.locator('[data-otter-player] > video').evaluate((el) => getComputedStyle(el).display)).not.toBe('none');
+});
+
+test('quiet: captions off in the window and back after; the preference is not written', async ({ page }) => {
+  test.setTimeout(60_000);
+  await open(page);
+  // The demo's English subtitles, chosen before (this writes textLanguage: en).
+  await expect.poll(async () => (await state(page)).textTracks.length, { timeout: 10_000 }).toBeGreaterThan(0);
+  const track = (await state(page)).textTracks[0]?.id as string;
+  await page.evaluate((id) => (window.player as Player).store.dispatch('select-text-track', { id }), track);
+  await expect.poll(async () => (await state(page)).textTrack).toBe(track);
+  const stored = () => page.evaluate(() => localStorage.getItem('otter:preferences'));
+  const before = JSON.parse((await stored()) ?? '{}') as Record<string, unknown>;
+  const pip = await enter(page);
+  await expect.poll(async () => (await state(page)).textTrack).toBeNull();
+  expect((await state(page)).presentation.companion.quieted).toBe(true);
+  await back(page, pip);
+  await expect.poll(async () => (await state(page)).textTrack).toBe(track);
+  expect((await state(page)).presentation.companion.quieted).toBe(false);
+  const after = JSON.parse((await stored()) ?? '{}') as Record<string, unknown>;
+  expect(JSON.stringify(after['textLanguage'])).toBe(JSON.stringify(before['textLanguage']));
+});
+
+test('closing the window: paused by default, playing on with onClose continue', async ({ page }) => {
+  test.setTimeout(60_000);
+  await open(page);
+  let pip = await enter(page);
+  // As the viewer closing it (not the player's own way back).
+  await pip.close();
+  await expect.poll(async () => (await state(page)).presentation.mode).toBe('inline');
+  await expect.poll(async () => (await state(page)).paused).toBe(true);
+  await page.goto(`/companion.html?src=${SRC}&onclose=continue`);
+  await expect.poll(async () => (await state(page)).status, { timeout: 20_000 }).toBe('ready');
+  await page.evaluate(() => (window.player as Player).store.dispatch('play', undefined));
+  await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.3);
+  pip = await enter(page);
+  await pip.close();
+  await expect.poll(async () => (await state(page)).presentation.mode).toBe('inline');
+  await page.waitForTimeout(1000);
+  expect((await state(page)).paused).toBe(false);
+});
+
+for (const lang of ['en', 'zh-CN'] as const) {
+  test(`settings: the ${lang} companion page, in the page and in the window`, async ({ page }) => {
+    test.setTimeout(60_000);
+    const t = lang === 'en' ? { title: 'Floating player', large: 'Large' } : { title: '悬浮窗', large: '大' };
+    await open(page, `&lang=${lang}`);
+    const settings = async (target: Page): Promise<void> => {
+      await target.locator('otter-settings-menu').getByRole('button').first().click();
+      await target.getByRole('menuitem', { name: new RegExp(`^${t.title}`) }).click();
+      await expect(target.getByRole('menuitemradio', { name: '80%' })).toBeVisible();
+    };
+    await settings(page);
+    await page.getByRole('menuitemradio', { name: '80%' }).click();
+    await expect.poll(async () => (await state(page)).presentation.companion.dim).toBe(0.8);
+    await page.keyboard.press('Escape');
+    const pip = await enter(page);
+    await page.evaluate(() => {
+      const w = window as unknown as { denied: unknown[] };
+      w.denied = [];
+      (window.player as Player).qoe.on('presentation-denied', (p) => void w.denied.push(p));
+    });
+    await pip.mouse.move(60, 60);
+    await settings(pip);
+    await pip.getByRole('menuitemradio', { name: t.large }).click();
+    await expect.poll(async () => (await state(page)).presentation.companion.size).toBe('l');
+    // The click carried the activation the resize needs: nothing refused.
+    expect(await page.evaluate(() => (window as unknown as { denied: unknown[] }).denied)).toEqual([]);
+  });
+}
+
+test('axe: the companion window, the strip and its settings page have no serious or critical violations', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  await open(page);
+  const pip = await enter(page);
+  const idle = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
+  await pip.mouse.move(60, 60);
+  await pip.locator('otter-settings-menu').getByRole('button').first().click();
+  await pip.getByRole('menuitem', { name: /^Floating player/ }).click();
+  await expect(pip.getByRole('menuitemradio', { name: '80%' })).toBeVisible();
+  const menu = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
+  await pip.getByRole('menuitemradio', { name: 'On' }).click();
+  await expect.poll(async () => (await state(page)).presentation.companion.audioOnly).toBe(true);
+  await pip.keyboard.press('Escape');
+  const strip = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
+  await testInfo.attach('axe-companion.json', { body: JSON.stringify({ idle, menu, strip }, null, 2), contentType: 'application/json' });
+  expect([...blocking(idle), ...blocking(menu), ...blocking(strip)]).toEqual([]);
 });

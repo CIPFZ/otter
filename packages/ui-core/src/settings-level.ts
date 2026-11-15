@@ -3,12 +3,12 @@
 // Level one stays in the main chunk. Helpers the main chunk also uses are handed over (a value
 // import of a shared module would make it a shared, eagerly initialised chunk).
 
-import { Activity, MessageSquareText, SlidersHorizontal } from 'lucide';
+import { Activity, MessageSquareText, PictureInPicture2, SlidersHorizontal } from 'lucide';
 import type { CaptionStyle } from '@otter-player/text';
 import type { UiState } from './context.js';
 import type { MenuGroup, MenuOption, SettingsView } from './elements.js';
 import type { IconNode } from './icons.js';
-import type { DanmakuStrings, PictureStrings, UiStrings } from './strings.js';
+import type { CompanionStrings, DanmakuStrings, PictureStrings, UiStrings } from './strings.js';
 
 /** What the settings menu lends the level views. */
 export interface LevelHost {
@@ -96,6 +96,34 @@ const DANMAKU_ZH: DanmakuStrings = {
   bottom: '底部',
 };
 
+const COMPANION_EN: CompanionStrings = {
+  companion: 'Floating player',
+  dim: 'Dimming',
+  size: 'Size',
+  small: 'Small',
+  medium: 'Medium',
+  large: 'Large',
+  audioOnly: 'Audio only',
+  on: 'On',
+  off: 'Off',
+};
+const COMPANION_ZH: CompanionStrings = {
+  companion: '悬浮窗',
+  dim: '暗化',
+  size: '尺寸',
+  small: '小',
+  medium: '中',
+  large: '大',
+  audioOnly: '纯音频条',
+  on: '开',
+  off: '关',
+};
+
+const companionStrings = (host: LevelHost): CompanionStrings => ({
+  ...(/^zh\b/i.test(host.strings.locale) ? COMPANION_ZH : COMPANION_EN),
+  ...host.strings.companionPage,
+});
+
 const danmakuStrings = (host: LevelHost): DanmakuStrings => ({
   ...(/^zh\b/i.test(host.strings.locale) ? DANMAKU_ZH : DANMAKU_EN),
   ...host.strings.danmakuPage,
@@ -111,6 +139,8 @@ const pictureValue = (type: string, payload: object): string => JSON.stringify([
 export function extraRows(host: LevelHost, s: Readonly<UiState>, deps: LevelDeps, stats: HTMLElement | null): HTMLElement[] {
   const out = [pictureRow(host, s, deps)];
   if (s.danmaku !== undefined) out.push(danmakuRow(host, s.danmaku, deps));
+  const c = s.presentation?.companion;
+  if (c?.supported === true) out.push(companionRow(host, c, deps));
   if (stats !== null) {
     const item = host.doc.createElement('div');
     item.setAttribute('role', 'menuitemcheckbox');
@@ -140,6 +170,31 @@ function danmakuRow(host: LevelHost, d: NonNullable<UiState['danmaku']>, deps: L
   (item.querySelector('.val') as HTMLElement).textContent = value;
   item.querySelector('.val')?.toggleAttribute('data-on', d.enabled);
   item.setAttribute('aria-label', `${t.danmaku}, ${value}`);
+  return item;
+}
+
+type CompanionView = NonNullable<UiState['presentation']>['companion'];
+
+/** Value of the companion row: "40% · Medium" (· Audio only). */
+function companionValue(t: CompanionStrings, c: CompanionView): string {
+  const size = c.size === 's' ? t.small : c.size === 'l' ? t.large : t.medium;
+  return [`${Math.round(c.dim * 100)}%`, size, ...(c.audioOnly ? [t.audioOnly] : [])].join(' · ');
+}
+
+function companionRow(host: LevelHost, c: CompanionView, deps: LevelDeps): HTMLElement {
+  const t = companionStrings(host);
+  const value = companionValue(t, c);
+  const item = host.doc.createElement('div');
+  item.setAttribute('role', 'menuitem');
+  item.setAttribute('aria-haspopup', 'menu');
+  item.dataset['action'] = 'open';
+  item.dataset['view'] = 'companion';
+  item.dataset['key'] = 'row:companion';
+  item.tabIndex = -1;
+  item.innerHTML = `<span class="ic">${deps.icon(PictureInPicture2)}</span><span class="lb"></span><span class="val"></span><span class="chev">${deps.icon(deps.ChevronRight)}</span>`;
+  (item.querySelector('.lb') as HTMLElement).textContent = t.companion;
+  (item.querySelector('.val') as HTMLElement).textContent = value;
+  item.setAttribute('aria-label', `${t.companion}, ${value}`);
   return item;
 }
 
@@ -205,7 +260,9 @@ export function buildLevel(host: LevelHost, view: Exclude<SettingsView, 'root'>,
   back.tabIndex = -1;
   const ps = pictureStrings(host);
   const ds = danmakuStrings(host);
-  const title = view === 'quality' ? t.quality : view === 'audio' ? t.audio : view === 'captions' ? t.captions : view === 'picture' ? ps.picture : view === 'danmaku' ? ds.danmaku : t.captionStyle;
+  const cs = companionStrings(host);
+  const title =
+    view === 'quality' ? t.quality : view === 'audio' ? t.audio : view === 'captions' ? t.captions : view === 'picture' ? ps.picture : view === 'danmaku' ? ds.danmaku : view === 'companion' ? cs.companion : t.captionStyle;
   back.innerHTML = `<span class="ic">${deps.icon(deps.ChevronLeft)}</span><span class="lb"></span>`;
   (back.querySelector('.lb') as HTMLElement).textContent = title;
   back.setAttribute('aria-label', `${t.back}: ${title}`);
@@ -338,6 +395,49 @@ export function buildLevel(host: LevelHost, view: Exclude<SettingsView, 'root'>,
       ],
       'menuitemcheckbox',
     );
+    return out;
+  }
+  if (view === 'companion') {
+    const c = s.presentation?.companion;
+    if (c === undefined) return out;
+    // Segmented controls, as on the danmaku page; each segment dispatches companion-set (inside
+    // the click, so a resize of the open window has its user activation).
+    const seg = (id: string, label: string, options: readonly [string, object, boolean][]): void => {
+      const group = doc.createElement('div');
+      group.setAttribute('role', 'group');
+      group.dataset['group'] = 'companion';
+      const head = doc.createElement('div');
+      head.className = 'gh';
+      head.setAttribute('role', 'presentation');
+      head.id = `${host.menuId}-${id}`;
+      head.textContent = label;
+      group.setAttribute('aria-labelledby', head.id);
+      const row = doc.createElement('div');
+      row.className = 'seg';
+      options.forEach(([text, patch, checked], i) => {
+        const b = doc.createElement('div');
+        b.setAttribute('role', 'menuitemradio');
+        b.setAttribute('aria-checked', String(checked));
+        b.setAttribute('value', pictureValue('companion-set', patch));
+        b.dataset['group'] = 'companion';
+        b.dataset['key'] = `${id}:${i}`;
+        b.tabIndex = -1;
+        b.textContent = text;
+        row.append(b);
+      });
+      group.append(head, row);
+      out.push(group);
+    };
+    seg('companion-dim', cs.dim, [0, 0.2, 0.4, 0.6, 0.8].map((v) => [`${Math.round(v * 100)}%`, { dim: v }, Math.abs(c.dim - v) < 1e-6] as [string, object, boolean]));
+    seg('companion-size', cs.size, [
+      [cs.small, { size: 's' }, c.size === 's'],
+      [cs.medium, { size: 'm' }, c.size === 'm'],
+      [cs.large, { size: 'l' }, c.size === 'l'],
+    ]);
+    seg('companion-audio', cs.audioOnly, [
+      [cs.on, { audioOnly: true }, c.audioOnly],
+      [cs.off, { audioOnly: false }, !c.audioOnly],
+    ]);
     return out;
   }
   const g = groups.find((x) => x.id === view);

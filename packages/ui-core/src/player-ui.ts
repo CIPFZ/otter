@@ -58,7 +58,8 @@ export interface PlayerUiOptions {
 /**
  * The player UI plugin: control bar visibility and auto-hide, brightness, seek preview, menus
  * (createPlayer installs it). In the companion window (`presentation.companion.active`) the
- * controls show only while the pointer or the focus is in the player, with no timer.
+ * controls show only while the pointer or the focus is in the player, with no timer; in its audio
+ * strip they always show.
  */
 export function createPlayerUiPlugin<S extends PlayerUiState & Pick<MediaState, 'paused' | 'status'>>(options: PlayerUiOptions = {}): Plugin<S, PlayerUiActionMap & MediaActionMap> {
   const idleMs = options.idleMs ?? 3000;
@@ -68,13 +69,17 @@ export function createPlayerUiPlugin<S extends PlayerUiState & Pick<MediaState, 
 
   const patch = (p: Partial<PlayerUiState>): void => store?.setState(p as Partial<S>);
   const set = (controlsVisible: boolean): void => patch({ controlsVisible });
-  const companion = (s: Readonly<S> | undefined): boolean => (s as Partial<PresentationState> | undefined)?.presentation?.companion?.active === true;
+  /** Where the controls are: the page (idle timer), the companion window (hover) or its audio strip (always). */
+  const where = (s: Readonly<S> | undefined): 'page' | 'hover' | 'strip' => {
+    const c = (s as Partial<PresentationState> | undefined)?.presentation?.companion;
+    return c?.active !== true ? 'page' : c.audioOnly ? 'strip' : 'hover';
+  };
 
   const schedule = (): void => {
     if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
     const s = store?.getState();
-    if (s === undefined || idleMs <= 0 || companion(s)) return;
+    if (s === undefined || idleMs <= 0 || where(s) !== 'page') return;
     // Visible only while there is a reason to look at them.
     if (!s.controlsVisible || s.paused || s.status !== 'ready' || s.menu !== null) return;
     timer = setTimeout(() => {
@@ -101,7 +106,7 @@ export function createPlayerUiPlugin<S extends PlayerUiState & Pick<MediaState, 
         }),
         s.handle('hide-controls', () => {
           const now = store?.getState();
-          if (companion(now) && now?.menu === null && now.controlsVisible) set(false);
+          if (where(now) === 'hover' && now?.menu === null && now.controlsVisible) set(false);
         }),
         s.handle('brightness-by', ({ delta }) => {
           const b = store?.getState().brightness ?? 1;
@@ -131,12 +136,12 @@ export function createPlayerUiPlugin<S extends PlayerUiState & Pick<MediaState, 
           () => schedule(),
           (a, b) => a === b,
         ),
-        // Into the companion window: hidden until the pointer or the focus comes in; out of it:
-        // shown, and the auto-hide delay again.
+        // Into the companion window: hidden until the pointer or the focus comes in; its audio
+        // strip: always shown; back in the page: shown, and the auto-hide delay again.
         ctx.store.select(
-          (st) => companion(st),
-          (inWindow) => {
-            set(!inWindow);
+          (st) => where(st),
+          (now) => {
+            set(now !== 'hover');
             schedule();
           },
           (a, b) => a === b,

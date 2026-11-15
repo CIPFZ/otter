@@ -338,7 +338,8 @@ const pipButtonClass = () =>
       protected render(s: Readonly<UiState>): void {
         const p = s.presentation;
         const on = p?.mode === 'pip' || p?.mode === 'docpip';
-        this.show(on ? this.strings.exitPip : this.strings.pip, 'pip');
+        // In the companion window this button is its way back to the page (ADR-016 §7).
+        this.show(p?.companion?.active === true ? this.strings.backToPage : on ? this.strings.exitPip : this.strings.pip, 'pip');
         this.button?.setAttribute('aria-pressed', String(on));
         unsupported(this, p === undefined || (p.capabilities.pip === false && p.capabilities.docpip === false));
       }
@@ -1364,7 +1365,7 @@ const speedMenuClass = () =>
     };
   });
 
-export type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style' | 'picture' | 'danmaku';
+export type SettingsView = 'root' | 'quality' | 'audio' | 'captions' | 'caption-style' | 'picture' | 'danmaku' | 'companion';
 
 /**
  * Settings (UI-DESIGN §7): a two-level menu. Level one: rows "icon + label + current value +
@@ -1520,7 +1521,7 @@ const settingsMenuClass = () =>
         if (this.#view !== 'root' && levels === undefined) return;
         const groups = settingsGroups(s, this.strings);
         // Absent values stringify as null in an array.
-        const signature = JSON.stringify([this.#view, groups, s.captionStyle, s.picture, s.danmaku, this.#stats()?.hidden]);
+        const signature = JSON.stringify([this.#view, groups, s.captionStyle, s.picture, s.danmaku, s.presentation?.companion, this.#stats()?.hidden]);
         if (signature === this.#signature) return;
         this.#signature = signature;
         const focused = (this.shadowRoot?.activeElement as HTMLElement | null)?.dataset['key'];

@@ -83,6 +83,71 @@ describe('controls in the companion window', () => {
   });
 });
 
+describe('the audio strip and the companion settings', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('the audio strip keeps the controls shown, no timer, hide-controls ignored', async () => {
+    vi.useFakeTimers();
+    type S = MediaState & PlayerUiState & PresentationState;
+    const core = createCore<S, PlayerUiActionMap & MediaActionMap>({ slices: [MEDIA_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE], plugins: [createPlayerUiPlugin({ idleMs: 1000 })] });
+    await core.start();
+    const s = core.store;
+    s.setState({ status: 'ready', paused: false, presentation: companion({ active: true, audioOnly: true }) });
+    await vi.advanceTimersByTimeAsync(5000);
+    s.dispatch('hide-controls', {});
+    expect(s.getState().controlsVisible).toBe(true);
+    // Strip off in the window: hover rules.
+    s.setState({ presentation: companion({ active: true, audioOnly: false }) });
+    expect(s.getState().controlsVisible).toBe(false);
+  });
+
+  it('the PiP button is "back to the page" in the window; the settings menu has a companion page only when supported', async () => {
+    const store = createStore<UiState, UiActions>({ slices: [MEDIA_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE] });
+    const sets: unknown[] = [];
+    store.handle('companion-set', (p) => {
+      sets.push(p);
+      const c = store.getState().presentation?.companion;
+      if (c !== undefined) store.setState({ presentation: companion({ ...c, ...p }) });
+    });
+    store.handle('open-menu', ({ id }) => store.setState({ menu: id }));
+    const root = document.createElement('div');
+    root.setAttribute('lang', 'zh-CN');
+    root.innerHTML = '<otter-pip-button></otter-pip-button><otter-settings-menu></otter-settings-menu>';
+    document.body.replaceChildren(root);
+    provideStore(root, store.view());
+    store.setState({ presentation: { ...INITIAL_PRESENTATION_STATE.presentation, capabilities: { ...INITIAL_PRESENTATION_STATE.presentation.capabilities, docpip: 'native' } } });
+    const pipLabel = (): string | null => (root.querySelector('otter-pip-button') as HTMLElement).shadowRoot?.querySelector('button')?.getAttribute('aria-label') ?? null;
+    expect(pipLabel()).toBe('画中画');
+    store.setState({ presentation: companion({ active: true }) });
+    expect(pipLabel()).toBe('回到页面');
+
+    const menu = root.querySelector('otter-settings-menu') as HTMLElement;
+    const panel = (): ShadowRoot => menu.shadowRoot as ShadowRoot;
+    const open = async (): Promise<void> => {
+      (panel().querySelector('button') as HTMLElement).click();
+      await vi.waitFor(() => expect(panel().querySelector('[data-key="row:picture"]')).not.toBeNull());
+    };
+    // Not supported: no row.
+    store.setState({ presentation: companion({ supported: false }) });
+    await open();
+    expect(panel().querySelector('[data-key="row:companion"]')).toBeNull();
+    (panel().querySelector('button') as HTMLElement).click();
+    // Supported: the row says the current settings; the page sets them.
+    store.setState({ presentation: companion({ supported: true, dim: 0.4, size: 'm' }) });
+    await open();
+    const row = panel().querySelector('[data-key="row:companion"]') as HTMLElement;
+    expect(row.getAttribute('aria-label')).toBe('悬浮窗, 40% · 中');
+    row.click();
+    await vi.waitFor(() => expect(panel().querySelector('[data-key="companion-dim:4"]')).not.toBeNull());
+    expect([...panel().querySelectorAll('[data-group="companion"][role="menuitemradio"]')].map((b) => b.textContent)).toEqual(['0%', '20%', '40%', '60%', '80%', '小', '中', '大', '开', '关']);
+    (panel().querySelector('[data-key="companion-dim:4"]') as HTMLElement).click();
+    (panel().querySelector('[data-key="companion-size:0"]') as HTMLElement).click();
+    (panel().querySelector('[data-key="companion-audio:0"]') as HTMLElement).click();
+    expect(sets).toEqual([{ dim: 0.8 }, { size: 's' }, { audioOnly: true }]);
+    await vi.waitFor(() => expect(panel().querySelector('[data-key="companion-audio:0"]')?.getAttribute('aria-checked')).toBe('true'));
+  });
+});
+
 describe('bindActivity', () => {
   it('reports hide-controls when the mouse leaves, or the focus leaves, the player', () => {
     const root = document.createElement('div');

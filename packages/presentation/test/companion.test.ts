@@ -59,13 +59,29 @@ async function setup(options: Partial<PresentationPluginOptions>, env: { docpip?
   if (env.docpip !== false) stub(window, 'documentPictureInPicture', { requestWindow });
   // A 16:9 picture.
   const surface = { element: video, contentRect: { x: 0, y: 0, width: 640, height: 360 } } as unknown as Surface;
-  const plugin = createPresentationPlugin<PresentationState>({ container, surface, ...options });
-  const core = createCore<PresentationState, PresentationActionMap>({ slices: [PRESENTATION_SLICE], plugins: [plugin] });
+  type S = PresentationState & { danmaku: { enabled: boolean }; textTrack: string | null; paused: boolean };
+  type A = PresentationActionMap & { 'set-danmaku': { enabled?: boolean }; 'select-text-track': { id: string | null }; pause: undefined };
+  const plugin = createPresentationPlugin<S>({ container, surface, ...options });
+  const core = createCore<S, A>({ slices: [PRESENTATION_SLICE, { id: 'media', initialState: { danmaku: { enabled: true }, textTrack: 'en', paused: false } }], plugins: [plugin] });
+  // Stand-ins for the danmaku, text and media plugins; every dispatch is recorded.
+  const calls: [string, unknown][] = [];
+  core.store.handle('set-danmaku', (p) => {
+    calls.push(['set-danmaku', p]);
+    core.store.setState({ danmaku: { enabled: p.enabled ?? true } });
+  });
+  core.store.handle('select-text-track', (p) => {
+    calls.push(['select-text-track', p]);
+    core.store.setState({ textTrack: p.id });
+  });
+  core.store.handle('pause', () => {
+    calls.push(['pause', undefined]);
+    core.store.setState({ paused: true });
+  });
   const denied: QoeEventMap['presentation-denied'][] = [];
   core.qoe.on('presentation-denied', (p) => void denied.push(p));
   await core.start();
   const state = () => core.store.getState().presentation;
-  return { core, container, video, win, requestWindow, denied, state };
+  return { core, container, video, win, requestWindow, denied, state, calls };
 }
 
 describe('companion mode', () => {
@@ -83,7 +99,8 @@ describe('companion mode', () => {
     const { core, state, container, win, requestWindow } = await setup({ companion: { dim: 0.6 } });
     expect(state().companion).toMatchObject({ supported: true, active: false, dim: 0.6, size: 'm' });
     core.store.dispatch('toggle-pip', {});
-    expect(requestWindow).toHaveBeenCalledWith({ width: 320, height: 180 });
+    // Without the browser's "back to tab" button (ADR-016 conflict 4).
+    expect(requestWindow).toHaveBeenCalledWith({ width: 320, height: 180, disallowReturnToOpener: true });
     await vi.waitFor(() => expect(state().mode).toBe('docpip'));
     expect(state().companion.active).toBe(true);
     expect(container.hasAttribute('data-otter-companion')).toBe(true);
@@ -102,7 +119,7 @@ describe('companion mode', () => {
     expect(state().companion).toMatchObject({ dim: 0.8, size: 'l', audioOnly: true });
     // Not in the window: nothing to resize.
     expect(win.resizeTo).not.toHaveBeenCalled();
-    core.store.dispatch('companion-set', { dim: -1, size: 'm' });
+    core.store.dispatch('companion-set', { dim: -1, size: 'm', audioOnly: false });
     expect(state().companion.dim).toBe(0);
     core.store.dispatch('toggle-companion', {});
     await vi.waitFor(() => expect(state().companion.active).toBe(true));
@@ -141,5 +158,74 @@ describe('companion mode', () => {
     await vi.waitFor(() => expect(state().companion.active).toBe(true));
     await core.destroy();
     expect(container.hasAttribute('data-otter-companion')).toBe(false);
+  });
+
+  it('audio strip: 66 px of content at the width step, entering or switching; the root is marked', async () => {
+    const { core, state, container, win, requestWindow } = await setup({ companion: { audioOnly: true, size: 's' } });
+    core.store.dispatch('toggle-companion', {});
+    expect(requestWindow).toHaveBeenCalledWith({ width: 240, height: 66, disallowReturnToOpener: true });
+    await vi.waitFor(() => expect(state().companion.active).toBe(true));
+    expect(container.hasAttribute('data-otter-audio-only')).toBe(true);
+    core.store.dispatch('companion-set', { audioOnly: false });
+    expect(win.resizeTo).toHaveBeenLastCalledWith(240, 135 + 34);
+    expect(container.hasAttribute('data-otter-audio-only')).toBe(false);
+    core.store.dispatch('companion-set', { audioOnly: true });
+    expect(win.resizeTo).toHaveBeenLastCalledWith(240, 66 + 34);
+    core.store.dispatch('toggle-companion', {});
+    expect(container.hasAttribute('data-otter-audio-only')).toBe(false);
+    await core.destroy();
+  });
+
+  it('quiet: danmaku and captions off in the window, back as they were on leaving; quieted meanwhile', async () => {
+    const { core, state, calls } = await setup({ companion: true });
+    core.store.dispatch('toggle-companion', {});
+    await vi.waitFor(() => expect(state().companion.active).toBe(true));
+    expect(calls).toEqual([
+      ['set-danmaku', { enabled: false }],
+      ['select-text-track', { id: null }],
+    ]);
+    expect(state().companion.quieted).toBe(true);
+    // Turned back on in the window: only for this time.
+    core.store.dispatch('set-danmaku', { enabled: true });
+    calls.length = 0;
+    core.store.dispatch('toggle-companion', {});
+    expect(calls).toEqual([['select-text-track', { id: 'en' }]]);
+    expect(core.store.getState().danmaku.enabled).toBe(true);
+    expect(core.store.getState().textTrack).toBe('en');
+    expect(state().companion.quieted).toBe(false);
+    await core.destroy();
+  });
+
+  it('quiet: false leaves them alone', async () => {
+    const { core, state, calls } = await setup({ companion: { quiet: false } });
+    core.store.dispatch('toggle-companion', {});
+    await vi.waitFor(() => expect(state().companion.active).toBe(true));
+    core.store.dispatch('toggle-companion', {});
+    expect(calls).toEqual([]);
+    expect(state().companion.quieted).toBe(false);
+    await core.destroy();
+  });
+
+  it('onClose: the viewer closing the window pauses (default) or not; the player\'s own way back never does', async () => {
+    const focus = vi.spyOn(window, 'focus').mockImplementation(() => undefined);
+    const paused = async (options: Partial<PresentationPluginOptions>, leave: (core: Awaited<ReturnType<typeof setup>>) => void): Promise<boolean> => {
+      const env = await setup(options);
+      env.core.store.dispatch('toggle-pip', {});
+      await vi.waitFor(() => expect(env.state().companion.active).toBe(true));
+      leave(env);
+      expect(env.state().mode).toBe('inline');
+      const out = env.calls.some(([type]) => type === 'pause');
+      await env.core.destroy();
+      return out;
+    };
+    // The browser's close: the window goes, nothing in the player asked for it.
+    expect(await paused({ companion: { quiet: false } }, (e) => e.win.close())).toBe(true);
+    expect(await paused({ companion: { quiet: false, onClose: 'continue' } }, (e) => e.win.close())).toBe(false);
+    // Back to the page (the button in the window dispatches toggle-pip): playback carries on, the page gets focus.
+    focus.mockClear();
+    expect(await paused({ companion: { quiet: false } }, (e) => e.core.store.dispatch('toggle-pip', {}))).toBe(false);
+    expect(focus).toHaveBeenCalledOnce();
+    expect(await paused({ companion: { quiet: false } }, (e) => e.core.store.dispatch('exit-presentation', {}))).toBe(false);
+    focus.mockRestore();
   });
 });

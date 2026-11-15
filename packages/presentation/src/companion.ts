@@ -1,13 +1,16 @@
 // Companion mode (ADR-016, SPEC §15.1), an on-demand chunk the plugin loads at install when the
 // host turns it on: companion = the `docpip` mode plus this state. It owns the companion settings
 // (dim, size, audioOnly), the window size of a companion request, resizing an open window, the
-// `toggle-companion` / `companion-set` handlers and the `data-otter-companion` mark on the root
-// while in the window (the shell's companion styles key on it).
+// `toggle-companion` / `companion-set` handlers, quiet (danmaku and captions off in the window),
+// what closing the window does (`onClose`), and the marks on the root while in the window
+// (`data-otter-companion`, `data-otter-audio-only`; the shell's companion styles key on them).
 //
 // RESEARCH §1 (companion stop 0, Chromium 156): requestWindow sizes the content area; resizeTo
 // sizes the outer window and needs (and uses up) transient user activation, so a resize only
 // happens inside the dispatch a click made; without one the window keeps its size and a
-// `presentation-denied` (noUserGesture) says so (ADR-016 conflict 2).
+// `presentation-denied` (noUserGesture) says so (ADR-016 conflict 2). Every way of closing the
+// window gives the same pagehide, so the player tells its own exits apart itself (`leave()`) and
+// any other close is the viewer's (ADR-016 conflict 4).
 
 import type { QoeHook, Store, Unsubscribe } from '@otter-player/core';
 import type { Surface } from '@otter-player/surface';
@@ -21,6 +24,8 @@ export interface CompanionRuntime {
   state(): CompanionState;
   /** Content size for the companion window request. */
   windowSize(): { width: number; height: number };
+  /** The player is leaving the window itself (back to the page): no onClose, focus the page. */
+  leave(): void;
   destroy(): void;
 }
 
@@ -33,13 +38,26 @@ export interface CompanionDeps {
   readonly options: CompanionOptions;
   /** The plugin's docpip request (with this chunk's window size). */
   readonly request: () => void;
+  /** The plugin's exit of the current mode (calls leave() first). */
+  readonly exit: () => void;
   /** Writes the presentation snapshot (with this chunk's state). */
   readonly sync: () => void;
+}
+
+/** The state and actions quiet reads and dispatches (text and danmaku plugins, structural). */
+interface QuietStore {
+  getState(): { readonly danmaku?: { readonly enabled?: boolean }; readonly textTrack?: string | null };
+  dispatch(type: 'set-danmaku' | 'select-text-track' | 'pause', payload: unknown): boolean;
 }
 
 const WIDTH: Readonly<Record<CompanionSize, number>> = { s: 240, m: 320, l: 440 };
 /** Smallest content height Chromium opens (RESEARCH §1). */
 const MIN_HEIGHT = 52;
+/**
+ * Audio strip content height: the lowest an open window resizes to in Chromium 156 (outer 100,
+ * content 66; RESEARCH §1), so entering and switching give the same strip (ADR-016 conflict 1).
+ */
+const STRIP_HEIGHT = 66;
 
 const isSize = (v: unknown): v is CompanionSize => v === 's' || v === 'm' || v === 'l';
 /** Dimming within 0..0.8 (the dim layer's cap); anything else keeps `fallback`. */
@@ -48,15 +66,24 @@ const clampDim = (v: unknown, fallback: number): number => (typeof v === 'number
 export function createCompanion(deps: CompanionDeps): CompanionRuntime {
   const { controller: c, container, surface, qoe, options } = deps;
   const store = deps.store as Pick<Store<object, PresentationActionMap>, 'handle'>;
+  const quietStore = deps.store as QuietStore;
+  // The page's window (the root is in the PiP window's document while in companion mode).
+  const page = container.ownerDocument.defaultView;
   const supported = c.capabilities.docpip !== false;
   const remember = options.remember !== false;
+  const quiet = options.quiet !== false;
   let dim = clampDim(options.dim, 0.4);
   let size: CompanionSize = isSize(options.size) ? options.size : 'm';
   let audioOnly = options.audioOnly === true;
+  let inWindow = false;
+  let leaving = false;
+  /** Danmaku on / off and the caption track before quiet turned them off; undefined: not held. */
+  let held: { danmaku: boolean | undefined; text: string | null | undefined } | undefined;
 
   const active = (): boolean => supported && c.mode === 'docpip';
   const windowSize = (): { width: number; height: number } => {
     const width = WIDTH[size];
+    if (audioOnly) return { width, height: STRIP_HEIGHT };
     const r = surface.contentRect;
     const ratio = r.width > 0 && r.height > 0 ? r.height / r.width : 9 / 16;
     return { width, height: Math.max(MIN_HEIGHT, Math.round(width * ratio)) };
@@ -73,21 +100,59 @@ export function createCompanion(deps: CompanionDeps): CompanionRuntime {
       deny('docpip', (err as { name?: string } | null)?.name === 'NotAllowedError' ? 'noUserGesture' : 'notAllowed');
     }
   };
-  const mark = (): void => void container.toggleAttribute('data-otter-companion', active());
+  const mark = (): void => {
+    container.toggleAttribute('data-otter-companion', active());
+    container.toggleAttribute('data-otter-audio-only', active() && audioOnly);
+  };
+
+  // Quiet: off while in the window, back to what they were on leaving it. `held` is in the state
+  // (quieted) during both, so a preferences plugin does not write these changes.
+  const hush = (): void => {
+    const s = quietStore.getState();
+    held = { danmaku: s.danmaku?.enabled, text: s.textTrack };
+    deps.sync();
+    if (held.danmaku === true) quietStore.dispatch('set-danmaku', { enabled: false });
+    if (held.text != null) quietStore.dispatch('select-text-track', { id: null });
+  };
+  const unhush = (): void => {
+    const h = held;
+    if (h === undefined) return;
+    const s = quietStore.getState();
+    if (h.danmaku !== undefined && s.danmaku?.enabled !== h.danmaku) quietStore.dispatch('set-danmaku', { enabled: h.danmaku });
+    if (h.text !== undefined && (s.textTrack ?? null) !== (h.text ?? null)) quietStore.dispatch('select-text-track', { id: h.text ?? null });
+    held = undefined;
+    deps.sync();
+  };
+
+  const changed = (): void => {
+    const now = active();
+    mark();
+    if (now === inWindow) return;
+    inWindow = now;
+    if (now) {
+      if (quiet) hush();
+      return;
+    }
+    unhush();
+    // Closed by the viewer (the browser's close, or any way but the player's own): onClose.
+    if (!leaving && options.onClose !== 'continue') quietStore.dispatch('pause', undefined);
+    leaving = false;
+  };
 
   const offs: Unsubscribe[] = [
-    c.on('change', mark),
+    c.on('change', changed),
     store.handle('toggle-companion', () => {
-      if (c.mode === 'docpip') return void c.exit();
+      if (c.mode === 'docpip') return deps.exit();
       if (supported) return deps.request();
       deny(c.mode, 'unsupported');
     }),
     store.handle('companion-set', (p) => {
-      const before = size;
+      const before = `${size}:${String(audioOnly)}`;
       dim = clampDim(p.dim, dim);
       if (isSize(p.size)) size = p.size;
       if (typeof p.audioOnly === 'boolean') audioOnly = p.audioOnly;
-      if (size !== before) resize();
+      mark();
+      if (`${size}:${String(audioOnly)}` !== before) resize();
       deps.sync();
     }),
   ];
@@ -95,11 +160,23 @@ export function createCompanion(deps: CompanionDeps): CompanionRuntime {
 
   return {
     supported,
-    state: () => ({ supported, active: active(), dim, size, audioOnly, remember }),
+    state: () => ({ supported, active: active(), dim, size, audioOnly, remember, quieted: held !== undefined }),
     windowSize,
+    leave() {
+      if (!inWindow) return;
+      leaving = true;
+      // Best effort: the page's tab to the front (inside the click that asked for it).
+      try {
+        page?.focus();
+      } catch {
+        // Not allowed here: the window closes all the same.
+      }
+    },
     destroy() {
       for (const off of offs.splice(0)) off();
+      held = undefined;
       container.removeAttribute('data-otter-companion');
+      container.removeAttribute('data-otter-audio-only');
     },
   };
 }

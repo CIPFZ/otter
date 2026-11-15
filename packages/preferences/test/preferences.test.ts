@@ -232,6 +232,28 @@ describe('companion settings (ADR-016)', () => {
     expect(JSON.parse(storage.data['preferences'] as string)).toEqual({ companion: { dim: 0.8 } });
   });
 
+  it('while quiet holds captions and danmaku (quieted), their changes are not written', async () => {
+    type Q = S & { danmaku?: object; presentation?: { companion?: { quieted: boolean } } };
+    const storage = memory({ preferences: JSON.stringify({ textLanguage: 'en', danmaku: { enabled: true } }) });
+    const danmaku: Plugin<Q, PreferencesActionMap> = {
+      id: 'danmaku',
+      install(ctx) {
+        ctx.store.handle('set-danmaku', (patch) => ctx.store.setState({ danmaku: { ...(ctx.store.getState().danmaku ?? {}), ...patch } }));
+      },
+      uninstall: () => undefined,
+    };
+    const core = createCore<Q, PreferencesActionMap>({ slices: [{ id: 'state', initialState: { ...INITIAL, danmaku: {} } }], plugins: [fakeMedia() as never, danmaku, createPreferencesPlugin<Q, PreferencesActionMap>({ storage })] });
+    await core.start();
+    const before = storage.data['preferences'];
+    core.store.setState({ presentation: { companion: { quieted: true } } });
+    core.store.dispatch('set-danmaku', { enabled: false });
+    core.store.dispatch('select-text-track', { id: null });
+    expect(storage.data['preferences']).toBe(before);
+    core.store.setState({ presentation: { companion: { quieted: false } } });
+    core.store.dispatch('select-text-track', { id: null });
+    expect(JSON.parse(storage.data['preferences'] as string)).toMatchObject({ textLanguage: 'off' });
+  });
+
   it('sanitize clamps dim to 0..0.8 and drops unknown sizes and non-booleans', () => {
     expect(sanitize({ companion: { dim: 2, size: 'xl', audioOnly: 'yes', x: 1 } })).toEqual({ companion: { dim: 0.8 } });
     expect(sanitize({ companion: { dim: -1, size: 's', audioOnly: true } })).toEqual({ companion: { dim: 0, size: 's', audioOnly: true } });

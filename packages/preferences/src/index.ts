@@ -167,7 +167,7 @@ export interface PreferencesState {
   /** `@otter-player/danmaku` settings (DanmakuState.danmaku). */
   readonly danmaku?: object;
   /** `@otter-player/presentation`'s companion state (PresentationState.presentation.companion). */
-  readonly presentation?: { readonly companion?: CompanionPreference & { readonly remember?: boolean } };
+  readonly presentation?: { readonly companion?: CompanionPreference & { readonly remember?: boolean; readonly quieted?: boolean } };
 }
 
 /** The actions this watches and dispatches (MediaActionMap, TextActionMap). */
@@ -249,6 +249,8 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
         }
       };
 
+      // Companion quiet holds captions and danmaku off in its window (ADR-016 §6): not choices.
+      const quieted = (): boolean => state().presentation?.companion?.quieted === true;
       // Choices, from the user's actions (this plugin runs after the media plugin's handler).
       offs = [
         store.handle('set-codec-preference', ({ order }) => save({ codecs: order === null ? undefined : [...order] })),
@@ -262,6 +264,7 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
           if (lang !== undefined) save({ audioLanguage: lang });
         }),
         store.handle('select-text-track', ({ id }) => {
+          if (quieted()) return;
           if (id === null) return save({ textLanguage: 'off' });
           const lang = state().textTracks?.find((t) => t.id === id)?.language;
           if (lang !== undefined) save({ textLanguage: lang });
@@ -271,6 +274,7 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
         store.handle('set-playback-rate', ({ rate }) => save({ playbackRate: rate })),
         // Danmaku settings as a whole (install the danmaku plugin before this one).
         store.handle('set-danmaku', () => {
+          if (quieted()) return;
           const d = state().danmaku;
           if (d !== undefined) save({ danmaku: d as Preferences['danmaku'] });
         }),

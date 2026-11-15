@@ -100,4 +100,4 @@ export {
   type PlayerUiInputActions,
 } from './player-ui.js';
 export { icon, type IconNode } from './icons.js';
-export { fill, findStrings, provideStrings, STRINGS_EN, STRINGS_ZH, uiLanguage, type DanmakuStrings, type PictureStrings, type StatsStrings, type UiStrings } from './strings.js';
+export { fill, findStrings, provideStrings, STRINGS_EN, STRINGS_ZH, uiLanguage, type CompanionStrings, type DanmakuStrings, type PictureStrings, type StatsStrings, type UiStrings } from './strings.js';

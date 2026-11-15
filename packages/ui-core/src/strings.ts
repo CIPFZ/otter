@@ -64,6 +64,28 @@ export interface PictureStrings {
   readonly reset: string;
 }
 
+/** Texts of the companion window page of the settings menu (ADR-016 §9). */
+export interface CompanionStrings {
+  /** Page title and settings row; en "Floating player". */
+  readonly companion: string;
+  /** Dimming of the picture in the window; en "Dimming". */
+  readonly dim: string;
+  /** Window size; en "Size". */
+  readonly size: string;
+  /** Size step s; en "Small". */
+  readonly small: string;
+  /** Size step m; en "Medium". */
+  readonly medium: string;
+  /** Size step l; en "Large". */
+  readonly large: string;
+  /** Audio strip switch; en "Audio only". */
+  readonly audioOnly: string;
+  /** Switch on; en "On". */
+  readonly on: string;
+  /** Switch off; en "Off". */
+  readonly off: string;
+}
+
 /** Row labels of the stats panel (its chunk holds the defaults by language). */
 export interface StatsStrings {
   /** Row: playback status; en "Status". */
@@ -151,6 +173,8 @@ export interface UiStrings {
   readonly pip: string;
   /** Picture-in-picture button, leaving; en "Exit picture in picture". */
   readonly exitPip: string;
+  /** The same button in the companion window, back to the page; en "Back to the page". */
+  readonly backToPage: string;
   /** Theater button, entering; en "Theater mode". */
   readonly theater: string;
   /** Theater button, leaving; en "Default view". */
@@ -173,6 +197,11 @@ export interface UiStrings {
    * here.
    */
   readonly danmakuPage?: Partial<DanmakuStrings>;
+  /**
+   * Companion window settings page: its default texts load with the settings menu's level-two
+   * chunk; a host table may override them here.
+   */
+  readonly companionPage?: Partial<CompanionStrings>;
   /**
    * Stats panel row labels: their defaults load with the panel; a host table may override them
    * here.
@@ -331,6 +360,7 @@ export const STRINGS_EN: UiStrings = {
   exitFullscreen: 'Exit fullscreen',
   pip: 'Picture in picture',
   exitPip: 'Exit picture in picture',
+  backToPage: 'Back to the page',
   theater: 'Theater mode',
   exitTheater: 'Default view',
   cast: 'Cast',
@@ -422,6 +452,7 @@ export const STRINGS_ZH: UiStrings = {
   exitFullscreen: '退出全屏',
   pip: '画中画',
   exitPip: '退出画中画',
+  backToPage: '回到页面',
   theater: '剧场模式',
   exitTheater: '默认视图',
   cast: '投屏',

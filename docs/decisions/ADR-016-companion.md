@@ -309,3 +309,21 @@ readonly companion?: { readonly dim?: number; readonly size?: 's' | 'm' | 'l'; r
 - presentation 的按需块 `companion.js`：宿主开启伴随时，在 install 里加载。install 因此变成异步，排在它后面的偏好插件安装时，处理器已经在了。
 - presets 的按需块 `companion-style.js`：进入小窗时加载，样式只加进 PiP 文档。另外三条规则让播放器铺满小窗：把 body 的 margin / padding 置零，根节点 `position: fixed; inset: 0`。原因：页面的样式表会被复制进小窗（`docpip.ts`），宿主页面的 body 内边距和播放器的宽高比也跟着进来了。
 - 首屏代码只多了三样：presentation 插件里读写伴随状态、请求尺寸、`toggle-pip` 的分支；ui-core 的暗化公式与悬停逻辑；presets 加载样式块的几行。
+
+## 第 2 停落地的接口与实测（2026-11-15）
+
+公开接口：
+
+- `CompanionState.quieted`：quiet 把弹幕和字幕关着（在小窗里，以及离开时恢复的那一刻）。偏好插件看到它为 true 时，不写 textLanguage 和 danmaku（冲突 9 的实现：读的是这个标志，不是 `active` 加 quiet 的组合，这样恢复那一刻的派发也不会写偏好）。
+- `PresentationRequestOptions.disallowReturnToOpener`：伴随请求固定传 true（冲突 4）。
+- ui-core `UiStrings.backToPage`（小窗里画中画按钮的文案：「回到页面」/ "Back to the page"）、`UiStrings.companionPage` 与类型 `CompanionStrings`（设置页「悬浮窗」/ "Floating player" 的文案，默认值在设置菜单的二级按需块里）。
+- 设置菜单二级页 `SettingsView` 多一个 `'companion'`。
+
+行为：
+
+- 纯音频条：内容区 66 px 高（冲突 1、2），宽度按档位；画面层（`<video>`、画布、海报、手势层、叠加层）不显示，视频照常解码；控件常显，没有设置按钮（需求 5 的列表里没有它）。要关掉音频条，回到页面后在设置里改。
+- quiet：进入时记下弹幕开关与当前字幕轨，然后关掉；离开时恢复成进入前的样子，小窗里手动打开的也一并恢复。
+- 关窗：播放器自己的退出（小窗里的「回到页面」按钮、`toggle-pip`、`toggle-companion`、`exit-presentation`、换到别的模式）不算关窗，不暂停，并尽力把页面标签页提到前面（`window.focus()`，失败不报错）。其余关法（浏览器的关闭按钮等）按 `onClose`：默认暂停，`'continue'` 继续播。「回到页面」不改变播放状态：在播的继续播，暂停着的仍暂停。
+- 设置页在小窗里铺成窗口内的面板（四周 8 px），不再是控制栏上方的弹出层：240–440 px 的窗口在控制栏上方放不下。播放器根节点在小窗里用 `overflow: clip`：超出窗口的提示气泡会让焦点把播放器横向滚走（本机有界面 Chromium 量到 17–22 px）。
+
+途中修的缺陷（单独提交）：`97e87f7`（小窗里的节点属于小窗的 realm，`instanceof` 判断失效：菜单点不动、方向键在滑块上触发快进、`lang` 被忽略）、`1119ccf`（PiP 文档没有 title 与 lang，axe serious）。

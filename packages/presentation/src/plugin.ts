@@ -55,6 +55,11 @@ export interface CompanionState {
   readonly audioOnly: boolean;
   /** dim, size and audioOnly go to the preferences (CompanionOptions.remember). */
   readonly remember: boolean;
+  /**
+   * Quiet holds danmaku and captions off (in the window, until they are restored on leaving it):
+   * a preferences plugin leaves those settings alone meanwhile.
+   */
+  readonly quieted: boolean;
 }
 
 export interface PresentationSnapshot {
@@ -75,7 +80,7 @@ export interface PresentationState {
 
 const NONE: PresentationCapabilities = { inline: 'native', theater: false, fullscreen: false, pip: false, docpip: false, mini: false, background: false };
 /** Companion mode off (the host did not turn it on, or it is not loaded yet). */
-const NO_COMPANION: CompanionState = { supported: false, active: false, dim: 0.4, size: 'm', audioOnly: false, remember: true };
+const NO_COMPANION: CompanionState = { supported: false, active: false, dim: 0.4, size: 'm', audioOnly: false, remember: true, quieted: false };
 
 export const INITIAL_PRESENTATION_STATE: PresentationState = {
   presentation: { mode: 'inline', pending: null, capabilities: NONE, videoOnly: false, companion: NO_COMPANION },
@@ -152,11 +157,19 @@ export function createPresentationPlugin<S extends PresentationState>(options: P
         } as Partial<S>);
       const request = (mode: PresentationMode, system?: boolean): void => {
         const opts: { -readonly [K in keyof PresentationRequestOptions]: PresentationRequestOptions[K] } = system === true ? { system } : {};
-        if (mode === 'docpip' && companion?.supported === true) opts.docPipSize = companion.windowSize();
+        if (mode === 'docpip' && companion?.supported === true) {
+          opts.docPipSize = companion.windowSize();
+          opts.disallowReturnToOpener = true;
+        } else if (c.mode === 'docpip') companion?.leave();
         void c.request(mode, opts);
         sync();
       };
-      const toggle = (mode: PresentationMode): void => (c.mode === mode ? void c.exit() : request(mode));
+      /** Out of the current mode at the player's request (not the browser closing a window). */
+      const exit = (): void => {
+        if (c.mode === 'docpip') companion?.leave();
+        void c.exit();
+      };
+      const toggle = (mode: PresentationMode): void => (c.mode === mode ? exit() : request(mode));
       offs = [
         c.on('change', (p) => {
           sync();
@@ -167,12 +180,12 @@ export function createPresentationPlugin<S extends PresentationState>(options: P
           ctx.qoe.emit('presentation-denied', { from: p.from, to: p.to, reason: p.reason ?? 'notAllowed' });
         }),
         store.handle('request-presentation', ({ mode, system }) => request(mode, system)),
-        store.handle('exit-presentation', () => void c.exit()),
+        store.handle('exit-presentation', exit),
         store.handle('toggle-fullscreen', () => toggle('fullscreen')),
         store.handle('toggle-theater', () => toggle('theater')),
         store.handle('toggle-mini', () => toggle('mini')),
         store.handle('toggle-pip', () => {
-          if (c.mode === 'pip' || c.mode === 'docpip') return void c.exit();
+          if (c.mode === 'pip' || c.mode === 'docpip') return exit();
           const doc = c.capabilities.docpip !== false && (companion?.supported === true || options.preferDocumentPip === true || c.capabilities.pip === false);
           request(doc ? 'docpip' : 'pip');
         }),
@@ -202,7 +215,7 @@ export function createPresentationPlugin<S extends PresentationState>(options: P
       // Installed before the plugins after this one, so a preferences plugin finds the handlers.
       return import('./companion.js').then((m) => {
         if (controller !== c) return;
-        companion = m.createCompanion({ controller: c, container: options.container, surface: options.surface, store, qoe: ctx.qoe, options: settings, request: () => request('docpip'), sync });
+        companion = m.createCompanion({ controller: c, container: options.container, surface: options.surface, store, qoe: ctx.qoe, options: settings, request: () => request('docpip'), exit, sync });
         offs.push(() => companion?.destroy());
         sync();
       });

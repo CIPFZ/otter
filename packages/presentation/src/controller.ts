@@ -38,6 +38,8 @@ export interface PresentationRequestOptions {
   readonly system?: boolean;
   /** Document PiP window content size for this request, over `PresentationOptions.docPipSize`. */
   readonly docPipSize?: { readonly width: number; readonly height: number };
+  /** Document PiP without the browser's own "back to tab" button (Chromium reads it, RESEARCH §1). */
+  readonly disallowReturnToOpener?: boolean;
 }
 
 export interface PresentationController {
@@ -80,7 +82,7 @@ interface WebKitVideo {
 }
 /** Document Picture-in-Picture (Chrome 116+), not in lib.dom yet. */
 export interface DocumentPictureInPicture {
-  requestWindow(options?: { width?: number; height?: number }): Promise<Window>;
+  requestWindow(options?: { width?: number; height?: number; disallowReturnToOpener?: boolean }): Promise<Window>;
 }
 
 type Layout = 'inline' | 'theater';
@@ -290,7 +292,7 @@ export function createPresentationController(options: PresentationOptions): Pres
     if (to === 'pip') return (pipVideo?.() ?? (video as HTMLVideoElement)).requestPictureInPicture().then(() => undefined);
     // docpip
     const size = opts.docPipSize ?? options.docPipSize ?? { width: Math.round(container.clientWidth) || 640, height: Math.round(container.clientHeight) || 360 };
-    const opened = (win?.documentPictureInPicture as DocumentPictureInPicture).requestWindow(size);
+    const opened = (win?.documentPictureInPicture as DocumentPictureInPicture).requestWindow(opts.disallowReturnToOpener === true ? { ...size, disallowReturnToOpener: true } : size);
     return opened.then(async (w) => {
       if (destroyed) return w.close();
       const { moveInto } = await import('./docpip.js');
