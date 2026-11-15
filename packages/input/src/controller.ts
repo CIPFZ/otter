@@ -38,7 +38,8 @@ const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([di
 const onPath = (e: Event, root: Element, selector: string): boolean => {
   for (const n of e.composedPath()) {
     if (n === root) return false;
-    if (n instanceof Element && n.matches(selector)) return true;
+    // nodeType, not instanceof: in a Document PiP window the nodes are that window's.
+    if ((n as Node).nodeType === 1 && (n as Element).matches(selector)) return true;
   }
   return false;
 };
@@ -60,7 +61,7 @@ function focusables(root: Element): HTMLElement[] {
   const out: HTMLElement[] = [];
   const visit = (node: Element | ShadowRoot): void => {
     for (const child of Array.from(node.children)) {
-      if (child instanceof HTMLElement && child.matches(FOCUSABLE) && !child.hidden && child.getAttribute('aria-hidden') !== 'true') out.push(child);
+      if (child.matches(FOCUSABLE) && !(child as HTMLElement).hidden && child.getAttribute('aria-hidden') !== 'true') out.push(child as HTMLElement);
       if (child.shadowRoot !== null) visit(child.shadowRoot);
       visit(child);
     }

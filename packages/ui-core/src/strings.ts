@@ -493,7 +493,8 @@ export function provideStrings(root: Node, strings: UiStrings): void {
 export function uiLanguage(from: Node): string {
   let node: Node | null = from;
   while (node !== null) {
-    const lang = node instanceof Element ? node.getAttribute('lang') : null;
+    // nodeType, not instanceof: in a Document PiP window the nodes are that window's.
+    const lang = node.nodeType === 1 ? (node as Element).getAttribute('lang') : null;
     if (lang !== null && lang !== '') return lang;
     node = node.parentNode ?? ((node as { host?: Node }).host ?? null);
   }

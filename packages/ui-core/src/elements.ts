@@ -1141,7 +1141,8 @@ const menuClass = () =>
       protected itemFrom(e: Event): HTMLElement | undefined {
         for (const n of e.composedPath()) {
           if (n === this.list) return undefined;
-          if (n instanceof HTMLElement && (n.getAttribute('role') ?? '').startsWith('menuitem')) return n;
+          // nodeType, not instanceof: in a Document PiP window the rows are that window's elements.
+          if ((n as Node).nodeType === 1 && ((n as HTMLElement).getAttribute('role') ?? '').startsWith('menuitem')) return n as HTMLElement;
         }
         return undefined;
       }

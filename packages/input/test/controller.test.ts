@@ -251,3 +251,21 @@ describe('InputController pointer (SPEC §14.3)', () => {
     expect(actions).toEqual([['toggle-pip', {}]]);
   });
 });
+
+describe('InputController in another window (Document PiP)', () => {
+  it('arrow keys on a control of that window\'s realm stay with the control', async () => {
+    const { actions, root, slider } = await setup();
+    // As code in this realm sees an element of the PiP window: no shared DOM classes.
+    const foreign = new Proxy(slider, {
+      getPrototypeOf: () => Object.prototype,
+      get(target, key) {
+        const value: unknown = Reflect.get(target, key, target);
+        return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+    const e = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    Object.defineProperty(e, 'composedPath', { value: () => [foreign, root] });
+    root.dispatchEvent(e);
+    expect(actions).toEqual([]);
+  });
+});
