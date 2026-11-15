@@ -2,7 +2,8 @@
 // a slim control bar (play / pause, mute, progress and time, settings, back to the page), no top
 // bar or centre buttons; in the audio strip (`data-otter-audio-only`) no picture layers and no
 // settings, the bar always shown (the player UI plugin keeps it visible there), with smaller
-// buttons so the progress row and the button row fit 66 px. The settings panel is a sheet over
+// buttons so the progress row and the button row fit 66 px; so do windows up to 300 px wide (the s
+// step opens 248 px wide on Edge 157, where the five controls wrapped onto a second row). The settings panel is a sheet over
 // the window (8 px margins), not a popup above its button: a 240-440 px window has no room
 // beside or above the bar for it. The rules go into the Document PiP window's document only and key on the
 // root's `data-otter-companion` mark, so nothing is added to the page; they go with the window.
@@ -19,7 +20,8 @@ const CSS = `body { margin: 0 !important; padding: 0 !important; overflow: hidde
 [data-otter-audio-only] [data-otter-controls] otter-settings-menu { display: none; }
 [data-otter-audio-only] [data-otter-controls]::before { display: none; }
 [data-otter-companion] otter-settings-menu::part(menu) { position: fixed; inset: 8px 8px auto 8px; width: auto; max-height: calc(100vh - 16px); }
-[data-otter-audio-only] { --otter-control-size: 32px; --otter-icon-size: 20px; --otter-bar-height: 36px; }`;
+[data-otter-audio-only] { --otter-control-size: 32px; --otter-icon-size: 20px; --otter-bar-height: 36px; }
+@media (max-width: 300px) { [data-otter-companion] { --otter-control-size: 32px; --otter-icon-size: 20px; --otter-bar-padding-x: 6px; } }`;
 
 /** Adds the companion rules to `doc` once (the PiP window's document). */
 export function addCompanionStyle(doc: Document): void {
