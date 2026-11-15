@@ -55,6 +55,7 @@ export const EXAMPLES: Readonly<Record<string, string>> = {
   '@otter-player/presets/shorts#createShortsPlayer': 'shorts',
   '@otter-player/presets/tv#createTvPlayer': 'tv',
   '@otter-player/presets/background#createBackgroundPlayer': 'background',
+  '@otter-player/presentation#CompanionOptions': 'companion',
   '@otter-player/react#OtterPlayer': 'react',
   '@otter-player/vue#OtterPlayer': 'vue',
   '@otter-player/svelte#otterPlayer': 'svelte',

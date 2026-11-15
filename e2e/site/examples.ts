@@ -28,6 +28,7 @@ const modules: Readonly<Record<string, () => Promise<{ player: unknown }>>> = {
   shorts: () => import('./examples/shorts.ts'),
   tv: () => import('./examples/tv.ts'),
   background: () => import('./examples/background.ts'),
+  companion: () => import('./examples/companion.ts'),
 };
 const name = new URLSearchParams(location.search).get('example') ?? '';
 

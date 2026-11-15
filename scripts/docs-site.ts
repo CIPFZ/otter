@@ -15,7 +15,7 @@
 //
 //   node scripts/docs-site.ts [outDir]     (default docs-site/dist)
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readApiSurface, type ApiEntry, type ApiExport, type ApiTag } from './lib/api-surface.ts';
 import { docsGate, exampleCode, EXAMPLES, internalCoverage, readExampleRegions, USER_FACING } from './lib/docs-gate.ts';
@@ -225,6 +225,7 @@ export function buildDocsSite(outDir: string, options: DocsSiteOptions = {}): { 
   mkdirSync(join(outDir, 'api'), { recursive: true });
   mkdirSync(join(outDir, 'presets'), { recursive: true });
   mkdirSync(join(outDir, 'bindings'), { recursive: true });
+  mkdirSync(join(outDir, 'guides'), { recursive: true });
   writeFileSync(join(outDir, 'style.css'), STYLE);
   let pages = 0;
   const byPkg = new Map<string, ApiEntry[]>();
@@ -285,6 +286,31 @@ export function buildDocsSite(outDir: string, options: DocsSiteOptions = {}): { 
     pages++;
   }
 
+  // Guide pages (docs-site/guides/*.md, English): `{{example:<region>}}` is that docs example's code.
+  const regions = readExampleRegions(root);
+  const guidesDir = join(root, 'docs-site/guides');
+  const guides = readdirSync(guidesDir)
+    .filter((f) => f.endsWith('.md'))
+    .sort()
+    .map((f) => {
+      const md = readFileSync(join(guidesDir, f), 'utf8').replace(/\r\n/g, '\n');
+      const title = /^# (.*)$/m.exec(md)?.[1] ?? f;
+      return { id: f.replace(/\.md$/, ''), title, md };
+    });
+  for (const g of guides) {
+    const parts = g.md.replace(/^# .*\n/, '').split(/^\{\{example:([\w-]+)\}\}$/m);
+    const html = parts
+      .map((part, i) => {
+        if (i % 2 === 0) return markdown(part);
+        const region = regions.get(part);
+        if (region === undefined) throw new Error(`docs-site/guides/${g.id}.md: no example region "${part}" in e2e/site/examples`);
+        return `<pre><code class="lang-ts">${esc(region.code)}</code></pre>${exampleLink(part, 1, publicSite)}`;
+      })
+      .join('\n');
+    writeFileSync(join(outDir, 'guides', `${g.id}.html`), page(g.title, html, 1, publicSite));
+    pages++;
+  }
+
   // Index.
   const exportsCount = api.entries.reduce((n, e) => n + e.exports.length, 0);
   const userFacing = api.entries.filter((e) => !e.css && USER_FACING.test(e.specifier));
@@ -298,6 +324,7 @@ export function buildDocsSite(outDir: string, options: DocsSiteOptions = {}): { 
   const index = [
     `<p>Generated from the sources (${api.entries.length} entries, ${exportsCount} exports); the text is the sources' TSDoc.</p>`,
     `<h2>Presets</h2><ul>${ids.map((id) => `<li><a href="presets/${id}.html">${esc(id)}</a></li>`).join('')}</ul>`,
+    `<h2>Guides</h2><ul>${guides.map((g) => `<li><a href="guides/${g.id}.html">${esc(g.title)}</a></li>`).join('')}</ul>`,
     `<h2>Framework bindings</h2><ul>${BINDINGS.map((b) => `<li><a href="bindings/${b.id}.html">${esc(b.name)}</a></li>`).join('')}</ul>`,
     `<h2>API by use</h2><table><thead><tr><th>Group</th><th>Packages</th></tr></thead><tbody>${groupRows}</tbody></table>`,
     `<h2>TSDoc coverage</h2><p class="muted">User-facing entries (${userFacing.length}): ${userExports} exports, gated at 100 % by <code>pnpm check:docs-site</code>${problems.length === 0 ? '' : ` (${problems.length} problems now)`}. Internal packages: ${internal.documented} / ${internal.total} exports documented (recorded, not gated).</p>`,

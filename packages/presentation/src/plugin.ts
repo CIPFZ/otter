@@ -21,26 +21,68 @@ import type { RemoteControl, RemoteState } from './remote.js';
 /** Companion window width: 240 / 320 / 440 px; the height follows the picture (ADR-016). */
 export type CompanionSize = 's' | 'm' | 'l';
 
-/** Companion mode (ADR-016): the player in a Document PiP window, dimmed, controls on hover. */
+/**
+ * Companion mode (ADR-016): play while working, in a small always-on-top Document
+ * Picture-in-Picture window — the picture dimmed, the controls only on hover, or an audio strip.
+ * Pass it as `presentation.companion` (`true` for the defaults); where the browser has no Document
+ * Picture-in-Picture (Firefox, Safari, iPhone, an iframe) the PiP button keeps its old rules.
+ *
+ * @example
+ * ```ts
+ * import { createVodPlayer } from '@otter-player/presets/vod';
+ * import '@otter-player/ui-skin-default';
+ *
+ * // Where the browser has Document Picture-in-Picture, the PiP button opens the companion window:
+ * // dimmed, controls on hover, an audio strip on request (settings page "Floating player").
+ * const player = createVodPlayer({ container, title: 'Example', presentation: { companion: { dim: 0.4, size: 'm' } } });
+ * void player.load(src).catch((error: unknown) => {
+ *   if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
+ * });
+ * ```
+ */
 export interface CompanionOptions {
-  /** Dimming of the picture in the window, 0..0.8. Default 0.4. */
+  /**
+   * Dimming of the picture in the window, 0..0.8 (over the player's own brightness).
+   * @defaultValue `0.4`
+   */
   readonly dim?: number;
-  /** Window width step. Default `'m'`. */
+  /**
+   * Window width step: 240 / 320 / 440 px, the height from the picture.
+   * @defaultValue `'m'`
+   */
   readonly size?: CompanionSize;
-  /** Audio strip instead of the picture. Default false. */
+  /**
+   * An audio strip (play / pause, mute, progress and time, back to the page) instead of the picture;
+   * the video still decodes.
+   * @defaultValue `false`
+   */
   readonly audioOnly?: boolean;
-  /** Danmaku and captions off while in the window, back on leaving. Default true. */
+  /**
+   * Danmaku and captions off while in the window, back as they were on leaving; not written to the
+   * preferences.
+   * @defaultValue `true`
+   */
   readonly quiet?: boolean;
-  /** When the viewer closes the window: pause, or keep playing in the page. Default `'pause'`. */
+  /**
+   * When the viewer closes the window (not with its "Back to the page" button): pause, or keep
+   * playing in the page.
+   * @defaultValue `'pause'`
+   */
   readonly onClose?: 'pause' | 'continue';
-  /** Keep dim, size and audioOnly in the viewer's preferences. Default true. */
+  /**
+   * Keep dim, size and audioOnly in the viewer's preferences (`@otter-player/preferences`).
+   * @defaultValue `true`
+   */
   readonly remember?: boolean;
 }
 
-/** What `companion-set` changes. */
+/** What `companion-set` changes; absent fields stay as they are. */
 export interface CompanionSettings {
+  /** Dimming in the window, clamped to 0..0.8. */
   readonly dim?: number;
+  /** Width step; resizes an open window (inside a user gesture). */
   readonly size?: CompanionSize;
+  /** Audio strip on or off; resizes an open window (inside a user gesture). */
   readonly audioOnly?: boolean;
 }
 
@@ -50,8 +92,11 @@ export interface CompanionState {
   readonly supported: boolean;
   /** In the companion window now (mode `docpip`). */
   readonly active: boolean;
+  /** Dimming in the window, 0..0.8. */
   readonly dim: number;
+  /** Width step of the window. */
   readonly size: CompanionSize;
+  /** Audio strip instead of the picture. */
   readonly audioOnly: boolean;
   /** dim, size and audioOnly go to the preferences (CompanionOptions.remember). */
   readonly remember: boolean;
@@ -118,8 +163,9 @@ export interface PresentationPluginOptions extends PresentationOptions {
   /** Hold a screen WakeLock while playing and visible. Default true. */
   readonly wakeLock?: boolean;
   /**
-   * Companion mode (ADR-016): `toggle-pip` opens the companion window where Document PiP exists.
-   * Default off; its code is an on-demand chunk loaded at install when on.
+   * Companion mode (ADR-016): `toggle-pip` opens the companion window where Document PiP exists;
+   * its code is an on-demand chunk loaded at install when on.
+   * @defaultValue none (off)
    */
   readonly companion?: boolean | CompanionOptions;
 }

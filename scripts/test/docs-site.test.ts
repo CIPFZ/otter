@@ -21,7 +21,7 @@ const EXAMPLE = { name: 'example', text: "```ts\nimport { createVodPlayer } from
 /** A surface the gate passes: every gated example present, the error table equal to the sources. */
 const passing = (): { api: ApiSurface; examples: Map<string, { code: string; file: string }>; errorCodes: Map<string, string[]> } => {
   const code = "import { createVodPlayer } from '@otter-player/presets/vod';\n\nconst player = createVodPlayer({ container });";
-  const regions = ['createPlayer', 'basic', 'vod', 'live', 'lowlatency', 'ott-drm', 'surveillance', 'danmaku', 'shorts', 'tv', 'background', 'react', 'vue', 'svelte'];
+  const regions = ['createPlayer', 'basic', 'vod', 'live', 'lowlatency', 'ott-drm', 'surveillance', 'danmaku', 'shorts', 'tv', 'background', 'react', 'vue', 'svelte', 'companion'];
   const fns: [string, string][] = [
     ['@otter-player/presets', 'createPlayer'],
     ['@otter-player/presets/basic', 'createBasicPlayer'],
@@ -39,6 +39,7 @@ const passing = (): { api: ApiSurface; examples: Map<string, { code: string; fil
     ['@otter-player/svelte', 'otterPlayer'],
   ];
   const entries = fns.map(([s, n]) => entry(s, [x(n, { tags: [EXAMPLE] })]));
+  entries.push(entry('@otter-player/presentation', [x('CompanionOptions', { kind: 'interface', tags: [EXAMPLE] })]));
   entries.push(entry('@otter-player/core', [x('OtterError', { kind: 'interface', doc: 'Errors.\n\n| Code | Type |\n|---|---|\n| `noRoute` | media |\n| `shaka*` | varies |' })]));
   return { api: { entries, undocumented: [] }, examples: new Map(regions.map((r) => [r, { code, file: `e2e/site/examples/${r}.ts` }])), errorCodes: new Map([['noRoute', ['a.ts']], ['shaka*', ['b.ts']]]) };
 };

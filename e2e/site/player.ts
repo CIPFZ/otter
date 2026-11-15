@@ -259,6 +259,8 @@ async function build(policy: RoutePolicy, bind: (view: View) => View = (v) => v,
         ...(canvasPipSupported(document) ? { pipVideo: () => canvasPip?.pipVideo() } : {}),
         autoMini: params.get('mini') === 'auto',
         preferDocumentPip: params.get('pip') === 'document',
+        // ?companion=1: companion mode (ADR-016), quiet off (this fixture has no danmaku to quiet).
+        ...(params.get('companion') === '1' ? { companion: { quiet: false } } : {}),
         mediaSession: { metadata: { title: 'Otter Player Demo', artist: 'Otter' } },
       }),
       // One tab of the origin plays with sound (the latest to start).

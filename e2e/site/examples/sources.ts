@@ -12,6 +12,7 @@ export const EXAMPLE_SOURCES: Readonly<Record<string, string>> = {
   shorts: '/frames/h264.mp4,/hls-fmp4/master.m3u8',
   tv: '/frames/hls-ladder/master.m3u8',
   background: '/frames/h264-video-only.mp4',
+  companion: '/hls-fmp4/master.m3u8',
   react: '/hls-fmp4/master.m3u8',
   vue: '/hls-fmp4/master.m3u8',
   svelte: '/hls-fmp4/master.m3u8',

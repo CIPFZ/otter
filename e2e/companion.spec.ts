@@ -1,7 +1,8 @@
 // Companion mode (ADR-016, docs/design/COMPANION.md §6): entering through the PiP button, the
 // window size step, the dim layer in the window and back in the page, controls on hover only,
 // preferences, nothing left behind (stop 1); the audio strip, quiet, closing the window, the
-// settings page and axe in the window's document (stop 2). Judged on desktop-chrome and real Edge only (acceptance
+// settings page and axe in the window's document (stop 2); WebCodecs without audio underruns, and
+// where there is no Document PiP (an iframe, Firefox without it, WebKit) the old PiP rules (stop 3). Judged on desktop-chrome and real Edge only (acceptance
 // 8); elsewhere the cases record what the environment reports and skip.
 //
 // The headless shell gives the PiP window the size of an ordinary page (RESEARCH §1), so the size
@@ -12,6 +13,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import type { BrowserContext, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { Player } from '@otter-player/presets';
+import type { OtterFixture } from './site/player.ts';
 
 const JUDGED = ['desktop-chrome', 'real-windows-edge'];
 const SRC = '/demo/master.m3u8';
@@ -361,4 +363,126 @@ test('axe: the companion window, the strip and its settings page have no serious
   const strip = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
   await testInfo.attach('axe-companion.json', { body: JSON.stringify({ idle, menu, strip }, null, 2), contentType: 'application/json' });
   expect([...blocking(idle), ...blocking(menu), ...blocking(strip)]).toEqual([]);
+});
+
+test('WebCodecs: into the window and back without an audio underrun or a playhead jump', async ({ page }) => {
+  test.setTimeout(60_000);
+  if (!JUDGED.includes(test.info().project.name)) {
+    ciNotice('companion WebCodecs: judged on desktop-chrome and real Edge only (acceptance 8)');
+    test.skip(true, 'judged on desktop-chrome and real Edge only');
+  }
+  await page.goto('/player.html?idle=0&companion=1');
+  const fixture = () =>
+    page.evaluate(async () => {
+      const o = (await window.otter) as OtterFixture;
+      const s = o.state();
+      return { t: s.currentTime, paused: s.paused, backend: s.backend, mode: s.presentation.mode, active: s.presentation.companion.active, supported: s.presentation.companion.supported };
+    });
+  await page.evaluate(async () => {
+    const o = (await window.otter) as OtterFixture;
+    o.dispatch('set-muted', { muted: true });
+    o.load({ src: await o.fetchBlob('/frames/h264-720p-av.mp4') }, { autoplay: true });
+  });
+  await expect.poll(async () => (await fixture()).t, { timeout: 30_000 }).toBeGreaterThan(0.5);
+  expect((await fixture()).backend).toBe('webcodecs');
+  if (!(await fixture()).supported) {
+    ciNotice('companion WebCodecs: no Document PiP here');
+    test.skip(true, 'no Document PiP');
+  }
+  await page.evaluate(() => {
+    const w = window as unknown as { samples: { t: number; at: number; paused: boolean }[] };
+    w.samples = [];
+    const tick = async (): Promise<void> => {
+      const s = ((await window.otter) as OtterFixture).state();
+      w.samples.push({ t: s.currentTime, at: performance.now() / 1000, paused: s.paused });
+      setTimeout(() => void tick(), 50);
+    };
+    void tick();
+  });
+  // A gesture-carrying dispatch (the fixture's narrow layout may hide the button).
+  await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('toggle-pip', {}));
+  await expect.poll(async () => (await fixture()).active, { timeout: 8000 }).toBe(true);
+  await page.waitForTimeout(1500);
+  await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('exit-presentation', {}));
+  await expect.poll(async () => (await fixture()).mode).toBe('inline');
+  await page.waitForTimeout(1000);
+  const { samples, underruns } = await page.evaluate(async () => ({
+    samples: (window as unknown as { samples: { t: number; at: number; paused: boolean }[] }).samples,
+    underruns: ((await window.otter) as OtterFixture).events
+      .filter((e) => e.type === 'error' && (e.payload as { error?: { details?: string } }).error?.details === 'audioUnderrun')
+      .map((e) => (e.payload as { error: { message?: string } }).error.message ?? ''),
+  }));
+  expect(underruns).toEqual([]);
+  expect(samples.every((x) => !x.paused)).toBe(true);
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1] as { t: number; at: number };
+    const b = samples[i] as { t: number; at: number };
+    expect(b.t, `sample ${i}`).toBeGreaterThanOrEqual(a.t);
+    expect(b.t - a.t, `sample ${i}`).toBeLessThanOrEqual(b.at - a.at + 0.5);
+  }
+  ciNotice(`companion WebCodecs: in and out of the window, ${samples.length} samples, no underrun`);
+});
+
+/** Removes Document PiP before the page runs: Firefox and Safari as they ship (ADR-016 conflict 6). */
+const withoutDocumentPip = (page: Page) =>
+  page.addInitScript(() => {
+    Object.defineProperty(window, 'documentPictureInPicture', { configurable: true, get: () => undefined });
+  });
+
+test('without Document PiP: not supported, no settings page, the PiP button keeps its old rules, no error', async ({ page, browserName }) => {
+  test.setTimeout(60_000);
+  // Judged on desktop-firefox, desktop-safari and emulated-iphone (acceptance 6); the others have
+  // the API removed as well, so the path is checked everywhere.
+  await withoutDocumentPip(page);
+  await page.goto(`/companion.html?src=${SRC}`);
+  await expect.poll(async () => (await state(page)).status, { timeout: 20_000 }).toBe('ready');
+  await page.evaluate(() => {
+    const w = window as unknown as { errors: unknown[]; denied: unknown[] };
+    w.errors = [];
+    w.denied = [];
+    (window.player as Player).qoe.on('error', (p) => void w.errors.push(p));
+    (window.player as Player).qoe.on('presentation-denied', (p) => void w.denied.push(p));
+  });
+  const s = await state(page);
+  expect(s.presentation.capabilities.docpip).toBe(false);
+  expect(s.presentation.companion).toMatchObject({ supported: false, active: false });
+  // No companion page in the settings menu.
+  await page.locator('otter-settings-menu').getByRole('button').first().click();
+  await expect(page.getByRole('menuitem', { name: /^Captions|^字幕|^Quality|^清晰度/ }).first()).toBeVisible();
+  expect(await page.getByRole('menuitem', { name: /^Floating player|^悬浮窗/ }).count()).toBe(0);
+  await page.keyboard.press('Escape');
+  // The PiP button: video PiP (the picture only), or the browser's refusal where it has the API but
+  // will not open a window (headless WebKit, RESEARCH §1), or nothing where there is no PiP at all.
+  const pip = page.locator('otter-pip-button');
+  if (s.presentation.capabilities.pip === false) {
+    expect(await pip.evaluate((el) => el.hasAttribute('data-otter-unsupported'))).toBe(true);
+    ciNotice('companion fallback: no PiP of any kind here; the button is hidden');
+  } else {
+    await page.addStyleTag({ content: 'otter-pip-button { display: inline-block !important; }' });
+    await pip.getByRole('button').click();
+    await expect.poll(async () => (await state(page)).presentation.pending === null && ((await state(page)).presentation.mode === 'pip' || (await page.evaluate(() => (window as unknown as { denied: unknown[] }).denied.length)) > 0), { timeout: 8000 }).toBe(true);
+    const mode = (await state(page)).presentation.mode;
+    if (mode === 'pip') ciNotice('companion fallback: video PiP entered');
+    else {
+      expect(browserName, 'only WebKit refuses to open a video PiP window here').toBe('webkit');
+      ciNotice('companion fallback: video PiP refused by the browser (rolled back)');
+    }
+  }
+  expect(await page.evaluate(() => (window as unknown as { errors: unknown[] }).errors)).toEqual([]);
+  expect((await state(page)).presentation.companion.active).toBe(false);
+});
+
+test('in an iframe: companion mode is not supported', async ({ page }) => {
+  test.setTimeout(30_000);
+  test.skip(!JUDGED.includes(test.info().project.name), 'checked where Document PiP exists at the top level');
+  await page.goto('/index.html');
+  await page.setContent(`<iframe src="/companion.html?src=${SRC}" style="width:960px;height:540px"></iframe>`);
+  const frame = page.frameLocator('iframe');
+  await expect(frame.locator('[data-otter-player]')).toHaveCount(1);
+  const inner = page.frames().find((f) => f.url().includes('companion.html'));
+  if (inner === undefined) throw new Error('no iframe');
+  await expect.poll(() => inner.evaluate(() => window.player?.store.getState().status), { timeout: 20_000 }).toBe('ready');
+  const companion = await inner.evaluate(() => (window.player as Player).store.getState().presentation);
+  expect(companion.capabilities.docpip).toBe(false);
+  expect(companion.companion.supported).toBe(false);
 });
