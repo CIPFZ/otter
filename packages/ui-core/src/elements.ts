@@ -1056,8 +1056,8 @@ const menuCss = (): string => `
 .chev { width: 18px; height: 18px; color: ${T.muted}; flex: none; }
 .chev svg, .back svg { width: 18px; height: 18px; }
 .back { min-height: 44px; border-bottom: 1px solid ${T.glassBorder}; margin-bottom: 4px; font-weight: 600; }
-.seg { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 12px 8px; }
-.seg [aria-checked] { flex: 1 0 auto; justify-content: center; min-height: 30px; padding: 0 8px; border-radius: 999px;
+.seg { display: flex; flex-wrap: wrap; gap: var(--otter-seg-gap, 4px); padding: 4px var(--otter-seg-padding-x, 12px) 8px; }
+.seg [aria-checked] { flex: 1 0 auto; justify-content: center; min-height: 30px; padding: 0 var(--otter-seg-item-padding-x, 8px); border-radius: 999px;
   background: rgb(255 255 255 / 0.08); font: 600 calc(12px * var(--otter-ui-text-scale, 1))/1 ${T.font}; gap: 0; }
 .seg [aria-checked="true"] { background: ${T.accent}; color: #0b1b24; }
 .switch { width: 34px; height: 20px; border-radius: 999px; background: rgb(255 255 255 / 0.25); position: relative; flex: none;

@@ -13,6 +13,7 @@ Skins and hosts may set them on the player root (`[data-otter-player]`) or on `:
 | `--otter-control-size`, `--otter-icon-size` | 40 px, 24 px | Button and icon size |
 | `--otter-glass`, `--otter-glass-blur`, `--otter-glass-border` | see UI-DESIGN §4.1 | Glass material of menus and tooltips |
 | `--otter-menu-width`, `--otter-thumbnail-width` / `-height` | 280 px, 160 × 90 px | Menus and preview cards |
+| `--otter-seg-gap`, `--otter-seg-padding-x`, `--otter-seg-item-padding-x` | 4 px, 12 px, 8 px | Spacing of segmented choices in menus (speed, dimming steps): between segments, the row's side padding, each segment's side padding |
 | `--otter-cue-*` | — | The user's caption preferences (ADR-005 §4) |
 | **`--otter-ui-text-scale`** | `1` | **A multiplier on every user-facing font size**: the bar's text buttons (quality, speed), the time display, the live badge, menus, preview cards, tooltips, feedback badges, the error card, the stats panel. It scales the text only, not the boxes of buttons and panels. `ui-skin-tv` uses 2.34 on the bar (13 px → 30 px), and also uses it to enlarge menus on browsers without CSS `zoom` |
 

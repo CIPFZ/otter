@@ -85,6 +85,7 @@
 | `--otter-radius-lg` | `12px` | 菜单、面板 |
 | `--otter-menu-width` | `280px` | 设置菜单 |
 | `--otter-menu-row` | `40px` | 菜单行高 |
+| `--otter-seg-gap` / `--otter-seg-padding-x` / `--otter-seg-item-padding-x` | `4px` / `12px` / `8px` | 菜单里分段选择（倍速、暗化档位等）的间距、行内边距、每段左右内边距；伴随小窗 ≤ 300 px 宽时收紧（ADR-016） |
 
 ### 4.3 字体
 
