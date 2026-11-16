@@ -194,8 +194,33 @@ describe('companion window controls (attachCompanionTools)', () => {
     return { store, root, sets, off, slider };
   }
 
+  it('the dimming button opens the slider; Escape, a press elsewhere or hidden controls close it', async () => {
+    const { store, slider, root, off } = await mounted('zh-CN');
+    const toggle = root.querySelector('.ot-dim-toggle') as HTMLButtonElement;
+    expect(slider.hidden).toBe(true);
+    expect([toggle.getAttribute('aria-label'), toggle.getAttribute('aria-expanded')]).toEqual(['暗化 40%', 'false']);
+    toggle.click();
+    expect(slider.hidden).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(root.ownerDocument.activeElement).toBe(slider);
+    slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(slider.hidden).toBe(true);
+    expect(root.ownerDocument.activeElement).toBe(toggle);
+    toggle.click();
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    expect(slider.hidden).toBe(true);
+    toggle.click();
+    store.setState({ controlsVisible: false });
+    expect(slider.hidden).toBe(true);
+    toggle.click();
+    toggle.click();
+    expect(slider.hidden).toBe(true);
+    off();
+  });
+
   it('a five-step dimming slider: keys, wheel and a click snap to 0 / 20 / 40 / 60 / 80 %', async () => {
     const { store, sets, slider, root, off } = await mounted('zh-CN');
+    (root.querySelector('.ot-dim-toggle') as HTMLButtonElement).click();
     expect(slider.getAttribute('aria-label')).toBe('暗化');
     expect([slider.getAttribute('aria-valuenow'), slider.getAttribute('aria-valuetext')]).toEqual(['40', '40%']);
     expect(root.querySelectorAll('.ot-tick')).toHaveLength(5);
@@ -210,6 +235,7 @@ describe('companion window controls (attachCompanionTools)', () => {
     expect(sets.map((p) => (p as { dim: number }).dim)).toEqual([0.6, 0, 0.2, 0.6]);
     expect(store.getState().presentation?.companion.dim).toBe(0.6);
     expect(slider.getAttribute('aria-valuetext')).toBe('60%');
+    expect((root.querySelector('.ot-dim-toggle') as HTMLElement).getAttribute('aria-label')).toBe('暗化 60%');
     off();
     expect(root.querySelector('[data-otter-companion-tools]')).toBeNull();
   });

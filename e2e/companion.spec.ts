@@ -240,12 +240,13 @@ test('controls: hidden while the pointer is outside the window, shown inside, hi
       if (el === null) return '';
       const tag = el.tagName.toLowerCase();
       if (tag.startsWith('otter-')) return tag;
-      return el.getAttribute('role') === 'slider' ? 'dim-slider' : el.classList.contains('ot-strip') ? 'strip-switch' : '';
+      return el.classList.contains('ot-dim-toggle') ? 'dim-button' : el.classList.contains('ot-strip') ? 'strip-switch' : el.getAttribute('role') === 'slider' && el.classList.contains('ot-dim') ? 'dim-slider' : '';
     });
     if (key !== '') reached.set(key, await visible());
   }
-  expect([...reached.keys()]).toEqual(expect.arrayContaining(['otter-play-button', 'otter-mute-button', 'otter-time-slider', 'otter-pip-button', 'dim-slider', 'strip-switch']));
-  for (const hidden of ['otter-settings-menu', 'otter-fullscreen-button', 'otter-captions-button', 'otter-quality-menu', 'otter-speed-menu', 'otter-theater-button']) expect(reached.has(hidden), hidden).toBe(false);
+  expect([...reached.keys()]).toEqual(expect.arrayContaining(['otter-play-button', 'otter-mute-button', 'otter-time-slider', 'otter-pip-button', 'dim-button', 'strip-switch']));
+  // The slider stays closed (and out of the tab order) until the dimming button opens it.
+  for (const hidden of ['dim-slider', 'otter-settings-menu', 'otter-fullscreen-button', 'otter-captions-button', 'otter-quality-menu', 'otter-speed-menu', 'otter-theater-button']) expect(reached.has(hidden), hidden).toBe(false);
   expect([...reached.values()].every(Boolean)).toBe(true);
 });
 
@@ -366,7 +367,7 @@ for (const lang of ['en', 'zh-CN'] as const) {
     await expect.poll(async () => (await state(page)).presentation.companion.dim).toBe(0.8);
   });
 
-  test(`window controls (${lang}): a five-step dimming slider and the audio strip switch, no settings menu`, async ({ page }) => {
+  test(`window controls (${lang}): a dimming button that opens a five-step slider, the audio strip switch, no settings menu`, async ({ page }) => {
     test.setTimeout(60_000);
     const t = lang === 'en' ? { dim: 'Dimming', strip: 'Audio only', picture: 'Show picture' } : { dim: '暗化', strip: '纯音频条', picture: '显示画面' };
     await open(page, `&lang=${lang}`);
@@ -379,8 +380,14 @@ for (const lang of ['en', 'zh-CN'] as const) {
     await pip.mouse.move(60, 60);
     await pip.mouse.move(70, 64);
     const slider = pip.getByRole('slider', { name: t.dim });
-    await expect(slider).toBeVisible();
+    const button = pip.getByRole('button', { name: `${t.dim} 40%` });
+    // Closed until the button opens it.
+    await expect(button).toBeVisible();
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    await expect(slider).toBeHidden();
     expect(await pip.locator('otter-settings-menu').evaluate((el) => getComputedStyle(el).display)).toBe('none');
+    await button.click();
+    await expect(slider).toBeVisible();
     await expect(slider).toHaveAttribute('aria-valuetext', '40%');
     // A press near the right end of the track: the last step, 80 %; then keys step by one.
     const box = await pip.evaluate(() => {
@@ -395,6 +402,10 @@ for (const lang of ['en', 'zh-CN'] as const) {
     await pip.keyboard.press('Home');
     await expect.poll(async () => (await state(page)).presentation.companion.dim).toBe(0);
     await expect(slider).toHaveAttribute('aria-valuetext', '0%');
+    // Escape closes it; the button now says the new step.
+    await pip.keyboard.press('Escape');
+    await expect(slider).toBeHidden();
+    await expect(pip.getByRole('button', { name: `${t.dim} 0%` })).toBeFocused();
     // The audio strip and back, by click (the resize has its user activation: nothing refused).
     await pip.getByRole('button', { name: t.strip }).click();
     await expect.poll(async () => (await state(page)).presentation.companion.audioOnly).toBe(true);
@@ -412,8 +423,11 @@ test('axe: the companion window (idle, with its controls shown) and the strip ha
   const idle = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
   await pip.mouse.move(60, 60);
   await pip.mouse.move(70, 64);
+  await expect(pip.locator('.ot-dim-toggle')).toBeVisible();
+  await pip.locator('.ot-dim-toggle').click();
   await expect(pip.locator('.ot-dim')).toBeVisible();
   const shown = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
+  await pip.keyboard.press('Escape');
   await pip.locator('.ot-strip').click();
   await expect.poll(async () => (await state(page)).presentation.companion.audioOnly).toBe(true);
   const strip = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();

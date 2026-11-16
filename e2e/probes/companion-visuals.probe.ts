@@ -1,7 +1,7 @@
 // Companion mode visual review material (COMPANION.md §6 item 9, owner 2026-11-16): screenshots of
 // the companion window's content, in English and Chinese: the host's three first-open sizes
 // (pointer in the window), the audio strip, dim 0 / 40 / 80 % (paused, controls hidden) and the
-// window's own controls (dimming slider, audio strip switch) at the smallest size. Written to test-results/probes/<project>/visuals/. Window sizes are real only in a headed
+// window's own controls at the smallest size: the two buttons, and the dimming slider opened. Written to test-results/probes/<project>/visuals/. Window sizes are real only in a headed
 // browser (RESEARCH §1): run it on real-windows-edge or desktop-chrome-headed.
 
 import { mkdirSync } from 'node:fs';
@@ -88,9 +88,12 @@ for (const lang of ['en', 'zh-CN'] as const) {
     await set({ dim: 0.4 });
     pip = await open();
     await hover(pip);
-    await pip.locator('.ot-dim').focus();
-    await pip.waitForTimeout(400);
     await shot(pip, 'controls-s');
+    // The dimming button pressed: the slider beside it.
+    await pip.locator('.ot-dim-toggle').click();
+    await pip.waitForTimeout(400);
+    await shot(pip, 'dim-slider-s');
+    await pip.keyboard.press('Escape');
     await back(pip);
     await ctx.close();
   });

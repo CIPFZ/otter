@@ -22,7 +22,7 @@ Pass `presentation.companion` to `createPlayer` or a preset that is built on it 
 ## Controls in the window
 
 - The control bar is slim: play / pause, mute, progress and time, back to the page. There is no settings menu in the window; the full settings stay in the page.
-- At the top right, a small **dimming slider** with five steps (0 / 20 / 40 / 60 / 80 %: drag or click to the nearest step, arrow keys, Home / End or the mouse wheel step by one) and an **audio strip** switch. In the audio strip a **show picture** button brings the picture back.
+- At the top right, two small buttons: **dimming** and **audio strip**. The dimming button opens a slider with five steps beside it (0 / 20 / 40 / 60 / 80 %: drag or click to the nearest step; arrow keys, Home / End or the mouse wheel step by one); the button again, Escape, a press elsewhere or the controls hiding close it. In the audio strip a **show picture** button brings the picture back.
 - The controls show while the pointer is in the window or the keyboard focus is on one of them, and hide as soon as both leave. Starting playback or other media events do not show them.
 - In the page, the settings menu has a **Floating player** page (dimming in five steps, audio strip) where companion mode is supported.
 

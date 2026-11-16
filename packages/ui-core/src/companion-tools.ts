@@ -1,8 +1,11 @@
 // Companion mode controls in the window (ADR-016, owner 2026-11-16), an on-demand chunk loaded when
-// the player enters the companion window. A small cluster at the top right, shown with the
-// controls (on hover or focus): a dimming slider with five steps (0 / 20 / 40 / 60 / 80 %) and the
-// audio strip switch. In the audio strip a "show picture" button sits in the bar instead. No size
-// setting: the viewer drags the window's edge. The rules go into the window's document only.
+// the player enters the companion window. Two small buttons at the top right, shown with the
+// controls (on hover or focus): dimming and the audio strip switch. The dimming button opens a
+// slider with five steps (0 / 20 / 40 / 60 / 80 %) beside it; it closes again with the button,
+// Escape, a press elsewhere in the window, or when the controls hide (owner: shown only on a click,
+// not taking room all the time). In the audio strip a "show picture" button sits in the bar
+// instead. No size setting: the viewer drags the window's edge. The rules go into the window's
+// document only.
 
 import { AudioLines, Image, Moon } from 'lucide';
 import type { Unsubscribe } from '@otter-player/core';
@@ -24,12 +27,14 @@ export interface CompanionToolsDeps {
 const STEPS = [0, 0.2, 0.4, 0.6, 0.8] as const;
 const stepOf = (dim: number): number => Math.max(0, Math.min(STEPS.length - 1, Math.round(dim / 0.2)));
 
-const CSS = `[data-otter-companion-tools] { position: absolute; top: 8px; right: 8px; z-index: 3; display: flex; align-items: center; gap: 6px;
-  padding: 2px 4px 2px 10px; border-radius: 999px; background: rgb(0 0 0 / 0.55); color: var(--otter-fg, #fff);
+const CSS = `[data-otter-companion-tools] { position: absolute; top: 6px; right: 6px; z-index: 3; display: flex; align-items: center; gap: 2px;
+  padding: 2px; border-radius: 999px; background: rgb(0 0 0 / 0.55); color: var(--otter-fg, #fff);
   font: 600 12px/1 var(--otter-font, system-ui, sans-serif); transition: opacity var(--otter-t-show, 0.2s) ease-out; }
 [data-otter-companion-tools][data-idle], [data-otter-audio-only] [data-otter-companion-tools] { opacity: 0; pointer-events: none; }
 [data-otter-companion-tools] svg { width: 16px; height: 16px; flex: none; }
-.ot-dim { display: flex; align-items: center; gap: 6px; height: 28px; cursor: pointer; outline: none; touch-action: none; }
+.ot-dim { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 2px 0 8px; cursor: pointer; outline: none; touch-action: none; }
+.ot-dim[hidden] { display: none; }
+.ot-dim-toggle[aria-expanded="true"] { color: var(--otter-accent, #1ee9e6); }
 .ot-dim:focus-visible { box-shadow: 0 0 0 2px var(--otter-accent, #1ee9e6); border-radius: 6px; }
 .ot-track { position: relative; width: 84px; height: 16px; }
 .ot-rail, .ot-fill { position: absolute; left: 0; top: 7px; height: 2px; border-radius: 1px; }
@@ -62,8 +67,10 @@ export function mountCompanionTools(root: HTMLElement, store: UiStore, deps: Com
   const tools = doc.createElement('div');
   tools.setAttribute('data-otter-companion-tools', '');
   const ticks = STEPS.map((_, i) => `<span class="ot-tick" style="left:${i * 25}%"></span>`).join('');
-  tools.innerHTML = `<div class="ot-dim" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="80">${icon(Moon)}<span class="ot-track"><span class="ot-rail"></span><span class="ot-fill"></span>${ticks}<span class="ot-thumb"></span></span><span class="ot-val" aria-hidden="true"></span></div><button type="button" class="ot-strip">${icon(AudioLines)}</button>`;
+  const sliderId = `otter-companion-dim-${Math.random().toString(36).slice(2, 8)}`;
+  tools.innerHTML = `<div class="ot-dim" id="${sliderId}" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="80" hidden><span class="ot-track"><span class="ot-rail"></span><span class="ot-fill"></span>${ticks}<span class="ot-thumb"></span></span><span class="ot-val" aria-hidden="true"></span></div><button type="button" class="ot-dim-toggle" aria-expanded="false" aria-controls="${sliderId}">${icon(Moon)}</button><button type="button" class="ot-strip">${icon(AudioLines)}</button>`;
   const slider = tools.querySelector('.ot-dim') as HTMLElement;
+  const toggle = tools.querySelector('.ot-dim-toggle') as HTMLButtonElement;
   const track = tools.querySelector('.ot-track') as HTMLElement;
   const fill = tools.querySelector('.ot-fill') as HTMLElement;
   const thumb = tools.querySelector('.ot-thumb') as HTMLElement;
@@ -116,12 +123,33 @@ export function mountCompanionTools(root: HTMLElement, store: UiStore, deps: Com
     e.preventDefault();
     set(current() + (e.deltaY < 0 ? 1 : -1));
   };
+  // The slider opens from the dimming button and closes again.
+  const isOpen = (): boolean => slider.hidden !== true;
+  const expand = (open: boolean, focus: 'slider' | 'toggle' | 'none' = 'none'): void => {
+    slider.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    if (focus === 'slider' && open) slider.focus({ preventScroll: true });
+    if (focus === 'toggle') toggle.focus({ preventScroll: true });
+  };
+  const onToggle = (): void => expand(!isOpen(), 'slider');
+  const escape = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || !isOpen()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    expand(false, 'toggle');
+  };
+  const outside = (e: PointerEvent): void => {
+    if (isOpen() && !e.composedPath().includes(tools)) expand(false);
+  };
   const toStrip = (): void => void store.dispatch('companion-set', { audioOnly: true }, { type: 'click', source: 'otter-companion-tools' });
   const toPicture = (): void => void store.dispatch('companion-set', { audioOnly: false }, { type: 'click', source: 'otter-companion-tools' });
   slider.addEventListener('pointerdown', down);
   slider.addEventListener('pointermove', move);
   slider.addEventListener('keydown', key);
   slider.addEventListener('wheel', wheel, { passive: false });
+  toggle.addEventListener('click', onToggle);
+  tools.addEventListener('keydown', escape);
+  doc.addEventListener('pointerdown', outside);
   strip.addEventListener('click', toStrip);
   show.addEventListener('click', toPicture);
 
@@ -135,14 +163,21 @@ export function mountCompanionTools(root: HTMLElement, store: UiStore, deps: Com
     fill.style.width = at;
     thumb.style.left = at;
     value.textContent = pct;
-    // With the controls: shown on hover or focus (the player UI plugin), hidden otherwise.
-    tools.toggleAttribute('data-idle', s.controlsVisible === false);
+    const name = `${t.dim} ${pct}`;
+    toggle.setAttribute('aria-label', name);
+    toggle.title = name;
+    // With the controls: shown on hover or focus (the player UI plugin), hidden otherwise; the
+    // slider closes with them.
+    const idle = s.controlsVisible === false;
+    tools.toggleAttribute('data-idle', idle);
+    if (idle && isOpen()) expand(false);
   };
   render(store.getState());
   const off = store.subscribe(render);
 
   return () => {
     off();
+    doc.removeEventListener('pointerdown', outside);
     tools.remove();
     show.remove();
   };
