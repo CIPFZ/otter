@@ -1,9 +1,9 @@
 # 伴随模式（companion mode）报告
 
-- 状态：第 0–3 停已交付，**提请负责人目视验收**；验收第 2 条在 CI 上不稳定（见第 2 节），Firefox 有 Document PiP 待定（见第 5 节）
+- 状态：第 0–3 停已交付；负责人 2026-11-16 亲自体验改版后的小窗控件后认可，要求提交合入。仍开着的：验收第 2 条在 CI 上不稳定（第 2 节）、Firefox 是否列入判定项目、伴随按需块的体积预算（第 5 节）
 - 关联：需求 `docs/design/COMPANION.md`；契约 ADR-016；实测 RESEARCH §1「伴随模式第 0 停」与「真 Edge 补量」；SPEC §15.1
 - 基线：`624518a`；全部提交直接在 main
-- 日期：2026-11-11 至 2026-11-16（负责人 2026-11-16 对四个问题的答复已落实，见第 5 节）
+- 日期：2026-11-11 至 2026-11-16（负责人 2026-11-16 的答复与小窗控件改版已落实，见第 5 节）
 
 ## 1. 提交与 CI
 
@@ -23,9 +23,12 @@
 | `ec4c8a8` | 修复：普通 docpip 下播放器铺满小窗 | 与下两行同一次推送 |
 | `401e033` | 修复：≤ 300 px 宽的小窗里设置页的分段折行 | 同上 |
 | `5cd8398` | 测试：`OTTER_COMPANION_JUDGE` 可以加判定项目 | #299 绿；伴随的 WebCodecs 用例第一次尝试欠载 512 ms、重试通过（flaky） |
-| 本次更新 | Firefox 事实、WebCodecs 用例的诊断输出、重截的目视材料 | 见汇报 |
+| `0e2580a` | Firefox 事实、WebCodecs 用例的诊断输出、重截的目视材料 | #300 绿；伴随的 WebCodecs 与 axe 用例各重试一次通过（flaky） |
+| `c478b8e` | 改版：小窗里暗化档位滑块与音频条开关，去掉尺寸设置 | #302 被下一次推送的 #303 取消（同一并发组） |
+| `50c607e` | 改版：暗化滑块点按钮才展开 | #303 红：e2e chromium + firefox 里伴随的 WebCodecs 用例两次尝试都欠载（551 ms、1269 ms；1174 ms），其余各组绿（见验收第 2 条） |
+| 本次更新 | 报告与目视材料按改版更新 | 只改文档，e2e 按规则跳过 |
 
-Pages 自 `624518a` 起每次都红（第 13–17 次）：ADR-015 的冻结检查要求 `packages/` 与 `56893d2` 相同，任何包改动都会被拦下。这不是本任务引入的，未处理（约束：不动公开站的构建）。
+Pages 自 `624518a` 起每次都红（第 13 次起）：ADR-015 的冻结检查要求 `packages/` 与 `56893d2` 相同，任何包改动都会被拦下。这不是本任务引入的，未处理（约束：不动公开站的构建）。
 
 ## 2. 验收逐条
 
@@ -34,18 +37,18 @@ Pages 自 `624518a` 起每次都红（第 13–17 次）：ADR-015 的冻结检�
 | # | 验收 | 结果 | 依据 |
 |---|---|---|---|
 | 1 | 暗化：小窗内计算不透明度 = 设置值，回页面 = `1 - brightness`；像素核对 | ✅ | `e2e/companion.spec.ts`。计算值：小窗 0.4，回页面 0。像素比（小窗 / 页面）在暗化 0 / 0.4 / 0.8 时：desktop-chrome 0.999 / 0.600 / 0.200，真 Edge 0.996 / 0.598 / 0.199 |
-| 2 | 进出不断播（跳变 ≤ 0.5 s）；WebCodecs 进出无音频欠载 | ⚠️ CI 上不稳定 | 播放头：每 50 ms 采样，进出全程不停、不回跳、相邻样本不超过墙钟 + 0.5 s。WebCodecs（`player.html?companion=1`，有声片源）：本机 desktop-chrome、真 Edge、Firefox 160 都没有欠载（46–55 个样本）。**CI 的 desktop-chrome 上 5 次尝试有 3 次欠载**：#296 过；#297 两次都欠载（6 ms + 1587 ms，401 ms）；#299 第一次欠载 512 ms、重试过。欠载时解码队列都在上限（17），与 M6 F14 的签名一样；F14 的放过规则只适用于 emulated-android，这里照样判红。原因未查。假设：小窗拿到焦点时，原页面的定时器（喂音频的循环跑在上面）被节流。待 CI 数据验证：用例失败时会打印原页面 50 ms 定时器的最大间隔和长任务 |
-| 3 | 刷新后 dim / size / audioOnly 恢复；进出一次后 textLanguage 与 danmaku 逐字节相同 | ✅ | e2e：刷新后恢复 0.6 / l / true；进出前后两字段的 JSON 相同。另一条 e2e：quiet 关掉、再恢复字幕，textLanguage 不变。弹幕的 quiet 由单测覆盖（vod 页面没有弹幕插件） |
+| 2 | 进出不断播（跳变 ≤ 0.5 s）；WebCodecs 进出无音频欠载 | ⚠️ CI 上不稳定 | 播放头：每 50 ms 采样，进出全程不停、不回跳、相邻样本不超过墙钟 + 0.5 s。WebCodecs（`player.html?companion=1`，有声片源）：本机 desktop-chrome、真 Edge、Firefox 160 都没有欠载（46–55 个样本）。**CI 的 desktop-chrome 上 9 次尝试有 6 次欠载**：#296 过；#297 两次都欠载（6 ms + 1587 ms，401 ms）；#299、#300 各第一次欠载（512 ms；6 + 1076 + 17 + 18 ms）、重试过；#303 两次都欠载（15 + 551 + 34 + 1269 ms；11 + 1174 + 109 ms）。欠载时解码队列都在上限（17），与 M6 F14 的签名一样；F14 的放过规则只适用于 emulated-android，这里照样判红。原因未查。#300、#303 的诊断否定了「原页面定时器被节流」的假设（50 ms 定时器最大间隔 212–234 ms），同时看到主线程连着 50–138 ms 的长任务。新的假设（未验证）：CI 机器没有 GPU，软件渲染在小窗里画 WebCodecs 画布占满了主线程 |
+| 3 | 刷新后 dim / audioOnly 恢复（size 不再是设置，见第 5 节）；进出一次后 textLanguage 与 danmaku 逐字节相同 | ✅ | e2e：刷新后恢复 0.6 / true；进出前后两字段的 JSON 相同。另一条 e2e：quiet 关掉、再恢复字幕，textLanguage 不变。弹幕的 quiet 由单测覆盖（vod 页面没有弹幕插件） |
 | 4 | 退出后恢复原状 | ✅ | 字幕回到进入前的轨（e2e）；弹幕回到进入前（单测）；控件 3 s 后重新自动隐藏；`documentPictureInPicture.window` 为空；页面里没有 `style[data-otter-companion-style]`、`[data-otter-companion]`、占位节点；destroy 后所有 MediaSource 为 closed |
-| 5 | 指针不在小窗内播放 5 s 控件不可见；进入可见；键盘可到达全部控件 | ✅ | e2e：每 0.5 s 查一次，共 10 次都不可见；指针进入后可见，停留 3.5 s 仍可见；移出即隐藏；Tab 依次到达播放、静音、进度、设置、回页面，到达时控件可见，被隐藏的按钮到达不了 |
+| 5 | 指针不在小窗内播放 5 s 控件不可见；进入可见；键盘可到达全部控件 | ✅ | e2e：每 0.5 s 查一次，共 10 次都不可见；指针进入后可见，停留 3.5 s 仍可见；移出即隐藏；Tab 依次到达播放、静音、进度、回页面、暗化按钮、音频条开关，到达时控件可见；被隐藏的按钮和收起的暗化滑块到达不了 |
 | 6 | desktop-firefox、desktop-safari、emulated-iphone：`supported` 为 false，`toggle-pip` 走视频 PiP 或既有规则，没有错误事件 | Safari / iPhone ✅；**Firefox 与前提不符，待定** | e2e「without Document PiP」：Safari 与 iPhone 本来没有这个 API，WebKit 拒绝打开视频 PiP 窗口，已回滚并发 `presentation-denied`，没有 error 事件；iframe 内 `supported` 为 false。**Firefox 有 Document PiP**：正式版 Firefox 160 和 Playwright 自带的 Firefox 157 都提供（在负责人的 Windows 机器上实测，第 4 节），所以 desktop-firefox 上 `supported` 为 true。两者跑伴随用例各 14 条全过。去掉 API 后的退化用例在所有项目上都跑、都过 |
-| 7 | 首屏 ≤ 30 KB 不变并报余量；伴随按需块单列 | ✅ | 首屏 27.00 / 30 KB（基线 26.49，余量 3.00 KB）。伴随按需块（presentation `companion` + presets `companion-style`）1.76 / 3 KB，`.size-limit.js` 单列 |
-| 8 | 只在 desktop-chrome 与真 Edge 判定；emulated-android 只记录 | ✅ | 两处各 14 条全过。其他项目跳过并留通知（`supported=…`），只判退化用例 |
-| 9 | 目视材料：三档尺寸、音频条、暗化 0 / 40 / 80 %、最小档设置页，中英文各一组 | 提请验收 | 第 3 节 |
+| 7 | 首屏 ≤ 30 KB 不变并报余量；伴随按需块单列 | 首屏 ✅；按需块超暂定预算，待定 | 首屏 27.10 / 30 KB（基线 26.49，余量 2.90 KB）。伴随按需块在 `.size-limit.js` 单列：presentation `companion` + presets `companion-style` 1.65 / 3 KB；加上改版后小窗控件的 ui-core `companion-tools` + `companion-strings`，合计 **4.70 KB**，超过暂定的 3 KB，单列为只报不卡的一行，预算请负责人定 |
+| 8 | 只在 desktop-chrome 与真 Edge 判定；emulated-android 只记录 | ✅ | 改版后两处各 16 条全过（本机 desktop-chrome；真 Edge 在 `50c607e` 上）。其他项目跳过并留通知（`supported=…`），只判退化用例 |
+| 9 | 目视材料（按改版调整）：三种首开尺寸、音频条、暗化 0 / 40 / 80 %、最小尺寸下的小窗控件（收起与展开），中英文各一组 | 负责人已亲自体验 | 第 3 节 |
 
-## 3. 目视材料（真 Edge 157，`80ba439`）
+## 3. 目视材料（真 Edge 157，`50c607e`）
 
-截图是小窗的内容区，不含浏览器标题栏；屏幕缩放 150 %，所以图片像素是窗口尺寸的 1.5 倍。用 `e2e/probes/companion-visuals.probe.ts` 生成，可以重跑。三档尺寸那几张是指针在小窗里（控件显示）时截的；暗化那几张是暂停在同一帧、指针在外面（控件隐藏）。
+截图是小窗的内容区，不含浏览器标题栏；屏幕缩放 150 %，所以图片像素是窗口尺寸的 1.5 倍。用 `e2e/probes/companion-visuals.probe.ts` 生成，可以重跑。尺寸那几张是宿主的三档首开宽度（之后用户拖窗口边缘改大小），指针在小窗里（控件显示）；暗化那几张是暂停在同一帧、指针在外面（控件隐藏）。
 
 | 项 | English | 中文 | 小窗内容区（px） |
 |---|---|---|---|
@@ -56,13 +59,14 @@ Pages 自 `624518a` 起每次都红（第 13–17 次）：ADR-015 的冻结检�
 | 暗化 0 % | ![](companion/en-dim-0.png) | ![](companion/zh-CN-dim-0.png) | 320×180 |
 | 暗化 40 % | ![](companion/en-dim-40.png) | ![](companion/zh-CN-dim-40.png) | 同上（±2） |
 | 暗化 80 % | ![](companion/en-dim-80.png) | ![](companion/zh-CN-dim-80.png) | 同上（±2） |
-| 最小档的设置页 | ![](companion/en-settings-s.png) | ![](companion/zh-CN-settings-s.png) | 248×135 |
+| 最小尺寸下的小窗控件 | ![](companion/en-controls-s.png) | ![](companion/zh-CN-controls-s.png) | 248×135 |
+| 同上，暗化滑块展开 | ![](companion/en-dim-slider-s.png) | ![](companion/zh-CN-dim-slider-s.png) | 248×135 |
 
-截图用的是 `5cd8398`，含下面两处修复。请重点看：
+说明：
 
-- 最小档（s）的精简栏。第一轮截图里，5 个控件在 248 px 宽时折成了两行，挡住大半画面。`80ba439` 修了：窗口宽 ≤ 300 px 时按钮改为 32 px。
-- 最小档的设置页。它在窗口里铺成一层面板，四周留 8 px，可以滚动。第一轮里「80 %」那一格折到了第二行，`401e033` 修了：窄窗口里分段间距收紧，五档在一行。
-- 音频条上没有设置按钮（需求第 5 条的列表里没有它）。要关掉音频条，回到页面后在设置里改。
+- 小窗里没有齿轮。右上角两个小按钮：暗化（月亮）和纯音频条（声波）。点月亮才在左边展开五档滑块；再点、按 Esc、点别处或控件隐藏时收起。
+- 音频条上「回到页面」前面是「显示画面」按钮，可以直接切回画面。
+- 最小档（s）的精简栏一行排下（`80ba439`：窗口宽 ≤ 300 px 时按钮改为 32 px）。
 
 ## 4. 真机
 
@@ -80,7 +84,8 @@ Pages 自 `624518a` 起每次都红（第 13–17 次）：ADR-015 的冻结检�
   - 测试工具在 Firefox 的 PiP 窗口上有几处限制（BiDi 不能把指针移出视口；`page.close()` 卡住；关 context 报错），用例已绕开，见 RESEARCH §1。
 - **真 Edge 上的结果**：
   - 第 0 停的六项全部补量，见 RESEARCH §1「真 Edge 补量」。
-  - `e2e/companion.spec.ts` 在 `80ba439` 上 14 条全过：第 1–2 停的 11 条，加上 WebCodecs、退化、iframe 三条。
+  - `e2e/companion.spec.ts` 在 `50c607e` 上 16 条全过；暗化像素比 0.996 / 0.598 / 0.199；WebCodecs 进出 46 个样本没有欠载（原页面 50 ms 定时器最大间隔 69 ms）。
+  - axe 用例在真 Edge 上单独连跑 6 次时 4 次失败：3 次是 axe 报「No elements found for include in page Context」，1 次是测试中途小窗页面已关闭。看起来是小窗在测试中途关掉或被清空，原因未查；CI #300 上同一用例也重试过一次。完整跑一遍时通过。
   - 截图时还看到一个现象：同一尺寸反复打开，Edge 恢复上次的窗口尺寸时有约 1 px 的累积取整误差（320 → 321 → 322）。只记录，不处理。
 
 ## 5. 与需求的偏离、未完成项
@@ -93,12 +98,21 @@ Pages 自 `624518a` 起每次都红（第 13–17 次）：ADR-015 的冻结检�
 6. **本机 e2e 的环境问题**：本机 desktop-chrome 上，5 个文档示例和 basic preset 偶尔停在 0.2–0.3 s。在 HEAD 上不带本任务改动也一样；CI 上通过。原因没查。
 7. **普通 docpip 铺不满小窗**：负责人 2026-11-16 要求修，`ec4c8a8` 已修。新的 e2e 用例在旧代码上失败（播放器在小窗里偏移 16 px）。
 8. **验收第 2 条在 CI 上不稳定**：见第 2 节，原因未查，诊断已加进用例。
+9. **小窗控件改版**（负责人 2026-11-16）：
+   - 小窗里不放设置菜单，改为暗化按钮（点开五档滑块）和纯音频条开关。
+   - 去掉尺寸设置：用户拖窗口边缘，浏览器会恢复上次的大小；`size` 只剩宿主选项，决定第一次打开的宽度。
+   - 页面里的「悬浮窗」设置页保留暗化五档与音频条开关。
+   - 需求第 4、5、8、9 条与验收第 3、9 条随之调整，记在 ADR-016「小窗里的控件重新设计」。
+   - 待补测：没用过 `preferInitialWindowPlacement` 时，刷新后浏览器是否仍记得拖过的大小；Firefox 是否也记。
+10. **伴随按需块合计 4.70 KB**，超过暂定 3 KB（见验收第 7 条），预算待定。
+11. **axe 用例偶发失败**（真 Edge 与 CI #300）：小窗在测试中途关闭或被清空，原因未查。
 
 ## 6. 文件
 
 - 产品代码：
   - `packages/presentation/src/companion.ts`（按需块）
   - `packages/presentation/src/plugin.ts`、`controller.ts`、`docpip.ts`
+  - `packages/ui-core/src/companion-tools.ts`、`companion-strings.ts`（按需块：小窗控件与伴随文案）
   - `packages/ui-core/src/player-ui.ts`、`elements.ts`、`settings-level.ts`、`strings.ts`
   - `packages/preferences/src/index.ts`
   - `packages/presets/src/companion-style.ts`（按需块）、`player.ts`、`basic.ts`、`tv.ts`

@@ -20,6 +20,8 @@
 
 ## 3. 需求
 
+> 2026-11-16 负责人改：小窗里不放设置菜单，改为暗化按钮（点开五档滑块）和纯音频条开关；去掉尺寸设置（用户拖窗口边缘）。第 4、5、8、9 条按 ADR-016「小窗里的控件重新设计」执行。
+
 1. **建在 Document PiP 上**：伴随 = 现有的 `docpip` 模式，加一份伴随状态 `presentation.companion`。不新增 `PresentationMode`，SPEC §15 的状态图不变。
 2. **默认关闭**：
    - 宿主用 `presentation.companion: true | CompanionOptions` 开启。
