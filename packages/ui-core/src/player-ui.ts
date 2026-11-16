@@ -7,6 +7,9 @@ import type { Plugin, PluginContext, Store, StoreSlice, Unsubscribe } from '@ott
 import type { InputActionMap } from '@otter-player/input';
 import type { MediaActionMap, MediaState } from '@otter-player/media';
 import type { PresentationActionMap, PresentationState } from '@otter-player/presentation';
+import type { UiStore } from './context.js';
+import { icon } from './icons.js';
+import { findStrings } from './strings.js';
 
 /** Player UI state: control bar visibility, the dimming layer, the seek preview and the open menu. */
 export interface PlayerUiState {
@@ -186,6 +189,25 @@ export function bindActivity(root: HTMLElement, store: { dispatch(type: 'show-co
     root.removeEventListener('focusin', focus);
     root.removeEventListener('pointerleave', left);
     root.removeEventListener('focusout', blurred);
+  };
+}
+
+/**
+ * The companion window's own controls (ADR-016): a dimming slider with five steps and the audio
+ * strip switch at the top right, a "show picture" button in the audio strip. An on-demand chunk,
+ * put into `root` while the player is in the companion window (createPlayer does it); returns
+ * their removal.
+ */
+export function attachCompanionTools(root: HTMLElement, store: UiStore): Unsubscribe {
+  let live = true;
+  let off: Unsubscribe | undefined;
+  void import('./companion-tools.js').then((m) => {
+    if (live) off = m.mountCompanionTools(root, store, { icon, strings: findStrings(root) });
+  });
+  return () => {
+    live = false;
+    off?.();
+    off = undefined;
   };
 }
 

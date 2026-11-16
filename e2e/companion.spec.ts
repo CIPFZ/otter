@@ -158,7 +158,7 @@ test('the PiP button opens the companion window at the size step; dim there, bri
   const pip = await enter(page);
   // 320 px wide (step m), height from the 16:9 picture.
   expect(await page.evaluate(() => (window as unknown as { requested: unknown[] }).requested)).toEqual([{ width: 320, height: 180, disallowReturnToOpener: true }]);
-  expect((await state(page)).presentation.companion).toMatchObject({ active: true, dim: 0.4, size: 'm' });
+  expect((await state(page)).presentation.companion).toMatchObject({ active: true, dim: 0.4 });
   await expect.poll(() => dimOpacity(pip)).toBe(0.4);
   // The setting does not move brightness.
   expect((await state(page)).brightness).toBe(1);
@@ -230,19 +230,26 @@ test('controls: hidden while the pointer is outside the window, shown inside, hi
     ciNotice('companion controls: the pointer cannot leave the viewport through WebDriver BiDi; leave not checked here');
     await pip.keyboard.press('Tab');
   }
-  // Keyboard: Tab walks the slim bar; while the focus is on a control the controls show.
+  // Keyboard: Tab walks the slim bar and the window's own controls (dimming slider, audio strip
+  // switch); while the focus is on a control the controls show.
   const reached = new Map<string, boolean>();
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 14; i++) {
     await pip.keyboard.press('Tab');
-    const tag = await pip.evaluate(() => document.activeElement?.tagName.toLowerCase() ?? '');
-    if (tag.startsWith('otter-')) reached.set(tag, await visible());
+    const key = await pip.evaluate(() => {
+      const el = document.activeElement;
+      if (el === null) return '';
+      const tag = el.tagName.toLowerCase();
+      if (tag.startsWith('otter-')) return tag;
+      return el.getAttribute('role') === 'slider' ? 'dim-slider' : el.classList.contains('ot-strip') ? 'strip-switch' : '';
+    });
+    if (key !== '') reached.set(key, await visible());
   }
-  expect([...reached.keys()]).toEqual(expect.arrayContaining(['otter-play-button', 'otter-mute-button', 'otter-time-slider', 'otter-settings-menu', 'otter-pip-button']));
-  for (const hidden of ['otter-fullscreen-button', 'otter-captions-button', 'otter-quality-menu', 'otter-speed-menu', 'otter-theater-button']) expect(reached.has(hidden), hidden).toBe(false);
+  expect([...reached.keys()]).toEqual(expect.arrayContaining(['otter-play-button', 'otter-mute-button', 'otter-time-slider', 'otter-pip-button', 'dim-slider', 'strip-switch']));
+  for (const hidden of ['otter-settings-menu', 'otter-fullscreen-button', 'otter-captions-button', 'otter-quality-menu', 'otter-speed-menu', 'otter-theater-button']) expect(reached.has(hidden), hidden).toBe(false);
   expect([...reached.values()].every(Boolean)).toBe(true);
 });
 
-test('preferences: dim, size and audioOnly survive a reload; textLanguage and danmaku are untouched by a round trip', async ({ page }) => {
+test('preferences: dim and audioOnly survive a reload; textLanguage and danmaku are untouched by a round trip', async ({ page }) => {
   test.setTimeout(60_000);
   await page.addInitScript(() => {
     if (localStorage.getItem('otter:preferences') === null) localStorage.setItem('otter:preferences', JSON.stringify({ textLanguage: 'en', danmaku: { opacity: 0.5 } }));
@@ -251,14 +258,14 @@ test('preferences: dim, size and audioOnly survive a reload; textLanguage and da
   const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('otter:preferences') ?? '{}') as Record<string, unknown>);
   const before = await stored();
   const pip = await enter(page);
-  await page.evaluate(() => (window.player as Player).store.dispatch('companion-set', { dim: 0.6, size: 'l', audioOnly: true }));
+  await page.evaluate(() => (window.player as Player).store.dispatch('companion-set', { dim: 0.6, audioOnly: true }));
   await back(page, pip);
   const after = await stored();
   expect(JSON.stringify(after['textLanguage'])).toBe(JSON.stringify(before['textLanguage']));
   expect(JSON.stringify(after['danmaku'])).toBe(JSON.stringify(before['danmaku']));
-  expect(after['companion']).toEqual({ dim: 0.6, size: 'l', audioOnly: true });
+  expect(after['companion']).toEqual({ dim: 0.6, audioOnly: true });
   await page.reload();
-  await expect.poll(async () => (await state(page)).presentation.companion).toMatchObject({ dim: 0.6, size: 'l', audioOnly: true });
+  await expect.poll(async () => (await state(page)).presentation.companion).toMatchObject({ dim: 0.6, audioOnly: true });
 });
 
 test('out of the window: the idle delay is back, nothing is left in the page; destroy closes the MediaSource', async ({ page }) => {
@@ -347,19 +354,22 @@ test('closing the window: paused by default, playing on with onClose continue', 
 });
 
 for (const lang of ['en', 'zh-CN'] as const) {
-  test(`settings: the ${lang} companion page, in the page and in the window`, async ({ page }) => {
+  test(`settings: the ${lang} companion page in the page (dimming, audio strip; no size)`, async ({ page }) => {
     test.setTimeout(60_000);
-    const t = lang === 'en' ? { title: 'Floating player', large: 'Large' } : { title: '悬浮窗', large: '大' };
+    const t = lang === 'en' ? { title: 'Floating player', on: 'On' } : { title: '悬浮窗', on: '开' };
     await open(page, `&lang=${lang}`);
-    const settings = async (target: Page): Promise<void> => {
-      await target.locator('otter-settings-menu').getByRole('button').first().click();
-      await target.getByRole('menuitem', { name: new RegExp(`^${t.title}`) }).click();
-      await expect(target.getByRole('menuitemradio', { name: '80%' })).toBeVisible();
-    };
-    await settings(page);
+    await page.locator('otter-settings-menu').getByRole('button').first().click();
+    await page.getByRole('menuitem', { name: new RegExp(`^${t.title}`) }).click();
+    await expect(page.getByRole('menuitemradio', { name: '80%' })).toBeVisible();
+    expect(await page.getByRole('menuitemradio').allTextContents()).toEqual(expect.arrayContaining(['0%', '20%', '40%', '60%', '80%', t.on]));
     await page.getByRole('menuitemradio', { name: '80%' }).click();
     await expect.poll(async () => (await state(page)).presentation.companion.dim).toBe(0.8);
-    await page.keyboard.press('Escape');
+  });
+
+  test(`window controls (${lang}): a five-step dimming slider and the audio strip switch, no settings menu`, async ({ page }) => {
+    test.setTimeout(60_000);
+    const t = lang === 'en' ? { dim: 'Dimming', strip: 'Audio only', picture: 'Show picture' } : { dim: '暗化', strip: '纯音频条', picture: '显示画面' };
+    await open(page, `&lang=${lang}`);
     const pip = await enter(page);
     await page.evaluate(() => {
       const w = window as unknown as { denied: unknown[] };
@@ -367,30 +377,48 @@ for (const lang of ['en', 'zh-CN'] as const) {
       (window.player as Player).qoe.on('presentation-denied', (p) => void w.denied.push(p));
     });
     await pip.mouse.move(60, 60);
-    await settings(pip);
-    await pip.getByRole('menuitemradio', { name: t.large }).click();
-    await expect.poll(async () => (await state(page)).presentation.companion.size).toBe('l');
-    // The click carried the activation the resize needs: nothing refused.
+    await pip.mouse.move(70, 64);
+    const slider = pip.getByRole('slider', { name: t.dim });
+    await expect(slider).toBeVisible();
+    expect(await pip.locator('otter-settings-menu').evaluate((el) => getComputedStyle(el).display)).toBe('none');
+    await expect(slider).toHaveAttribute('aria-valuetext', '40%');
+    // A press near the right end of the track: the last step, 80 %; then keys step by one.
+    const box = await pip.evaluate(() => {
+      const r = (document.querySelector('.ot-track') as HTMLElement).getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    });
+    await pip.mouse.click(box.x + box.w * 0.95, box.y + box.h / 2);
+    await expect.poll(async () => (await state(page)).presentation.companion.dim).toBe(0.8);
+    await slider.focus();
+    await pip.keyboard.press('ArrowLeft');
+    await expect.poll(async () => (await state(page)).presentation.companion.dim).toBe(0.6);
+    await pip.keyboard.press('Home');
+    await expect.poll(async () => (await state(page)).presentation.companion.dim).toBe(0);
+    await expect(slider).toHaveAttribute('aria-valuetext', '0%');
+    // The audio strip and back, by click (the resize has its user activation: nothing refused).
+    await pip.getByRole('button', { name: t.strip }).click();
+    await expect.poll(async () => (await state(page)).presentation.companion.audioOnly).toBe(true);
+    await expect(pip.getByRole('button', { name: t.picture })).toBeVisible();
+    await pip.getByRole('button', { name: t.picture }).click();
+    await expect.poll(async () => (await state(page)).presentation.companion.audioOnly).toBe(false);
     expect(await page.evaluate(() => (window as unknown as { denied: unknown[] }).denied)).toEqual([]);
   });
 }
 
-test('axe: the companion window, the strip and its settings page have no serious or critical violations', async ({ page }, testInfo) => {
+test('axe: the companion window (idle, with its controls shown) and the strip have no serious or critical violations', async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   await open(page);
   const pip = await enter(page);
   const idle = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
   await pip.mouse.move(60, 60);
-  await pip.locator('otter-settings-menu').getByRole('button').first().click();
-  await pip.getByRole('menuitem', { name: /^Floating player/ }).click();
-  await expect(pip.getByRole('menuitemradio', { name: '80%' })).toBeVisible();
-  const menu = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
-  await pip.getByRole('menuitemradio', { name: 'On' }).click();
+  await pip.mouse.move(70, 64);
+  await expect(pip.locator('.ot-dim')).toBeVisible();
+  const shown = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
+  await pip.locator('.ot-strip').click();
   await expect.poll(async () => (await state(page)).presentation.companion.audioOnly).toBe(true);
-  await pip.keyboard.press('Escape');
   const strip = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
-  await testInfo.attach('axe-companion.json', { body: JSON.stringify({ idle, menu, strip }, null, 2), contentType: 'application/json' });
-  expect([...blocking(idle), ...blocking(menu), ...blocking(strip)]).toEqual([]);
+  await testInfo.attach('axe-companion.json', { body: JSON.stringify({ idle, shown, strip }, null, 2), contentType: 'application/json' });
+  expect([...blocking(idle), ...blocking(shown), ...blocking(strip)]).toEqual([]);
 });
 
 test('WebCodecs: into the window and back without an audio underrun or a playhead jump', async ({ page }) => {

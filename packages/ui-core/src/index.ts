@@ -90,6 +90,7 @@ export {
 } from './elements.js';
 export { formatBitrate, formatMs, formatSeconds, formatTime, speakTime, type TimeWords } from './format.js';
 export {
+  attachCompanionTools,
   bindActivity,
   PLAYER_UI_SLICE,
   createPlayerUiPlugin,

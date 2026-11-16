@@ -2,8 +2,9 @@
 // remembered across visits through a storage adapter the host can replace (default:
 // localStorage under a prefix). Only these are kept: the video codec order, the quality (as a
 // picture height, so it carries over between streams), the audio and subtitle languages, the
-// volume, the playback speed, the danmaku settings and the companion window's dim / size / audio
-// strip (ADR-016). Never the playback position, nor the companion window's position.
+// volume, the playback speed, the danmaku settings and the companion window's dim and audio strip
+// (ADR-016). Never the playback position, nor the companion window's size or position (the browser
+// keeps those).
 // Separately (its own key), the device's codec failures: a family that gave no picture although
 // decodingInfo vouched for it (WebKit and AV1) is remembered per user agent for 30 days, so the
 // ~3 s it costs to find out is paid once per device, not on every visit.
@@ -75,7 +76,6 @@ export interface Preferences {
 /** The companion settings that are remembered (CompanionSettings of `@otter-player/presentation`). */
 export interface CompanionPreference {
   readonly dim?: number;
-  readonly size?: 's' | 'm' | 'l';
   readonly audioOnly?: boolean;
 }
 
@@ -105,7 +105,6 @@ export function sanitize(raw: unknown): Preferences {
     const raw = c as Record<string, unknown>;
     const companion: { -readonly [K in keyof CompanionPreference]: CompanionPreference[K] } = {};
     if (typeof raw['dim'] === 'number' && Number.isFinite(raw['dim'])) companion.dim = Math.min(0.8, Math.max(0, raw['dim']));
-    if (raw['size'] === 's' || raw['size'] === 'm' || raw['size'] === 'l') companion.size = raw['size'];
     if (typeof raw['audioOnly'] === 'boolean') companion.audioOnly = raw['audioOnly'];
     if (Object.keys(companion).length > 0) out.companion = companion;
   }
@@ -278,10 +277,10 @@ export function createPreferencesPlugin<S extends PreferencesState, A extends Pr
           const d = state().danmaku;
           if (d !== undefined) save({ danmaku: d as Preferences['danmaku'] });
         }),
-        // Companion dim / size / audio strip, unless the host said not to (remember: false).
+        // Companion dim and audio strip, unless the host said not to (remember: false).
         store.handle('companion-set', () => {
           const c = state().presentation?.companion;
-          if (c !== undefined && c.remember !== false) save({ companion: sanitize({ companion: { dim: c.dim, size: c.size, audioOnly: c.audioOnly } }).companion });
+          if (c !== undefined && c.remember !== false) save({ companion: sanitize({ companion: { dim: c.dim, audioOnly: c.audioOnly } }).companion });
         }),
       ];
 

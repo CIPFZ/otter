@@ -87,7 +87,7 @@ async function setup(options: Partial<PresentationPluginOptions>, env: { docpip?
 describe('companion mode', () => {
   it('is off unless the host turns it on: toggle-pip keeps its rules, nothing to toggle', async () => {
     const { core, state, video, requestWindow } = await setup({});
-    expect(state().companion).toMatchObject({ supported: false, active: false, dim: 0.4, size: 'm', audioOnly: false, remember: true });
+    expect(state().companion).toMatchObject({ supported: false, active: false, dim: 0.4, audioOnly: false, remember: true });
     expect(core.store.dispatch('toggle-companion', {})).toBe(false);
     core.store.dispatch('toggle-pip', {});
     expect(video.requestPictureInPicture).toHaveBeenCalledOnce();
@@ -95,9 +95,9 @@ describe('companion mode', () => {
     await core.destroy();
   });
 
-  it('toggle-pip opens the companion window at the size step, marks the root, and leaves it again', async () => {
+  it('toggle-pip opens the companion window at the host\'s size step, marks the root, and leaves it again', async () => {
     const { core, state, container, win, requestWindow } = await setup({ companion: { dim: 0.6 } });
-    expect(state().companion).toMatchObject({ supported: true, active: false, dim: 0.6, size: 'm' });
+    expect(state().companion).toMatchObject({ supported: true, active: false, dim: 0.6 });
     core.store.dispatch('toggle-pip', {});
     // Without the browser's "back to tab" button (ADR-016 conflict 4).
     expect(requestWindow).toHaveBeenCalledWith({ width: 320, height: 180, disallowReturnToOpener: true });
@@ -113,22 +113,32 @@ describe('companion mode', () => {
     await core.destroy();
   });
 
-  it('companion-set: dim clamped to 0..0.8; a new size resizes the open window (outer = content + frame)', async () => {
-    const { core, state, win } = await setup({ companion: true });
-    core.store.dispatch('companion-set', { dim: 0.95, size: 'l', audioOnly: true });
-    expect(state().companion).toMatchObject({ dim: 0.8, size: 'l', audioOnly: true });
-    // Not in the window: nothing to resize.
-    expect(win.resizeTo).not.toHaveBeenCalled();
-    core.store.dispatch('companion-set', { dim: -1, size: 'm', audioOnly: false });
+  it('companion-set: dim clamped to 0..0.8 (no resize); the size step only sets the first request', async () => {
+    const { core, state, win, requestWindow } = await setup({ companion: { size: 'l' } });
+    core.store.dispatch('companion-set', { dim: 0.95 });
+    expect(state().companion.dim).toBe(0.8);
+    core.store.dispatch('companion-set', { dim: -1 });
     expect(state().companion.dim).toBe(0);
     core.store.dispatch('toggle-companion', {});
+    expect(requestWindow).toHaveBeenCalledWith({ width: 440, height: 248, disallowReturnToOpener: true });
     await vi.waitFor(() => expect(state().companion.active).toBe(true));
-    core.store.dispatch('companion-set', { size: 's' });
-    expect(win.resizeTo).toHaveBeenCalledWith(240, 135 + 34);
-    expect([win.innerWidth, win.innerHeight]).toEqual([240, 135]);
-    // Same size: no resize.
-    core.store.dispatch('companion-set', { size: 's', dim: 0.2 });
-    expect(win.resizeTo).toHaveBeenCalledOnce();
+    core.store.dispatch('companion-set', { dim: 0.4 });
+    expect(win.resizeTo).not.toHaveBeenCalled();
+    await core.destroy();
+  });
+
+  it('the audio strip keeps the window\'s width (the viewer may have dragged it) and gives back its size', async () => {
+    const { core, state, win } = await setup({ companion: true });
+    core.store.dispatch('toggle-companion', {});
+    await vi.waitFor(() => expect(state().companion.active).toBe(true));
+    // The viewer drags the window to 400 x 225.
+    win.innerWidth = 400;
+    win.innerHeight = 225;
+    core.store.dispatch('companion-set', { audioOnly: true });
+    expect(win.resizeTo).toHaveBeenLastCalledWith(400, 66 + 34);
+    core.store.dispatch('companion-set', { audioOnly: false });
+    expect(win.resizeTo).toHaveBeenLastCalledWith(400, 225 + 34);
+    expect([win.innerWidth, win.innerHeight]).toEqual([400, 225]);
     await core.destroy();
   });
 
@@ -136,8 +146,8 @@ describe('companion mode', () => {
     const { core, state, denied } = await setup({ companion: true }, { refuseResize: true });
     core.store.dispatch('toggle-companion', {});
     await vi.waitFor(() => expect(state().companion.active).toBe(true));
-    core.store.dispatch('companion-set', { size: 'l' });
-    expect(state().companion.size).toBe('l');
+    core.store.dispatch('companion-set', { audioOnly: true });
+    expect(state().companion.audioOnly).toBe(true);
     expect(denied).toEqual([{ from: 'docpip', to: 'docpip', reason: 'noUserGesture' }]);
     await core.destroy();
   });

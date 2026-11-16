@@ -1,9 +1,14 @@
 // Companion mode (ADR-016, SPEC §15.1), an on-demand chunk the plugin loads at install when the
 // host turns it on: companion = the `docpip` mode plus this state. It owns the companion settings
-// (dim, size, audioOnly), the window size of a companion request, resizing an open window, the
+// (dim, audioOnly), the window size of a companion request (the host's size step), resizing an open
+// window into the audio strip and back, the
 // `toggle-companion` / `companion-set` handlers, quiet (danmaku and captions off in the window),
 // what closing the window does (`onClose`), and the marks on the root while in the window
 // (`data-otter-companion`, `data-otter-audio-only`; the shell's companion styles key on them).
+//
+// The viewer sizes the window by dragging its edge: the browser restores the last size when the
+// same size is requested again (RESEARCH §1), so every request asks for the host's step and there
+// is no size setting (owner 2026-11-16).
 //
 // RESEARCH §1 (companion stop 0, Chromium 156): requestWindow sizes the content area; resizeTo
 // sizes the outer window and needs (and uses up) transient user activation, so a resize only
@@ -73,7 +78,7 @@ export function createCompanion(deps: CompanionDeps): CompanionRuntime {
   const remember = options.remember !== false;
   const quiet = options.quiet !== false;
   let dim = clampDim(options.dim, 0.4);
-  let size: CompanionSize = isSize(options.size) ? options.size : 'm';
+  const size: CompanionSize = isSize(options.size) ? options.size : 'm';
   let audioOnly = options.audioOnly === true;
   let inWindow = false;
   let leaving = false;
@@ -89,10 +94,24 @@ export function createCompanion(deps: CompanionDeps): CompanionRuntime {
     return { width, height: Math.max(MIN_HEIGHT, Math.round(width * ratio)) };
   };
   const deny = (from: string, reason: string): void => qoe.emit('presentation-denied', { from, to: 'docpip', reason });
+  /** The window's content size before it became the audio strip (the viewer may have dragged it). */
+  let beforeStrip: { width: number; height: number } | undefined;
+  /** Into the audio strip (keeping the width) or back to the size it had before. */
   const resize = (): void => {
     const win = container.ownerDocument.defaultView;
     if (!active() || win === null) return;
-    const { width, height } = windowSize();
+    let width = win.innerWidth;
+    let height: number;
+    if (audioOnly) {
+      beforeStrip = { width: win.innerWidth, height: win.innerHeight };
+      height = STRIP_HEIGHT;
+    } else if (beforeStrip !== undefined) {
+      ({ width, height } = beforeStrip);
+      beforeStrip = undefined;
+    } else {
+      const r = surface.contentRect;
+      height = Math.max(MIN_HEIGHT, Math.round(width * (r.width > 0 && r.height > 0 ? r.height / r.width : 9 / 16)));
+    }
     try {
       // The browser's frame (title bar) as it is now: outer minus inner.
       win.resizeTo(width + win.outerWidth - win.innerWidth, height + win.outerHeight - win.innerHeight);
@@ -134,6 +153,7 @@ export function createCompanion(deps: CompanionDeps): CompanionRuntime {
       return;
     }
     unhush();
+    beforeStrip = undefined;
     // Closed by the viewer (the browser's close, or any way but the player's own): onClose.
     if (!leaving && options.onClose !== 'continue') quietStore.dispatch('pause', undefined);
     leaving = false;
@@ -147,12 +167,11 @@ export function createCompanion(deps: CompanionDeps): CompanionRuntime {
       deny(c.mode, 'unsupported');
     }),
     store.handle('companion-set', (p) => {
-      const before = `${size}:${String(audioOnly)}`;
+      const before = audioOnly;
       dim = clampDim(p.dim, dim);
-      if (isSize(p.size)) size = p.size;
       if (typeof p.audioOnly === 'boolean') audioOnly = p.audioOnly;
       mark();
-      if (`${size}:${String(audioOnly)}` !== before) resize();
+      if (audioOnly !== before) resize();
       deps.sync();
     }),
   ];
@@ -160,7 +179,7 @@ export function createCompanion(deps: CompanionDeps): CompanionRuntime {
 
   return {
     supported,
-    state: () => ({ supported, active: active(), dim, size, audioOnly, remember, quieted: held !== undefined }),
+    state: () => ({ supported, active: active(), dim, audioOnly, remember, quieted: held !== undefined }),
     windowSize,
     leave() {
       if (!inWindow) return;

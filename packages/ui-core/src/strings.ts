@@ -64,22 +64,16 @@ export interface PictureStrings {
   readonly reset: string;
 }
 
-/** Texts of the companion window page of the settings menu (ADR-016 §9). */
+/** Texts of companion mode: its settings page and its controls in the window (ADR-016 §9). */
 export interface CompanionStrings {
   /** Page title and settings row; en "Floating player". */
   readonly companion: string;
-  /** Dimming of the picture in the window; en "Dimming". */
+  /** Dimming of the picture in the window (settings page, the window's slider); en "Dimming". */
   readonly dim: string;
-  /** Window size; en "Size". */
-  readonly size: string;
-  /** Size step s; en "Small". */
-  readonly small: string;
-  /** Size step m; en "Medium". */
-  readonly medium: string;
-  /** Size step l; en "Large". */
-  readonly large: string;
   /** Audio strip switch; en "Audio only". */
   readonly audioOnly: string;
+  /** The audio strip's button back to the picture; en "Show picture". */
+  readonly showPicture: string;
   /** Switch on; en "On". */
   readonly on: string;
   /** Switch off; en "Off". */
@@ -198,8 +192,8 @@ export interface UiStrings {
    */
   readonly danmakuPage?: Partial<DanmakuStrings>;
   /**
-   * Companion window settings page: its default texts load with the settings menu's level-two
-   * chunk; a host table may override them here.
+   * Companion mode texts (settings page, the window's dimming slider and audio strip buttons): their
+   * defaults load on demand; a host table may override them here.
    */
   readonly companionPage?: Partial<CompanionStrings>;
   /**

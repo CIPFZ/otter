@@ -18,7 +18,7 @@ import {
 } from './controller.js';
 import type { RemoteControl, RemoteState } from './remote.js';
 
-/** Companion window width: 240 / 320 / 440 px; the height follows the picture (ADR-016). */
+/** Companion window width when it first opens: 240 / 320 / 440 px (ADR-016). */
 export type CompanionSize = 's' | 'm' | 'l';
 
 /**
@@ -33,8 +33,8 @@ export type CompanionSize = 's' | 'm' | 'l';
  * import '@otter-player/ui-skin-default';
  *
  * // Where the browser has Document Picture-in-Picture, the PiP button opens the companion window:
- * // dimmed, controls on hover, an audio strip on request (settings page "Floating player").
- * const player = createVodPlayer({ container, title: 'Example', presentation: { companion: { dim: 0.4, size: 'm' } } });
+ * // dimmed, controls on hover, a dimming slider and an audio strip switch in the window.
+ * const player = createVodPlayer({ container, title: 'Example', presentation: { companion: { dim: 0.4 } } });
  * void player.load(src).catch((error: unknown) => {
  *   if (!(error instanceof Error && error.name === 'AbortError')) console.error(error);
  * });
@@ -47,7 +47,8 @@ export interface CompanionOptions {
    */
   readonly dim?: number;
   /**
-   * Window width step: 240 / 320 / 440 px, the height from the picture.
+   * Width of the window when it first opens: 240 / 320 / 440 px, the height from the picture. The
+   * viewer resizes it by dragging its edge, and the browser opens it at that size next time.
    * @defaultValue `'m'`
    */
   readonly size?: CompanionSize;
@@ -70,7 +71,7 @@ export interface CompanionOptions {
    */
   readonly onClose?: 'pause' | 'continue';
   /**
-   * Keep dim, size and audioOnly in the viewer's preferences (`@otter-player/preferences`).
+   * Keep dim and audioOnly in the viewer's preferences (`@otter-player/preferences`).
    * @defaultValue `true`
    */
   readonly remember?: boolean;
@@ -80,8 +81,6 @@ export interface CompanionOptions {
 export interface CompanionSettings {
   /** Dimming in the window, clamped to 0..0.8. */
   readonly dim?: number;
-  /** Width step; resizes an open window (inside a user gesture). */
-  readonly size?: CompanionSize;
   /** Audio strip on or off; resizes an open window (inside a user gesture). */
   readonly audioOnly?: boolean;
 }
@@ -94,11 +93,9 @@ export interface CompanionState {
   readonly active: boolean;
   /** Dimming in the window, 0..0.8. */
   readonly dim: number;
-  /** Width step of the window. */
-  readonly size: CompanionSize;
   /** Audio strip instead of the picture. */
   readonly audioOnly: boolean;
-  /** dim, size and audioOnly go to the preferences (CompanionOptions.remember). */
+  /** dim and audioOnly go to the preferences (CompanionOptions.remember). */
   readonly remember: boolean;
   /**
    * Quiet holds danmaku and captions off (in the window, until they are restored on leaving it):
@@ -125,7 +122,7 @@ export interface PresentationState {
 
 const NONE: PresentationCapabilities = { inline: 'native', theater: false, fullscreen: false, pip: false, docpip: false, mini: false, background: false };
 /** Companion mode off (the host did not turn it on, or it is not loaded yet). */
-const NO_COMPANION: CompanionState = { supported: false, active: false, dim: 0.4, size: 'm', audioOnly: false, remember: true, quieted: false };
+const NO_COMPANION: CompanionState = { supported: false, active: false, dim: 0.4, audioOnly: false, remember: true, quieted: false };
 
 export const INITIAL_PRESENTATION_STATE: PresentationState = {
   presentation: { mode: 'inline', pending: null, capabilities: NONE, videoOnly: false, companion: NO_COMPANION },
@@ -149,7 +146,7 @@ export interface PresentationActionMap {
   'open-airplay-picker': Record<string, never>;
   /** Into the companion window, or out of it (denied `unsupported` where Document PiP is missing). */
   'toggle-companion': Record<string, never>;
-  /** Changes companion dim / size / audioOnly; in the window at once (a resize needs a gesture). */
+  /** Changes companion dim / audioOnly; in the window at once (the strip's resize needs a gesture). */
   'companion-set': CompanionSettings;
 }
 

@@ -1,7 +1,7 @@
-// Companion mode visual review material (COMPANION.md §6 item 9): screenshots of the companion
-// window's content, in English and Chinese: the three size steps (pointer in the window), the
-// audio strip, dim 0 / 40 / 80 % (paused, controls hidden) and the settings page at the smallest
-// step. Written to test-results/probes/<project>/visuals/. Window sizes are real only in a headed
+// Companion mode visual review material (COMPANION.md §6 item 9, owner 2026-11-16): screenshots of
+// the companion window's content, in English and Chinese: the host's three first-open sizes
+// (pointer in the window), the audio strip, dim 0 / 40 / 80 % (paused, controls hidden) and the
+// window's own controls (dimming slider, audio strip switch) at the smallest size. Written to test-results/probes/<project>/visuals/. Window sizes are real only in a headed
 // browser (RESEARCH §1): run it on real-windows-edge or desktop-chrome-headed.
 
 import { mkdirSync } from 'node:fs';
@@ -10,7 +10,6 @@ import { test } from '../fixtures';
 import type { Player } from '@otter-player/presets';
 
 const NO_EMULATION = { viewport: null, deviceScaleFactor: undefined, isMobile: undefined, hasTouch: undefined } as unknown as BrowserContextOptions;
-const ROW: Record<string, RegExp> = { en: /^Floating player/, 'zh-CN': /^悬浮窗/ };
 
 for (const lang of ['en', 'zh-CN'] as const) {
   test(`visuals ${lang}`, async ({ page }) => {
@@ -19,8 +18,10 @@ for (const lang of ['en', 'zh-CN'] as const) {
     mkdirSync(dir, { recursive: true });
     const ctx: BrowserContext = await page.context().browser()!.newContext(NO_EMULATION);
     const opener = await ctx.newPage();
-    await opener.goto(`/companion.html?src=/demo/master.m3u8&lang=${lang}&remember=0`);
-    await opener.waitForFunction(() => window.player?.store.getState().status === 'ready', undefined, { timeout: 20_000 });
+    const load = async (size: string): Promise<void> => {
+      await opener.goto(`/companion.html?src=/demo/master.m3u8&lang=${lang}&remember=0&size=${size}`);
+      await opener.waitForFunction(() => window.player?.store.getState().status === 'ready', undefined, { timeout: 20_000 });
+    };
     const set = (p: object) => opener.evaluate((x) => (window.player as Player).store.dispatch('companion-set', x as never), p);
     const media = (type: 'play' | 'pause') => opener.evaluate((t) => (window.player as Player).store.dispatch(t, undefined), type);
     const open = async (): Promise<Page> => {
@@ -32,8 +33,9 @@ for (const lang of ['en', 'zh-CN'] as const) {
       return pip;
     };
     const hover = async (pip: Page): Promise<void> => {
-      await pip.mouse.move(40, 30);
-      await pip.mouse.move(48, 34);
+      // Top left, over the picture (not the progress bar, whose preview would show).
+      await pip.mouse.move(16, 14);
+      await pip.mouse.move(20, 18);
       await pip.waitForTimeout(500);
     };
     const back = async (pip: Page): Promise<void> => {
@@ -53,15 +55,18 @@ for (const lang of ['en', 'zh-CN'] as const) {
       await pip.screenshot({ path: `${dir}/${lang}-${name}.png` });
     };
 
-    await media('play');
+    // The host's three first-open sizes (the viewer then drags the window's edge), controls shown.
     for (const size of ['s', 'm', 'l'] as const) {
-      await set({ size, dim: 0.4, audioOnly: false });
+      await load(size);
+      await media('play');
       const pip = await open();
       await hover(pip);
       await shot(pip, `size-${size}`);
       await back(pip);
     }
-    await set({ size: 'm', audioOnly: true });
+    await load('m');
+    await media('play');
+    await set({ audioOnly: true, dim: 0.4 });
     let pip = await open();
     await shot(pip, 'audio-strip');
     await back(pip);
@@ -78,14 +83,14 @@ for (const lang of ['en', 'zh-CN'] as const) {
       await back(pip);
     }
 
-    await set({ size: 's', dim: 0.4 });
+    // The window's own controls at the smallest size: the dimming slider (keyboard focus on it).
+    await load('s');
+    await set({ dim: 0.4 });
     pip = await open();
     await hover(pip);
-    await pip.locator('otter-settings-menu').getByRole('button').first().click();
-    await pip.getByRole('menuitem', { name: ROW[lang] as RegExp }).click();
-    await pip.waitForTimeout(600);
-    await shot(pip, 'settings-s');
-    await pip.keyboard.press('Escape');
+    await pip.locator('.ot-dim').focus();
+    await pip.waitForTimeout(400);
+    await shot(pip, 'controls-s');
     await back(pip);
     await ctx.close();
   });

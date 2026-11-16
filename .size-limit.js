@@ -174,12 +174,20 @@ const pkgChunk = (pkg, prefix) => {
   const f = existsSync(d) ? readdirSync(d).find((x) => x.startsWith(`${prefix}-`) && x.endsWith('.js')) : undefined;
   return `${d}/${f ?? `${prefix}.js`}`;
 };
+// The window's own controls (ui-core companion-tools and companion-strings, owner 2026-11-16) came
+// after the 3 KB was set: measured with them in a report-only line until the owner sets the budget.
 const companionBudget = [
   {
     name: 'budget: companion mode chunks, presentation companion + presets companion-style (ADR-016 §14, ≤ 3 KB)',
     path: [pkgChunk('presentation', 'companion'), pkgChunk('presets', 'companion-style')],
     gzip: true,
     limit: '3 KB',
+    modifyEsbuildConfig: firstScreenOnly,
+  },
+  {
+    name: 'companion mode, all chunks with the window controls (ui-core companion-tools + companion-strings; report, budget pending)',
+    path: [pkgChunk('presentation', 'companion'), pkgChunk('presets', 'companion-style'), pkgChunk('ui-core', 'companion-tools'), pkgChunk('ui-core', 'companion-strings')],
+    gzip: true,
     modifyEsbuildConfig: firstScreenOnly,
   },
 ];

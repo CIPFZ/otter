@@ -8,6 +8,7 @@ import type { CaptionStyle } from '@otter-player/text';
 import type { UiState } from './context.js';
 import type { MenuGroup, MenuOption, SettingsView } from './elements.js';
 import type { IconNode } from './icons.js';
+import { companionStrings } from './companion-strings.js';
 import type { CompanionStrings, DanmakuStrings, PictureStrings, UiStrings } from './strings.js';
 
 /** What the settings menu lends the level views. */
@@ -96,34 +97,6 @@ const DANMAKU_ZH: DanmakuStrings = {
   bottom: '底部',
 };
 
-const COMPANION_EN: CompanionStrings = {
-  companion: 'Floating player',
-  dim: 'Dimming',
-  size: 'Size',
-  small: 'Small',
-  medium: 'Medium',
-  large: 'Large',
-  audioOnly: 'Audio only',
-  on: 'On',
-  off: 'Off',
-};
-const COMPANION_ZH: CompanionStrings = {
-  companion: '悬浮窗',
-  dim: '暗化',
-  size: '尺寸',
-  small: '小',
-  medium: '中',
-  large: '大',
-  audioOnly: '纯音频条',
-  on: '开',
-  off: '关',
-};
-
-const companionStrings = (host: LevelHost): CompanionStrings => ({
-  ...(/^zh\b/i.test(host.strings.locale) ? COMPANION_ZH : COMPANION_EN),
-  ...host.strings.companionPage,
-});
-
 const danmakuStrings = (host: LevelHost): DanmakuStrings => ({
   ...(/^zh\b/i.test(host.strings.locale) ? DANMAKU_ZH : DANMAKU_EN),
   ...host.strings.danmakuPage,
@@ -175,14 +148,13 @@ function danmakuRow(host: LevelHost, d: NonNullable<UiState['danmaku']>, deps: L
 
 type CompanionView = NonNullable<UiState['presentation']>['companion'];
 
-/** Value of the companion row: "40% · Medium" (· Audio only). */
+/** Value of the companion row: "40%" (· Audio only). The window's size is the viewer's drag. */
 function companionValue(t: CompanionStrings, c: CompanionView): string {
-  const size = c.size === 's' ? t.small : c.size === 'l' ? t.large : t.medium;
-  return [`${Math.round(c.dim * 100)}%`, size, ...(c.audioOnly ? [t.audioOnly] : [])].join(' · ');
+  return [`${Math.round(c.dim * 100)}%`, ...(c.audioOnly ? [t.audioOnly] : [])].join(' · ');
 }
 
 function companionRow(host: LevelHost, c: CompanionView, deps: LevelDeps): HTMLElement {
-  const t = companionStrings(host);
+  const t = companionStrings(host.strings);
   const value = companionValue(t, c);
   const item = host.doc.createElement('div');
   item.setAttribute('role', 'menuitem');
@@ -260,7 +232,7 @@ export function buildLevel(host: LevelHost, view: Exclude<SettingsView, 'root'>,
   back.tabIndex = -1;
   const ps = pictureStrings(host);
   const ds = danmakuStrings(host);
-  const cs = companionStrings(host);
+  const cs = companionStrings(host.strings);
   const title =
     view === 'quality' ? t.quality : view === 'audio' ? t.audio : view === 'captions' ? t.captions : view === 'picture' ? ps.picture : view === 'danmaku' ? ds.danmaku : view === 'companion' ? cs.companion : t.captionStyle;
   back.innerHTML = `<span class="ic">${deps.icon(deps.ChevronLeft)}</span><span class="lb"></span>`;
@@ -429,11 +401,6 @@ export function buildLevel(host: LevelHost, view: Exclude<SettingsView, 'root'>,
       out.push(group);
     };
     seg('companion-dim', cs.dim, [0, 0.2, 0.4, 0.6, 0.8].map((v) => [`${Math.round(v * 100)}%`, { dim: v }, Math.abs(c.dim - v) < 1e-6] as [string, object, boolean]));
-    seg('companion-size', cs.size, [
-      [cs.small, { size: 's' }, c.size === 's'],
-      [cs.medium, { size: 'm' }, c.size === 'm'],
-      [cs.large, { size: 'l' }, c.size === 'l'],
-    ]);
     seg('companion-audio', cs.audioOnly, [
       [cs.on, { audioOnly: true }, c.audioOnly],
       [cs.off, { audioOnly: false }, !c.audioOnly],

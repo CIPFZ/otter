@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCore, createStore } from '@otter-player/core';
 import { MEDIA_SLICE, type MediaActionMap, type MediaState } from '@otter-player/media';
 import { INITIAL_PRESENTATION_STATE, PRESENTATION_SLICE, type CompanionState, type PresentationState } from '@otter-player/presentation';
-import { bindActivity, createPlayerUiPlugin, defineOtterElements, PLAYER_UI_SLICE, provideStore, type PlayerUiActionMap, type PlayerUiState, type UiActions, type UiState } from '@otter-player/ui-core';
+import { attachCompanionTools, bindActivity, createPlayerUiPlugin, defineOtterElements, PLAYER_UI_SLICE, provideStore, type PlayerUiActionMap, type PlayerUiState, type UiActions, type UiState } from '@otter-player/ui-core';
 
 defineOtterElements();
 
@@ -133,17 +133,17 @@ describe('the audio strip and the companion settings', () => {
     expect(panel().querySelector('[data-key="row:companion"]')).toBeNull();
     (panel().querySelector('button') as HTMLElement).click();
     // Supported: the row says the current settings; the page sets them.
-    store.setState({ presentation: companion({ supported: true, dim: 0.4, size: 'm' }) });
+    store.setState({ presentation: companion({ supported: true, dim: 0.4 }) });
     await open();
     const row = panel().querySelector('[data-key="row:companion"]') as HTMLElement;
-    expect(row.getAttribute('aria-label')).toBe('悬浮窗, 40% · 中');
+    expect(row.getAttribute('aria-label')).toBe('悬浮窗, 40%');
     row.click();
     await vi.waitFor(() => expect(panel().querySelector('[data-key="companion-dim:4"]')).not.toBeNull());
-    expect([...panel().querySelectorAll('[data-group="companion"][role="menuitemradio"]')].map((b) => b.textContent)).toEqual(['0%', '20%', '40%', '60%', '80%', '小', '中', '大', '开', '关']);
+    // No size steps: the viewer drags the window's edge.
+    expect([...panel().querySelectorAll('[data-group="companion"][role="menuitemradio"]')].map((b) => b.textContent)).toEqual(['0%', '20%', '40%', '60%', '80%', '开', '关']);
     (panel().querySelector('[data-key="companion-dim:4"]') as HTMLElement).click();
-    (panel().querySelector('[data-key="companion-size:0"]') as HTMLElement).click();
     (panel().querySelector('[data-key="companion-audio:0"]') as HTMLElement).click();
-    expect(sets).toEqual([{ dim: 0.8 }, { size: 's' }, { audioOnly: true }]);
+    expect(sets).toEqual([{ dim: 0.8 }, { audioOnly: true }]);
     await vi.waitFor(() => expect(panel().querySelector('[data-key="companion-audio:0"]')?.getAttribute('aria-checked')).toBe('true'));
   });
 });
@@ -170,5 +170,67 @@ describe('bindActivity', () => {
     off();
     root.dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
     expect(calls).toEqual(['hide-controls']);
+  });
+});
+
+describe('companion window controls (attachCompanionTools)', () => {
+  async function mounted(lang = 'en') {
+    const store = createStore<UiState, UiActions>({ slices: [MEDIA_SLICE, PLAYER_UI_SLICE, PRESENTATION_SLICE] });
+    const sets: unknown[] = [];
+    store.handle('companion-set', (p) => {
+      sets.push(p);
+      const c = store.getState().presentation?.companion;
+      if (c !== undefined) store.setState({ presentation: companion({ ...c, ...p }) });
+    });
+    store.setState({ presentation: companion({ active: true, dim: 0.4 }) });
+    const root = document.createElement('div');
+    root.setAttribute('lang', lang);
+    root.innerHTML = '<div data-otter-controls><otter-pip-button></otter-pip-button></div>';
+    document.body.replaceChildren(root);
+    provideStore(root, store.view());
+    const off = attachCompanionTools(root, store.view());
+    await vi.waitFor(() => expect(root.querySelector('[data-otter-companion-tools]')).not.toBeNull());
+    const slider = root.querySelector('[role="slider"]') as HTMLElement;
+    return { store, root, sets, off, slider };
+  }
+
+  it('a five-step dimming slider: keys, wheel and a click snap to 0 / 20 / 40 / 60 / 80 %', async () => {
+    const { store, sets, slider, root, off } = await mounted('zh-CN');
+    expect(slider.getAttribute('aria-label')).toBe('暗化');
+    expect([slider.getAttribute('aria-valuenow'), slider.getAttribute('aria-valuetext')]).toEqual(['40', '40%']);
+    expect(root.querySelectorAll('.ot-tick')).toHaveLength(5);
+    slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    slider.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    slider.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
+    // A press 70 % along the track: the nearest step is 3 of 0..4, i.e. 60 %.
+    const track = root.querySelector('.ot-track') as HTMLElement;
+    track.getBoundingClientRect = () => ({ left: 100, width: 80, top: 0, height: 16, right: 180, bottom: 16, x: 100, y: 0, toJSON: () => ({}) });
+    slider.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100 + 80 * 0.7, button: 0, bubbles: true }));
+    expect(sets.map((p) => (p as { dim: number }).dim)).toEqual([0.6, 0, 0.2, 0.6]);
+    expect(store.getState().presentation?.companion.dim).toBe(0.6);
+    expect(slider.getAttribute('aria-valuetext')).toBe('60%');
+    off();
+    expect(root.querySelector('[data-otter-companion-tools]')).toBeNull();
+  });
+
+  it('the audio strip switch, and "show picture" in the bar; hidden with the controls', async () => {
+    const { store, sets, root, off } = await mounted();
+    const strip = root.querySelector('.ot-strip') as HTMLButtonElement;
+    const show = root.querySelector('[data-otter-show-picture]') as HTMLButtonElement;
+    expect(strip.getAttribute('aria-label')).toBe('Audio only');
+    expect(show.getAttribute('aria-label')).toBe('Show picture');
+    // In the bar, just before the way back to the page.
+    expect(show.nextElementSibling?.tagName.toLowerCase()).toBe('otter-pip-button');
+    strip.click();
+    show.click();
+    expect(sets).toEqual([{ audioOnly: true }, { audioOnly: false }]);
+    const tools = root.querySelector('[data-otter-companion-tools]') as HTMLElement;
+    store.setState({ controlsVisible: false });
+    expect(tools.hasAttribute('data-idle')).toBe(true);
+    store.setState({ controlsVisible: true });
+    expect(tools.hasAttribute('data-idle')).toBe(false);
+    off();
+    expect(root.querySelector('[data-otter-show-picture]')).toBeNull();
   });
 });

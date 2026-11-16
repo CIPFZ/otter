@@ -24,7 +24,7 @@ import { createPresentationPlugin, PRESENTATION_SLICE, type PresentationActionMa
 import { createQoePlugin, QOE_SLICE, type QoeState } from '@otter-player/qoe';
 import { createOverlayLayer, createVideoSurface, trackFrameTime, type OverlayLayer, type Surface } from '@otter-player/surface';
 import type { TextActionMap, TextState } from '@otter-player/text';
-import { bindActivity, PLAYER_UI_SLICE, createPlayerUiPlugin, defineOtterElements, provideStore, type PlayerUiActionMap, type PlayerUiState } from '@otter-player/ui-core';
+import { attachCompanionTools, bindActivity, PLAYER_UI_SLICE, createPlayerUiPlugin, defineOtterElements, provideStore, type PlayerUiActionMap, type PlayerUiState } from '@otter-player/ui-core';
 import { buildShell } from './shell.js';
 
 /** State of a player made by createPlayer (the slices every preset has). */
@@ -288,14 +288,21 @@ export function createPlayer<S extends PlayerState = PlayerState, A extends Play
     const input = createInputController({ store, ...(options.hotkeys === undefined ? {} : { hotkeys: options.hotkeys }) });
     input.attach(root);
     offs.push(() => input.destroy(), bindActivity(root, store), trackControls(root, store, layer), () => layer.destroy(), () => presented.stop());
-    // The default shell's slim bar in the companion window (ADR-016 §4): rules added to the PiP
-    // window's document when the player is in it, never to the page.
+    // The default shell in the companion window (ADR-016 §4): the slim bar's rules and the
+    // window's own controls (dimming slider, audio strip switch), added to the PiP window's
+    // document while the player is in it, never to the page.
     if (options.ui !== false && options.presentation?.companion !== undefined && options.presentation.companion !== false) {
       const inWindow = (): boolean => store.getState().presentation.companion.active;
+      let tools: Unsubscribe | undefined;
       offs.push(
         store.select(inWindow, (active) => {
-          if (active) void import('./companion-style.js').then((m) => inWindow() && m.addCompanionStyle(root.ownerDocument));
+          tools?.();
+          tools = undefined;
+          if (!active) return;
+          tools = attachCompanionTools(root, store);
+          void import('./companion-style.js').then((m) => inWindow() && m.addCompanionStyle(root.ownerDocument));
         }),
+        () => tools?.(),
       );
     }
     const cleanup = options.setup?.({ root, video, surface, layer, media, store });
