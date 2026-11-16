@@ -33,7 +33,7 @@ Pass `presentation.companion` to `createPlayer` or a preset that is built on it 
 
 ## Where it works
 
-- Desktop Chromium browsers (Chrome, Edge) at the top level of a page served from a secure origin (HTTPS or localhost).
-- Firefox, Safari, iPhone and an iframe have no Document Picture-in-Picture: `supported` is false, the settings page is not shown and the PiP button keeps its old rules (video Picture-in-Picture, the picture only). No error is reported.
+- Browsers with Document Picture-in-Picture, at the top level of a page served from a secure origin (HTTPS or localhost): desktop Chrome and Edge, and Firefox (checked with Firefox 160). Support is detected from the API, never from the browser's name.
+- Safari, iPhone and an iframe have no Document Picture-in-Picture: `supported` is false, the settings page is not shown and the PiP button keeps its old rules (video Picture-in-Picture, the picture only). No error is reported.
 - Not on TVs: the `tv` preset turns it off. `basic`, `shorts`, `surveillance` and `background` do not offer it.
 - Browsers cannot make the window transparent or let clicks through; that needs a desktop shell.

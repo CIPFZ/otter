@@ -437,7 +437,7 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
     - 换了 `TMPDIR`、在命令沙箱外运行，结果都一样；
     - 原因没有查，Chromium 和 WebKit 在同一台机器上正常。
   - 这个 Firefox 的 `XUL` 里有偏好名 `dom.documentpip.enabled` 的字符串，`playwright.cfg` 没有改这一项；默认值是什么，二进制里看不出来。
-  - M3 时的记录（本节上文）是「Playwright 的 Firefox 构建提供 `documentPictureInPicture`，无头也能真正进入」。当前版本是否仍然如此，待 CI 的 desktop-firefox（Ubuntu）证实。
+  - M3 时的记录（本节上文）是「Playwright 的 Firefox 构建提供 `documentPictureInPicture`，无头也能真正进入」。2026-11-16 在 Windows 上证实对当前版本仍成立，正式版 Firefox 160 也有，见下文「Firefox 有 Document PiP」。
 
 #### 真 Edge 补量（2026-11-15）
 
@@ -478,6 +478,28 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - Playwright 页面切不走（与本机相同）。
   - 用原始 CDP 直接启动 Edge（新 profile），有声播放中新开标签页并激活：opener 变 hidden，处理器**没有被调用**；加同样两个功能开关也一样。第一次运行回到原标签页后 `visibilityState` 又变回 hidden 一次，原因没查。
 - **伴随 e2e**：`e2e/companion.spec.ts` 在 `real-windows-edge` 上 11 条全过；暗化像素比（小窗 / 页面）在 0 / 0.4 / 0.8 时为 0.996 / 0.598 / 0.199。
+
+#### Firefox 有 Document PiP（2026-11-16）
+
+在同一台 Windows 机器上补量。
+
+- **正式版 Firefox 160.0**：
+  - 来源：从 download.mozilla.org 下载的安装包，Authenticode 签名为 Mozilla Corporation 且有效；用 `/ExtractDir` 解开，没有安装进系统。
+  - **不经 Playwright** 也确认了一次：新 profile、`-headless --screenshot` 渲染一个本地页面，页面打印 `'documentPictureInPicture' in window`，结果为 **true**。
+  - 经 WebDriver BiDi（Playwright `moz-firefox` 指定这个可执行文件，有界面）：`requestWindow({ width: 320, height: 180 })` 打开的窗口外框是 320×180；窗口里 `innerWidth` / `innerHeight` 读出来却是 1920×1080，原因没查。伴随模式 `supported` 为 true。
+  - winget 装的是应用商店版，路径是 `WindowsApps` 下的别名，Playwright 启动不了，所以改用上面解包的版本。
+- **Playwright 自带的 Firefox 157**（build 1555，即 CI 的 `desktop-firefox`）同样提供这个 API，能打开 320×180 的窗口。验收第 6 条「desktop-firefox 上 `supported` 为 false」与事实不符。本节上文 M3 时的记录对当前版本仍然成立。
+- **伴随 e2e**（`OTTER_COMPANION_JUDGE` 把 Firefox 也列为判定项目）：
+  - 正式版 Firefox 160（有界面）：14 条全过。暗化像素比 1.004 / 0.590 / 0.189；WebCodecs 进出小窗 54–55 个样本，没有欠载；去掉 API 后照旧进视频 PiP。
+  - Playwright Firefox 157（无头）：14 条全过。
+- **测试工具的限制**（不是产品问题），用例已绕开：
+  - WebDriver BiDi 不允许把指针移出视口：Firefox 上「指针离开小窗即隐藏」这一步没测，只有单测覆盖。
+  - 在 PiP 窗口的页面上，`page.close()` 会卡住、`locator.boundingBox()` 会超时：用例改为从页面关窗、用 `getBoundingClientRect` 取位置。
+  - Playwright 自带的 Firefox 在 PiP 窗口还开着时关闭 context 会报 `Browser.removeBrowserContext: _maybeDontRestoreTabs`：用例在每条结束时关掉窗口。
+- **探针（正式版 Firefox 160）与 Chromium 的不同之处**：
+  - `evaluate` 经 BiDi 不带用户激活（`navigator.userActivation.isActive` 为 false），所以第二次 `requestWindow` 被拒（`NotAllowedError … requires user activation`），带激活的 `resizeTo` 那几步也被拒（`Resizing a Picture-in-Picture window requires transient activation`）。窗口尺寸记忆、`resizeTo` 的下限这几项没量成。
+  - 第一次 `resizeTo(500,300)` 却生效了，当时 `isActive` 为 false；原因没查。
+  - `setActionHandler('enterpictureinpicture')` 抛 `TypeError`：Firefox 没有这个 MediaSession 动作。
 
 ## 2. 格式 / 协议 / 编码全景
 

@@ -338,3 +338,14 @@ readonly companion?: { readonly dim?: number; readonly size?: 's' | 'm' | 'l'; r
 冲突 7：Edge 三次运行与本机 Chromium 方向一致——隐藏画面后解码帧数不变，浏览器进程与 GPU 进程的 CPU 下降（三条路径的浏览器合计约降 30–50 %），渲染进程不降。按批准的 (a)，文档可以写「隐藏画面后合成与上屏的 CPU 下降，解码不变」，不写「省电」或笼统的「省 CPU / GPU」。
 
 冲突 8：`e2e/companion.spec.ts` 在 `real-windows-edge` 上 11 条全过；暗化像素比 0.996 / 0.598 / 0.199（0 / 0.4 / 0.8）。
+
+## Firefox 有 Document PiP（2026-11-16，待负责人定）
+
+需求和验收第 6 条的前提「Firefox 没有 Document PiP」与事实不符：正式版 Firefox 160 和 Playwright 自带的 Firefox 157 都提供这个 API（RESEARCH §1「Firefox 有 Document PiP」）。按特性探测（SPEC §5.1，不判断 UA），伴随模式在 Firefox 上可用。在正式版 Firefox 160（有界面）和 Playwright Firefox 上，`e2e/companion.spec.ts` 各 14 条全过；只有「指针离开小窗」一步因为 WebDriver BiDi 的限制没测。
+
+请负责人定：
+
+- (a) Firefox 照特性探测提供伴随模式，并把它列进判定项目：CI 的 `desktop-firefox`，以及有正式版 Firefox 的真机。验收第 6 条改成「desktop-safari、emulated-iphone 退化；desktop-firefox 判功能」。
+- (b) Firefox 上也不提供伴随模式。这要按浏览器判断，与 SPEC §5.1「不按 UA 判断」相冲突，需要先改 SPEC。
+
+建议 (a)。在负责人定之前，代码不变（Firefox 上会提供伴随模式），CI 的判定项目也不变（`desktop-firefox` 只跑退化用例，其余用例跳过并留通知）；`OTTER_COMPANION_JUDGE` 可以把 Firefox 临时加进判定项目。

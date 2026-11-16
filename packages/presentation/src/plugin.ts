@@ -25,7 +25,7 @@ export type CompanionSize = 's' | 'm' | 'l';
  * Companion mode (ADR-016): play while working, in a small always-on-top Document
  * Picture-in-Picture window — the picture dimmed, the controls only on hover, or an audio strip.
  * Pass it as `presentation.companion` (`true` for the defaults); where the browser has no Document
- * Picture-in-Picture (Firefox, Safari, iPhone, an iframe) the PiP button keeps its old rules.
+ * Picture-in-Picture (Safari, iPhone, an iframe) the PiP button keeps its old rules.
  *
  * @example
  * ```ts

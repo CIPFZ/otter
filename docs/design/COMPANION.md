@@ -52,7 +52,7 @@
    - 内容：暗化五档（0 / 20 / 40 / 60 / 80 %）、尺寸三档、纯音频条开关。
    - 宿主开启伴随且浏览器支持时才出现。页面内和小窗内都能调。
 10. **退化**：
-    - 没有 Document PiP 的浏览器（Firefox、Safari、iPhone）和 iframe 内：`toggle-pip` 照旧走原生视频 PiP，只有画面。
+    - 没有 Document PiP 的浏览器（Firefox、Safari、iPhone）和 iframe 内：`toggle-pip` 照旧走原生视频 PiP，只有画面。（2026-11-16 实测：正式版 Firefox 160 已有 Document PiP，见 ADR-016 末节，待负责人定。）
     - `presentation.companion.supported` 为 false，设置页不出现，不报错。
 11. **媒体键**：现有的 MediaSession 绑定在小窗内必须继续有效。
 12. **适用范围**：经 `createPlayer` 的 preset。basic、tv、shorts、surveillance 不提供；每个 preset 的结论见 ADR-016。

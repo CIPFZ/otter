@@ -53,6 +53,15 @@ const instrument = (page: Page) =>
     }
   });
 
+// A companion window left open at the end of a test: closed from the page. Playwright's Firefox
+// fails to close the context while a Document PiP window is open (Browser.removeBrowserContext:
+// "_maybeDontRestoreTabs", Firefox 157 build on Windows).
+test.afterEach(async ({ page }) => {
+  await page
+    .evaluate(() => (window as unknown as { documentPictureInPicture?: { window: Window | null } }).documentPictureInPicture?.window?.close())
+    .catch(() => undefined);
+});
+
 /** Opens the page, plays, and skips (with a notice) where companion mode is not judged or missing. */
 async function open(page: Page, query = ''): Promise<void> {
   await instrument(page);
@@ -114,8 +123,11 @@ const dimOpacity = (target: Page) =>
 
 /** Mean luminance (0..255) of a region of a screenshot, given as fractions of the player box. */
 async function luminance(target: Page, region: { x: number; y: number; w: number; h: number }): Promise<number> {
-  const box = await target.locator('[data-otter-player]').boundingBox();
-  if (box === null) throw new Error('no player box');
+  // The page's own rect: Playwright's boundingBox() does not answer in a Firefox PiP window (BiDi).
+  const box = await target.evaluate(() => {
+    const r = (document.querySelector('[data-otter-player]') as HTMLElement).getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  });
   const png = await target.screenshot({ clip: { x: box.x + box.width * region.x, y: box.y + box.height * region.y, width: box.width * region.w, height: box.height * region.h } });
   return target.evaluate(async (b64) => {
     const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${b64}`)).blob());
@@ -204,8 +216,20 @@ test('controls: hidden while the pointer is outside the window, shown inside, hi
   // Stays while the pointer stays (no idle timer here).
   await pip.waitForTimeout(3500);
   expect(await visible()).toBe(true);
-  await pip.mouse.move(-5, -5);
-  await expect.poll(visible).toBe(false);
+  // Out of the window. WebDriver BiDi (Firefox) refuses a pointer move outside the viewport: there
+  // the leave is checked by the unit tests (bindActivity) only.
+  const left = await pip.mouse.move(-5, -5).then(
+    () => true,
+    (e: unknown) => {
+      if (!/out of bounds/.test(String(e))) throw e;
+      return false;
+    },
+  );
+  if (left) await expect.poll(visible).toBe(false);
+  else {
+    ciNotice('companion controls: the pointer cannot leave the viewport through WebDriver BiDi; leave not checked here');
+    await pip.keyboard.press('Tab');
+  }
   // Keyboard: Tab walks the slim bar; while the focus is on a control the controls show.
   const reached = new Map<string, boolean>();
   for (let i = 0; i < 12; i++) {
@@ -304,17 +328,19 @@ test('quiet: captions off in the window and back after; the preference is not wr
 test('closing the window: paused by default, playing on with onClose continue', async ({ page }) => {
   test.setTimeout(60_000);
   await open(page);
-  let pip = await enter(page);
-  // As the viewer closing it (not the player's own way back).
-  await pip.close();
+  await enter(page);
+  // As the viewer closing it (not the player's own way back): closed from outside the player
+  // (Playwright's page.close() on a PiP window hangs through WebDriver BiDi).
+  const closeWindow = () => page.evaluate(() => (window as unknown as { documentPictureInPicture: { window: Window | null } }).documentPictureInPicture.window?.close());
+  await closeWindow();
   await expect.poll(async () => (await state(page)).presentation.mode).toBe('inline');
   await expect.poll(async () => (await state(page)).paused).toBe(true);
   await page.goto(`/companion.html?src=${SRC}&onclose=continue`);
   await expect.poll(async () => (await state(page)).status, { timeout: 20_000 }).toBe('ready');
   await page.evaluate(() => (window.player as Player).store.dispatch('play', undefined));
   await expect.poll(async () => (await state(page)).currentTime, { timeout: 15_000 }).toBeGreaterThan(0.3);
-  pip = await enter(page);
-  await pip.close();
+  await enter(page);
+  await closeWindow();
   await expect.poll(async () => (await state(page)).presentation.mode).toBe('inline');
   await page.waitForTimeout(1000);
   expect((await state(page)).paused).toBe(false);
@@ -373,6 +399,14 @@ test('WebCodecs: into the window and back without an audio underrun or a playhea
     ciNotice('companion WebCodecs: judged on desktop-chrome and real Edge only (acceptance 8)');
     test.skip(true, 'judged on desktop-chrome and real Edge only');
   }
+  // Diagnostics for a failure (CI #297 saw underruns here): main-thread long tasks in the page.
+  await page.addInitScript(() => {
+    const w = window as unknown as { longTasks: [number, number][] };
+    w.longTasks = [];
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) w.longTasks.push([Math.round(e.startTime), Math.round(e.duration)]);
+    }).observe({ type: 'longtask', buffered: true });
+  });
   await page.goto('/player.html?idle=0&companion=1');
   const fixture = () =>
     page.evaluate(async () => {
@@ -408,13 +442,19 @@ test('WebCodecs: into the window and back without an audio underrun or a playhea
   await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('exit-presentation', {}));
   await expect.poll(async () => (await fixture()).mode).toBe('inline');
   await page.waitForTimeout(1000);
-  const { samples, underruns } = await page.evaluate(async () => ({
+  const { samples, underruns, longTasks } = await page.evaluate(async () => ({
+    longTasks: (window as unknown as { longTasks: [number, number][] }).longTasks,
     samples: (window as unknown as { samples: { t: number; at: number; paused: boolean }[] }).samples,
     underruns: ((await window.otter) as OtterFixture).events
       .filter((e) => e.type === 'error' && (e.payload as { error?: { details?: string } }).error?.details === 'audioUnderrun')
       .map((e) => (e.payload as { error: { message?: string } }).error.message ?? ''),
   }));
-  expect(underruns).toEqual([]);
+  // Hypothesis (CI #297, not verified): the page's timers, which feed the audio, are throttled
+  // while the PiP window has the focus. The widest gap between the page's 50 ms samples says so.
+  const gaps = samples.slice(1).map((x, i) => Math.round((x.at - (samples[i] as { at: number }).at) * 1000));
+  const diagnostics = `widest gap between 50 ms page timer ticks: ${Math.max(0, ...gaps)} ms; long tasks (start, ms): ${JSON.stringify(longTasks.slice(-8))}`;
+  ciNotice(`companion WebCodecs: ${diagnostics}`);
+  expect(underruns, diagnostics).toEqual([]);
   expect(samples.every((x) => !x.paused)).toBe(true);
   for (let i = 1; i < samples.length; i++) {
     const a = samples[i - 1] as { t: number; at: number };
