@@ -38,6 +38,15 @@ function copyStyles(from: Document, to: Document): void {
   }
 }
 
+/**
+ * In the window the player fills it. The page's style sheets come along (copyStyles), and with
+ * them the host's body margin / padding and the player's own size (width, aspect-ratio): without
+ * this the player sat 16 px in and kept its page shape (e2e/presentation.spec.ts). overflow: clip,
+ * not hidden: a tooltip past the edge would let focus scroll the player sideways.
+ */
+const FILL = `html, body { margin: 0 !important; padding: 0 !important; height: 100%; overflow: hidden; background: #000; }
+[data-otter-presentation="docpip"] { position: fixed !important; inset: 0 !important; width: auto !important; height: auto !important; max-width: none !important; max-height: none !important; aspect-ratio: auto !important; overflow: clip !important; }`;
+
 /** Moves `container` into the PiP window, and back when the window closes (then `closed()`). */
 export function moveInto(container: HTMLElement, pip: Window, video: HTMLVideoElement | undefined, closed: () => void): void {
   const home = container.ownerDocument;
@@ -51,6 +60,9 @@ export function moveInto(container: HTMLElement, pip: Window, video: HTMLVideoEl
   pip.document.title = home.title;
   const lang = home.documentElement.lang;
   if (lang !== '') pip.document.documentElement.lang = lang;
+  const fill = pip.document.createElement('style');
+  fill.textContent = FILL;
+  pip.document.head.append(fill);
   pip.document.body.style.margin = '0';
   const before = snapshot(video);
   container.before(placeholder);

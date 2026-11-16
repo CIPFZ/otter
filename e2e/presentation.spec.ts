@@ -254,6 +254,22 @@ test.describe('presentation modes', () => {
     expect(await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement).paused)).toBe(false);
   });
 
+  test('Document PiP: the player fills the window (the page\'s body padding and player size are copied in)', async ({ page }) => {
+    await open(page, '&pip=document', true);
+    test.skip((await presentation(page)).capabilities.docpip === false, 'no Document PiP here');
+    const opened = page.context().waitForEvent('page', { timeout: 8000 });
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('toggle-pip', {}));
+    await expect.poll(() => mode(page)).toBe('docpip');
+    const pip = await opened;
+    const box = await pip.evaluate(() => {
+      const r = (document.querySelector('[data-otter-player]') as HTMLElement).getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight };
+    });
+    expect(box).toEqual({ x: 0, y: 0, w: box.vw, h: box.vh, vw: box.vw, vh: box.vh });
+    await page.evaluate(() => (window as unknown as { documentPictureInPicture: { window: Window } }).documentPictureInPicture.window.close());
+    await expect.poll(() => mode(page)).toBe('inline');
+  });
+
   test('mini window: scrolled out while playing -> corner window, scrolled back -> inline', async ({ page }) => {
     await open(page, '&mini=auto&scroll=1', true);
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
