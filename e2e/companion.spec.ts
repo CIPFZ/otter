@@ -15,7 +15,9 @@ import { expect, test } from './fixtures';
 import type { Player } from '@otter-player/presets';
 import type { OtterFixture } from './site/player.ts';
 
-const JUDGED = ['desktop-chrome', 'real-windows-edge'];
+// OTTER_COMPANION_JUDGE=<project>,...: judge more projects (e.g. real-windows-firefox: Firefox 160
+// has Document PiP, RESEARCH §1).
+const JUDGED = ['desktop-chrome', 'real-windows-edge', ...(process.env['OTTER_COMPANION_JUDGE'] ?? '').split(',').filter(Boolean)];
 const SRC = '/demo/master.m3u8';
 
 const ciNotice = (text: string): void => {
