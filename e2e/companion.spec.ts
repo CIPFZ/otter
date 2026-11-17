@@ -9,7 +9,8 @@
 // step is checked on the requestWindow call, not on the window.
 
 import AxeBuilder from '@axe-core/playwright';
-import { appendFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import type { BrowserContext, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import type { Player } from '@otter-player/presets';
@@ -293,6 +294,47 @@ test('out of the window: the idle delay is back, nothing is left in the page; de
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const blocking = (results: Awaited<ReturnType<AxeBuilder['analyze']>>): string[] =>
   results.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${v.id} (${v.impact}): ${v.help} [${v.nodes.map((n) => n.target.join(' ')).join(', ')}]`);
+/**
+ * axe on the PiP window's document, with the same rules (WCAG_TAGS) and verdict (blocking()) as
+ * elsewhere.
+ *
+ * Observed on real Edge 157 (2026-11-17): in about one window in eight, the window's document and
+ * its root element have prototypes that are not the window's own (`document.documentElement
+ * instanceof Element` is false there, `document instanceof Node` is true); axe, which checks nodes
+ * with `instanceof window.Element`, then throws "No elements found for include in page Context" for
+ * that whole window, retries included. Otter's own code checks nodeType instead (97e87f7). So:
+ * where the window's own prototypes hold, axe runs in the window; otherwise it runs in the page
+ * that opened it, on the window's document (the same DOM), with a notice.
+ */
+const AXE_SOURCE = readFileSync(createRequire(createRequire(import.meta.url).resolve('@axe-core/playwright')).resolve('axe-core/axe.min.js'), 'utf8');
+type AxeResults = Awaited<ReturnType<AxeBuilder['analyze']>>;
+const axeIn = (target: Page, opener: Page, label: string) => ({
+  analyze: async (): Promise<AxeResults> => {
+    await target.waitForFunction(() => document.querySelector('[data-otter-player]') !== null);
+    const ownRealm = await target.evaluate(() => document.documentElement instanceof Element);
+    if (ownRealm) {
+      await target.evaluate(AXE_SOURCE);
+      return target.evaluate(
+        (tags) => (window as unknown as { axe: { run(options: object): Promise<AxeResults> } }).axe.run({ runOnly: { type: 'tag', values: tags } }),
+        WCAG_TAGS,
+      );
+    }
+    const where = await opener.evaluate(() => {
+      const d = (window as unknown as { documentPictureInPicture: { window: Window } }).documentPictureInPicture.window.document;
+      return { docIsOpenerNode: d instanceof Node, rootIsOpenerElement: d.documentElement instanceof Element, rootProtoOpener: Object.getPrototypeOf(d.documentElement) === HTMLHtmlElement.prototype };
+    });
+    ciNotice(`companion axe (${label}): the window's nodes are not of its own realm here (${JSON.stringify(where)}); scanned its document from the opener`);
+    await opener.evaluate(AXE_SOURCE);
+    return opener.evaluate(
+      (tags) =>
+        (window as unknown as { axe: { run(context: object, options: object): Promise<AxeResults> } }).axe.run(
+          { include: [(window as unknown as { documentPictureInPicture: { window: Window } }).documentPictureInPicture.window.document.documentElement] },
+          { runOnly: { type: 'tag', values: tags } },
+        ),
+      WCAG_TAGS,
+    );
+  },
+});
 
 test('audio strip: 66 px of content requested, no picture, the strip bar always shown without settings', async ({ page }) => {
   test.setTimeout(60_000);
@@ -420,22 +462,29 @@ test('axe: the companion window (idle, with its controls shown) and the strip ha
   test.setTimeout(60_000);
   await open(page);
   const pip = await enter(page);
-  const idle = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
+  const idle = await axeIn(pip, page, 'idle').analyze();
   await pip.mouse.move(60, 60);
   await pip.mouse.move(70, 64);
   await expect(pip.locator('.ot-dim-toggle')).toBeVisible();
   await pip.locator('.ot-dim-toggle').click();
   await expect(pip.locator('.ot-dim')).toBeVisible();
-  const shown = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
+  const shown = await axeIn(pip, page, 'controls shown').analyze();
   await pip.keyboard.press('Escape');
   await pip.locator('.ot-strip').click();
   await expect.poll(async () => (await state(page)).presentation.companion.audioOnly).toBe(true);
-  const strip = await new AxeBuilder({ page: pip }).withTags(WCAG_TAGS).analyze();
+  const strip = await axeIn(pip, page, 'audio strip').analyze();
   await testInfo.attach('axe-companion.json', { body: JSON.stringify({ idle, shown, strip }, null, 2), contentType: 'application/json' });
+  // Each scan saw the window's content (rules that passed there), not an empty document.
+  for (const r of [idle, shown, strip]) expect(r.passes.length).toBeGreaterThan(0);
   expect([...blocking(idle), ...blocking(shown), ...blocking(strip)]).toEqual([]);
 });
 
-test('WebCodecs: into the window and back without an audio underrun or a playhead jump', async ({ page }) => {
+// @solo (one worker, alone in its CI step, like the other sound checks): measured 2026-11-17 on a
+// loaded machine (12 parallel runs, 12 busy processes), WebCodecs with sound underran as often
+// without the window as with it (7 of 36 each; same signature as CI #297-#303: decode queue at 17,
+// long main-thread tasks). The underruns on CI came from the main step's parallel load, not from
+// companion mode.
+test('WebCodecs: into the window and back without an audio underrun or a playhead jump @solo', async ({ page }) => {
   test.setTimeout(60_000);
   if (!JUDGED.includes(test.info().project.name)) {
     ciNotice('companion WebCodecs: judged on desktop-chrome and real Edge only (acceptance 8)');
