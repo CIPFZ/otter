@@ -368,4 +368,4 @@ readonly companion?: { readonly dim?: number; readonly size?: 's' | 'm' | 'l'; r
 
 需求第 4、5、8、9 条与验收第 9 条按此改写：精简栏的「设置」换成暗化滑块与音频条开关；设置页只在页面里；目视材料「最小档下打开设置页」换成「最小档下的小窗控件」。
 
-待补测（RESEARCH §1）：没有用过 `preferInitialWindowPlacement` 的情况下，刷新页面后浏览器是否仍记得用户拖过的大小；Firefox 是否也记。
+补测（2026-11-17，RESEARCH §1「伴随模式补测」）：没有用过 `preferInitialWindowPlacement` 时，刷新页面后真 Edge 157 仍记得调过的大小，Firefox 160 不记（回到请求的首开尺寸）；两者换一次请求尺寸后都不再记。Firefox 上要不要由偏好补存，待负责人定。

@@ -501,6 +501,25 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - 第一次 `resizeTo(500,300)` 却生效了，当时 `isActive` 为 false；原因没查。
   - `setActionHandler('enterpictureinpicture')` 抛 `TypeError`：Firefox 没有这个 MediaSession 动作。
 
+#### 伴随模式补测（2026-11-17）
+
+- **CI 上 WebCodecs 进出小窗的音频欠载，来自并行负载，不来自小窗。**
+  - 本机复现：12 个 worker 并行、外加 12 个满载进程。签名与 CI #297–#303 一样（解码队列在上限 17，放空 85–1600 ms，主线程连续 50–145 ms 的长任务，原页面 50 ms 定时器最大间隔 266–322 ms）。
+  - 对照：同样负载、同样流程、不进小窗，三轮合计进小窗 7 / 36 欠载，不进小窗也是 7 / 36。
+  - 本机不加负载、CPU 降速 4 倍，进出小窗都不欠载。小窗内画面始终走 WebGL，没有上下文丢失；每帧主线程 2–6 ms。
+  - 处理：这条用例改为 `@solo`（CI 上单独一步、一个 worker），与其他有声音的检查相同；判定不变。
+- **Document PiP 窗口里根元素的原型可能是 opener 的**（真 Edge 157，约八分之一的窗口）：
+  - 小窗里 `document instanceof Node` 为 true，`document.documentElement instanceof Element` 为 false。
+  - 从 opener 看，根元素是 opener 的 `Element`，原型是 opener 的 `HTMLHtmlElement.prototype`；`document` 却不是 opener 的 `Node`。
+  - axe 用 `instanceof window.Element` 判断节点，这样的窗口里报「No elements found for include in page Context」，重试也一样。
+  - 假设（未验证）：opener 的代码先访问了 `pip.document.documentElement`（docpip.ts 从 opener 设 `lang`，`1119ccf`），根元素的 JS 包装对象就建在了 opener 的 realm 里。
+  - Otter 自己的代码按 `nodeType` 判断（`97e87f7`），不受影响。e2e 的 axe 检查改为：小窗自身 realm 正常时在小窗里扫，否则在 opener 里对小窗的根元素扫（同一份 DOM），并留通知。真 Edge 上连跑 24 次全过，其中 6 次走了 opener。
+- **小窗尺寸的记忆**（真 Edge 157、正式版 Firefox 160；在小窗内一次真实点击里 `resizeTo(560,360)`，用户拖边框脚本做不到）：
+  - 同一页面再次打开：两者都沿用（Edge 547×320，Firefox 545×282）。
+  - 刷新页面后再打开（未用过 `preferInitialWindowPlacement`）：**Edge 沿用**（548×321，每次 +1 px）；**Firefox 不沿用**，回到请求的 320×180。
+  - 换一个请求尺寸（`size=l`）再换回来：两者都回到请求的 320×180，即只记最后一次请求的尺寸。
+  - Firefox 窗口的边框高约 78 px（outer − inner），Edge 约 42 px。
+
 ## 2. 格式 / 协议 / 编码全景
 
 ### 2.1 传输与封装
