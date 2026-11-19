@@ -509,8 +509,14 @@ M3 presentation 实测（2026-10，Playwright Chromium / Firefox，ADR-007 §5�
   - 本机不加负载、CPU 降速 4 倍，进出小窗都不欠载。小窗内画面始终走 WebGL，没有上下文丢失；每帧主线程 2–6 ms。
   - 处理：这条用例改为 `@solo`（CI 上单独一步、一个 worker），与其他有声音的检查相同；判定不变（`41e92ea`）。
   - **更正（2026-11-19）**：改为 `@solo` 后，推送的 #306 通过，同一提交的夜间 #307 在 `@solo` 步骤里两次尝试都欠载（14 + 597 ms、4 + 494 ms；13 + 1013 ms）。解码队列仍在 17，音频块送进解码器 1.2–2.2 s 后才出来，主线程长任务最长 124 ms，原页面 50 ms 定时器最大间隔 199–210 ms。所以 CI 上欠载不只来自并行负载。
-  - 本机用软件 GL 启动参数（`--use-angle=swiftshader` 等，没有核实实际用的是软件渲染）各跑 8 次，有小窗、无小窗都没有欠载，没能复现。
-  - 下一步：同一个 `@solo` 步骤里加一条不进小窗的对照（只记录，不判定），并记下进、出小窗与每次欠载的时刻。原因未查明。
+  - 本机加软件 GL 启动参数各跑 8 次，有小窗、无小窗都没有欠载，没能复现。后来核实：本机 headless Chromium 不加参数也是 SwiftShader（`ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0)…), SwiftShader driver)`），CI 上是 `SwiftShader Device (Subzero)`。所以本机与 CI 都是软件渲染，差别在机器（CI 是 4 vCPU 的 Linux runner）。
+  - 同一个 `@solo` 步骤里加了不进小窗的对照（`79c07e9`，只记录）和进出小窗、每次欠载的时刻：
+    - #308：有小窗第 1 次欠载（11 + 709 ms）、重试过。
+    - #309：有小窗两次都欠载（1 次、2 次），**对照 0 次**。
+    - CI 上进入小窗 300–400 ms、离开 435–476 ms，本机都约 30 ms。
+    - 欠载 5 次里 4 次在离开小窗后的 0.1–0.53 s 内，1 次在小窗里。音频块送进解码器 1–1.6 s 后才出来，解码队列在上限 17；主线程长任务最长约 100 ms。
+  - 结论：CI 上的欠载与小窗有关，并行负载不是主因；真 Edge（有 GPU）、本机、Firefox 160 上没有出现。根因未查明。
+  - 负责人 2026-11-19 选 (b)：CI 上软件渲染时，带 F14 签名（解码队列在上限）的欠载只记录、不判定；播放头处处判定；本机与真 Edge 上欠载照常判定。
 - **Document PiP 窗口里根元素的原型可能是 opener 的**（真 Edge 157，约八分之一的窗口）：
   - 小窗里 `document instanceof Node` 为 true，`document.documentElement instanceof Element` 为 false。
   - 从 opener 看，根元素是 opener 的 `Element`，原型是 opener 的 `HTMLHtmlElement.prototype`；`document` 却不是 opener 的 `Node`。
