@@ -479,18 +479,12 @@ test('axe: the companion window (idle, with its controls shown) and the strip ha
   expect([...blocking(idle), ...blocking(shown), ...blocking(strip)]).toEqual([]);
 });
 
-// @solo (one worker, alone in its CI step, like the other sound checks): measured 2026-11-17 on a
-// loaded machine (12 parallel runs, 12 busy processes), WebCodecs with sound underran as often
-// without the window as with it (7 of 36 each; same signature as CI #297-#303: decode queue at 17,
-// long main-thread tasks). The underruns on CI came from the main step's parallel load, not from
-// companion mode.
-test('WebCodecs: into the window and back without an audio underrun or a playhead jump @solo', async ({ page }) => {
-  test.setTimeout(60_000);
-  if (!JUDGED.includes(test.info().project.name)) {
-    ciNotice('companion WebCodecs: judged on desktop-chrome and real Edge only (acceptance 8)');
-    test.skip(true, 'judged on desktop-chrome and real Edge only');
-  }
-  // Diagnostics for a failure (CI #297 saw underruns here): main-thread long tasks in the page.
+/**
+ * The WebCodecs flow of the check below; `window: false` is the control, the same steps and
+ * timings without opening the window. Returns the samples, the underrun messages, and when each
+ * step and each underrun happened (page performance.now(), ms) for the diagnostics.
+ */
+const webCodecsRun = async (page: Page, window_: boolean) => {
   await page.addInitScript(() => {
     const w = window as unknown as { longTasks: [number, number][] };
     w.longTasks = [];
@@ -512,39 +506,70 @@ test('WebCodecs: into the window and back without an audio underrun or a playhea
   });
   await expect.poll(async () => (await fixture()).t, { timeout: 30_000 }).toBeGreaterThan(0.5);
   expect((await fixture()).backend).toBe('webcodecs');
-  if (!(await fixture()).supported) {
-    ciNotice('companion WebCodecs: no Document PiP here');
-    test.skip(true, 'no Document PiP');
-  }
+  const supported = (await fixture()).supported;
+  // Samples every 50 ms; an underrun is dated by the first sample that counts it.
   await page.evaluate(() => {
-    const w = window as unknown as { samples: { t: number; at: number; paused: boolean }[] };
+    const w = window as unknown as { samples: { t: number; at: number; paused: boolean }[]; marks: [string, number][] };
     w.samples = [];
+    w.marks = [];
+    let seen = 0;
     const tick = async (): Promise<void> => {
-      const s = ((await window.otter) as OtterFixture).state();
+      const o = (await window.otter) as OtterFixture;
+      const s = o.state();
       w.samples.push({ t: s.currentTime, at: performance.now() / 1000, paused: s.paused });
+      const n = o.events.filter((e) => e.type === 'error' && (e.payload as { error?: { details?: string } }).error?.details === 'audioUnderrun').length;
+      if (n > seen) w.marks.push([`underrun x${n - seen}`, Math.round(performance.now())]);
+      seen = n;
       setTimeout(() => void tick(), 50);
     };
     void tick();
   });
-  // A gesture-carrying dispatch (the fixture's narrow layout may hide the button).
-  await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('toggle-pip', {}));
-  await expect.poll(async () => (await fixture()).active, { timeout: 8000 }).toBe(true);
-  await page.waitForTimeout(1500);
-  await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('exit-presentation', {}));
-  await expect.poll(async () => (await fixture()).mode).toBe('inline');
+  const mark = (name: string) => page.evaluate((n) => (window as unknown as { marks: [string, number][] }).marks.push([n, Math.round(performance.now())]), name);
+  if (window_ && supported) {
+    // A gesture-carrying dispatch (the fixture's narrow layout may hide the button).
+    await mark('enter');
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('toggle-pip', {}));
+    await expect.poll(async () => (await fixture()).active, { timeout: 8000 }).toBe(true);
+    await mark('in the window');
+    await page.waitForTimeout(1500);
+    await mark('leave');
+    await page.evaluate(async () => ((await window.otter) as OtterFixture).dispatch('exit-presentation', {}));
+    await expect.poll(async () => (await fixture()).mode).toBe('inline');
+    await mark('back');
+  } else {
+    await page.waitForTimeout(2000);
+  }
   await page.waitForTimeout(1000);
-  const { samples, underruns, longTasks } = await page.evaluate(async () => ({
+  const { samples, underruns, longTasks, marks } = await page.evaluate(async () => ({
     longTasks: (window as unknown as { longTasks: [number, number][] }).longTasks,
+    marks: (window as unknown as { marks: [string, number][] }).marks,
     samples: (window as unknown as { samples: { t: number; at: number; paused: boolean }[] }).samples,
     underruns: ((await window.otter) as OtterFixture).events
       .filter((e) => e.type === 'error' && (e.payload as { error?: { details?: string } }).error?.details === 'audioUnderrun')
       .map((e) => (e.payload as { error: { message?: string } }).error.message ?? ''),
   }));
-  // Hypothesis (CI #297, not verified): the page's timers, which feed the audio, are throttled
-  // while the PiP window has the focus. The widest gap between the page's 50 ms samples says so.
   const gaps = samples.slice(1).map((x, i) => Math.round((x.at - (samples[i] as { at: number }).at) * 1000));
-  const diagnostics = `widest gap between 50 ms page timer ticks: ${Math.max(0, ...gaps)} ms; long tasks (start, ms): ${JSON.stringify(longTasks.slice(-8))}`;
-  ciNotice(`companion WebCodecs: ${diagnostics}`);
+  const diagnostics = `widest gap between 50 ms page timer ticks: ${Math.max(0, ...gaps)} ms; steps (ms): ${JSON.stringify(marks)}; long tasks (start, ms): ${JSON.stringify(longTasks.slice(-8))}`;
+  return { supported, samples, underruns, diagnostics };
+};
+
+// @solo (one worker, alone in its CI step, like the other sound checks). On a loaded machine
+// (2026-11-17: 12 parallel runs, 12 busy processes) WebCodecs with sound underran as often without
+// the window as with it (7 of 36 each). On CI the check still underran in the @solo step (nightly
+// #307, both attempts), so load is not the whole story there; the control below runs the same
+// steps without the window in the same step, for comparison.
+test('WebCodecs: into the window and back without an audio underrun or a playhead jump @solo', async ({ page }) => {
+  test.setTimeout(60_000);
+  if (!JUDGED.includes(test.info().project.name)) {
+    ciNotice('companion WebCodecs: judged on desktop-chrome and real Edge only (acceptance 8)');
+    test.skip(true, 'judged on desktop-chrome and real Edge only');
+  }
+  const { supported, samples, underruns, diagnostics } = await webCodecsRun(page, true);
+  if (!supported) {
+    ciNotice('companion WebCodecs: no Document PiP here');
+    test.skip(true, 'no Document PiP');
+  }
+  ciNotice(`companion WebCodecs (attempt ${test.info().retry + 1}): ${underruns.length} underruns; ${diagnostics}`);
   expect(underruns, diagnostics).toEqual([]);
   expect(samples.every((x) => !x.paused)).toBe(true);
   for (let i = 1; i < samples.length; i++) {
@@ -553,7 +578,15 @@ test('WebCodecs: into the window and back without an audio underrun or a playhea
     expect(b.t, `sample ${i}`).toBeGreaterThanOrEqual(a.t);
     expect(b.t - a.t, `sample ${i}`).toBeLessThanOrEqual(b.at - a.at + 0.5);
   }
-  ciNotice(`companion WebCodecs: in and out of the window, ${samples.length} samples, no underrun`);
+});
+
+// Control for the check above, recorded only (a notice, not judged): the same page, source and
+// timings, without the window.
+test('WebCodecs control: the same steps without the window (recorded, not judged) @solo', async ({ page }) => {
+  test.setTimeout(60_000);
+  test.skip(!JUDGED.includes(test.info().project.name), 'recorded where the check above is judged');
+  const { underruns, diagnostics } = await webCodecsRun(page, false);
+  ciNotice(`companion WebCodecs control, no window: ${underruns.length} underruns${underruns.length > 0 ? ` (${underruns.join(' | ')})` : ''}; ${diagnostics}`);
 });
 
 /** Removes Document PiP before the page runs: Firefox and Safari as they ship (ADR-016 conflict 6). */
