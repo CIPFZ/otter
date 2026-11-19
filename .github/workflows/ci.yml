@@ -189,7 +189,7 @@ jobs:
         run: |
           N="$RUNNER_TEMP/ci-notices.txt"
           if [ -f "$N" ]; then
-            python3 tooling/ci-notices.py "$N" 'danmaku|watermark|dash-av|codecs|AudioContext|surfaces|dvr'
+            python3 tooling/ci-notices.py "$N" 'danmaku|watermark|dash-av|codecs|AudioContext|surfaces|dvr|companion'
             { echo '### e2e notices'; echo '```'; cat "$N"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
             # Also in the report artifact: every notice, readable without the run page (10-notice limit).
             mkdir -p playwright-report && cp "$N" playwright-report/ci-notices.txt
