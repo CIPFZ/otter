@@ -507,6 +507,13 @@ const webCodecsRun = async (page: Page, window_: boolean) => {
   await expect.poll(async () => (await fixture()).t, { timeout: 30_000 }).toBeGreaterThan(0.5);
   expect((await fixture()).backend).toBe('webcodecs');
   const supported = (await fixture()).supported;
+  // The page's WebGL renderer: software (SwiftShader on the CI runners, which have no GPU) or not.
+  const renderer = await page.evaluate(() => {
+    const gl = document.createElement('canvas').getContext('webgl');
+    if (gl === null) return 'none';
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    return String(gl.getParameter(info === null ? gl.RENDERER : info.UNMASKED_RENDERER_WEBGL));
+  });
   // Samples every 50 ms; an underrun is dated by the first sample that counts it.
   await page.evaluate(() => {
     const w = window as unknown as { samples: { t: number; at: number; paused: boolean }[]; marks: [string, number][] };
@@ -550,27 +557,37 @@ const webCodecsRun = async (page: Page, window_: boolean) => {
   }));
   const gaps = samples.slice(1).map((x, i) => Math.round((x.at - (samples[i] as { at: number }).at) * 1000));
   const diagnostics = `widest gap between 50 ms page timer ticks: ${Math.max(0, ...gaps)} ms; steps (ms): ${JSON.stringify(marks)}; long tasks (start, ms): ${JSON.stringify(longTasks.slice(-8))}`;
-  return { supported, samples, underruns, diagnostics };
+  return { supported, samples, underruns, diagnostics, renderer, software: /swiftshader|llvmpipe|softpipe|software|basic render/i.test(renderer) };
 };
 
-// @solo (one worker, alone in its CI step, like the other sound checks). On a loaded machine
-// (2026-11-17: 12 parallel runs, 12 busy processes) WebCodecs with sound underran as often without
-// the window as with it (7 of 36 each). On CI the check still underran in the @solo step (nightly
-// #307, both attempts), so load is not the whole story there; the control below runs the same
-// steps without the window in the same step, for comparison.
+// @solo (one worker, alone in its CI step, like the other sound checks). On the CI runners (no GPU,
+// WebGL on SwiftShader) the check underran in the @solo step while the same steps without the
+// window did not (#309: 1 and 2 underruns against 0; 4 of 5 within 0.53 s after leaving the window,
+// the audio decoder 1-1.6 s late, its queue at the cap of 17). Real Edge (headed, on the GPU), local
+// desktop-chrome (headless, also SwiftShader, on a faster machine) and Firefox 160 never underran
+// here. Owner 2026-11-19 (option b): on CI with a software renderer the underruns with F14's
+// signature are recorded, not judged (like F14 on emulated-android); the playhead is judged
+// everywhere, and the underruns stay judged locally and on real Edge. Cause not found.
 test('WebCodecs: into the window and back without an audio underrun or a playhead jump @solo', async ({ page }) => {
   test.setTimeout(60_000);
   if (!JUDGED.includes(test.info().project.name)) {
     ciNotice('companion WebCodecs: judged on desktop-chrome and real Edge only (acceptance 8)');
     test.skip(true, 'judged on desktop-chrome and real Edge only');
   }
-  const { supported, samples, underruns, diagnostics } = await webCodecsRun(page, true);
+  const run = await webCodecsRun(page, true);
+  const { supported, samples, underruns, diagnostics, renderer } = run;
+  const software = run.software && process.env['CI'] !== undefined && process.env['CI'] !== '';
   if (!supported) {
     ciNotice('companion WebCodecs: no Document PiP here');
     test.skip(true, 'no Document PiP');
   }
-  ciNotice(`companion WebCodecs (attempt ${test.info().retry + 1}): ${underruns.length} underruns; ${diagnostics}`);
-  expect(underruns, diagnostics).toEqual([]);
+  ciNotice(`companion WebCodecs (attempt ${test.info().retry + 1}): ${underruns.length} underruns${software ? ' (CI, software renderer: recorded, not judged)' : ''}; ${diagnostics}`);
+  if (software) {
+    // Only F14's signature (decode queue at its cap) is let through; any other underrun still fails.
+    for (const u of underruns) expect(Number(/\(decode queue (\d+)\)/.exec(u)?.[1] ?? 0), `${u}; ${diagnostics}; renderer ${renderer}`).toBeGreaterThanOrEqual(17);
+  } else {
+    expect(underruns, `${diagnostics}; renderer ${renderer}`).toEqual([]);
+  }
   expect(samples.every((x) => !x.paused)).toBe(true);
   for (let i = 1; i < samples.length; i++) {
     const a = samples[i - 1] as { t: number; at: number };
